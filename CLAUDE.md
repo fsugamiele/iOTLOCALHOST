@@ -36,7 +36,7 @@ El servidor Express es montado por Nuxt como `serverMiddleware` en `/api`. El pu
 
 **Modelos Mongoose** (`app/api/models/`): `user`, `device`, `template`, `data`, `emqx_auth`, `emqx_saver_rule`, `emqx_alarm_rule`, `notifications`.
 
-**Autenticación:** JWT via middleware `app/api/middlewares/authentication.js` (`checkAuth`).
+**Autenticación:** JWT via middleware `app/api/middlewares/authentication.js` (`checkAuth`). El secret se lee de `process.env.JWT_SECRET`.
 
 ### Frontend (Nuxt/Vue) — `app/pages/`
 
@@ -149,6 +149,7 @@ EMQX_NODE_SUPERUSER_PASSWORD=...
 EMQX_API_HOST=<ip-servidor>          # IP accesible por EMQX y el browser
 EMQX_API_TOKEN=...                   # Token secreto para los webhooks
 EMQX_RESOURCES_DELAY=30000           # ms de espera antes de verificar recursos EMQX
+JWT_SECRET=...                       # Clave secreta para firmar/verificar tokens JWT
 APP_PORT=3000
 AXIOS_BASE_URL=http://<dominio>:3001/api
 MQTT_PREFIX=ws://            # o wss:// con SSL
@@ -169,21 +170,27 @@ SSLREDIRECT=false            # true si hay balanceador SSL (habilita redirect en
 | `18083` | Dashboard web |
 | `8085` (→ `8081`) | REST API v4 |
 
-La autenticación EMQX usa MongoDB: colección `emqxauthrules` en la base `iotix`. Campos: `username`, `password` (texto plano), `is_superuser`.
+La autenticación EMQX usa MongoDB: colección `emqxauthrules` en la base `iotix`. Campos: `username`, `password` (**sha256** del password plano), `is_superuser`.
+
+Las contraseñas MQTT se hashean con `sha256` antes de guardarse en MongoDB (`crypto.createHash('sha256')`). El password plano se retorna al cliente solo en el momento de creación/renovación. En instalaciones existentes con `plain`, regenerar todas las credenciales al migrar.
 
 ---
 
 ## Firmware ESP8266 — Configuración
 
-Editar en `ESP8266/src/main.cpp` antes de flashear:
+Las credenciales se configuran en `ESP8266/include/config.h` (excluido del repo). Copiar el template y completar los valores:
+
+```bash
+cp ESP8266/include/config.h.example ESP8266/include/config.h
+```
 
 ```cpp
-const char *wifi_ssid = "...";
-const char *wifi_password = "...";
-String dId = "...";              // ID del dispositivo registrado en la plataforma
-String webhook_pass = "...";     // Password del dispositivo
-String webhook_endpoint = "http://<ip>:3001/api/getdevicecredentials";
-const char *mqtt_server = "<ip>";
+#define WIFI_SSID        "tu_red_wifi"
+#define WIFI_PASSWORD    "tu_password_wifi"
+#define DEVICE_ID        "id_del_dispositivo"
+#define WEBHOOK_PASSWORD "password_del_dispositivo"
+#define WEBHOOK_ENDPOINT "http://<ip-servidor>:3001/api/getdevicecredentials"
+#define MQTT_SERVER_IP   "<ip-servidor>"
 ```
 
 Librerías: `ArduinoJson`, `DHT sensor`, `Adafruit GFX`, `Adafruit ST7735/ST7789`. La librería local `IoTicosSplitter` (`ESP8266/lib/IoTicosSplitter/`) divide strings de tópicos MQTT por separador.
