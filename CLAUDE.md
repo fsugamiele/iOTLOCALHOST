@@ -47,9 +47,11 @@ El frontend se conecta al broker MQTT directamente desde el browser vía WebSock
 ### Flujo de arranque de Node
 
 1. Nuxt inicia Express como serverMiddleware
-2. Express conecta a MongoDB
-3. Al conectar, ejecuta `global.check_mqtt_superuser()` — crea el superusuario MQTT en la colección `emqxauthrules` si no existe
-4. Después de `EMQX_RESOURCES_DELAY` ms, `emqxapi.js` verifica que existan exactamente 2 recursos webhook en EMQX (`saver-webhook` y `alarm-webhook`). Si no existen los crea; si hay un número incorrecto, lanza advertencia en loop hasta corrección manual.
+2. Docker espera health checks de mongo y emqx antes de iniciar el contenedor node
+3. Express conecta a MongoDB
+4. Al conectar, ejecuta `await global.check_mqtt_superuser()` — crea el superusuario MQTT en la colección `emqxauthrules` si no existe
+5. Una vez que el superusuario está garantizado, llama `global.startMqttClient()` (definido en `routes/webhooks.js`)
+6. Después de `EMQX_RESOURCES_DELAY` ms, `emqxapi.js` verifica que existan exactamente 2 recursos webhook en EMQX (`saver-webhook` y `alarm-webhook`). Si no existen los crea; si hay un número incorrecto, lanza advertencia en loop hasta corrección manual.
 
 ### Esquema de tópicos MQTT
 
@@ -105,7 +107,7 @@ docker-compose -f docker_nuxt_build.yml up
 docker-compose -f docker_compose_production.yml up -d
 ```
 
-`docker-compose.yml` (sin sufijo) levanta solo mongo + emqx — útil para probar el broker sin la app.
+`docker-compose.yml` (sin sufijo) levanta solo mongo + emqx — útil para probar el broker sin la app. Requiere `HOST_IP` en el `.env` de servicios (IP del host accesible desde los contenedores).
 
 ### Firmware ESP8266 (PlatformIO — `./ESP8266/`)
 
@@ -128,6 +130,7 @@ MONGO_PASSWORD=...
 MONGO_EXT_PORT=27017
 EMQX_DEFAULT_USER_PASSWORD=...       # Password del dashboard EMQX
 EMQX_DEFAULT_APPLICATION_SECRET=...  # Secret de la API REST de EMQX
+HOST_IP=...                          # IP del host (usado por docker-compose.yml dev)
 ```
 
 ### `/app/.env` (app Node.js)
