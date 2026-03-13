@@ -1,0 +1,14 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// WiFi
+#define WIFI_SSID        "your_wifi_ssid"
+#define WIFI_PASSWORD    "your_wifi_password"
+
+// Plataforma IoTicos GL
+#define DEVICE_ID        "your_device_id"
+#define WEBHOOK_PASSWORD "your_webhook_password"
+#define WEBHOOK_ENDPOINT "http://your_server_ip:3001/api/getdevicecredentials"
+#define MQTT_SERVER_IP   "your_server_ip"
+
+#endif

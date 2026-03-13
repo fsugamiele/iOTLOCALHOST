@@ -6,6 +6,7 @@
 #include <DHT_U.h>
 #include "Colors.h"
 #include "IoTicosSplitter.h"
+#include "config.h"
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 #include <Adafruit_GFX.h>
@@ -16,14 +17,14 @@
 #include "iconosClima.h"
 
 // WiFi
-const char *wifi_ssid = "Fsuga Starlink 2.4";
-const char *wifi_password = "ML2086FS";
+const char *wifi_ssid = WIFI_SSID;
+const char *wifi_password = WIFI_PASSWORD;
 
 // Variables Plataforma
-String dId = "2020";
-String webhook_pass = "3L9O0dpSGT";
-String webhook_endpoint = "http://192.168.1.186:3001/api/getdevicecredentials";
-const char *mqtt_server = "192.168.1.186";
+String dId = DEVICE_ID;
+String webhook_pass = WEBHOOK_PASSWORD;
+String webhook_endpoint = WEBHOOK_ENDPOINT;
+const char *mqtt_server = MQTT_SERVER_IP;
 
 // PINES
 
