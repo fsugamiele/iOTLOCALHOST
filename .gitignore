@@ -1,0 +1,24 @@
+# Dependencias Node
+app/node_modules/
+
+# Nuxt build
+app/.nuxt/
+app/dist/
+
+# Variables de entorno (contienen contraseñas)
+.env
+app/.env
+
+# PlatformIO build artifacts
+ESP8266/.pio/
+
+# Credenciales del dispositivo (NO subir)
+ESP8266/include/config.h
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

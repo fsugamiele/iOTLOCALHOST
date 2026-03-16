@@ -1,7 +1,7 @@
 #include "Arduino.h"
 #include "ESP8266WiFi.h"
 #include "ESP8266HTTPClient.h"
-#include "Adafruit_sensor.h"
+#include "Adafruit_Sensor.h"
 #include <DHT.h>
 #include <DHT_U.h>
 #include "Colors.h"
@@ -187,9 +187,6 @@ void process_incoming_msg(String topic, String incoming)
 
   
   process_actuactors();
-
-  // Envio Status de Luz (On/Off)
-  mqtt_data_doc["variables"][5]["last"]["value"] = (HIGH == digitalRead(led));
 }
 
 // Function Callback
@@ -420,73 +417,26 @@ void process_sensors()
   // Sensando Temperatura
 
   temp = dht.readTemperature();
-  mqtt_data_doc["variables"][0]["last"]["value"] = temp;
 
-  // Grabamos Temperatura?
-
-  int dif = temp - prev_temp;
-  if (dif < 0)
-  {
-    dif *= -1;
-  }
-
-  if (dif >= 1)
-  {
-    mqtt_data_doc["variables"][0]["last"]["save"] = 1;
-  }
-  else
-  {
-    mqtt_data_doc["variables"][0]["last"]["save"] = 0;
-  }
-
-  prev_temp = temp;
+  if (!isnan(temp)) prev_temp = temp;
 
   // Sensando Humedad
 
   hum = dht.readHumidity();
   mqtt_data_doc["variables"][1]["last"]["value"] = hum;
 
-  // Grabamos Humedad?
+  // Siempre guardamos humedad
+  mqtt_data_doc["variables"][1]["last"]["save"] = 1;
 
-  int difHum = hum - prev_hum;
-  if (difHum < 0)
-  {
-    difHum *= -1;
-  }
+  if (!isnan(hum)) prev_hum = hum;
 
-  if (difHum >= 1)
-  {
-    mqtt_data_doc["variables"][1]["last"]["save"] = 1;
-  }
-  else
-  {
-    mqtt_data_doc["variables"][1]["last"]["save"] = 0;
-  }
+  // Sensacion Termica (heat index)
 
-  prev_hum = hum;
+  sterm = dht.computeHeatIndex(temp, hum, false);
+  mqtt_data_doc["variables"][0]["last"]["value"] = sterm;
+  mqtt_data_doc["variables"][0]["last"]["save"] = 1;
 
-  // Sensando Sensacion Termica
-
-  sterm = dht.computeHeatIndex(temp, hum);
-  mqtt_data_doc["variables"][2]["last"]["value"] = sterm;
-
-  // Grabamos Sensacion Termica?
-
-  int difSterm = sterm - prev_sterm;
-  if (difSterm < 0)
-  {
-    difSterm *= -1;
-  }
-
-  if (difSterm >= 1)
-  {
-    mqtt_data_doc["variables"][2]["last"]["save"] = 1;
-  }
-  else
-  {
-    mqtt_data_doc["variables"][2]["last"]["save"] = 0;
-  }
-  prev_sterm = sterm;
+  if (!isnan(sterm)) prev_sterm = sterm;
 
   // Comprueba si hay algún fallo de lectura del sensor DHT, (si lo hay inicia de nuevo el programa)
 
@@ -510,17 +460,11 @@ void process_sensors()
 
 void process_actuactors()
 {
-  if (mqtt_data_doc["variables"][3]["last"]["value"] == "true")
-  {
-    digitalWrite(led, HIGH);
-    mqtt_data_doc["variables"][3]["last"]["value"] = "";
-    varsLastSend[5] = 0;
-  }
-  else if (mqtt_data_doc["variables"][4]["last"]["value"] == "true")
-  {
-    digitalWrite(led, LOW);
-    mqtt_data_doc["variables"][4]["last"]["value"] = "";
-    varsLastSend[5] = 0;
+  // Index [2] is "Luz" (output variable, Bpk9exkuBZ)
+  // Platform sends {"value": true} to turn ON, {"value": false} to turn OFF
+  JsonVariant ledCmd = mqtt_data_doc["variables"][2]["last"]["value"];
+  if (!ledCmd.isNull()) {
+    digitalWrite(led, (bool)ledCmd ? HIGH : LOW);
   }
 }
 
@@ -652,6 +596,9 @@ void pantallaUno()
       tft.setCursor(0, 225);
 
       tft.print(t);
+
+      // Process MQTT messages while scrolling to avoid command latency
+      client.loop();
 
       // Short delay so the text doesn't move too fast
 
