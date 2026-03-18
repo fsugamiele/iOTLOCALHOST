@@ -78,6 +78,15 @@ int minutos = 25;
 String ciudad = "Rio Cuarto";
 int icono;
 
+// Timers no bloqueantes
+long lastSensorRead  = 0;
+long lastDisplayDraw = 0;
+long lastMarqueeStep = 0;
+int  marqueeOffset   = 0;
+
+const String marqueeText  = " wanomi God Level Sensacion Termica y Humedad      ";
+const int    marqueeWidth = 40;
+
 // SETUP
 
 void setup()
@@ -86,31 +95,50 @@ void setup()
   connectToWiFi();
   dht.begin();
   tft.init(240, 240, SPI_MODE2);
+
+  // Splash de inicio — solo una vez, delay() permitido en setup()
+  tft.setRotation(1);
+  tft.fillScreen(ST77XX_BLACK);
+  for (int16_t x = 10; x < tft.width(); x += 10*2)
+    for (int16_t y = 10; y < tft.height(); y += 10*2)
+      tft.fillCircle(x, y, 10, ST77XX_MAGENTA);
+  delay(1000);
+  tft.fillScreen(ST77XX_BLACK);
 }
 
-// LOOP
+// LOOP — completamente no bloqueante (sin delay)
 
 void loop()
-{ 
-  //sensores
-  process_sensors();
+{
+  long now = millis();
 
-  tft.setRotation(1);
-  {
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t x=10; x < tft.width(); x+=10*2) 
-  {
-    for (int16_t y=10; y < tft.height(); y+=10*2) 
-    {
-      tft.fillCircle(x, y, 10, ST77XX_MAGENTA);
-    }
+  // Lectura de sensores cada 2 segundos
+  if (now - lastSensorRead > 2000) {
+    lastSensorRead = now;
+    process_sensors();
   }
+
+  // Redibujado completo de pantalla cada 1 segundo
+  if (now - lastDisplayDraw > 1000) {
+    lastDisplayDraw = now;
+    tft.fillScreen(ST77XX_BLACK);
+    pantallaUno();
   }
-  tft.fillScreen(ST77XX_BLACK);
 
-  pantallaUno();
+  // Avance del marquee cada 200ms (sin bloquear el loop)
+  if (now - lastMarqueeStep > 200) {
+    lastMarqueeStep = now;
+    String t = "";
+    for (int i = 0; i < marqueeWidth; i++)
+      t += marqueeText.charAt((marqueeOffset + i) % marqueeText.length());
+    tft.setCursor(0, 225);
+    tft.setTextSize(2);
+    tft.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+    tft.print(t);
+    marqueeOffset = (marqueeOffset + 1) % marqueeText.length();
+  }
 
-  //conexion mqtt
+  // MQTT — se ejecuta en cada iteración del loop
   check_mqtt_connection();
 }
 
@@ -441,19 +469,9 @@ void process_sensors()
   // Comprueba si hay algún fallo de lectura del sensor DHT, (si lo hay inicia de nuevo el programa)
 
   if (isnan(temp) || isnan(hum) || isnan(sterm))
-  {
-
     falloSensores = "Fallo de lectura desde el sensor DHT!";
-    return;
-  }
   else
-
-  {
-
     falloSensores = "Sensores Success :)";
-  }
-
-  delay(500);
 }
 
 // Simulacion de Actuadores
@@ -572,38 +590,6 @@ void pantallaUno()
   tft.setTextSize(5);
   tft.print("%"); // Que se muestre el porcentaje
 
-  {
-    tft.setTextSize(2);
-    tft.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
-    String text = " wanomi God Level Sensacion Termica y Humedad      "; // sample text
-
-    const int width = 40; // width of the marquee display (in characters)
-
-    // Loop once through the string
-
-    for (int offset = 0; offset < text.length(); offset++)
-    {
-
-      // Construct the string to display for this iteration
-
-      String t = "";
-
-      for (int i = 0; i < width; i++)
-
-        t += text.charAt((offset + i) % text.length());
-
-      // Print the string for this iteration
-      tft.setCursor(0, 225);
-
-      tft.print(t);
-
-      // Process MQTT messages while scrolling to avoid command latency
-      client.loop();
-
-      // Short delay so the text doesn't move too fast
-
-      delay(200);
-    }
-  }
+  // El marquee se maneja en loop() con timer no bloqueante
 
 }
