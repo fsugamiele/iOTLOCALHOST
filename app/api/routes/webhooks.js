@@ -172,6 +172,10 @@ router.post("/rule-webhook", async (req, res) => {
     const now = Date.now();
     const lastTrigger = ruleTriggerTimes.get(incomingRule.emqxRuleId) || 0;
     const cooldownMs = incomingRule.triggerTime * 900; // 90% of triggerTime to absorb jitter
+    const timeSinceLastTrigger = now - lastTrigger;
+
+    // DEBUG: Uncomment for troubleshooting rule timing issues
+    // console.log(`🔥 RULE WEBHOOK DEBUG: Rule ID: ${incomingRule.emqxRuleId}, TriggerTime: ${incomingRule.triggerTime}s, Cooldown: ${cooldownMs}ms, Time since last: ${timeSinceLastTrigger}ms, Will execute: ${timeSinceLastTrigger >= cooldownMs}`);
 
     if ((now - lastTrigger) >= cooldownMs) {
       ruleTriggerTimes.set(incomingRule.emqxRuleId, now);

@@ -26,6 +26,7 @@ router.post("/rule", checkAuth, async (req, res) => {
       return res.status(503).json({ status: "error", error: "EMQX resources not ready yet, please wait a moment and retry" });
     }
 
+
     if (!newRule || !newRule.dId || !newRule.variable || !newRule.condition ||
         newRule.value === undefined || !newRule.triggerTime ||
         !newRule.actuatorVariable || newRule.actuatorValue === undefined) {
@@ -162,30 +163,8 @@ async function createRule(newRule) {
 
       await axios.put(updateUrl, emqxRule, auth);
 
-      // Sync variableSendFreq in template so firmware publishes at rule frequency
-      try {
-        const device = await Device.findOne({ dId: newRule.dId, userId: newRule.userId });
-        if (device && device.templateId) {
-          const template = await Template.findOne({ _id: device.templateId });
-          if (template) {
-            const widgetIndex = template.widgets.findIndex(w => w.variable === newRule.variable);
-            if (widgetIndex !== -1) {
-              const currentFreq = Number(template.widgets[widgetIndex].variableSendFreq) || 30;
-              const newFreq = Math.min(currentFreq, newRule.triggerTime);
-              template.widgets[widgetIndex].variableSendFreq = newFreq;
-              await Template.updateOne(
-                { _id: device.templateId },
-                { $set: { widgets: template.widgets } }
-              );
-              console.log(("variableSendFreq → " + newFreq + "s for variable '" + newRule.variable + "' (triggerTime=" + newRule.triggerTime + ", prev=" + currentFreq + ")").green);
-            }
-          }
-        }
-        // Kick device so it reconnects and fetches the updated variableSendFreq immediately
-        kickDevice(newRule.dId); // fire-and-forget
-      } catch (e) {
-        console.log("Warning: could not update variableSendFreq:", e.message);
-      }
+      // NOTE: Removed automatic variableSendFreq optimization to prevent interference with rule triggerTime
+      // The device's send frequency should not override the rule's trigger time configuration
 
       console.log("New Rule Created...".green);
       return true;
@@ -222,33 +201,7 @@ async function deleteRule(emqxRuleId) {
     await axios.delete(url, auth);
     await Rule.deleteOne({ emqxRuleId: emqxRuleId });
 
-    // Restore variableSendFreq based on remaining rules for this variable
-    if (ruleDoc) {
-      try {
-        const remaining = await Rule.find({ userId: ruleDoc.userId, dId: ruleDoc.dId, variable: ruleDoc.variable });
-        const device = await Device.findOne({ dId: ruleDoc.dId, userId: ruleDoc.userId });
-        if (device && device.templateId) {
-          const template = await Template.findOne({ _id: device.templateId });
-          if (template) {
-            const widgetIndex = template.widgets.findIndex(w => w.variable === ruleDoc.variable);
-            if (widgetIndex !== -1) {
-              const newFreq = remaining.length > 0
-                ? Math.min(...remaining.map(r => r.triggerTime))
-                : 30; // default when no rules remain
-              template.widgets[widgetIndex].variableSendFreq = newFreq;
-              await Template.updateOne(
-                { _id: device.templateId },
-                { $set: { widgets: template.widgets } }
-              );
-              console.log(("variableSendFreq restored → " + newFreq + "s for variable '" + ruleDoc.variable + "'").yellow);
-            }
-          }
-        }
-        kickDevice(ruleDoc.dId); // fire-and-forget
-      } catch (e) {
-        console.log("Warning: could not restore variableSendFreq:", e.message);
-      }
-    }
+    // NOTE: Removed automatic variableSendFreq restoration to prevent interference with rule triggerTime
 
     return true;
   } catch (error) {
