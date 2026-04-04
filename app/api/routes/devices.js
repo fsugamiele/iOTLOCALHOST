@@ -88,15 +88,17 @@ router.post("/device", checkAuth, async (req, res) => {
 
     var newDevice = req.body.newDevice;
 
-    if (!newDevice || !newDevice.dId || !newDevice.templateId) {
-      return res.status(400).json({ status: "error", error: "dId and templateId are required" });
+    if (!newDevice || !newDevice.templateId) {
+      return res.status(400).json({ status: "error", error: "templateId is required" });
     }
 
     newDevice.userId = userId;
-
     newDevice.createdTime = Date.now();
 
-    newDevice.password = makeid(10);
+    // Auto-generate dId and password server-side
+    newDevice.dId = makeid(8);
+    const plainPassword = makeid(12);
+    newDevice.password = plainPassword;
 
     await createSaverRule(userId, newDevice.dId, true);
 
@@ -105,7 +107,9 @@ router.post("/device", checkAuth, async (req, res) => {
     await selectDevice(userId, newDevice.dId);
 
     const toSend = {
-      status: "success"
+      status: "success",
+      dId: newDevice.dId,
+      password: plainPassword
     };
 
     return res.json(toSend);
