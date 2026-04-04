@@ -14,6 +14,18 @@ La plataforma está compuesta por tres componentes principales:
 
 ---
 
+## Ramas Git
+
+| Rama | Descripción |
+|---|---|
+| `master` | Código estable en producción — base de referencia |
+| `feature/wifi-ap-provisioning` | Fase 1 del roadmap: WiFi AP Provisioning para ESP8266 |
+
+> Para volver al estado estable: `git checkout master`
+> Todo el desarrollo de la Fase 1 va en `feature/wifi-ap-provisioning`. Merge a `master` cuando esté probado.
+
+---
+
 ## Estado Actual del Desarrollo
 
 **Última actualización:** 2026-04-04
@@ -73,8 +85,8 @@ La plataforma está compuesta por tres componentes principales:
   - Cooldown optimizado para mejor rendimiento
 
 ### Próximos Pasos 📋
-1. Monitorear estabilidad del sistema en uso real
-2. Optimizar interfaz de usuario si se requieren mejoras adicionales
+1. Resolver errores pendientes reportados por el usuario
+2. Implementar WiFi AP Provisioning (ver Roadmap de Expansión abajo)
 
 ### Problemas Conocidos ⚠️
 - Ninguno reportado actualmente
@@ -83,9 +95,61 @@ La plataforma está compuesta por tres componentes principales:
 - `app/api/routes/rules.js` - triggerTime: effectiveFreq dinámico, sin modificar template
 - `app/api/routes/webhooks.js` - getdevicecredentials calcula freq efectivo por reglas activas
 - `app/api/routes/users.js` - eliminado setTimeout que rotaba credenciales MQTT
-- `app/layouts/default.vue` - `$nuxt.$emit` → `this.$nuxt.$emit` en handler MQTT
+- `app/layouts/default.vue` - `$nuxt.$emit` → `this.$nuxt.$emit`; reconnect ya no rota credenciales; error handler reinicia cliente con debounce si recibe CONNACK Not Authorized
 - `app/components/Widgets/Rtnumberchart.vue` - watcher mejorado (deregistra solo cuando oldTopic existe)
 - `ESP8266/src/main.cpp` - process_incoming_msg: copia de campos directa; process_actuactors: as<int>() en lugar de (bool)
+
+---
+
+## Roadmap de Expansión — Multi-Dispositivo
+
+### Mapa de Compatibilidad
+
+| Tipo de dispositivo | Protocolo nativo | Integración con Wanomi | Esfuerzo |
+|---|---|---|---|
+| ESP8266/ESP32 custom | MQTT (firmware propio) | Nativo | Ya implementado |
+| Tasmota / ESPHome | MQTT (open source) | Casi nativo — mapear topics | Bajo |
+| Sonoff DIY mode | HTTP local + MQTT | Flashear Tasmota o API local | Bajo/Medio |
+| Zigbee (IKEA, Aqara, etc.) | Zigbee | Via Zigbee2MQTT como puente → EMQX | Medio |
+| Tuya / Smart Life | Cloud + propietario | Via tinytuya (local) o MQTT bridge | Medio/Alto |
+| Philips Hue | REST API local + Zigbee | Bridge HTTP → MQTT | Medio |
+| Matter devices | Matter/Thread | Bridge Matter → MQTT | Alto (futuro) |
+
+### Fases de Implementación
+
+#### Fase 1 — WiFi AP Provisioning para firmware propio ⬅️ EN CURSO
+Permite agregar y configurar dispositivos ESP8266 (firmware Wanomi) directamente desde la plataforma sin editar `config.h`.
+
+**Componentes a modificar:**
+- `ESP8266/src/main.cpp` — modo AP al iniciar sin config; HTTP server en `192.168.4.1`; endpoint `POST /provision`; guardar config en NVS (Preferences) en lugar de `config.h`
+- `app/api/routes/devices.js` — auto-generar `dId` y `password` al crear device
+- `app/pages/devices.vue` — wizard de 2 pasos: crear device → provisionar (envía WiFi SSID/pass + dId + devicePass + serverIP al dispositivo vía HTTP)
+
+**Flujo completo:**
+```
+ESP8266 sin config → AP mode "Wanomi-Config-XXXX"
+PC conecta a esa red WiFi
+Platform wizard → POST http://192.168.4.1/provision { ssid, wifiPass, dId, devicePass, serverIP }
+ESP8266 guarda en NVS → reinicia → conecta WiFi → llama /getdevicecredentials → conecta MQTT
+```
+
+#### Fase 2 — Soporte Tasmota / ESPHome
+Dispositivos que ya hablan MQTT. Requiere:
+- Template especial tipo "Tasmota" que mapea topics `tele/+/SENSOR`, `stat/+/RESULT`
+- Auto-discovery por suscripción a `tele/+/LWT` en EMQX
+- Mínimo cambio en firmware (ninguno — es firmware de terceros)
+
+#### Fase 3 — Bridge Zigbee2MQTT
+Agrega soporte para cientos de dispositivos Zigbee (sensores, luces, enchufes).
+- Agregar contenedor `zigbee2mqtt` al `docker_compose_production.yml`
+- Zigbee2MQTT publica automáticamente en EMQX
+- Template tipo "Zigbee" para mapear sus topics estándar
+- Requiere hardware: coordinador Zigbee USB (ej. CC2531, Sonoff Zigbee Dongle)
+
+#### Fase 4 — API Bridges para marcas propietarias
+- **Tuya/Smart Life**: integración via `tinytuya` (Python) como microservicio → publica en MQTT
+- **Philips Hue**: bridge HTTP→MQTT usando la API REST local del hub Hue
+- Cada bridge corre como contenedor adicional en Docker Compose
 
 ---
 
