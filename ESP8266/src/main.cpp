@@ -15,7 +15,6 @@
 #include <DHT_U.h>
 #include "Colors.h"
 #include "IoTicosSplitter.h"
-#include "config.h"
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 #include <Adafruit_GFX.h>
@@ -42,13 +41,13 @@ String mqtt_server_str;
 
 // ── Hardware pins ──────────────────────────────────────────────────
 
-#define led     PIN_RELAY
-#define DHTPIN  PIN_DHT
+#define led     D0
+#define DHTPIN  D6
 #define DHTTYPE DHT11
 
-#define TFT_DC  PIN_TFT_DC
-#define TFT_RST PIN_TFT_RST
-#define TFT_CS  PIN_TFT_CS
+#define TFT_DC  D1
+#define TFT_RST D2
+#define TFT_CS  D7
 
 // ── Mode flag ─────────────────────────────────────────────────────
 
