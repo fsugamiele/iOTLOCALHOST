@@ -89,11 +89,11 @@ const int    marqueeWidth = 40;
 
 // ── Forward declarations ──────────────────────────────────────────
 
+void clearConfig();
 bool hasStoredConfig();
 bool loadConfig();
 bool saveConfig(String ssid, String wifiPass, String dId,
                 String devPass, String serverIP, String serverPort);
-void clearConfig();
 void startProvisioningMode();
 void handleProvisionCors();
 void handleProvision();
@@ -155,8 +155,12 @@ bool loadConfig() {
   cfg_server_ip       = String(cfg.serverIP);
   cfg_server_port     = strlen(cfg.serverPort) > 0 ? String(cfg.serverPort) : "3001";
 
-  if (cfg_ssid.isEmpty() || cfg_dId.isEmpty() || cfg_server_ip.isEmpty()) {
-    Serial.println("[Config] Incomplete — provisioning mode");
+  bool invalid = cfg_ssid.isEmpty()    || cfg_ssid == "null"    ||
+                 cfg_dId.isEmpty()                               ||
+                 cfg_server_ip.isEmpty() || cfg_server_ip == "null";
+  if (invalid) {
+    Serial.println("[Config] Invalid values — clearing EEPROM, provisioning mode");
+    clearConfig();
     return false;
   }
 
