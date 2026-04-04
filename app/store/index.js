@@ -2,7 +2,8 @@ export const state = () => ({
   auth: null,
   devices: [],
   selectedDevice: {},
-  notifications: []
+  notifications: [],
+  mqttConnected: false
 });
 
 export const mutations = {
@@ -21,6 +22,10 @@ export const mutations = {
 
   setSelectedDevice(state, device) {
     state.selectedDevice = device;
+  },
+
+  setMqttConnected(state, value) {
+    state.mqttConnected = value;
   },
 
 };

@@ -117,8 +117,9 @@ export default {
         port: "",
         endpoint: "/mqtt",
         clean: true,
-        connectTimeout: 5000,
+        connectTimeout: 10000,
         reconnectPeriod: 5000,
+        keepalive: 30,
 
         // Certification Information
         clientId:
@@ -185,6 +186,8 @@ export default {
     },
 
     async startMqttClient() {
+      // Defensive cleanup before (re)starting to avoid listener accumulation
+      this.$nuxt.$off("mqtt-sender");
       await this.getMqttCredentials();
 
       //ex topic: "userid/did/variableId/sdata"
@@ -210,9 +213,8 @@ export default {
 
       //MQTT CONNECTION SUCCESS
       this.client.on("connect", () => {
-        console.log(this.client);
-
         console.log("Connection succeeded!");
+        this.$store.commit("setMqttConnected", true);
 
         //SDATA SUBSCRIBE
         this.client.subscribe(deviceSubscribeTopic, { qos: 0 }, err => {
@@ -248,6 +250,7 @@ export default {
 
       this.client.on("error", async error => {
         console.log("Connection failed", error);
+        this.$store.commit("setMqttConnected", false);
         // mqtt.js stops retrying after CONNACK "Not authorized" (fatal error).
         // Rotate credentials and restart the client once.
         if (error && error.message && error.message.includes("Not authorized")) {
@@ -265,10 +268,12 @@ export default {
 
       this.client.on("reconnect", () => {
         console.log("reconnecting...");
+        this.$store.commit("setMqttConnected", false);
       });
 
-      this.client.on("disconnect", error => {
-        console.log("MQTT disconnect EVENT FIRED:", error);
+      this.client.on("disconnect", () => {
+        console.log("MQTT disconnected");
+        this.$store.commit("setMqttConnected", false);
       });
 
       this.client.on("message", (topic, message) => {

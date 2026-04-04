@@ -20,6 +20,13 @@
     </div>
 
     <ul class="navbar-nav" :class="$rtl.isRTL ? 'mr-auto' : 'ml-auto'">
+
+      <li class="nav-item d-flex align-items-center mr-2">
+        <el-tooltip :content="$store.state.mqttConnected ? 'MQTT Connected' : 'MQTT Disconnected'" placement="bottom">
+          <span class="mqtt-status-dot" :class="$store.state.mqttConnected ? 'mqtt-connected' : 'mqtt-disconnected'"></span>
+        </el-tooltip>
+      </li>
+
       <el-select
         class="select-success"
         placeholder="Select Device"
@@ -246,5 +253,23 @@ export default {
 <style scoped>
 .top-navbar {
   top: 0px;
+}
+.mqtt-status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.mqtt-connected {
+  background-color: #00f2c3;
+  box-shadow: 0 0 6px #00f2c3;
+}
+.mqtt-disconnected {
+  background-color: #fd5d93;
+  animation: blink 1.2s infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
 }
 </style>
