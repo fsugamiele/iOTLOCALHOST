@@ -1,14 +1,27 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// WiFi
-#define WIFI_SSID        "your_wifi_ssid"
-#define WIFI_PASSWORD    "your_wifi_password"
+// ──────────────────────────────────────────────────────────────────
+//  WiFi credentials, device ID and server settings are now stored
+//  at runtime in LittleFS (/config.json) via the provisioning wizard.
+//
+//  On first boot (no /config.json found) the device starts in AP mode:
+//    WiFi network : Wanomi-Config-XXXXXX
+//    IP address   : 192.168.4.1
+//    Endpoint     : POST http://192.168.4.1/provision
+//
+//  Use the platform's "Provision Device" wizard to configure it.
+//
+//  To force reprovisioning (factory reset), call clearConfig() via
+//  MQTT config topic or reflash the filesystem:
+//    pio run --target uploadfs
+// ──────────────────────────────────────────────────────────────────
 
-// Plataforma IoTicos GL
-#define DEVICE_ID        "your_device_id"
-#define WEBHOOK_PASSWORD "your_webhook_password"
-#define WEBHOOK_ENDPOINT "http://your_server_ip:3001/api/getdevicecredentials"
-#define MQTT_SERVER_IP   "your_server_ip"
+// Hardware pin definitions (do not change unless rewiring)
+#define PIN_RELAY  D0
+#define PIN_DHT    D6
+#define PIN_TFT_DC D1
+#define PIN_TFT_RST D2
+#define PIN_TFT_CS D7
 
 #endif
