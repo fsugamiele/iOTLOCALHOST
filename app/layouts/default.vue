@@ -184,43 +184,6 @@ export default {
       }
     },
 
-    async getMqttCredentialsForReconnection() {
-      try {
-        const axiosHeaders = {
-          headers: {
-            token: this.$store.state.auth.token
-          }
-        };
-
-        const credentials = await this.$axios.post(
-          "/getmqttcredentialsforreconnection",
-          null,
-          axiosHeaders
-        );
-        console.log(credentials.data);
-
-        if (credentials.data.status == "success") {
-          this.client.options.username = credentials.data.username;
-          this.client.options.password = credentials.data.password;
-        }
-      } catch (error) {
-
-        console.log(error);
-
-
-        if (error.response.status == 401) {
-          console.log("NO VALID TOKEN");
-          localStorage.clear();
-
-          const auth = {};
-          this.$store.commit("setAuth", auth);
-
-          window.location.href = "/login";
-        }
-        
-      }
-    },
-
     async startMqttClient() {
       await this.getMqttCredentials();
 
@@ -283,13 +246,25 @@ export default {
         });
       });
 
-      this.client.on("error", error => {
+      this.client.on("error", async error => {
         console.log("Connection failed", error);
+        // mqtt.js stops retrying after CONNACK "Not authorized" (fatal error).
+        // Rotate credentials and restart the client once.
+        if (error && error.message && error.message.includes("Not authorized")) {
+          if (this._mqttAuthRetrying) return;
+          this._mqttAuthRetrying = true;
+          console.log("MQTT auth error — refreshing credentials and restarting client...");
+          this.client.end(true);
+          this.$nuxt.$off("mqtt-sender");
+          setTimeout(async () => {
+            this._mqttAuthRetrying = false;
+            await this.startMqttClient();
+          }, 3000);
+        }
       });
 
-      this.client.on("reconnect", error => {
-        console.log("reconnecting:", error);
-        this.getMqttCredentialsForReconnection();
+      this.client.on("reconnect", () => {
+        console.log("reconnecting...");
       });
 
       this.client.on("disconnect", error => {
