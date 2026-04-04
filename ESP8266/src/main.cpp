@@ -9,7 +9,7 @@
 #include "ESP8266WiFi.h"
 #include "ESP8266HTTPClient.h"
 #include <ESP8266WebServer.h>
-#include <LittleFS.h>
+#include <EEPROM.h>
 #include "Adafruit_Sensor.h"
 #include <DHT.h>
 #include <DHT_U.h>
@@ -115,76 +115,97 @@ void clear();
 
 
 // ══════════════════════════════════════════════════════════════════
-//  LITTLEFS — CONFIG PERSISTENCE
+//  EEPROM — CONFIG PERSISTENCE
+//  Magic number "WANOMI" at offset 0 validates the stored config.
+//  Without it, hasStoredConfig() returns false → provisioning mode.
 // ══════════════════════════════════════════════════════════════════
 
+#define EEPROM_SIZE   300
+#define MAGIC         "WANOMI"
+#define MAGIC_LEN     6
+
+struct StoredConfig {
+  char magic[MAGIC_LEN];
+  char ssid[64];
+  char wifiPassword[64];
+  char dId[20];
+  char devicePassword[20];
+  char serverIP[48];
+  char serverPort[8];
+};
+
 bool hasStoredConfig() {
-  if (!LittleFS.begin()) {
-    Serial.println("[FS] LittleFS mount failed");
-    return false;
-  }
-  return LittleFS.exists("/config.json");
+  EEPROM.begin(EEPROM_SIZE);
+  StoredConfig cfg;
+  EEPROM.get(0, cfg);
+  return strncmp(cfg.magic, MAGIC, MAGIC_LEN) == 0;
 }
 
 bool loadConfig() {
-  if (!LittleFS.begin()) return false;
+  EEPROM.begin(EEPROM_SIZE);
+  StoredConfig cfg;
+  EEPROM.get(0, cfg);
 
-  File f = LittleFS.open("/config.json", "r");
-  if (!f) return false;
+  if (strncmp(cfg.magic, MAGIC, MAGIC_LEN) != 0) return false;
 
-  DynamicJsonDocument doc(512);
-  if (deserializeJson(doc, f) != DeserializationError::Ok) {
-    f.close();
+  cfg_ssid            = String(cfg.ssid);
+  cfg_wifi_password   = String(cfg.wifiPassword);
+  cfg_dId             = String(cfg.dId);
+  cfg_device_password = String(cfg.devicePassword);
+  cfg_server_ip       = String(cfg.serverIP);
+  cfg_server_port     = strlen(cfg.serverPort) > 0 ? String(cfg.serverPort) : "3001";
+
+  if (cfg_ssid.isEmpty() || cfg_dId.isEmpty() || cfg_server_ip.isEmpty()) {
+    Serial.println("[Config] Incomplete — provisioning mode");
     return false;
   }
-  f.close();
 
-  cfg_ssid            = doc["ssid"].as<String>();
-  cfg_wifi_password   = doc["wifiPassword"].as<String>();
-  cfg_dId             = doc["dId"].as<String>();
-  cfg_device_password = doc["devicePassword"].as<String>();
-  cfg_server_ip       = doc["serverIP"].as<String>();
-  cfg_server_port     = doc["serverPort"] | String("3001");
-
-  // Populate runtime vars
   dId              = cfg_dId;
   webhook_pass     = cfg_device_password;
   mqtt_server_str  = cfg_server_ip;
   webhook_endpoint = "http://" + cfg_server_ip + ":" + cfg_server_port + "/api/getdevicecredentials";
 
-  Serial.println("[Config] Loaded from LittleFS");
-  Serial.println("  dId: " + dId);
+  Serial.println("[Config] Loaded OK");
+  Serial.println("  ssid:   " + cfg_ssid);
+  Serial.println("  dId:    " + dId);
   Serial.println("  server: " + cfg_server_ip + ":" + cfg_server_port);
   return true;
 }
 
 bool saveConfig(String ssid, String wifiPass, String dId,
                 String devPass, String serverIP, String serverPort) {
-  if (!LittleFS.begin()) return false;
+  EEPROM.begin(EEPROM_SIZE);
+  StoredConfig cfg;
 
-  DynamicJsonDocument doc(512);
-  doc["ssid"]           = ssid;
-  doc["wifiPassword"]   = wifiPass;
-  doc["dId"]            = dId;
-  doc["devicePassword"] = devPass;
-  doc["serverIP"]       = serverIP;
-  doc["serverPort"]     = serverPort;
+  strncpy(cfg.magic,          MAGIC,              MAGIC_LEN);
+  strncpy(cfg.ssid,           ssid.c_str(),       sizeof(cfg.ssid) - 1);
+  strncpy(cfg.wifiPassword,   wifiPass.c_str(),   sizeof(cfg.wifiPassword) - 1);
+  strncpy(cfg.dId,            dId.c_str(),        sizeof(cfg.dId) - 1);
+  strncpy(cfg.devicePassword, devPass.c_str(),    sizeof(cfg.devicePassword) - 1);
+  strncpy(cfg.serverIP,       serverIP.c_str(),   sizeof(cfg.serverIP) - 1);
+  strncpy(cfg.serverPort,     serverPort.c_str(), sizeof(cfg.serverPort) - 1);
 
-  File f = LittleFS.open("/config.json", "w");
-  if (!f) return false;
-  serializeJson(doc, f);
-  f.close();
+  // Null-terminate all fields
+  cfg.ssid[sizeof(cfg.ssid)-1]                   = '\0';
+  cfg.wifiPassword[sizeof(cfg.wifiPassword)-1]   = '\0';
+  cfg.dId[sizeof(cfg.dId)-1]                     = '\0';
+  cfg.devicePassword[sizeof(cfg.devicePassword)-1] = '\0';
+  cfg.serverIP[sizeof(cfg.serverIP)-1]           = '\0';
+  cfg.serverPort[sizeof(cfg.serverPort)-1]       = '\0';
 
-  Serial.println("[Config] Saved to LittleFS");
-  return true;
+  EEPROM.put(0, cfg);
+  bool ok = EEPROM.commit();
+  Serial.println(ok ? "[Config] Saved to EEPROM" : "[Config] EEPROM write failed");
+  return ok;
 }
 
 void clearConfig() {
-  if (!LittleFS.begin()) return;
-  if (LittleFS.exists("/config.json")) {
-    LittleFS.remove("/config.json");
-    Serial.println("[Config] Cleared — will enter provisioning mode on reboot");
-  }
+  EEPROM.begin(EEPROM_SIZE);
+  StoredConfig cfg;
+  memset(&cfg, 0, sizeof(cfg));  // Wipes magic → provisioning on next boot
+  EEPROM.put(0, cfg);
+  EEPROM.commit();
+  Serial.println("[Config] Cleared — provisioning mode on next boot");
 }
 
 
@@ -277,12 +298,13 @@ void setup() {
   delay(800);
   tft.fillScreen(ST77XX_BLACK);
 
+  Serial.println("\n[Boot] Checking stored config...");
   if (hasStoredConfig() && loadConfig()) {
-    // Normal mode
+    Serial.println("[Boot] Config found — NORMAL MODE");
     dht.begin();
     connectToWiFi();
   } else {
-    // Provisioning mode
+    Serial.println("[Boot] No valid config — PROVISIONING MODE");
     startProvisioningMode();
   }
 }
