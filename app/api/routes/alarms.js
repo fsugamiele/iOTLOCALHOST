@@ -44,6 +44,10 @@ router.post("/alarm-rule", checkAuth, async (req, res) => {
       return res.status(400).json({ status: "error", error: "value must be a number" });
     }
 
+    if (newRule.triggerTime < 1) {
+      return res.status(400).json({ status: "error", error: "triggerTime must be at least 1 second" });
+    }
+
     newRule.userId = req.userData._id;
 
     var r = await createAlarmRule(newRule);

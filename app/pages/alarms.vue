@@ -55,12 +55,39 @@
               ></base-input>
             </div>
 
-            <div class="col-3">
-              <base-input
-                label="Cooldown (segundos)"
-                v-model="newRule.triggerTime"
-                type="number"
-              ></base-input>
+            <div class="col-6">
+              <label style="color: #9a9a9a; font-size: 12px; margin-bottom: 5px;">
+                TIEMPO DE VERIFICACIÓN ({{ triggerTimeInSeconds }} segundos)
+              </label>
+              <div class="row" style="margin: 0;">
+                <div class="col-4" style="padding: 0 5px;">
+                  <base-input
+                    label="Horas"
+                    v-model.number="timeSelector.hours"
+                    type="number"
+                    min="0"
+                    max="23"
+                  ></base-input>
+                </div>
+                <div class="col-4" style="padding: 0 5px;">
+                  <base-input
+                    label="Minutos"
+                    v-model.number="timeSelector.minutes"
+                    type="number"
+                    min="0"
+                    max="59"
+                  ></base-input>
+                </div>
+                <div class="col-4" style="padding: 0 5px;">
+                  <base-input
+                    label="Segundos"
+                    v-model.number="timeSelector.seconds"
+                    type="number"
+                    min="0"
+                    max="59"
+                  ></base-input>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -121,7 +148,7 @@
 
             <el-table-column
               prop="triggerTime"
-              label="Cooldown (seg)"
+              label="Verificación (seg)"
             ></el-table-column>
 
             <el-table-column prop="counter" label="Matches"></el-table-column>
@@ -201,8 +228,20 @@ export default {
         value: null,
         condition: null,
         triggerTime: null
+      },
+      timeSelector: {
+        hours: 0,
+        minutes: 1,
+        seconds: 0
       }
     };
+  },
+  computed: {
+    triggerTimeInSeconds() {
+      return (this.timeSelector.hours * 3600) +
+             (this.timeSelector.minutes * 60) +
+             this.timeSelector.seconds;
+    }
   },
   methods: {
 
@@ -309,11 +348,11 @@ export default {
         return;
       }
 
-      if (this.newRule.triggerTime == null) {
+      if (this.triggerTimeInSeconds < 1) {
         this.$notify({
           type: "warning",
           icon: "tim-icons icon-alert-circle-exc",
-          message: " Trigger Time is empty"
+          message: "El tiempo de verificación debe ser al menos 1 segundo"
         });
         return;
       }
@@ -328,7 +367,8 @@ export default {
         this.selectedWidgetIndex
       ].variable;
 
-      
+      // Assign calculated triggerTime in seconds
+      this.newRule.triggerTime = this.triggerTimeInSeconds;
 
       const axiosHeaders = {
         headers: {
@@ -348,6 +388,7 @@ export default {
             this.newRule.condition = null;
             this.newRule.value = null;
             this.newRule.triggerTime = null;
+            this.timeSelector = { hours: 0, minutes: 1, seconds: 0 };
             this.selectedWidgetIndex = null;
 
             this.$notify({

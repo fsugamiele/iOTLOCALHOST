@@ -14,6 +14,81 @@ La plataforma está compuesta por tres componentes principales:
 
 ---
 
+## Estado Actual del Desarrollo
+
+**Última actualización:** 2026-04-04
+
+### Cambios Recientes Implementados ✅
+
+#### Sistema de Reglas - TriggerTime Optimización
+- **Frontend (`rules.vue`):** Implementado selector de tiempo H:M:S con conversión automática a segundos
+- **Backend (`rules.js`):**
+  - Sincronización automática de `variableSendFreq` con `triggerTime * 60` segundos
+  - Sistema de backup/restore de frecuencias originales en templates
+  - Notificación MQTT de cambios de configuración a dispositivos
+  - Validación `triggerTime >= 1 segundo` agregada
+- **Webhooks (`webhooks.js`):**
+  - Optimización de cooldown: `triggerTime * 900` (90% para absorber jitter)
+  - Debug logs disponibles para troubleshooting de timing
+
+#### Widgets - Visualización en Tiempo Real
+- **Frontend (`default.vue`):**
+  - Corregido `$nuxt.$emit` → `this.$nuxt.$emit` para mensajes sdata/actdata
+  - Corregido `$nuxt.$on("mqtt-sender")` → `this.$nuxt.$on(...)` para consistencia
+  - La referencia global `$nuxt` y `this.$nuxt` no resolvían al mismo bus de eventos en arrow callbacks; usando `this.$nuxt` garantiza consistencia
+- **Frontend (`Rtnumberchart.vue`):**
+  - Watcher corregido: solo deregistra `oldTopic` si existe (igual que `Iotswitch.vue`)
+  - Evita deregistrar listener vacío `"/sdata"` en primera inicialización
+
+#### Firmware ESP8266 - Actuador / Relé
+- **`ESP8266/src/main.cpp` — `process_incoming_msg()`:**
+  - **Bug:** `DynamicJsonDocument doc` se declaraba dentro del bloque `if` y se destruía antes de llamar a `process_actuactors()`. Si ArduinoJson almacenaba referencia en lugar de copia profunda, `["last"]["value"]` leía memoria liberada → null → `isNull()` = true → `digitalWrite` nunca ejecutaba → relé no respondía físicamente.
+  - **Fix:** Copiar campos directamente al `mqtt_data_doc` (igual que `process_sensors()`):
+    ```cpp
+    mqtt_data_doc["variables"][i]["last"]["value"] = doc["value"];
+    mqtt_data_doc["variables"][i]["last"]["save"]  = doc["save"];
+    ```
+- **`process_actuactors()`:**
+  - Cambiado `(bool)ledCmd` → `ledCmd.as<int>() != 0` para evitar ambigüedades de conversión entre versiones de ArduinoJson
+  - Nota: el formato `1`/`0` del backend es correcto (en C++ `(bool)1 = true`), el bug no era de formato sino de referencia colgante
+
+#### Sistema de Alarmas - Unificación de Interfaz
+- **Frontend (`alarms.vue`):**
+  - Implementado selector H:M:S idéntico al de reglas
+  - Conversión automática a segundos con preview en tiempo real
+  - Validación mejorada del tiempo mínimo (1 segundo)
+  - Etiqueta de tabla actualizada a "Verificación (seg)"
+- **Backend (`alarms.js`):**
+  - Validación `triggerTime >= 1 segundo` agregada
+  - Consistencia con sistema de reglas
+
+### Funcionalidades Completadas ✅
+
+#### Configuración de Reglas y Alarmas
+- **Estado:** Completado
+- **Características:**
+  - Interfaz unificada H:M:S para ambos sistemas
+  - Validaciones consistentes frontend/backend
+  - Sistema de sincronización de frecuencias funcionando
+  - Cooldown optimizado para mejor rendimiento
+
+### Próximos Pasos 📋
+1. Monitorear estabilidad del sistema en uso real
+2. Optimizar interfaz de usuario si se requieren mejoras adicionales
+
+### Problemas Conocidos ⚠️
+- Ninguno reportado actualmente
+
+### Archivos Modificados Recientemente
+- `app/api/routes/rules.js` - triggerTime: effectiveFreq dinámico, sin modificar template
+- `app/api/routes/webhooks.js` - getdevicecredentials calcula freq efectivo por reglas activas
+- `app/api/routes/users.js` - eliminado setTimeout que rotaba credenciales MQTT
+- `app/layouts/default.vue` - `$nuxt.$emit` → `this.$nuxt.$emit` en handler MQTT
+- `app/components/Widgets/Rtnumberchart.vue` - watcher mejorado (deregistra solo cuando oldTopic existe)
+- `ESP8266/src/main.cpp` - process_incoming_msg: copia de campos directa; process_actuactors: as<int>() en lugar de (bool)
+
+---
+
 ## Arquitectura de la Aplicación (`./app/`)
 
 Stack: **Nuxt 2** (SSR desactivado, modo SPA) + **Express** como serverMiddleware en el mismo proceso Node 14.
@@ -105,7 +180,14 @@ docker-compose -f docker_nuxt_build.yml up
 
 # 3. Lanzar producción: mongo + emqx + node (con -d para correr como servicio)
 docker-compose -f docker_compose_production.yml up -d
+
+# IMPORTANTE: después de cambios en código del servidor (api/routes/*.js),
+# el contenedor node DEBE reiniciarse para cargar el nuevo código en memoria:
+docker restart node
 ```
+
+> `docker-compose up -d` no reinicia contenedores ya corriendo. El proceso Node carga
+> el código en memoria al iniciar — editar el archivo en disco no tiene efecto hasta reiniciar.
 
 `docker-compose.yml` (sin sufijo) levanta solo mongo + emqx — útil para probar el broker sin la app. Requiere `HOST_IP` en el `.env` de servicios (IP del host accesible desde los contenedores).
 

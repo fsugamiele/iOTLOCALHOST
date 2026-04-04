@@ -36,61 +36,40 @@ router.get("/rule-webhook",  (req, res) => res.status(200).json());
 //DEVICE CREDENTIALS WEBHOOK
 router.post("/getdevicecredentials", async (req, res) => {
   try {
-
     const dId = req.body.dId;
-
     const password = req.body.password;
 
-    const device = await Device.findOne({ dId: dId });
-
-    if (!device) {
-      return res.status(404).json();
-    }
-
-    if (password != device.password) {
-      return res.status(401).json();
-    }
+    const device = await Device.findOne({ dId });
+    if (!device) return res.status(404).json();
+    if (password != device.password) return res.status(401).json();
 
     const userId = device.userId;
+    const credentials = await getDeviceMqttCredentials(dId, userId);
+    const template = await Template.findOne({ _id: device.templateId });
 
-    var credentials = await getDeviceMqttCredentials(dId, userId);
+    // Load all active rules for this device to compute effective send frequencies.
+    // The template is never modified — effective freq is calculated on the fly.
+    const activeRules = await Rule.find({ userId, dId, status: true });
 
-    var template = await Template.findOne({ _id: device.templateId });
+    const variables = template.widgets.map(widget => {
+      const { variable, variableFullName, variableType, variableSendFreq } = widget;
 
-    console.log(template);
-    
-    var variables = [];
+      // Among all active rules for this variable, use the minimum triggerTime.
+      // If no active rules exist for this variable, fall back to the template default.
+      const rulesForVar = activeRules.filter(r => r.variable === variable);
+      const effectiveFreq = rulesForVar.length > 0
+        ? Math.min(...rulesForVar.map(r => r.triggerTime))
+        : Number(variableSendFreq) || 30;
 
-    template.widgets.forEach(widget => {
-      var v = (({
-        variable,
-        variableFullName,
-        variableType,
-        variableSendFreq
-      }) => ({
-        variable,
-        variableFullName,
-        variableType,
-        variableSendFreq
-      }))(widget);
-
-      variables.push(v);
+      return { variable, variableFullName, variableType, variableSendFreq: effectiveFreq };
     });
 
-    const response = {
+    res.json({
       username: credentials.username,
       password: credentials.password,
       topic: userId + "/" + dId + "/",
-      variables: variables
-    };
-
-
-    res.json(response);
-
-    setTimeout(() => {
-      getDeviceMqttCredentials(dId, userId);
-      console.log("Device Credentials Updated");
-    }, 10000);
+      variables
+    });
   } catch (error) {
     console.log(error);
     res.sendStatus(500);
@@ -114,14 +93,26 @@ router.post("/saver-webhook", async (req, res) => {
     var result = await Device.find({ dId: dId, userId: data.userId });
 
     if (result.length == 1) {
-      Data.create({
-        userId: data.userId,
-        dId: dId,
-        variable: variable,
-        value: data.payload.value,
-        time: Date.now()
-      });
-      console.log("Data created");
+      try {
+        const savedData = await Data.create({
+          userId: data.userId,
+          dId: dId,
+          variable: variable,
+          value: data.payload.value,
+          time: Date.now()
+        });
+        console.log("Data created successfully:", {
+          userId: data.userId,
+          dId: dId,
+          variable: variable,
+          value: data.payload.value,
+          _id: savedData._id
+        });
+      } catch (createError) {
+        console.log("Error creating data:", createError);
+      }
+    } else {
+      console.log("Device not found:", { dId: dId, userId: data.userId, resultLength: result.length });
     }
 
     return res.status(200).json();
@@ -266,7 +257,7 @@ async function getDeviceMqttCredentials(dId, userId) {
         username: makeid(10),
         password: hashPassword(plainPassword),
         publish: [userId + "/" + dId + "/+/sdata"],
-        subscribe: [userId + "/" + dId + "/+/actdata"],
+        subscribe: [userId + "/" + dId + "/+/actdata", userId + "/" + dId + "/config"],
         type: "device",
         time: Date.now(),
         updatedTime: Date.now()
@@ -328,6 +319,7 @@ function startMqttClient() {
   };
 
   client = mqtt.connect("mqtt://" + process.env.EMQX_API_HOST, options);
+  global.mqttClient = client;
 
   client.on("connect", function() {
     console.log("MQTT CONNECTION -> SUCCESS;".green);

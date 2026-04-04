@@ -313,10 +313,10 @@ export default {
             this.$store.dispatch("getNotifications");
             return;
           } else if (msgType == "sdata") {
-            $nuxt.$emit(topic, JSON.parse(message.toString()));
+            this.$nuxt.$emit(topic, JSON.parse(message.toString()));
             return;
           } else if (msgType == "actdata") {
-            $nuxt.$emit(topic, JSON.parse(message.toString()));
+            this.$nuxt.$emit(topic, JSON.parse(message.toString()));
             return;
           }
         } catch (error) {
@@ -324,7 +324,7 @@ export default {
         }
       });
 
-      $nuxt.$on("mqtt-sender", toSend => {
+      this.$nuxt.$on("mqtt-sender", toSend => {
         this.client.publish(toSend.topic, JSON.stringify(toSend.msg));
       });
     },

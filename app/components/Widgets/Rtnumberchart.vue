@@ -121,7 +121,9 @@
 
                     if (topicChanged) {
                         this.value = 0;
-                        this.$nuxt.$off(this.topic + "/sdata", this.procesReceivedData);
+                        if (oldTopic) {
+                            this.$nuxt.$off(oldTopic + "/sdata", this.procesReceivedData);
+                        }
                         this.topic = newTopic;
                         this.$nuxt.$on(this.topic + "/sdata", this.procesReceivedData);
                         this.chartOptions.series[0].data = [];

@@ -26,7 +26,6 @@ router.post("/rule", checkAuth, async (req, res) => {
       return res.status(503).json({ status: "error", error: "EMQX resources not ready yet, please wait a moment and retry" });
     }
 
-
     if (!newRule || !newRule.dId || !newRule.variable || !newRule.condition ||
         newRule.value === undefined || !newRule.triggerTime ||
         !newRule.actuatorVariable || newRule.actuatorValue === undefined) {
@@ -35,6 +34,10 @@ router.post("/rule", checkAuth, async (req, res) => {
 
     if (!VALID_CONDITIONS.includes(newRule.condition)) {
       return res.status(400).json({ status: "error", error: "Invalid condition. Allowed: > < >= <= = !=" });
+    }
+
+    if (newRule.triggerTime < 1) {
+      return res.status(400).json({ status: "error", error: "triggerTime must be at least 1 second" });
     }
 
     newRule.userId = req.userData._id;
@@ -124,6 +127,11 @@ async function createRule(newRule) {
     };
 
     const res = await axios.post(url, emqxRule, auth);
+
+    if (!res.data || !res.data.data || !res.data.data.id) {
+      throw new Error("Invalid EMQX response format");
+    }
+
     var emqxRuleId = res.data.data.id;
 
     if (res.data.data && res.status === 200) {
@@ -160,11 +168,11 @@ async function createRule(newRule) {
         '","actuatorValue":' + newRule.actuatorValue + '}';
 
       emqxRule.actions[0].params.payload_tmpl = payload_templ;
-
       await axios.put(updateUrl, emqxRule, auth);
 
-      // NOTE: Removed automatic variableSendFreq optimization to prevent interference with rule triggerTime
-      // The device's send frequency should not override the rule's trigger time configuration
+      // Notify device of new effective send frequency for this variable
+      const effectiveFreq = await getEffectiveFreq(newRule.userId, newRule.dId, newRule.variable);
+      await sendMqttConfigUpdate(newRule.userId, newRule.dId, newRule.variable, effectiveFreq);
 
       console.log("New Rule Created...".green);
       return true;
@@ -183,6 +191,14 @@ async function updateRuleStatus(emqxRuleId, status) {
 
     if (res.status === 200) {
       await Rule.updateOne({ emqxRuleId: emqxRuleId }, { status: status });
+
+      // Notify device of new effective send frequency after status change
+      const rule = await Rule.findOne({ emqxRuleId: emqxRuleId });
+      if (rule) {
+        const effectiveFreq = await getEffectiveFreq(rule.userId, rule.dId, rule.variable);
+        await sendMqttConfigUpdate(rule.userId, rule.dId, rule.variable, effectiveFreq);
+      }
+
       console.log("Rule Status Updated...".green);
       return true;
     }
@@ -194,14 +210,17 @@ async function updateRuleStatus(emqxRuleId, status) {
 
 async function deleteRule(emqxRuleId) {
   try {
-    // Fetch rule before deletion to recalculate variableSendFreq after
-    const ruleDoc = await Rule.findOne({ emqxRuleId: emqxRuleId });
+    const ruleToDelete = await Rule.findOne({ emqxRuleId: emqxRuleId });
 
     const url = "http://" + process.env.EMQX_API_HOST + ":8085/api/v4/rules/" + emqxRuleId;
     await axios.delete(url, auth);
     await Rule.deleteOne({ emqxRuleId: emqxRuleId });
 
-    // NOTE: Removed automatic variableSendFreq restoration to prevent interference with rule triggerTime
+    // Notify device of new effective send frequency after deletion
+    if (ruleToDelete) {
+      const effectiveFreq = await getEffectiveFreq(ruleToDelete.userId, ruleToDelete.dId, ruleToDelete.variable);
+      await sendMqttConfigUpdate(ruleToDelete.userId, ruleToDelete.dId, ruleToDelete.variable, effectiveFreq);
+    }
 
     return true;
   } catch (error) {
@@ -210,11 +229,55 @@ async function deleteRule(emqxRuleId) {
   }
 }
 
-// Exported for use in devices.js
+// Returns the effective send frequency for a variable on a device.
+// = minimum triggerTime among active rules for that variable,
+//   or the template's default variableSendFreq if no active rules.
+// The template is NEVER modified.
+async function getEffectiveFreq(userId, dId, variable) {
+  try {
+    const activeRules = await Rule.find({ userId, dId, variable, status: true });
+
+    if (activeRules.length > 0) {
+      return Math.min(...activeRules.map(r => r.triggerTime));
+    }
+
+    // No active rules — return template default
+    const device = await Device.findOne({ userId, dId });
+    if (device && device.templateId) {
+      const template = await Template.findOne({ _id: device.templateId });
+      if (template) {
+        const widget = template.widgets.find(w => w.variable === variable);
+        if (widget) return Number(widget.variableSendFreq) || 30;
+      }
+    }
+    return 30;
+  } catch (error) {
+    console.log("Error computing effective freq:", error);
+    return 30;
+  }
+}
+
+// Sends MQTT config message to a connected device so it updates its send
+// frequency in real time without needing to reconnect.
+async function sendMqttConfigUpdate(userId, dId, variable, freqSeconds) {
+  try {
+    const topic = userId + "/" + dId + "/config";
+    const payload = { variable, variableSendFreq: freqSeconds };
+
+    if (global.mqttClient && global.mqttClient.connected) {
+      global.mqttClient.publish(topic, JSON.stringify(payload));
+      console.log(("Sent config update → " + variable + " = " + freqSeconds + "s").cyan);
+    } else {
+      console.log("MQTT client not connected, config update skipped".yellow);
+    }
+  } catch (error) {
+    console.log("Error sending MQTT config update:", error);
+  }
+}
+
 async function getRules(userId) {
   try {
-    const rules = await Rule.find({ userId: userId });
-    return rules;
+    return await Rule.find({ userId });
   } catch (error) {
     return [];
   }
@@ -222,14 +285,14 @@ async function getRules(userId) {
 
 async function deleteAllRules(userId, dId) {
   try {
-    const rules = await Rule.find({ userId: userId, dId: dId });
+    const rules = await Rule.find({ userId, dId });
 
     for (const rule of rules) {
       const url = "http://" + process.env.EMQX_API_HOST + ":8085/api/v4/rules/" + rule.emqxRuleId;
       await axios.delete(url, auth);
     }
 
-    await Rule.deleteMany({ userId: userId, dId: dId });
+    await Rule.deleteMany({ userId, dId });
     return true;
   } catch (error) {
     console.log(error);
@@ -237,26 +300,9 @@ async function deleteAllRules(userId, dId) {
   }
 }
 
-// Kick the device from EMQX so it reconnects and re-fetches variableSendFreq.
-// Searches by clientId pattern "device_{dId}_" to avoid username rotation mismatch.
-async function kickDevice(dId) {
-  try {
-    const listRes = await axios.get("http://" + process.env.EMQX_API_HOST + ":8085/api/v4/clients", auth);
-    const clients = listRes.data && listRes.data.data ? listRes.data.data : [];
-    const prefix = "device_" + dId + "_";
-
-    for (const c of clients) {
-      if (c.clientid && c.clientid.startsWith(prefix)) {
-        await axios.delete("http://" + process.env.EMQX_API_HOST + ":8085/api/v4/clients/" + c.clientid, auth);
-        console.log(("Device kicked from EMQX: " + c.clientid).yellow);
-      }
-    }
-  } catch (e) {
-    console.log("Warning: could not kick device:", e.message);
-  }
-}
-
 global.getRules = getRules;
 global.deleteAllRules = deleteAllRules;
+global.getEffectiveFreq = getEffectiveFreq;
+global.sendMqttConfigUpdate = sendMqttConfigUpdate;
 
 module.exports = router;

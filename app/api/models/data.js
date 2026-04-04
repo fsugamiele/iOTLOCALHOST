@@ -10,7 +10,7 @@ const dataSchema = new Schema({
   time: { type: Number, required: [true] }
 });
 
-// Convertir a modelo
-const Data = mongoose.model("Data", dataSchema);
+// Convertir a modelo con nombre de colección específico
+const Data = mongoose.model("Data", dataSchema, "data");
 
 export default Data;

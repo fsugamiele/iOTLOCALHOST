@@ -167,8 +167,8 @@ global.check_mqtt_superuser = async function checkMqttSuperUser(){
       { type: "superuser" },
       {
         $set: {
-          publish: [{ topic: "#" }],
-          subscribe: [{ topic: "#" }],
+          publish: ["#"],
+          subscribe: ["#"],
           userId: "emqxmqttsuperuser",
           username: process.env.EMQX_NODE_SUPERUSER_USER,
           password: hashedPassword,

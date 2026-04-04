@@ -90,13 +90,40 @@
           </div>
 
           <div class="row" style="margin-top: 15px;">
-            <!-- TIEMPO DE COOLDOWN -->
-            <div class="col-3">
-              <base-input
-                label="Cooldown (segundos)"
-                v-model="newRule.triggerTime"
-                type="number"
-              ></base-input>
+            <!-- SELECTOR DE TIEMPO H:M:S -->
+            <div class="col-6">
+              <label style="color: #9a9a9a; font-size: 12px; margin-bottom: 5px;">
+                TIEMPO DE VERIFICACIÓN ({{ triggerTimeInSeconds }} segundos)
+              </label>
+              <div class="row" style="margin: 0;">
+                <div class="col-4" style="padding: 0 5px;">
+                  <base-input
+                    label="Horas"
+                    v-model.number="timeSelector.hours"
+                    type="number"
+                    min="0"
+                    max="23"
+                  ></base-input>
+                </div>
+                <div class="col-4" style="padding: 0 5px;">
+                  <base-input
+                    label="Minutos"
+                    v-model.number="timeSelector.minutes"
+                    type="number"
+                    min="0"
+                    max="59"
+                  ></base-input>
+                </div>
+                <div class="col-4" style="padding: 0 5px;">
+                  <base-input
+                    label="Segundos"
+                    v-model.number="timeSelector.seconds"
+                    type="number"
+                    min="0"
+                    max="59"
+                  ></base-input>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -154,7 +181,7 @@
               </div>
             </el-table-column>
 
-            <el-table-column prop="triggerTime" label="Cooldown (seg)" width="120"></el-table-column>
+            <el-table-column prop="triggerTime" label="Verificación (seg)" width="120"></el-table-column>
 
             <el-table-column prop="counter" label="Activaciones" width="110"></el-table-column>
 
@@ -221,6 +248,11 @@ export default {
         value: null,
         triggerTime: 1,
         actuatorValue: null
+      },
+      timeSelector: {
+        hours: 0,
+        minutes: 1,
+        seconds: 0
       }
     };
   },
@@ -234,6 +266,11 @@ export default {
       const device = this.$store.state.selectedDevice;
       if (!device || !device.template || !device.template.widgets) return [];
       return device.template.widgets.filter(w => w.variableType === "output");
+    },
+    triggerTimeInSeconds() {
+      return (this.timeSelector.hours * 3600) +
+             (this.timeSelector.minutes * 60) +
+             this.timeSelector.seconds;
     }
   },
   methods: {
@@ -314,6 +351,10 @@ export default {
         this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Seleccioná la acción del actuador" });
         return;
       }
+      if (this.triggerTimeInSeconds < 1) {
+        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "El tiempo de verificación debe ser al menos 1 segundo" });
+        return;
+      }
 
       const device = this.$store.state.selectedDevice;
       const sensor = this.sensorWidgets[this.selectedSensorIndex];
@@ -328,7 +369,7 @@ export default {
           variableFullName: sensor.variableFullName,
           condition: this.newRule.condition,
           value: Number(this.newRule.value),
-          triggerTime: Number(this.newRule.triggerTime) || 1,
+          triggerTime: this.triggerTimeInSeconds || 1,
           actuatorVariable: actuator.variable,
           actuatorVariableFullName: actuator.variableFullName,
           actuatorValue: this.newRule.actuatorValue
@@ -346,6 +387,7 @@ export default {
             this.selectedSensorIndex = null;
             this.selectedActuatorIndex = null;
             this.newRule = { condition: null, value: null, triggerTime: 1, actuatorValue: null };
+            this.timeSelector = { hours: 0, minutes: 1, seconds: 0 };
 
             this.$notify({
               type: "success",

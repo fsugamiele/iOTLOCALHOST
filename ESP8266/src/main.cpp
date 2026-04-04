@@ -50,6 +50,7 @@ void process_actuactors();
 void send_data_to_broker();
 void callback(char *topic, byte *payload, unsigned int lenght);
 void process_incoming_msg(String topic, String incoming);
+void handle_config_update(String incoming);
 void print_stats();
 void clear();
 void pantallaUno();
@@ -203,9 +204,14 @@ void process_incoming_msg(String topic, String incoming)
 
     if (mqtt_data_doc["variables"][i]["variable"] == variable)
     {
+      // Parse incoming message and copy fields directly into mqtt_data_doc.
+      // Avoids potential dangling-reference if ArduinoJson's "= doc" only
+      // stores a pointer to the local doc (which goes out of scope here).
       DynamicJsonDocument doc(256);
-      deserializeJson(doc, incoming);
-      mqtt_data_doc["variables"][i]["last"] = doc;
+      if (deserializeJson(doc, incoming) == DeserializationError::Ok) {
+        if (!doc["value"].isNull()) mqtt_data_doc["variables"][i]["last"]["value"] = doc["value"];
+        if (!doc["save"].isNull())  mqtt_data_doc["variables"][i]["last"]["save"]  = doc["save"];
+      }
 
       long counter = mqtt_data_doc["variables"][i]["counter"];
       counter++;
@@ -213,7 +219,11 @@ void process_incoming_msg(String topic, String incoming)
     }
   }
 
-  
+  // Handle config topic for dynamic frequency updates
+  if (topic.endsWith("/config")) {
+    handle_config_update(incoming);
+  }
+
   process_actuactors();
 }
 
@@ -299,6 +309,7 @@ bool reconnect()
     delay(2000);
 
     client.subscribe((str_topic + "+/actdata").c_str());
+    client.subscribe((str_topic + "config").c_str());
   }
   else
   {
@@ -482,8 +493,43 @@ void process_actuactors()
   // Platform sends {"value": true} to turn ON, {"value": false} to turn OFF
   JsonVariant ledCmd = mqtt_data_doc["variables"][2]["last"]["value"];
   if (!ledCmd.isNull()) {
-    digitalWrite(led, (bool)ledCmd ? HIGH : LOW);
+    digitalWrite(led, ledCmd.as<int>() != 0 ? HIGH : LOW);
   }
+}
+
+// Handle dynamic configuration updates via MQTT
+void handle_config_update(String incoming) {
+  Serial.println("🔧 Config update received: " + incoming);
+
+  DynamicJsonDocument configDoc(256);
+  DeserializationError error = deserializeJson(configDoc, incoming);
+
+  if (error) {
+    Serial.println("❌ Failed to parse config JSON");
+    return;
+  }
+
+  String variable = configDoc["variable"];
+  int newFreq = configDoc["variableSendFreq"];
+
+  if (variable.length() == 0 || newFreq <= 0) {
+    Serial.println("❌ Invalid config parameters");
+    return;
+  }
+
+  // Update the variable frequency in mqtt_data_doc
+  for (int i = 0; i < mqtt_data_doc["variables"].size(); i++) {
+    if (mqtt_data_doc["variables"][i]["variable"] == variable) {
+      int oldFreq = mqtt_data_doc["variables"][i]["variableSendFreq"];
+      mqtt_data_doc["variables"][i]["variableSendFreq"] = newFreq;
+
+      Serial.println("✅ Updated " + variable + " frequency: " +
+                     String(oldFreq) + "s → " + String(newFreq) + "s");
+      return;
+    }
+  }
+
+  Serial.println("⚠️  Variable " + variable + " not found");
 }
 
 void pantallaUno()
