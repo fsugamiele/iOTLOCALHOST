@@ -84,9 +84,19 @@ La plataforma está compuesta por tres componentes principales:
   - Sistema de sincronización de frecuencias funcionando
   - Cooldown optimizado para mejor rendimiento
 
+#### WiFi AP Provisioning — Fase 1
+- **Estado:** Completado ✅ (mergeado a master 2026-04-05)
+- **Características:**
+  - ESP8266 arranca en modo AP `Wanomi-Config-XXXXXX` si no tiene config en EEPROM
+  - HTTP server en `192.168.4.1` con endpoint `POST /provision` + CORS
+  - Config persistida en EEPROM con magic number `"WANOMI"` como validación
+  - Validación robusta: rechaza campos vacíos, strings `"null"`, y auto-limpia EEPROM si config inválida
+  - Backend auto-genera `dId` (8 chars) y `password` (12 chars), los retorna en la respuesta
+  - Wizard de 3 pasos en `devices.vue`: credenciales → WiFi config → envío con preview del payload
+  - Botón de provisioning por dispositivo en la tabla (permite re-provisionar)
+
 ### Próximos Pasos 📋
-1. Resolver errores pendientes reportados por el usuario
-2. Implementar WiFi AP Provisioning (ver Roadmap de Expansión abajo)
+1. Fase 2 — Soporte Tasmota/ESPHome (ver Roadmap de Expansión abajo)
 
 ### Problemas Conocidos ⚠️
 - Ninguno reportado actualmente
@@ -95,9 +105,15 @@ La plataforma está compuesta por tres componentes principales:
 - `app/api/routes/rules.js` - triggerTime: effectiveFreq dinámico, sin modificar template
 - `app/api/routes/webhooks.js` - getdevicecredentials calcula freq efectivo por reglas activas
 - `app/api/routes/users.js` - eliminado setTimeout que rotaba credenciales MQTT
-- `app/layouts/default.vue` - `$nuxt.$emit` → `this.$nuxt.$emit`; reconnect ya no rota credenciales; error handler reinicia cliente con debounce si recibe CONNACK Not Authorized
-- `app/components/Widgets/Rtnumberchart.vue` - watcher mejorado (deregistra solo cuando oldTopic existe)
-- `ESP8266/src/main.cpp` - process_incoming_msg: copia de campos directa; process_actuactors: as<int>() en lugar de (bool)
+- `app/layouts/default.vue` - `this.$nuxt` consistente; reconnect sin rotación; error handler con debounce; keepalive 30s; indicador MQTT en navbar
+- `app/store/index.js` - estado `mqttConnected` agregado
+- `app/components/Layout/DashboardNavbar.vue` - indicador visual de conexión MQTT
+- `app/components/Widgets/Rtnumberchart.vue` - watcher mejorado
+- `app/pages/devices.vue` - wizard de provisioning completo
+- `app/api/routes/devices.js` - auto-genera dId y password, los retorna en respuesta
+- `ESP8266/src/main.cpp` - modo AP provisioning + EEPROM config + modo normal refactorizado
+- `ESP8266/platformio.ini` - PubSubClient agregado a lib_deps
+- `ESP8266/include/config.h.example` - solo documentación, credenciales ya no van aquí
 
 ---
 
@@ -117,7 +133,7 @@ La plataforma está compuesta por tres componentes principales:
 
 ### Fases de Implementación
 
-#### Fase 1 — WiFi AP Provisioning para firmware propio ⬅️ EN CURSO
+#### Fase 1 — WiFi AP Provisioning para firmware propio ✅ COMPLETADO
 Permite agregar y configurar dispositivos ESP8266 (firmware Wanomi) directamente desde la plataforma sin editar `config.h`.
 
 **Componentes a modificar:**
@@ -133,7 +149,7 @@ Platform wizard → POST http://192.168.4.1/provision { ssid, wifiPass, dId, dev
 ESP8266 guarda en NVS → reinicia → conecta WiFi → llama /getdevicecredentials → conecta MQTT
 ```
 
-#### Fase 2 — Soporte Tasmota / ESPHome
+#### Fase 2 — Soporte Tasmota / ESPHome ⬅️ PRÓXIMA
 Dispositivos que ya hablan MQTT. Requiere:
 - Template especial tipo "Tasmota" que mapea topics `tele/+/SENSOR`, `stat/+/RESULT`
 - Auto-discovery por suscripción a `tele/+/LWT` en EMQX
