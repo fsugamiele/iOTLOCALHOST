@@ -97,8 +97,11 @@ router.post("/device", checkAuth, async (req, res) => {
 
     const firmwareType = newDevice.firmwareType || "wanomi";
 
-    if (firmwareType === "tasmota" && !newDevice.tasmotaName) {
-      return res.status(400).json({ status: "error", error: "tasmotaName is required for Tasmota devices" });
+    if (firmwareType === "tasmota") {
+      if (!newDevice.tasmotaName) {
+        return res.status(400).json({ status: "error", error: "tasmotaName is required for Tasmota devices" });
+      }
+      newDevice.tasmotaName = newDevice.tasmotaName.trim();
     }
 
     newDevice.userId = userId;
@@ -113,18 +116,22 @@ router.post("/device", checkAuth, async (req, res) => {
     await selectDevice(userId, newDevice.dId);
 
     if (firmwareType === "tasmota") {
-      // Create EMQX credentials using tasmotaName as MQTT username
-      await EmqxAuthRule.create({
-        userId: userId,
-        dId: newDevice.dId,
-        username: newDevice.tasmotaName,
-        password: hashPassword(plainPassword),
-        publish: [`tele/${newDevice.tasmotaName}/#`, `stat/${newDevice.tasmotaName}/#`],
-        subscribe: [`cmnd/${newDevice.tasmotaName}/#`],
-        type: "tasmota",
-        time: Date.now(),
-        updatedTime: Date.now()
-      });
+      // Upsert EMQX credentials — handles re-creation with same tasmotaName
+      await EmqxAuthRule.findOneAndUpdate(
+        { username: newDevice.tasmotaName, type: "tasmota" },
+        {
+          userId: userId,
+          dId: newDevice.dId,
+          username: newDevice.tasmotaName,
+          password: hashPassword(plainPassword),
+          publish: [`tele/${newDevice.tasmotaName}/#`, `stat/${newDevice.tasmotaName}/#`],
+          subscribe: [`cmnd/${newDevice.tasmotaName}/#`],
+          type: "tasmota",
+          time: Date.now(),
+          updatedTime: Date.now()
+        },
+        { upsert: true }
+      );
 
       return res.json({
         status: "success",
