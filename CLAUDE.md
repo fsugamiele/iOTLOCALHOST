@@ -19,7 +19,8 @@ La plataforma está compuesta por tres componentes principales:
 | Rama | Descripción |
 |---|---|
 | `master` | Código estable en producción — base de referencia |
-| `feature/wifi-ap-provisioning` | Fase 1 del roadmap: WiFi AP Provisioning para ESP8266 |
+| `feature/wifi-ap-provisioning` | Fase 1 del roadmap: WiFi AP Provisioning para ESP8266 (mergeado) |
+| `feature/tasmota-esphome-support` | Fase 2 del roadmap: soporte Tasmota / ESPHome |
 
 > Para volver al estado estable: `git checkout master`
 > Todo el desarrollo de la Fase 1 va en `feature/wifi-ap-provisioning`. Merge a `master` cuando esté probado.
