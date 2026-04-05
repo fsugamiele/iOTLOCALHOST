@@ -8,7 +8,7 @@
 
 **Wanomi IoT** es una plataforma de Internet de las Cosas (IoT) diseñada para ser desplegada en infraestructura propia (*self-hosted*), brindando total control sobre los datos y los dispositivos conectados. Está orientada a entornos domóticos, industriales y educativos donde se requiere conectividad, monitoreo y automatización en tiempo real sin depender de servicios en la nube de terceros.
 
-La plataforma permite conectar microcontroladores (como el ESP8266/ESP32) a través del protocolo MQTT, visualizar los datos de los sensores en dashboards interactivos y definir reglas de automatización que activan actuadores de forma autónoma cuando se cumplen condiciones configuradas por el usuario.
+La plataforma permite conectar microcontroladores (como el ESP8266/ESP32) a través del protocolo MQTT, así como dispositivos de terceros con firmware Tasmota o ESPHome, visualizar los datos de los sensores en dashboards interactivos y definir reglas de automatización que activan actuadores de forma autónoma cuando se cumplen condiciones configuradas por el usuario.
 
 ---
 
@@ -19,6 +19,7 @@ La plataforma permite conectar microcontroladores (como el ESP8266/ESP32) a trav
 - **Alertas y notificaciones** — sistema de alarmas configurable que notifica cuando una variable supera un umbral definido.
 - **Historial de datos** — almacenamiento persistente de lecturas para análisis y trazabilidad.
 - **Multi-dispositivo** — soporte para múltiples dispositivos y templates de sensores/actuadores personalizables.
+- **Multi-firmware** — compatible con firmware Wanomi (ESP8266 custom), Tasmota y ESPHome sin modificar el hardware.
 
 ---
 
@@ -27,17 +28,23 @@ La plataforma permite conectar microcontroladores (como el ESP8266/ESP32) a trav
 La plataforma está compuesta por tres componentes principales que trabajan en conjunto:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Wanomi IoT Stack                    │
-├───────────────┬──────────────────┬──────────────────────┤
-│   MongoDB     │   EMQX Broker    │   Node.js App        │
-│  (base datos) │  (MQTT + WS)     │  (Nuxt 2 + Express)  │
-└───────────────┴──────────────────┴──────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        Wanomi IoT Stack                         │
+├───────────────┬──────────────────┬──────────────────────────────┤
+│   MongoDB     │   EMQX Broker    │   Node.js App                │
+│  (base datos) │  (MQTT + WS)     │  (Nuxt 2 + Express)          │
+│               │                  │  ┌─────────────────────────┐ │
+│               │                  │  │  Tasmota Bridge         │ │
+│               │                  │  │  (tele/stat ↔ platform) │ │
+│               │                  │  └─────────────────────────┘ │
+└───────────────┴──────────────────┴──────────────────────────────┘
                         ▲  ▼
-              ┌─────────────────────┐
-              │  Dispositivos IoT   │
-              │  ESP8266 / ESP32    │
-              └─────────────────────┘
+     ┌──────────────────────────────────────┐
+     │           Dispositivos IoT           │
+     ├──────────────────┬───────────────────┤
+     │  ESP8266 custom  │  Tasmota/ESPHome  │
+     │  (firmware own)  │  (firmware 3rd)   │
+     └──────────────────┴───────────────────┘
 ```
 
 | Componente | Tecnología | Función |
@@ -71,6 +78,53 @@ Cuando se crea o modifica una regla, la plataforma notifica al dispositivo en ti
 - Credenciales MQTT únicas por dispositivo y por sesión de usuario
 - Contraseñas MQTT hasheadas con SHA-256
 - ACL por usuario/dispositivo gestionada a través de MongoDB
+
+---
+
+## Expansión de Dispositivos — Roadmap
+
+### Fase 1 — WiFi AP Provisioning ✅ Completado
+Configuración de dispositivos ESP8266 directamente desde la plataforma, sin necesidad de editar código.
+
+**Flujo:**
+```
+ESP8266 sin config → AP mode "Wanomi-Config-XXXXXX"
+PC conecta a esa red WiFi
+Platform wizard → POST http://192.168.4.1/provision
+ESP8266 guarda config en EEPROM → reinicia → conecta a WiFi + MQTT
+```
+
+- El dispositivo crea una red WiFi `Wanomi-Config-XXXXXX` en el primer arranque
+- El asistente de la plataforma envía SSID, password WiFi y credenciales MQTT directamente al dispositivo
+- Configuración persistente en EEPROM con validación por magic number
+- Re-provisioning disponible desde la tabla de dispositivos
+
+### Fase 2 — Soporte Tasmota / ESPHome ✅ Completado
+Integración de dispositivos con firmware de terceros sin modificar el hardware.
+
+**Flujo:**
+```
+Tasmota publica → tele/{name}/SENSOR  {"DHT11":{"Temperature":24.5}}
+Bridge Node.js  → extrae valores por tasmotaPath configurado en template
+Bridge          → republica a userId/dId/variable/sdata (formato Wanomi)
+Dashboard       → recibe y visualiza en tiempo real (igual que dispositivo nativo)
+
+Dashboard       → envía actdata userId/dId/variable/actdata {"value":1}
+Bridge          → traduce a cmnd/{name}/POWER ON
+Tasmota         → activa relé físico
+```
+
+- Dispositivos Tasmota/ESPHome se agregan igual que cualquier otro device
+- El template mapea cada sensor a su ruta JSON (`DHT11.Temperature`, `POWER`, etc.)
+- Comandos de actuadores traducidos automáticamente al formato de comandos Tasmota
+- Historial de datos guardado en MongoDB de forma transparente
+- Credenciales MQTT auto-generadas para autenticación en EMQX
+
+### Fase 3 — Zigbee2MQTT (próxima)
+Soporte para cientos de dispositivos Zigbee (IKEA, Aqara, Sonoff Zigbee, etc.) via Zigbee2MQTT como puente.
+
+### Fase 4 — API Bridges (futura)
+Integración con dispositivos de marcas propietarias: Tuya/Smart Life (via tinytuya), Philips Hue (via REST API local).
 
 ---
 
@@ -169,6 +223,7 @@ La plataforma estará disponible en `http://<IP_del_servidor>:3000`.
 
 El firmware incluido en `ESP8266/` está desarrollado con PlatformIO y soporta:
 
+- **Modo provisioning WiFi AP** — en el primer arranque (sin config) crea una red `Wanomi-Config-XXXXXX` y expone `POST /provision` para recibir credenciales desde la plataforma
 - Conexión WiFi con reconexión automática
 - Obtención dinámica de credenciales MQTT desde la plataforma
 - Publicación de datos de sensores (DHT11 — temperatura, humedad, sensación térmica)
@@ -176,22 +231,13 @@ El firmware incluido en `ESP8266/` está desarrollado con PlatformIO y soporta:
 - Actualización dinámica de frecuencias de envío vía MQTT
 - Display TFT ST7789 con visualización de datos en tiempo real
 
-### Configuración del firmware
+### Provisioning desde la plataforma (recomendado)
 
-```bash
-cp ESP8266/include/config.h.example ESP8266/include/config.h
-```
-
-Editar `config.h` con las credenciales WiFi y los datos del dispositivo:
-
-```cpp
-#define WIFI_SSID        "tu_red_wifi"
-#define WIFI_PASSWORD    "tu_password_wifi"
-#define DEVICE_ID        "id_del_dispositivo"
-#define WEBHOOK_PASSWORD "password_del_dispositivo"
-#define WEBHOOK_ENDPOINT "http://<IP_servidor>:3001/api/getdevicecredentials"
-#define MQTT_SERVER_IP   "<IP_servidor>"
-```
+1. Flashear el firmware al ESP8266
+2. El dispositivo arranca en modo AP con red `Wanomi-Config-XXXXXX`
+3. Crear el device en la plataforma (Devices → Add) — se genera dId y password automáticamente
+4. El wizard guía el proceso: conectar la PC a la red del dispositivo → completar SSID WiFi + IP del servidor → enviar
+5. El dispositivo se configura, reinicia y aparece online en el dashboard
 
 ### Compilar y flashear
 
@@ -233,4 +279,4 @@ docker restart node
 
 ## Licencia
 
-Desarrollado por **Wanomi IoT**. Basado en el curso IoT Bootcamp God Level de [IoTicos.org](https://ioticos.org).
+Desarrollado por **Wanomi Claude**.
