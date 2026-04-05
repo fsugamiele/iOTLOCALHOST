@@ -96,6 +96,24 @@ La plataforma está compuesta por tres componentes principales:
   - Wizard de 3 pasos en `devices.vue`: credenciales → WiFi config → envío con preview del payload
   - Botón de provisioning por dispositivo en la tabla (permite re-provisionar)
 
+#### Soporte Tasmota / ESPHome — Fase 2
+- **Estado:** Completado ✅ (mergeado a master 2026-04-05)
+- **Características:**
+  - Bridge MQTT Node.js (`tasmota_bridge.js`): suscribe `tele/+/SENSOR`, `stat/+/POWER`, `+/+/+/actdata`
+  - Sensores: extrae valores por `tasmotaPath` (dot-notation, ej. `DHT11.Temperature`) y republica a formato plataforma
+  - Actuadores: traduce `actdata` de la plataforma a `cmnd/{tasmotaName}/POWER ON/OFF`
+  - Estado de relay: `stat/POWER` → `sdata` con valor 1/0
+  - Credenciales EMQX auto-generadas al crear el device (`username=tasmotaName`, topics permitidos por ACL)
+  - Modal de MQTT credentials en `devices.vue` para Tasmota devices
+  - Campo `tasmotaPath` opcional en todos los widgets del template editor
+  - Cache en memoria (60s TTL) para evitar queries DB en cada mensaje
+  - Simulador `tools/tasmota_simulator.js` para testing sin hardware real
+- **Bugs corregidos durante testing:**
+  - `tasmotaPath.trim()` en el bridge — espacios accidentales rompían la resolución de paths
+  - `tasmotaName.trim()` en `POST /device` — espacios generaban topics MQTT inválidos
+  - `findOneAndUpdate(upsert)` para EmqxAuthRule — evita duplicados al recrear device con mismo tasmotaName
+  - Cache-bust en `GET /template` (`?_t=Date.now()`) + `await getTemplates()` — el browser devolvía 304 stale después de guardar un template
+
 ### Próximos Pasos 📋
 1. Fase 3 — Bridge Zigbee2MQTT (ver Roadmap)
 
