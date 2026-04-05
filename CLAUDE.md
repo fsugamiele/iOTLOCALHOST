@@ -97,7 +97,7 @@ La plataforma está compuesta por tres componentes principales:
   - Botón de provisioning por dispositivo en la tabla (permite re-provisionar)
 
 ### Próximos Pasos 📋
-1. Fase 2 — Soporte Tasmota/ESPHome ⬅️ EN PROGRESO (build + test pendientes)
+1. Fase 3 — Bridge Zigbee2MQTT (ver Roadmap)
 
 ### Problemas Conocidos ⚠️
 - Ninguno reportado actualmente
@@ -171,7 +171,7 @@ Platform wizard → POST http://192.168.4.1/provision { ssid, wifiPass, dId, dev
 ESP8266 guarda en NVS → reinicia → conecta WiFi → llama /getdevicecredentials → conecta MQTT
 ```
 
-#### Fase 2 — Soporte Tasmota / ESPHome ⬅️ EN PROGRESO
+#### Fase 2 — Soporte Tasmota / ESPHome ✅ COMPLETADO
 Dispositivos que ya hablan MQTT. Requiere:
 - Template especial tipo "Tasmota" que mapea topics `tele/+/SENSOR`, `stat/+/RESULT`
 - Auto-discovery por suscripción a `tele/+/LWT` en EMQX
