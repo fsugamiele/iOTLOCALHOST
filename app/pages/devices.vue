@@ -38,6 +38,31 @@
           </div>
         </div>
 
+        <div class="row">
+          <div class="col-6">
+            <slot name="label">
+              <label>Firmware Type</label>
+            </slot>
+            <el-select
+              v-model="newDevice.firmwareType"
+              class="select-primary"
+              style="width:100%"
+            >
+              <el-option value="wanomi" label="Wanomi (ESP8266 custom)"></el-option>
+              <el-option value="tasmota" label="Tasmota / ESPHome"></el-option>
+            </el-select>
+          </div>
+
+          <div class="col-6" v-if="newDevice.firmwareType === 'tasmota'">
+            <base-input
+              label="Tasmota Device Name (MQTT topic prefix)"
+              type="text"
+              placeholder="Ex: tasmota_kitchen, sonoff_01..."
+              v-model="newDevice.tasmotaName"
+            ></base-input>
+          </div>
+        </div>
+
         <div class="row pull-right">
           <div class="col-12">
             <base-button @click="createNewDevice()" type="primary" class="mb-3" size="lg">
@@ -64,10 +89,16 @@
           <el-table-column prop="dId" label="Device Id"></el-table-column>
           <el-table-column prop="password" label="Password"></el-table-column>
           <el-table-column prop="templateName" label="Template"></el-table-column>
+          <el-table-column label="Type" width="110">
+            <template slot-scope="{ row }">
+              <span v-if="row.firmwareType === 'tasmota'" style="background:#1d8cf8;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Tasmota</span>
+              <span v-else style="background:#00f2c3;color:#1a1a2e;border-radius:8px;padding:2px 8px;font-size:11px">Wanomi</span>
+            </template>
+          </el-table-column>
 
           <el-table-column label="Actions">
             <div slot-scope="{ row }">
-              <el-tooltip content="Provision Device" style="margin-right:10px">
+              <el-tooltip :content="row.firmwareType === 'tasmota' ? 'MQTT Config' : 'Provision Device'" style="margin-right:10px">
                 <base-button
                   type="info"
                   icon
@@ -75,7 +106,7 @@
                   class="btn-link"
                   @click="openProvisionModal(row)"
                 >
-                  <i class="fas fa-wifi"></i>
+                  <i :class="row.firmwareType === 'tasmota' ? 'fas fa-network-wired' : 'fas fa-wifi'"></i>
                 </base-button>
               </el-tooltip>
 
@@ -115,6 +146,78 @@
         </el-table>
       </card>
     </div>
+
+    <!-- TASMOTA MQTT CREDENTIALS MODAL -->
+    <el-dialog
+      title="Tasmota / ESPHome — MQTT Configuration"
+      :visible.sync="tasmotaMqttModal"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <p class="text-muted mb-3">
+        Configure these settings in your device's MQTT setup (Tasmota → Configuration → MQTT).
+      </p>
+
+      <div class="provision-field">
+        <label>Broker (Server)</label>
+        <div class="provision-value">
+          <code>{{ tasmotaMqttData.broker }}</code>
+          <base-button type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.broker)">
+            <i class="fas fa-copy"></i>
+          </base-button>
+        </div>
+      </div>
+
+      <div class="provision-field">
+        <label>Port</label>
+        <div class="provision-value">
+          <code>1883</code>
+          <base-button type="info" size="sm" @click="copyToClipboard('1883')">
+            <i class="fas fa-copy"></i>
+          </base-button>
+        </div>
+      </div>
+
+      <div class="provision-field">
+        <label>Username</label>
+        <div class="provision-value">
+          <code>{{ tasmotaMqttData.username }}</code>
+          <base-button type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.username)">
+            <i class="fas fa-copy"></i>
+          </base-button>
+        </div>
+      </div>
+
+      <div class="provision-field">
+        <label>Password</label>
+        <div class="provision-value">
+          <code v-if="tasmotaMqttData.password">{{ tasmotaMqttData.password }}</code>
+          <em v-else class="text-muted" style="font-size:0.85em">Shown only at creation. Delete &amp; re-add to reset.</em>
+          <base-button v-if="tasmotaMqttData.password" type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.password)">
+            <i class="fas fa-copy"></i>
+          </base-button>
+        </div>
+      </div>
+
+      <div class="provision-field">
+        <label>Topic (Tasmota "Topic" field)</label>
+        <div class="provision-value">
+          <code>{{ tasmotaMqttData.topicPrefix }}</code>
+          <base-button type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.topicPrefix)">
+            <i class="fas fa-copy"></i>
+          </base-button>
+        </div>
+      </div>
+
+      <div class="alert alert-info mt-3" style="border-radius:8px;padding:10px 14px;font-size:0.85em">
+        <i class="fas fa-info-circle mr-2"></i>
+        In Tasmota: set <strong>Topic</strong> to <code>{{ tasmotaMqttData.topicPrefix }}</code> and <strong>Full Topic</strong> to <code>%prefix%/%topic%/</code>
+      </div>
+
+      <span slot="footer">
+        <base-button type="primary" @click="tasmotaMqttModal = false">Close</base-button>
+      </span>
+    </el-dialog>
 
     <!-- PROVISION WIZARD MODAL -->
     <el-dialog
@@ -262,7 +365,17 @@ export default {
       newDevice: {
         name: "",
         templateId: "",
-        templateName: ""
+        templateName: "",
+        firmwareType: "wanomi",
+        tasmotaName: ""
+      },
+      // Tasmota MQTT credentials modal
+      tasmotaMqttModal: false,
+      tasmotaMqttData: {
+        broker: process.env.mqtt_host || "",
+        username: "",
+        password: "",
+        topicPrefix: ""
       },
       // Provision wizard
       provisionModal: false,
@@ -300,6 +413,16 @@ export default {
     // ── Provision wizard ──────────────────────────────────────────
 
     openProvisionModal(device) {
+      if (device.firmwareType === "tasmota") {
+        this.tasmotaMqttData = {
+          broker: process.env.mqtt_host || "",
+          username: device.tasmotaName,
+          password: "", // not stored after initial display
+          topicPrefix: device.tasmotaName
+        };
+        this.tasmotaMqttModal = true;
+        return;
+      }
       this.provisionData = { dId: device.dId, password: device.password };
       this.resetProvisionWizard();
       this.provisionStep = 1; // skip step 0 (credentials already exist)
@@ -399,6 +522,10 @@ export default {
         this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Template must be selected" });
         return;
       }
+      if (this.newDevice.firmwareType === "tasmota" && !this.newDevice.tasmotaName) {
+        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Tasmota Device Name is required" });
+        return;
+      }
 
       this.newDevice.templateId = this.templates[this.selectedIndexTemplate]._id;
       this.newDevice.templateName = this.templates[this.selectedIndexTemplate].name;
@@ -410,12 +537,24 @@ export default {
           if (res.data.status == "success") {
             this.$store.dispatch("getDevices");
 
-            // Open provision wizard with generated credentials
-            this.provisionData = { dId: res.data.dId, password: res.data.password };
-            this.resetProvisionWizard();
-            this.provisionModal = true;
+            if (res.data.firmwareType === "tasmota") {
+              // Show MQTT credentials modal
+              this.tasmotaMqttData = {
+                broker: process.env.mqtt_host || "",
+                username: res.data.mqttUsername,
+                password: res.data.mqttPassword,
+                topicPrefix: res.data.tasmotaName
+              };
+              this.tasmotaMqttModal = true;
+            } else {
+              // Open provision wizard with generated credentials
+              this.provisionData = { dId: res.data.dId, password: res.data.password };
+              this.resetProvisionWizard();
+              this.provisionModal = true;
+            }
 
             this.newDevice.name = "";
+            this.newDevice.tasmotaName = "";
             this.selectedIndexTemplate = null;
 
             this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Device added — configure it now!" });

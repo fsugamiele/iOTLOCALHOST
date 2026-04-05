@@ -23,6 +23,7 @@ app.use(
 app.use(cors());
 
 //express routes
+require("./routes/tasmota_bridge.js"); // registers global.startTasmotaBridge
 app.use("/api", require("./routes/devices.js"));
 app.use("/api", require("./routes/users.js"));
 app.use("/api", require("./routes/templates.js"));

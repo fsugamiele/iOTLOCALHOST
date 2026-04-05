@@ -2,12 +2,15 @@ const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
 const axios = require("axios");
+const crypto = require("crypto");
 
 import Device from "../models/device.js";
 import SaverRule from "../models/emqx_saver_rule.js";
 import Template from "../models/template.js";
 import AlarmRule from "../models/emqx_alarm_rule.js";
 import EmqxAuthRule from "../models/emqx_auth.js";
+
+const hashPassword = (pwd) => crypto.createHash("sha256").update(pwd).digest("hex");
 
 
 
@@ -92,37 +95,57 @@ router.post("/device", checkAuth, async (req, res) => {
       return res.status(400).json({ status: "error", error: "templateId is required" });
     }
 
+    const firmwareType = newDevice.firmwareType || "wanomi";
+
+    if (firmwareType === "tasmota" && !newDevice.tasmotaName) {
+      return res.status(400).json({ status: "error", error: "tasmotaName is required for Tasmota devices" });
+    }
+
     newDevice.userId = userId;
     newDevice.createdTime = Date.now();
-
-    // Auto-generate dId and password server-side
+    newDevice.firmwareType = firmwareType;
     newDevice.dId = makeid(8);
     const plainPassword = makeid(12);
     newDevice.password = plainPassword;
 
     await createSaverRule(userId, newDevice.dId, true);
-
     const device = await Device.create(newDevice);
-
     await selectDevice(userId, newDevice.dId);
 
-    const toSend = {
+    if (firmwareType === "tasmota") {
+      // Create EMQX credentials using tasmotaName as MQTT username
+      await EmqxAuthRule.create({
+        userId: userId,
+        dId: newDevice.dId,
+        username: newDevice.tasmotaName,
+        password: hashPassword(plainPassword),
+        publish: [`tele/${newDevice.tasmotaName}/#`, `stat/${newDevice.tasmotaName}/#`],
+        subscribe: [`cmnd/${newDevice.tasmotaName}/#`],
+        type: "tasmota",
+        time: Date.now(),
+        updatedTime: Date.now()
+      });
+
+      return res.json({
+        status: "success",
+        dId: newDevice.dId,
+        firmwareType: "tasmota",
+        tasmotaName: newDevice.tasmotaName,
+        mqttUsername: newDevice.tasmotaName,
+        mqttPassword: plainPassword
+      });
+    }
+
+    return res.json({
       status: "success",
       dId: newDevice.dId,
       password: plainPassword
-    };
-
-    return res.json(toSend);
+    });
   } catch (error) {
     console.log("ERROR CREATING NEW DEVICE");
     console.log(error);
 
-    const toSend = {
-      status: "error",
-      error: error
-    };
-
-    return res.status(500).json(toSend);
+    return res.status(500).json({ status: "error", error: error });
   }
 });
 
@@ -416,11 +439,10 @@ async function asyncForEach(array, callback) {
   }
 }
 
-//delete ALL emqx device  auth rules
+//delete ALL emqx device auth rules (wanomi + tasmota)
 async function deleteMqttDeviceCredentials(dId) {
   try {
-    await EmqxAuthRule.deleteMany({ dId: dId, type: "device" });
-
+    await EmqxAuthRule.deleteMany({ dId: dId });
     return true;
   } catch (error) {
     console.log(error);

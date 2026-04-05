@@ -324,6 +324,7 @@ function startMqttClient() {
   client.on("connect", function() {
     console.log("MQTT CONNECTION -> SUCCESS;".green);
     console.log("\n");
+    global.startTasmotaBridge(client);
   });
 
   client.on("reconnect", error => {

@@ -97,12 +97,33 @@ La plataforma está compuesta por tres componentes principales:
   - Botón de provisioning por dispositivo en la tabla (permite re-provisionar)
 
 ### Próximos Pasos 📋
-1. Fase 2 — Soporte Tasmota/ESPHome (ver Roadmap de Expansión abajo)
+1. Fase 2 — Soporte Tasmota/ESPHome ⬅️ EN PROGRESO (build + test pendientes)
 
 ### Problemas Conocidos ⚠️
 - Ninguno reportado actualmente
 
-### Archivos Modificados Recientemente
+### Archivos Modificados Recientemente (Fase 2)
+- `app/api/models/device.js` - agregados campos `firmwareType` (default "wanomi") y `tasmotaName`
+- `app/api/routes/tasmota_bridge.js` - NUEVO: bridge MQTT Tasmota↔Plataforma (suscribe tele/+/SENSOR, stat/+/POWER, +/+/+/actdata)
+- `app/api/routes/webhooks.js` - llama `global.startTasmotaBridge(client)` al conectar MQTT
+- `app/api/index.js` - require tasmota_bridge para registrar el global
+- `app/api/routes/devices.js` - POST /device maneja firmwareType tasmota: crea EmqxAuthRule con publish tele/#/stat/#, retorna mqttUsername+mqttPassword
+- `app/pages/devices.vue` - selector firmwareType, campo tasmotaName, modal MQTT credentials para Tasmota, badge de tipo en tabla
+- `app/pages/templates.vue` - campo tasmotaPath opcional en todos los widget forms
+- `tools/tasmota_simulator.js` - NUEVO: simulador Tasmota para testing sin hardware real
+
+### Flujo Tasmota (Fase 2)
+```
+1. Usuario crea device con firmwareType=tasmota, tasmotaName="sonoff_01"
+2. Backend genera dId, password, crea EmqxAuthRule (username=sonoff_01)
+3. Frontend muestra modal con: broker, port 1883, username, password, topic
+4. Usuario configura Tasmota → Configuration → MQTT con esas credenciales
+5. Tasmota publica tele/sonoff_01/SENSOR → bridge republica a userId/dId/var/sdata
+6. EMQX saver rule guarda datos históricos normalmente
+7. Frontend envía actdata → bridge traduce a cmnd/sonoff_01/POWER ON/OFF
+```
+
+### Archivos Modificados Recientemente (Fase 1 y anteriores)
 - `app/api/routes/rules.js` - triggerTime: effectiveFreq dinámico, sin modificar template
 - `app/api/routes/webhooks.js` - getdevicecredentials calcula freq efectivo por reglas activas
 - `app/api/routes/users.js` - eliminado setTimeout que rotaba credenciales MQTT
@@ -150,7 +171,7 @@ Platform wizard → POST http://192.168.4.1/provision { ssid, wifiPass, dId, dev
 ESP8266 guarda en NVS → reinicia → conecta WiFi → llama /getdevicecredentials → conecta MQTT
 ```
 
-#### Fase 2 — Soporte Tasmota / ESPHome ⬅️ PRÓXIMA
+#### Fase 2 — Soporte Tasmota / ESPHome ⬅️ EN PROGRESO
 Dispositivos que ya hablan MQTT. Requiere:
 - Template especial tipo "Tasmota" que mapea topics `tele/+/SENSOR`, `stat/+/RESULT`
 - Auto-discovery por suscripción a `tele/+/LWT` en EMQX

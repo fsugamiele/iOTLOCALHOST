@@ -54,6 +54,7 @@
 
               <base-input v-model.number="ncConfig.variableSendFreq" label="Frecuencia de Envío (seg)" type="number" />
               <base-input v-model.number="ncConfig.chartTimeAgo" label="Historial del Gráfico (min)" type="number" />
+              <base-input v-model="ncConfig.tasmotaPath" label="Tasmota Path (opcional, ej: DHT11.Temperature)" type="text" placeholder="DHT11.Temperature" />
 
               <label class="control-label">Color de Widget</label>
               <el-select v-model="ncConfig.class" placeholder="Color de Widget" style="width:100%; margin-bottom:20px" class="select-primary">
@@ -72,6 +73,7 @@
             <!-- FORM SWITCH -->
             <div v-if="widgetType == 'switch'">
               <base-input v-model="iotSwitchConfig.variableFullName" label="Nombre de Variable" type="text" />
+              <base-input v-model="iotSwitchConfig.tasmotaPath" label="Tasmota Path (opcional, ej: POWER)" type="text" placeholder="POWER" />
 
               <label class="control-label">Ícono</label>
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
@@ -102,6 +104,7 @@
               <base-input v-model="configButton.variableFullName" label="Nombre de Variable" type="text" />
               <base-input v-model="configButton.message" label="Mensaje a Enviar" type="text" />
               <base-input v-model="configButton.text" label="Texto del Botón" type="text" />
+              <base-input v-model="configButton.tasmotaPath" label="Tasmota Path (opcional, ej: POWER)" type="text" placeholder="POWER" />
 
               <label class="control-label">Ícono</label>
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
@@ -131,6 +134,7 @@
             <div v-if="widgetType == 'indicator'">
               <base-input v-model="iotIndicatorConfig.variableFullName" label="Nombre de Variable" type="text" />
               <base-input v-model="iotIndicatorConfig.variableSendFreq" label="Frecuencia de Envío (seg)" type="text" />
+              <base-input v-model="iotIndicatorConfig.tasmotaPath" label="Tasmota Path (opcional, ej: POWER)" type="text" placeholder="POWER" />
 
               <label class="control-label">Ícono</label>
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
@@ -346,6 +350,12 @@
               {{ columnLabel(row.column) }}
             </template>
           </el-table-column>
+          <el-table-column prop="tasmotaPath" label="Tasmota Path" width="160">
+            <template slot-scope="{ row }">
+              <code v-if="row.tasmotaPath" style="font-size:11px">{{ row.tasmotaPath }}</code>
+              <span v-else class="text-muted">—</span>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
       <span slot="footer">
@@ -467,6 +477,7 @@ export default {
         icon: "fa-thermometer-half",
         chartTimeAgo: 60,
         demo: true,
+        tasmotaPath: "",
       },
 
       iotSwitchConfig: {
@@ -479,6 +490,7 @@ export default {
         widget: "switch",
         icon: "fa-lightbulb",
         column: "col-6",
+        tasmotaPath: "",
       },
 
       iotIndicatorConfig: {
@@ -492,6 +504,7 @@ export default {
         widget: "indicator",
         icon: "fa-toggle-on",
         column: "col-6",
+        tasmotaPath: "",
       },
 
       configButton: {
@@ -512,6 +525,7 @@ export default {
         class: "danger",
         message: "{'fanstatus': 'stop'}",
         text: "Enviar",
+        tasmotaPath: "",
       },
     };
   },
