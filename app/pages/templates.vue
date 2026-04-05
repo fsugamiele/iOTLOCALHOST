@@ -591,7 +591,13 @@ export default {
     },
 
     async getTemplates() {
-      const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
+      const axiosHeaders = {
+        headers: {
+          token: this.$store.state.auth.token,
+          "Cache-Control": "no-cache"
+        },
+        params: { _t: Date.now() }
+      };
       try {
         const res = await this.$axios.get("/template", axiosHeaders);
         if (res.data.status == "success") {
@@ -625,7 +631,7 @@ export default {
             icon: "tim-icons icon-check-2",
             message: "¡Plantilla guardada!",
           });
-          this.getTemplates();
+          await this.getTemplates();
           this.widgets = [];
           this.templateName = "";
           this.templateDescription = "";
