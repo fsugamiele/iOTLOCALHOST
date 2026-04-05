@@ -57,7 +57,7 @@ async function handleSensor(client, tasmotaName, payloadStr) {
       if (!widget.tasmotaPath || widget.variableType !== "input") continue;
       if (widget.tasmotaPath === "POWER") continue; // handled by handlePower
 
-      const value = getByPath(payload, widget.tasmotaPath);
+      const value = getByPath(payload, widget.tasmotaPath.trim());
       if (value === null || value === undefined) continue;
 
       const topic = `${device.userId}/${device.dId}/${widget.variable}/sdata`;
