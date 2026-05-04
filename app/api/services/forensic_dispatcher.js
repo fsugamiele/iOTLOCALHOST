@@ -3,6 +3,16 @@ const colors = require('colors'); // side-effect: extends String.prototype with 
 import Device        from '../models/device.js';
 import ForensicEvent, { GENESIS_HASH } from '../models/forensic_event.js';
 
+// Fail-fast: secret debe estar configurado y NO ser el placeholder.
+// Sin un secret real, la cadena forense pierde valor judicial.
+const _secret = process.env.FORENSIC_HMAC_SECRET;
+if (!_secret) {
+  throw new Error('[ForensicDispatcher] FORENSIC_HMAC_SECRET not set in env');
+}
+if (_secret.startsWith('change-me-')) {
+  throw new Error('[ForensicDispatcher] FORENSIC_HMAC_SECRET still has placeholder value — generate a real one with: openssl rand -hex 32');
+}
+
 // ── Mapping: alarm.variable → { eventKind, severity }
 // TODO Producción: migrar a lookup desde alarm.rule.forensicEventKind/Severity
 //   (extendiendo emqx_alarm_rule.js). Hardcoded es solo para el piloto Claro.
