@@ -250,9 +250,11 @@ existente del site (fibra/microondas) + LTE-M failover (SIM M2M Claro).
 
 #### Refactor preparatorio (Fase 4A)
 
-- Mover `app/api/routes/tasmota_bridge.js` → `app/api/routes/bridges/tasmota.js`
-- Modularizar `ESP8266/src/main.cpp` (separar AP provisioning, MQTT, EEPROM,
-  display en módulos individuales antes de sumar drivers nuevos)
+- ✅ Mover `app/api/routes/tasmota_bridge.js` → `app/api/routes/bridges/tasmota.js`
+  (commit 42f30ca)
+- ⏸ Modularizar `ESP8266/src/main.cpp` — DEFERIDO. Se retoma cuando aparezca
+  necesidad concreta (línea comercial/agro/hogar). Para Fase 4E (Telco) no es
+  necesario porque el firmware ESP32-S3 va en archivos nuevos.
 
 #### Backend (Fase 4B + 4C)
 
