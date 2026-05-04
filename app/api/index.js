@@ -25,6 +25,7 @@ app.use(cors());
 //express routes
 require("./routes/bridges/tasmota.js"); // registers global.startTasmotaBridge
 app.use("/api", require("./routes/devices.js"));
+app.use("/api", require("./routes/sites.js"));
 app.use("/api", require("./routes/users.js"));
 app.use("/api", require("./routes/templates.js"));
 app.use("/api", require("./routes/webhooks.js"));
