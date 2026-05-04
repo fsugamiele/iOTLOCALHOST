@@ -14,7 +14,11 @@ const deviceSchema = new Schema({
     templateName: {type: String, required: [true]},
     createdTime: { type: Number },
     firmwareType: { type: String, default: "wanomi" },
-    tasmotaName: { type: String, default: "" }
+    tasmotaName:  { type: String, default: "" },
+    siteId:       { type: String },
+    iccid:        { type: String },
+    imei:         { type: String },
+    apn:          { type: String }
 });
 
 // Validator
