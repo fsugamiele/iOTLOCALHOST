@@ -87,6 +87,8 @@ forensicEventSchema.statics.verifyChain = function(events) {
   return { valid: true, brokenAt: null };
 };
 
+forensicEventSchema.index({ siteId: 1, timestamp: -1 });
+
 const ForensicEvent = mongoose.model('ForensicEvent', forensicEventSchema);
 
 export default ForensicEvent;
