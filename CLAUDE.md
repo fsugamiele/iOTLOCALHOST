@@ -312,6 +312,20 @@ existente del site (fibra/microondas) + LTE-M failover (SIM M2M Claro).
   filtran por identificadores usan req.query (no req.body) para
   parámetros como dId, siteCode, force.
 
+- **Configuración de variables de entorno**: el proyecto tiene DOS
+  archivos .env distintos:
+  - `/.env` en la raíz → variables de infraestructura Docker
+    (MongoDB, EMQX dashboard, HOST_IP). Las inyecta docker-compose.
+  - `/app/.env` → variables de la aplicación Node (JWT_SECRET,
+    FORENSIC_HMAC_SECRET, MQTT_HOST, etc.). Las carga dotenv al
+    iniciar el proceso Node.
+
+  Cuando se agrega una variable nueva, hay que actualizar TRES
+  lugares: `installer.txt` (template usado en instalación nueva),
+  el `.env` correcto según el ámbito de la variable, y reiniciar el
+  contenedor que la consume (`docker restart node` para variables
+  de app).
+
 ### Decisiones de arquitectura registradas (20 decisiones)
 
 Las 20 decisiones técnicas tomadas durante el diseño están documentadas en el
