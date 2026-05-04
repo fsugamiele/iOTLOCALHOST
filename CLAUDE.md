@@ -209,6 +209,135 @@ Agrega soporte para cientos de dispositivos Zigbee (sensores, luces, enchufes).
 
 ---
 
+## Fase 4 — Soporte Telco (piloto Claro SA)
+
+### Contexto del proyecto
+
+Wanomi está implementando un piloto con **Claro Argentina** para modernizar
+sites de telecomunicaciones (BTS celulares, shelters). El alcance del piloto
+cubre dos dolores principales del operador:
+
+1. **Anti-robo e intrusión** — detección de apertura de puertas, presencia,
+   movimiento del cerco perimetral, vibración en torres, pérdida de
+   continuidad de tierra, robo de baterías.
+2. **Monitoreo predictivo de grupo electrógeno** — lectura del controlador
+   DSE7320/ComAp por MODBUS RTU, vibración del motor, nivel de combustible,
+   corriente de arranque, temperatura, anti-sifoneo.
+
+### Productos en pipeline (línea Telco)
+
+| Dispositivo | Función | MCU/SBC | Estado |
+|---|---|---|---|
+| **WN-SITE-SEC** | Controlador de seguridad del shelter | ESP32-S3 | PCB en cotización con EJ Devices |
+| **WN-SITE-GEN** | Controlador de monitoreo del grupo electrógeno | ESP32-S3 | PCB en cotización con EJ Devices |
+| **WN-H1-TELCO** | Hub endurecido DIN 4U para shelter | Orange Pi Zero 3 + Docker | PCB en cotización con EJ Devices |
+| **WN-FENCE** | Sub-nodo solar inalámbrico para cerco | ESP32-WROOM-32E (deep sleep) | PCB en cotización con EJ Devices |
+
+### Arquitectura de instalación en site
+
+**1 controlador por kit, NO 1 por sensor.** Cada ESP32-S3 agrupa todos los
+sensores de su kit. Comunicación sensor↔controlador es CABLEADA (I²C, 1-Wire,
+UART, contacto seco) excepto en dos casos específicos:
+
+- **Cerco perimetral**: ADXL345 va en sub-nodo WN-FENCE con ESP-NOW al
+  WN-SITE-SEC (sin AP intermedio). Distancia 100-200 m LOS.
+- **Tags de baterías VRLA**: iBeacon BLE 5.0 pasivos (CR2032, 2+ años).
+
+Comunicación controlador→hub: **Ethernet Cat6 + MQTT/TLS**. Hub→NOC: backhaul
+existente del site (fibra/microondas) + LTE-M failover (SIM M2M Claro).
+
+### Cambios planificados al codebase (Fase 4)
+
+#### Refactor preparatorio (Fase 4A)
+
+- Mover `app/api/routes/tasmota_bridge.js` → `app/api/routes/bridges/tasmota.js`
+- Modularizar `ESP8266/src/main.cpp` (separar AP provisioning, MQTT, EEPROM,
+  display en módulos individuales antes de sumar drivers nuevos)
+
+#### Backend (Fase 4B + 4C)
+
+**Nuevos modelos Mongoose:**
+- `app/api/models/site.js` — agrupa devices por site físico telco. Campos:
+  `siteCode`, `nombre`, `lat`, `lng`, `direccion`, `tipo` (BTS/shelter/repeater),
+  `cellOwner`, `devices: [ObjectId]`.
+- `app/api/models/forensic_event.js` — eventos inmutables con HMAC para uso
+  judicial. Campos: `siteId`, `deviceId`, `eventKind`, `severity`, `payload`,
+  `hash`, `prevHash`, `hmac`, `timestamp`.
+
+**Nuevas rutas:**
+- `app/api/routes/sites.js` — CRUD de sites.
+- `app/api/routes/forensic.js` — query y export PDF de eventos forenses.
+- `app/api/routes/bridges/noc.js` — dispatcher SNMP traps + syslog RFC 5424
+  TLS + webhook REST al NetCool de Claro.
+
+**Rutas a extender:**
+- `app/api/routes/devices.js` — agregar `siteId`, `iccid`, `imei`, `apn`.
+  Sumar `'telco'` al enum de `firmwareType`.
+- `app/api/routes/webhooks.js` — hook al forensic service en eventos críticos
+  (severity HIGH/CRITICAL).
+- `app/api/index.js` — registrar nuevas rutas.
+
+#### Frontend (Fase 4D)
+
+- `app/pages/sites/index.vue` — listado + mapa Leaflet con sites geolocalizados.
+- `app/pages/sites/_siteCode.vue` — detalle de site con widgets en tiempo real
+  + cadena de eventos forenses con verificación de HMAC visible.
+
+#### Firmware ESP32-S3 (Fase 4E)
+
+- Nuevo target en `ESP8266/platformio.ini`: `esp32-s3-telco` (pese al nombre de
+  carpeta `ESP8266/`, el firmware de Fase 4 corre en ESP32-S3).
+- `src/sensors_sec.cpp` — drivers ADXL345 + MPU-6050 + QMC5883L + PIR + reed
+  switches + PC817 loop tierra + BLE scan tags iBeacon.
+- `src/sensors_gen.cpp` — MODBUS RTU master (DSE7320/ComAp) + DS18B20 +
+  JSN-SR04T + SCT-013 con TL431 + MPU-6050 con FFT on-edge.
+- `src/comms.cpp` — MQTT/TLS sobre Ethernet W5500 (primario) + LTE-M failover
+  via Quectel BG95-M3.
+
+### Decisiones de arquitectura registradas (20 decisiones)
+
+Las 20 decisiones técnicas tomadas durante el diseño están documentadas en el
+archivo `docs/wanomi.md` del proyecto (bitácora maestra). Decisiones clave:
+
+- DEC-01: 1 ESP32-S3 por kit, no por sensor.
+- DEC-02: Sensor↔ctrl cableado (excepto cerco y BLE tags).
+- DEC-06: Hub→NOC vía backhaul del site + LTE-M failover.
+- DEC-07: Protección -48 VDC obligatoria (polifuse + MOV + TVS + ferrita +
+  diodo polaridad).
+- DEC-14: WN-SITE-GEN aislamiento RS485 ≥2.5 kV con ADuM1201 + slot 2 mm.
+- DEC-19: Archivos KiCad/Altium fuente quedan en propiedad de Wanomi.
+
+### Proveedor de fabricación PCB
+
+**EJ Devices — Desarrollos Electrónicos** (Buenos Aires, Argentina).
+Contacto: info@ejdevices.com.ar · +54 11 5102-8347.
+
+Plan de fabricación en 3 fases:
+- Fase A: 5 unidades de cada PCB (prototipo) — 4-6 semanas
+- Fase B: 25 unidades (pre-producción / piloto Claro 10 sites) — 6-8 semanas
+- Fase C: 50-100 unidades (condicional al éxito del piloto)
+
+### Estado actual de la Fase 4
+
+- ✅ Arquitectura de instalación definida (informe 5 especialistas)
+- ✅ Documentos de fabricación PCB enviados a EJ Devices (4 docx)
+- ✅ Componentes de lead time largo identificados (Quectel, Mean Well, ADuM1201)
+- 🔧 EN CURSO: implementación backend + firmware en feature/telco-support
+- 📋 PENDIENTE: jig de testing funcional para EJ Devices QC
+
+### Documentación de referencia en el repo
+
+Toda la documentación del proyecto Wanomi (bitácora, arquitectura, specs PCB)
+vive en `docs/`. Claude debe leer estos archivos cuando necesite contexto:
+
+- `docs/wanomi.md` — Bitácora maestra (decisiones, log de sesiones, estado).
+- `docs/informe_instalacion.md` — Topología completa de instalación en site.
+- `docs/pcb/SEC.md`, `GEN.md`, `H1.md`, `FENCE.md` — Specs de fabricación con
+  netlist completo (consultar antes de cualquier cambio en el firmware).
+- `docs/arquitectura_site.png` — Diagrama visual (consulta humana, no IA).
+
+---
+
 ## Arquitectura de la Aplicación (`./app/`)
 
 Stack: **Nuxt 2** (SSR desactivado, modo SPA) + **Express** como serverMiddleware en el mismo proceso Node 14.
