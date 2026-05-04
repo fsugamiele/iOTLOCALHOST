@@ -15,6 +15,7 @@ import Notification from "../models/notifications.js";
 import AlarmRule from "../models/emqx_alarm_rule.js";
 import Rule from "../models/emqx_rule.js";
 import Template from "../models/template.js";
+import { dispatchForensicEvent } from "../services/forensic_dispatcher.js";
 
 var client;
 
@@ -142,6 +143,7 @@ router.post("/alarm-webhook", async (req, res) => {
       sendMqttNotif(incomingAlarm);
       saveNotifToMongo(incomingAlarm);       // async, non-blocking
       updateAlarmCounter(incomingAlarm.emqxRuleId); // async, non-blocking
+      dispatchForensicEvent(incomingAlarm);  // async, non-blocking — skipped if device has no siteId
     }
   } catch (error) {
     console.log(error);
