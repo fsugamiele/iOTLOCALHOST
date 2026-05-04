@@ -1,7 +1,7 @@
 const colors = require("colors");
 
-import Device from "../models/device.js";
-import Template from "../models/template.js";
+import Device from "../../models/device.js";
+import Template from "../../models/template.js";
 
 // ── Cache ──────────────────────────────────────────────────────────────────
 // Avoids a DB round-trip on every incoming MQTT message.
