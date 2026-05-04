@@ -296,6 +296,22 @@ existente del site (fibra/microondas) + LTE-M failover (SIM M2M Claro).
 - `src/comms.cpp` — MQTT/TLS sobre Ethernet W5500 (primario) + LTE-M failover
   via Quectel BG95-M3.
 
+### Convenciones del proyecto descubiertas durante implementación
+
+- **Auth header**: el middleware checkAuth lee el JWT del header
+  `token` (NO `Authorization: Bearer`). El frontend y los tests deben
+  enviarlo así. Verificado en app/api/middlewares/authentication.js
+  durante validación de Fase 4C.1.
+
+- **Patrón de body en POST**: los endpoints existentes esperan el
+  payload envuelto en una clave nombrada (ej. `req.body.newDevice`,
+  `req.body.newSite`), no el objeto plano. Las nuevas rutas siguen
+  este patrón.
+
+- **Query params para DELETE y filtros**: los DELETE y endpoints que
+  filtran por identificadores usan req.query (no req.body) para
+  parámetros como dId, siteCode, force.
+
 ### Decisiones de arquitectura registradas (20 decisiones)
 
 Las 20 decisiones técnicas tomadas durante el diseño están documentadas en el
