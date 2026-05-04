@@ -3,14 +3,26 @@ const colors = require('colors'); // side-effect: extends String.prototype with 
 import Device        from '../models/device.js';
 import ForensicEvent, { GENESIS_HASH } from '../models/forensic_event.js';
 
-// Fail-fast: secret debe estar configurado y NO ser el placeholder.
-// Sin un secret real, la cadena forense pierde valor judicial.
 const _secret = process.env.FORENSIC_HMAC_SECRET;
+
+function _abort(reason) {
+  console.error('\n' + '='.repeat(80));
+  console.error('FATAL: Forensic dispatcher cannot start');
+  console.error('Reason: ' + reason);
+  console.error('Forensic chain integrity is critical for legal/judicial value.');
+  console.error('Backend will NOT start to prevent silent data loss.');
+  console.error('='.repeat(80) + '\n');
+  process.exit(1);
+}
+
 if (!_secret) {
-  throw new Error('[ForensicDispatcher] FORENSIC_HMAC_SECRET not set in env');
+  _abort('FORENSIC_HMAC_SECRET not set in environment');
 }
 if (_secret.startsWith('change-me-')) {
-  throw new Error('[ForensicDispatcher] FORENSIC_HMAC_SECRET still has placeholder value — generate a real one with: openssl rand -hex 32');
+  _abort('FORENSIC_HMAC_SECRET still has placeholder value. Generate a real one with: openssl rand -hex 32');
+}
+if (_secret.length < 32) {
+  _abort('FORENSIC_HMAC_SECRET too short (min 32 chars). Use openssl rand -hex 32 (gives 64 hex chars).');
 }
 
 // ── Mapping: alarm.variable → { eventKind, severity }
