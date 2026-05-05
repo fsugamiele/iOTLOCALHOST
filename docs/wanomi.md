@@ -17,7 +17,7 @@
 
 ## Estado General del Proyecto
 
-**Última actualización:** 2026-04-28 (Sesión #4 cerrada)
+**Última actualización:** 2026-05-05 (Sesión #5 cerrada)
 
 ### Productos vigentes (línea comercial)
 - WN-S1 Sense / WN-C1 Cold / WN-SW1E Switch Energy / WN-AIR / WN-IR / WN-F1 Field / WN-H1 Hub
@@ -57,6 +57,45 @@
 ---
 
 ## Log de Sesiones
+
+### Sesión #5 — 2026-05-05 ✅ CERRADA
+**Foco:** Plataforma Wanomi — backend Fase 4B + 4C.1 + 4C.2 (soporte Telco)
+
+**Sub-fases completadas:**
+
+#### Fase 4A — Refactor preparatorio ✅
+- `tasmota_bridge.js` movido a `routes/bridges/tasmota.js`
+- Modularización ESP8266 diferida (no necesaria para Telco)
+
+#### Fase 4B — Modelos Mongoose ✅
+- `app/api/models/site.js` — agrupa devices por site físico (siteCode, nombre, lat/lng, tipo BTS/shelter/repeater, cellOwner, devices: [String])
+- `app/api/models/forensic_event.js` — eventos inmutables con HMAC-SHA256 en cadena por site. Pre-validate calcula hash, pre-save rechaza modificaciones. `verifyChain()` estático para auditoría.
+
+#### Fase 4C.1 — CRUD de sites + extensión de devices ✅
+- `app/api/routes/sites.js` — GET/POST/PUT/DELETE /site + POST/DELETE /site/devices (bind/unbind)
+- `app/api/models/device.js` extendido con `siteId`, `iccid`, `imei`, `apn`
+- Validación funcional completa con scripts curl (4/4 checks)
+
+#### Fase 4C.2 — Dispatcher forense + endpoints + export PDF ✅
+- `app/api/services/forensic_dispatcher.js` — queue serializado por site (Promise chain), VARIABLE_MAP hardcoded para piloto Claro, guard fail-fast con `process.exit(1)` si `FORENSIC_HMAC_SECRET` falta, es placeholder o < 32 chars
+- Hook en `alarm-webhook`: `dispatchForensicEvent(incomingAlarm)` non-blocking
+- `app/api/routes/forensic.js` — GET /forensic-events, GET /forensic-events/verify, GET /forensic-events/export (PDF streaming con pdfkit)
+- PDF export: portada + stats + banner verde/rojo (chain integrity) + tabla de eventos + Anexo A (hashes completos) + Anexo B (payloads completos) + fingerprint SHA-256
+- `FORENSIC_HMAC_SECRET` agregado a `app/.env` (secret real) y `installer.txt` (placeholder)
+- pdfkit 0.13.0 agregado a `package.json`
+
+**Decisiones técnicas tomadas en esta sesión:**
+
+| # | Decisión |
+|---|---|
+| DEC-21 | siteId como String (= siteCode), no ObjectId — evita populate y simplifica queries cross-collection |
+| DEC-22 | Cadena forense por site (no global) — permite verificación independiente por site para peritos |
+| DEC-23 | HMAC-SHA256 sobre `siteId|deviceId|eventKind|severity|JSON(payload)|timestamp|prevHash` — incluye todos los campos operativos relevantes |
+| DEC-24 | Queue serializado in-memory (Promise chain por siteId) — elimina race condition en prevHash sin overhead de lock distribuido; documentado como single-instance only |
+| DEC-25 | VARIABLE_MAP hardcoded para piloto Claro — migrar a campo en emqx_alarm_rule si el sistema escala a multi-cliente |
+| DEC-26 | Guard fail-fast con `process.exit(1)` — un secret malo mata el proceso en startup; Docker restart loop hace la misconfiguration visible al operador |
+| DEC-27 | PDF export streaming via `doc.pipe(res)` — never bufferiza el PDF completo en memoria |
+| DEC-28 | Fingerprint del PDF = SHA-256 de hashes concatenados (no del PDF) — verificable independientemente del viewer PDF |
 
 ### Sesión #1 — 2026-04-23 ✅ CERRADA
 **Foco:** Estrategia, investigación y propuesta Claro SA
@@ -114,6 +153,7 @@
 
 ## Próximos pasos concretos
 
+### Hardware / Fabricación
 1. **Enviar los 4 documentos a EJ Devices** vía email a info@ejdevices.com.ar para cotización
 2. **Componentes críticos a comprar / dejar en consigna** (lead time 3-4 sem):
    - Quectel BG95-M3 (×7 mínimo: 5 SEC + 2 H1)
@@ -128,7 +168,16 @@
    - Jig de testing funcional para que EJ Devices use durante QC
    - Firmware de test (distinto al firmware de producción) para flashear durante el test funcional
    - SIM de prueba M2M (Claro o cualquier operador) para validación BG95
-6. **Sesión #5 sugerida:** Iniciar firmware PlatformIO + adaptaciones de plataforma mientras EJ Devices fabrica
+6. **Firmware ESP32-S3 (Fase 4E):** Iniciar firmware PlatformIO + adaptaciones de plataforma mientras EJ Devices fabrica
+
+### Software — Próximo paso: Fase 4C.3 — NOC Bridge
+7. **Fase 4C.3 — `routes/bridges/noc.js`** — dispatcher SNMP traps + syslog RFC 5424 TLS + webhook REST al NetCool de Claro
+   - **⛔ BLOQUEANTE:** requiere confirmación de Claro sobre:
+     - Protocolo elegido: SNMPv3 / syslog TLS / REST webhook (o combinación)
+     - IP del receptor NetCool (o endpoint REST)
+     - Credenciales SNMPv3: engineID, authProto (SHA/MD5), privProto (AES/DES), community
+     - PEN propio en IANA: ¿Wanomi necesita OID privado para los traps? (trámite IANA ~2 semanas)
+   - Sin esta info, el bridge no puede implementarse — diseño queda en standby
 
 ---
 
@@ -156,3 +205,11 @@
 | 2026-04-28 | WN-FENCE: ESP32-WROOM-32E + MCP1700 + conformal coating | ✅ |
 | 2026-04-28 | WN-FENCE: presupuesto consumo < 100µA promedio | ✅ |
 | 2026-04-28 | Testing 100% flying probe + funcional con jig de Wanomi | ✅ |
+| 2026-05-05 | siteId como String (= siteCode), no ObjectId | ✅ |
+| 2026-05-05 | Cadena forense por site, no global | ✅ |
+| 2026-05-05 | HMAC-SHA256 sobre 7 campos concatenados con `\|` | ✅ |
+| 2026-05-05 | Queue Promise serializado in-memory por siteId (single-instance) | ✅ |
+| 2026-05-05 | VARIABLE_MAP hardcoded para piloto Claro (migrar si escala) | ✅ |
+| 2026-05-05 | Guard fail-fast `process.exit(1)` si HMAC secret inválido | ✅ |
+| 2026-05-05 | PDF export streaming via `doc.pipe(res)` | ✅ |
+| 2026-05-05 | Fingerprint PDF = SHA-256 de hashes concatenados (no del PDF) | ✅ |
