@@ -1,0 +1,14 @@
+[
+  {
+    "siteCode": "DEMO-001",
+    "nombre": "Demo Site Norte",
+    "lat": -34.5828,
+    "lng": -58.4156,
+    "direccion": "Calle Demo 123",
+    "localidad": "CABA",
+    "provincia": "Buenos Aires",
+    "tipo": "BTS",
+    "cellOwner": "OperadorDemo",
+    "notes": "Site de ejemplo para testing"
+  }
+]
