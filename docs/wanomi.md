@@ -213,3 +213,107 @@
 | 2026-05-05 | Guard fail-fast `process.exit(1)` si HMAC secret inválido | ✅ |
 | 2026-05-05 | PDF export streaming via `doc.pipe(res)` | ✅ |
 | 2026-05-05 | Fingerprint PDF = SHA-256 de hashes concatenados (no del PDF) | ✅ |
+| 2026-05-09 | DEC-29 | Demo a Claro: simulador publica MQTT real (no fake en frontend). Honestidad end-to-end. | ✅ |
+| 2026-05-09 | DEC-30 | Fidelidad media: cada sensor controlable individualmente, sin física continua | ✅ |
+| 2026-05-09 | DEC-31 | Comandos al simulador via MQTT control topic `simulator/{dId}/control`, NO HTTP | ✅ |
+| 2026-05-09 | DEC-32 | `SIMULATOR_MODE=true` requerido para activar control channel (defensa en profundidad) | ✅ |
+| 2026-05-09 | DEC-33 | Proceso Node en host (no Docker), un proceso N devices | ✅ |
+| 2026-05-09 | DEC-34 | Camino X: simulador llama `/api/getdevicecredentials` igual que ESP32 real | ✅ |
+| 2026-05-09 | DEC-35 | Datos confidenciales Claro en `sites_real.json` gitignored, repo solo tiene `.example.json` | ✅ |
+| 2026-05-09 | DEC-36 | DOS templates (SEC + GEN) y DOS devices por site = 6 devices totales | ✅ |
+| 2026-05-09 | DEC-37 | Escenarios pre-grabados declarativos en `SCENARIOS` object (5 escenarios iniciales) | ✅ |
+| 2026-05-09 | DEC-38 | `validateState` con `process.exit(1)` en orphans (no continúa con state inconsistente) | ✅ |
+| 2026-05-09 | DEC-39 | `device.password` plain en MongoDB es deuda de seguridad — OK piloto, revisar antes de enterprise | ⚠️ deuda |
+| 2026-05-09 | DEC-40 | Sistema online/offline real no existe — `DEVICE_ONLINE/OFFLINE` solo manual desde panel | ⚠️ gap |
+| 2026-05-09 | DEC-41 | Para evitar deriva LLM: código aprobado va en `docs/CodigoCorregido/` y se COPIA, no se RECREA | ✅ proceso |
+
+---
+
+## Sesión #5 — 2026-05-09 — Sim-1 (simulador WN-SITE-SEC/GEN)
+
+### Contexto
+
+Arranque del simulador como demo comercial para Claro (no solo testing interno). El meeting con Claro es en 2-3 semanas y el plan de 17 días arrancó con esta sub-fase. Datos reales de 3 sites del piloto Claro Corrientes extraídos de KMZ provistos por el cliente: CR00015 (Empedrado), CR00073 (Palmar de San Luis), CR00203 (Corrientes Capital).
+
+### Decisiones nuevas
+
+Ver tabla de Decisiones Registradas: DEC-29 a DEC-41.
+
+### Lección aprendida — Deriva entre código aprobado y código escrito
+
+Durante la sesión hubo un episodio donde Claude Code, al implementar el código, simplificó significativamente el diseño aprobado: faltaron 5 escenarios, faltó `applyCommand`, faltó `SIMULATOR_MODE`, faltaron variables específicas del template, y los datos de sites se hardcodearon con valores genéricos inventados en lugar de leer `sites_real.json`. Los tests funcionales detectaron problemas superficiales (`templateName` faltante, body wrapping incorrecto) pero no los desvíos estructurales.
+
+**Causa raíz:** entre el código aprobado en el chat y la implementación, el LLM "interpreta" en lugar de copiar. Mientras más contexto previo hay, más alta es la probabilidad de deriva.
+
+**Solución implementada (DEC-41):** el código aprobado se guarda como archivos en `docs/CodigoCorregido/` y Claude Code los copia tal cual al destino. Cero re-creación desde el contexto. Esto se aplicó en la reescritura limpia de Sim-1 y los 13 tests pasaron al primer intento.
+
+### Archivos modificados
+
+- `.gitignore` — `tools/device_simulator/devices_state.json` agregado (sites_real.json y site_images/ ya estaban del scaffold)
+- `tools/device_simulator/lib/api.js` (NUEVO 126 líneas) — HTTP client nativo, sin deps. Maneja body vacío de getdevicecredentials.
+- `tools/device_simulator/lib/sensor-engine.js` (NUEVO 123 líneas) — `initialSecState()`, `initialGenState()`, `evolve()`, `SCENARIOS` con 5 entradas
+- `tools/device_simulator/lib/device.js` (NUEVO 214 líneas) — clase `SimulatedDevice` con `connect()`, `applyCommand()`, `_runScenario()`, `disconnect()`, defensa en profundidad con `SIMULATOR_MODE`
+- `tools/device_simulator/seed.js` (NUEVO 217 líneas) — provisiona templates+sites+devices, idempotente, valida state contra backend
+- `tools/device_simulator/run.js` (NUEVO 110 líneas) — entry point, bootstrappea N devices con `Promise.all`, shutdown limpio
+- `tools/device_simulator/package.json` (NUEVO) — solo dep `mqtt ^4.2.5`
+- `tools/device_simulator/README.md` — sección `## Limitaciones` agregada (single instance, password rotation, single-instance backend)
+
+### Datos confidenciales de Claro (NUNCA commiteados)
+
+- `tools/device_simulator/sites_real.json` — 3 sites con coordenadas, direcciones y SAP IDs reales
+- `tools/device_simulator/devices_state.json` — 6 pares de credenciales `{dId, password}` que dan acceso al broker MQTT
+- `tools/device_simulator/site_images/` — capturas satelitales de Google Earth (pendientes para Sim-3)
+
+### Variables de los templates
+
+**WN-SITE-SEC v1** (7 booleanos):
+`door_main`, `door_cabinet`, `pir_motion`, `ground_loop` (1=normal), `fence_vib`, `tower_vib`, `battery_tag` (1=presente)
+
+**WN-SITE-GEN v1** (8 mixtas):
+`fuel_level` (float), `genset_running` (bool), `genset_temp` (float), `genset_vib` (float), `genset_amps` (float), `genset_temp_alarm` (bool), `genset_door` (bool), `mains_voltage` (float)
+
+**Importante:** los nombres deben matchear exactamente el `VARIABLE_MAP` del `forensic_dispatcher` para que se generen ForensicEvents correctamente al disparar eventos de demo.
+
+### Escenarios pre-grabados (`SCENARIOS` en sensor-engine.js)
+
+| Nombre | Duración | Para qué |
+|---|---|---|
+| `intrusion` | 60s | Robo nocturno: cerco → puerta → PIR → cabinet → torre, con cleanup automático |
+| `fuel_siphon` | 12s | Sabotaje de combustible: 85% → 28% sin motor encendido |
+| `maintenance` | 125s | Mantenimiento legítimo: técnico abre, trabaja, cierra |
+| `genset_failure` | 65s | Corte de luz → arranque GE → sobre-temp → para |
+| `ground_loop_cut` | 5min | Loop de tierra cortado, restaurado a los 5 min |
+
+### Estado del backend después de Sim-1
+
+- 2 templates: `WN-SITE-SEC v1`, `WN-SITE-GEN v1`
+- 3 sites: CR00015, CR00073, CR00203 con coordenadas reales
+- 6 devices: 1 SEC + 1 GEN por site, todos bindeados al site correcto
+- `EmqxAuthRule` para cada device con username (= dId) y MQTT password sha256
+- Usuario de pruebas: `telco-test@wanomi.test` (existía de sesiones previas)
+
+### Validación funcional (13/13 pasos pasaron)
+
+1. Sintaxis de los 5 archivos JS — `node --check` OK x 5
+2. Carga de módulos — `require()` OK, 7 vars SEC + 8 vars GEN + 5 escenarios confirmados
+3. `npm install` — mqtt ^4.2.5 instalado
+4. Usuario telco-test@wanomi.test existe en MongoDB
+5. Cleanup pre-state — DBs limpias
+6. `node seed.js` — 2 templates + 3 sites + 6 devices creados
+7. `cat devices_state.json` — estructura correcta `{ siteCode: { SEC: {...}, GEN: {...} } }`
+8. Idempotencia confirmada — segunda corrida: 0 created, 6 skipped
+9. `node run.js` — bootstrap de 6 devices, conectan al broker, publican 7+8 variables
+10. Verificación MQTT — datos llegando en `{userId}/{dId}/{var}/sdata` con `{value, save:1}`
+11. Floats con drift correcto: genset_temp ~42.15, mains_voltage ~219.46, genset_vib ~0.019
+12. Booleanos con convenciones correctas: ground_loop=1, battery_tag=1
+13. Shutdown limpio con SIGINT/SIGTERM — `All devices disconnected.`
+
+### Commit
+
+`467cb62 feat(simulator): WN-SITE-SEC/GEN simulator with MQTT bootstrap and command channel`
+
+9 archivos commiteados, 1332 insertions(+), 1 deletion(-).
+
+### Próximo paso
+
+**Sim-2** (1 día): endpoints `/api/simulator/*` en backend (`/trigger`, `/scenario`, `/devices`) que reciben comandos del panel Vue y los publican al control topic MQTT del simulador correspondiente. Requiere acceso a `global.mqttClient` y validación de que `SIMULATOR_MODE` activo. Sin SIMULATOR_MODE el endpoint debe responder 503 "simulator control disabled".
