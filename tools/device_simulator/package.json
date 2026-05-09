@@ -1,0 +1,13 @@
+{
+  "name": "wn-site-sec-simulator",
+  "version": "1.0.0",
+  "description": "WN-SITE-SEC / WN-SITE-GEN device simulator for Claro Corrientes pilot",
+  "scripts": {
+    "seed": "node seed.js",
+    "start": "node run.js",
+    "start:sim": "SIMULATOR_MODE=true node run.js"
+  },
+  "dependencies": {
+    "mqtt": "^4.2.5"
+  }
+}

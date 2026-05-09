@@ -47,7 +47,29 @@ node tools/device_simulator/run.js --site=CR00015
 
 | Archivo | Descripción |
 |---|---|
-| `run.js` | Entrypoint principal |
+| `seed.js` | Crea templates, sites y devices en el backend; escribe `devices_state.json` |
+| `run.js` | Entrypoint principal: bootstrappea y conecta devices al broker |
+| `lib/api.js` | HTTP client para el backend Wanomi |
+| `lib/device.js` | Clase Device: bootstrap MQTT + publicación periódica |
+| `lib/sensor-engine.js` | Genera lecturas realistas por variable y variante (SEC/GEN) |
 | `sites_real.json` | Sites reales del piloto (gitignored) |
 | `sites_real.example.json` | Template con datos ficticios |
 | `site_images/` | Imágenes satelitales de los sites (gitignored) |
+| `devices_state.json` | Estado de devices (dId + password) generado por seed.js (gitignored) |
+
+## Limitaciones
+
+- **Solo UNA instancia del simulador a la vez.** Cada llamada a
+  `/api/getdevicecredentials` rota la contraseña MQTT (en EmqxAuthRule).
+  Ejecutar dos instancias del simulador con el mismo `devices_state.json`
+  invalida las credenciales MQTT de la otra instancia, causando su
+  desconexión del broker.
+
+- **Backend de instancia única.** Este simulador apunta a una única
+  instancia del backend Wanomi (típico del despliegue piloto).
+  Backends multi-instancia requerirían coordinación adicional.
+
+- **Estabilidad de device.password.** Este simulador asume que la
+  plataforma NO rota `device.password` (el password de bootstrap usado en
+  `/api/getdevicecredentials`). Si la plataforma lo rota en el futuro,
+  volver a ejecutar `seed.js` para regenerar `devices_state.json`.

@@ -29,3 +29,4 @@ mongodata/
 # device simulator real data (Claro pilot)
 tools/device_simulator/sites_real.json
 tools/device_simulator/site_images/
+tools/device_simulator/devices_state.json
