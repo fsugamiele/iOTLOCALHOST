@@ -116,7 +116,7 @@ async function ensureDevice(token, siteCode, role, templateId, templateName) {
     name: `${siteCode}-${role}`,
     templateId,
     templateName,
-    firmwareType: 'wanomi',
+    firmwareType: 'wanomi-sim',
   });
   await api.bindDevice(token, r.dId, siteCode);
   console.log(`  ${siteCode}-${role} created (dId: ${r.dId}), bound to ${siteCode}`);
