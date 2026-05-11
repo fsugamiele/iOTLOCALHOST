@@ -317,3 +317,92 @@ Durante la sesión hubo un episodio donde Claude Code, al implementar el código
 ### Próximo paso
 
 **Sim-2** (1 día): endpoints `/api/simulator/*` en backend (`/trigger`, `/scenario`, `/devices`) que reciben comandos del panel Vue y los publican al control topic MQTT del simulador correspondiente. Requiere acceso a `global.mqttClient` y validación de que `SIMULATOR_MODE` activo. Sin SIMULATOR_MODE el endpoint debe responder 503 "simulator control disabled".
+
+---
+
+## Sesión #6 — 2026-05-10 — Sim-2 (API endpoints + ACL fix)
+
+### Contexto
+
+Continuación del plan macro de 17 días para la demo a Claro. Sim-1 cerrado con el simulador funcional publicando MQTT real (commits 1224110, 467cb62, 727ec09). Sim-2 implementa los endpoints REST que permiten al panel Vue (Sim-3) controlar el simulador desde una interfaz humana.
+
+### Decisiones nuevas
+
+| Fecha | ID | Decisión | Estado |
+|---|---|---|---|
+| 2026-05-10 | DEC-42 | DEROGA DEC-41. Volver al método tradicional (diseño → aprobación en chat → implementación con inspección en vivo). DEC-41 fue reacción a un caso aislado en Sim-1. Sin más evidencia, mantener el proceso que funcionó para DEC-01 a DEC-28. | ✅ |
+| 2026-05-10 | DEC-43 | Convención del proyecto para routes: `import` para modelos Mongoose (que exportan `export default`), `require()` para módulos CJS (express, middlewares). Funciona porque Nuxt 2 transpila los serverMiddleware con Babel. | ✅ |
+| 2026-05-10 | DEC-44 | El ACL de los devices con `firmwareType='wanomi-sim'` se extiende para incluir `simulator/{dId}/control` en la lista de subscribe. Sin esto, EMQX rechaza el subscribe con QoS 128 silenciosamente y el simulador no puede recibir comandos. Implementado en `getDeviceMqttCredentials` (webhooks.js). | ✅ |
+| 2026-05-10 | DEC-45 | El endpoint `GET /api/simulator/state/:dId` fue eliminado. Los devices simulados no persisten datos a MongoDB por diseño (el simulador demuestra escenarios en vivo, no historiales). El panel Vue (Sim-3) lee estado via MQTT WebSocket subscription, patrón estándar del proyecto. | ✅ |
+
+### Endpoints implementados (5)
+
+| Método | Path | Función |
+|---|---|---|
+| GET | `/api/simulator/devices` | Lista devices simulados del usuario logueado |
+| GET | `/api/simulator/scenarios` | Lista de escenarios pre-grabados disponibles |
+| POST | `/api/simulator/trigger` | Pulso transitorio de un sensor con auto-reset |
+| POST | `/api/simulator/set` | Set permanente de valor de un sensor |
+| POST | `/api/simulator/scenario` | Ejecutar escenario pre-grabado |
+
+### Defensa en profundidad — 3 niveles
+
+1. **`ENABLE_SIMULATOR_API` env flag** — chequeada por handler. Si está OFF, retorna 404 (no revela existencia del endpoint).
+2. **JWT obligatorio** — middleware `checkAuth` en todos los endpoints.
+3. **`SIMULATOR_MODE=true` en el simulador** — sin esto, los comandos publicados al control topic caen al vacío. Independiente del backend.
+
+### Validación de inputs
+
+- `dId` con regex `/^[a-zA-Z0-9]{8}$/`
+- `sensor` debe existir en widgets del template
+- `value` validado según `variableType` (bool: 0|1|true|false; float: número finito)
+- `name` de escenario en whitelist de 5 valores
+- `duration_ms` número finito no negativo
+- Template y device validados con filtro `userId` (defensa en profundidad)
+
+### Lección aprendida — bug latente de Sim-1 cazado por Sim-2
+
+Durante el testing E2E del Grupo D apareció un bug que existía desde Sim-1 pero no era observable: el simulador no procesaba comandos del control topic. Diagnóstico iterativo determinó que **el ACL de los devices del simulador no incluía `simulator/{dId}/control`** en la lista de subscribe. EMQX aceptaba la suscripción con QoS 128 (failure) silenciosamente, y `mqtt.js` no consideraba eso un error en el callback de subscribe.
+
+**Por qué se nos escapó en Sim-1:** los 13 tests funcionales de Sim-1 solo verificaban publicación (el simulador → broker), no subscripción (broker → simulador). El control channel solo se valida cuando hay un cliente publicando al tópico, y eso recién pasó en Sim-2.
+
+**Fix:** modificación quirúrgica en `getDeviceMqttCredentials` (webhooks.js) — agregar la línea condicional por `firmwareType === 'wanomi-sim'`. Total ~10 líneas, 3 puntos de cambio. Commit dedicado anterior al commit de Sim-2 para bisect-friendly (`03bf272`).
+
+### Archivos modificados
+
+- `app/api/routes/simulator.js` (NUEVO, 264 líneas) — los 5 endpoints
+- `app/api/routes/webhooks.js` (MODIFICADO, +12 -3) — ACL extiende para wanomi-sim
+- `app/api/index.js` (MODIFICADO, +1) — registro de la nueva ruta
+- `app/.env` (MODIFICADO, no commiteado — gitignored) — `ENABLE_SIMULATOR_API=true`
+
+### Estado del backend después de Sim-2
+
+- 5 endpoints expuestos en `/api/simulator/*`
+- Defensa en profundidad funcional (verificada en Grupos A-D de tests)
+- Backend independiente del simulador (no se cuelga si el simulador no corre)
+- Validación estricta de inputs en todos los handlers
+- Comandos publicados al broker con QoS 1 + callback (entrega confirmada)
+
+### Validación funcional (Grupos A-D)
+
+- **Grupo A** (defensa en profundidad): 7/7 tests OK
+- **Grupo B** (validación inputs): 11/11 tests OK
+- **Grupo C** (backend resiliencia): 6/6 tests OK
+- **Grupo D** (E2E con simulador): 7/7 tests OK (después del fix de ACL)
+
+### Commits
+
+```
+0d38a3b  feat(simulator-api): /api/simulator/* endpoints for device control
+03bf272  fix(webhooks): include simulator/{dId}/control in ACL for wanomi-sim devices
+b898d9a  fix(simulator): use firmwareType=wanomi-sim to distinguish from real firmware
+```
+
+### Próximo paso
+
+**Sim-3** (2-3 días): panel Vue `/demo/simulator` con UI de control:
+- Lista de devices simulados (de `GET /api/simulator/devices`)
+- Por cada device: toggles para sensores bool + sliders para floats
+- Botones de escenarios pre-grabados
+- Visualización en tiempo real del estado via MQTT WebSocket subscription
+- Capturas satelitales de los 3 sites de Corrientes (tarea pendiente, no bloqueante)
