@@ -45,7 +45,7 @@ router.post("/getdevicecredentials", async (req, res) => {
     if (password != device.password) return res.status(401).json();
 
     const userId = device.userId;
-    const credentials = await getDeviceMqttCredentials(dId, userId);
+    const credentials = await getDeviceMqttCredentials(dId, userId, device.firmwareType);
     const template = await Template.findOne({ _id: device.templateId });
 
     // Load all active rules for this device to compute effective send frequencies.
@@ -243,13 +243,21 @@ router.put("/notifications", checkAuth, async (req, res) => {
 //**** FUNCTIONS *******
 //**********************
 
-async function getDeviceMqttCredentials(dId, userId) {
+async function getDeviceMqttCredentials(dId, userId, firmwareType) {
   try {
     var rule = await EmqxAuthRule.find({
       type: "device",
       userId: userId,
       dId: dId
     });
+
+    const subscribeTopics = [
+      userId + "/" + dId + "/+/actdata",
+      userId + "/" + dId + "/config"
+    ];
+    if (firmwareType === 'wanomi-sim') {
+      subscribeTopics.push(`simulator/${dId}/control`);
+    }
 
     if (rule.length == 0) {
       const plainPassword = makeid(10);
@@ -259,7 +267,7 @@ async function getDeviceMqttCredentials(dId, userId) {
         username: makeid(10),
         password: hashPassword(plainPassword),
         publish: [userId + "/" + dId + "/+/sdata"],
-        subscribe: [userId + "/" + dId + "/+/actdata", userId + "/" + dId + "/config"],
+        subscribe: subscribeTopics,
         type: "device",
         time: Date.now(),
         updatedTime: Date.now()
@@ -282,6 +290,7 @@ async function getDeviceMqttCredentials(dId, userId) {
         $set: {
           username: newUserName,
           password: hashPassword(newPassword),
+          subscribe: subscribeTopics,
           updatedTime: Date.now()
         }
       }
