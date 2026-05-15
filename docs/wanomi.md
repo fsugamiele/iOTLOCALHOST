@@ -406,3 +406,107 @@ b898d9a  fix(simulator): use firmwareType=wanomi-sim to distinguish from real fi
 - Botones de escenarios pre-grabados
 - Visualización en tiempo real del estado via MQTT WebSocket subscription
 - Capturas satelitales de los 3 sites de Corrientes (tarea pendiente, no bloqueante)
+
+---
+
+## Sesión #7 — 2026-05-14 — Sim-1.2 (re-template SEC/GEN v2 alineado con pitch de Claro)
+
+### Contexto
+
+Durante la planificación de Sim-3 (panel Vue) revisamos el pitch de Claro (wanomi_claro_pitch_2.pptx). Detectamos un mismatch importante entre las variables del simulador v1 y la documentación técnica del producto (slides 7 y 8 del pitch). Sim-1.2 alinea los templates y escenarios del simulador con el pitch antes de construir el panel Vue, para evitar maquillar inconsistencias en la UI.
+
+### Decisiones nuevas
+
+| Fecha | ID | Decisión | Estado |
+|---|---|---|---|
+| 2026-05-14 | DEC-46 | Sim-1.2 es prerequisito de Sim-3. Re-templatear el simulador antes de construir el panel Vue. Razón: el pitch a Claro lista sensores específicos (4 puertas, magnetómetro de cobre, BLE beacons tracking, vibracional FFT, etc.) que no coinciden con el simulador v1. Maquillar en el frontend sería mostrar inconsistencia técnica al cliente. | ✅ |
+| 2026-05-14 | DEC-47 | Variables en código: inglés. UI (variableFullName, descripciones): español. Patrón estándar de la industria — código mantenible + producto localizado. | ✅ |
+| 2026-05-14 | DEC-48 | Templates v2 introducen dos nuevos tipos de variable usados en widgets: `categorical` (string con enum, como vibration_signature) y `int` (counter, como battery_beacons_count). El modelo Template del backend NO se modifica — el schema es flexible y acepta cualquier string en variableType. La validación se hace en el simulador y en el frontend. | ✅ |
+| 2026-05-14 | DEC-49 | Estructura de escenarios v2: objeto con metadata (description, duration_ms, steps, noCleanup?, isMaintenanceEvent?) en lugar de array plano. Permite cleanup automático post-duration_ms y flags semánticos para el sistema de alarmas (a implementar en Sim-3.5). | ✅ |
+| 2026-05-14 | DEC-50 | `evolve()` recibe deviceState completo (no solo variable+value). Permite drift contextual: fuel_level solo consume si genset_running=1, alternator_voltage solo tiene tensión si motor corriendo, mains_voltage solo deriva si red está OK (no zero). Aumenta realismo sin agregar complejidad arquitectónica. | ✅ |
+| 2026-05-14 | DEC-51 | El handler `_runScenario` valida que TODAS las variables del escenario existan en el device antes de empezar. Si alguna falta (ej. disparar fuel_siphon en device SEC), aborta con warning. Defensa en profundidad — error temprano y visible vs. error silencioso. | ✅ |
+| 2026-05-14 | DEC-52 | Escenarios encimados en el MISMO device: el nuevo cancela los timers del anterior. Estado limpio para la demo (re-disparar sin pelear con estado residual). Encimados entre devices DISTINTOS coexisten (correcto, decidido en Sim-3 planning). | ✅ |
+| 2026-05-14 | DEC-53 | Whitelist de escenarios en simulator.js (backend) hardcodeada por seguridad — los endpoints solo aceptan scenarios cuyos nombres están en la lista. Debe mantenerse sincronizada con el simulador. Esta sincronización se hace manualmente; un test futuro podría validar consistencia automáticamente. | ✅ |
+
+### Templates v2
+
+**WN-SITE-SEC v2** — 10 sensores (antes 7):
+
+| Variable | Tipo | Display |
+|---|---|---|
+| door_shelter | bool | Puerta shelter |
+| door_front | bool | Puerta frente |
+| door_rear | bool | Puerta trasera |
+| door_battery_cabinet | bool | Gabinete de baterías |
+| pir_motion | bool | Movimiento interior (PIR) |
+| fence_vibration | bool | Vibración cerco (corte/golpe) |
+| copper_field_anomaly | bool | Movimiento de cobre |
+| ground_continuity | bool | Continuidad de tierra (1=íntegra) |
+| battery_beacons_count | int | BLE beacons baterías presentes |
+| shelter_temp | float | Temperatura shelter (°C) |
+
+**WN-SITE-GEN v2** — 9 sensores (antes 8):
+
+| Variable | Tipo | Display |
+|---|---|---|
+| fuel_level | float | Nivel combustible (%) |
+| genset_running | bool | Motor en marcha |
+| exhaust_temp | float | Temperatura escape (°C) |
+| vibration_signature | categorical | Firma vibracional (FFT) |
+| crank_current | float | Corriente arranque (A) |
+| alternator_voltage | float | Tensión alternador (V) |
+| battery_voltage | float | Tensión batería arranque (V) |
+| crank_attempts_failed | int | Intentos fallidos consecutivos |
+| mains_voltage | float | Tensión red eléctrica (V) |
+
+### Escenarios refinados — 7 ahora
+
+| Escenario | Duración | Cleanup | Flag especial |
+|---|---|---|---|
+| intrusion | 60s | sí | — |
+| copper_theft | 75s | sí | NUEVO en v2 |
+| fuel_siphon | 15s | **noCleanup** | fuel_level persiste en 30% |
+| genset_no_start | 45s | sí | NUEVO |
+| genset_vibration_anomaly | 30s | sí | NUEVO — usa string categorical |
+| battery_degraded | 20s | sí | NUEVO |
+| maintenance | 90s | sí | isMaintenanceEvent (para alarmas) |
+
+### Validación E2E (Grupo G)
+
+| Test | Verificación | Resultado |
+|---|---|---|
+| G.1 pre-flight | 6 ACL con simulator/control, 7 scenarios en API | ✅ |
+| G.2.1 intrusion | 8 steps, cleanup completo | ✅ |
+| G.2.2 copper_theft | 4 steps, cleanup completo | ✅ |
+| G.2.3 maintenance | flag [MAINTENANCE] en log | ✅ |
+| G.2.4 fuel_siphon en SEC | guard abort con warning | ✅ |
+| G.3.1 fuel_siphon | noCleanup respetado, fuel queda en 30 | ✅ |
+| G.3.2 genset_no_start | 3 intentos crank, multi-var simultáneos | ✅ |
+| G.3.3 genset_vibration_anomaly | string categorical con comillas | ✅ |
+| G.3.4 battery_degraded | 1 intento + degradación visible | ✅ |
+
+### Bug latente cazado en G.1
+
+Pre-flight de validación E2E reveló que `simulator.js` (backend) tenía whitelist hardcodeada con los 5 escenarios v1. Sin esa actualización, `POST /api/simulator/scenario` con cualquier nombre nuevo (`copper_theft`, `genset_no_start`, etc.) hubiera retornado 400 "scenario not in whitelist" — invisible para el simulador pero bloqueante para la API. Es el tipo de inconsistencia que solo aparece en pruebas E2E cruzando capas.
+
+### Lección de proceso
+
+Sin el deep-dive en el pitch de Claro (slide 7 y 8 del .pptx), hubiéramos construido Sim-3 sobre templates v1 y descubierto la inconsistencia técnica recién durante un Q&A del cliente. Pedir y revisar materiales de venta antes de codear infraestructura demo es un hábito que conviene mantener.
+
+### Archivos modificados
+
+- `tools/device_simulator/seed.js` (templates v1 → v2)
+- `tools/device_simulator/lib/sensor-engine.js` (estados, evolve contextual, 7 escenarios v2)
+- `tools/device_simulator/lib/device.js` (_runScenario reescrito + helper _cancelActiveTimers)
+- `app/api/routes/simulator.js` (whitelist actualizada a 7 escenarios)
+- `tools/device_simulator/devices_state.json` (regenerado — gitignored)
+
+### Commits
+
+```
+aa02744  feat(simulator): re-template SEC/GEN to match Claro pitch (v2)
+```
+
+### Próximo paso
+
+**Sim-3 (panel oculto):** ya re-planificado en sesión #6 como versión simplificada (1-2 días). Panel `/demo/simulator` con lista de devices + toggles + botones de escenarios. Sin pulido visual, solo para que el operador controle la demo desde una segunda pantalla.
