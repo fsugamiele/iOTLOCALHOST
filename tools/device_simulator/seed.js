@@ -34,34 +34,38 @@ if (!fs.existsSync(SITES_FILE)) {
 // IMPORTANTE: los nombres de 'variable' deben matchear el VARIABLE_MAP del
 // forensic_dispatcher para que se generen ForensicEvents correctamente.
 
-// SEC: 7 variables de seguridad
+// SEC: 10 variables de seguridad
 const SEC_TEMPLATE = {
-  name: 'WN-SITE-SEC v1',
-  description: 'Controlador de seguridad Telco — piloto Claro Corrientes',
+  name: 'WN-SITE-SEC v2',
+  description: 'Anti-robo y anti-intrusión para sites de telco. 4 puntos de apertura, sensórica perimetral y BLE tracking de baterías.',
   widgets: [
-    { variable: 'door_main',    variableFullName: 'Puerta principal',    variableType: 'bool', variableSendFreq: 30 },
-    { variable: 'door_cabinet', variableFullName: 'Puerta gabinete',     variableType: 'bool', variableSendFreq: 30 },
-    { variable: 'pir_motion',   variableFullName: 'Sensor PIR',          variableType: 'bool', variableSendFreq: 30 },
-    { variable: 'ground_loop',  variableFullName: 'Loop de tierra',      variableType: 'bool', variableSendFreq: 60 },
-    { variable: 'fence_vib',    variableFullName: 'Vibración cerco',     variableType: 'bool', variableSendFreq: 30 },
-    { variable: 'tower_vib',    variableFullName: 'Vibración torre',     variableType: 'bool', variableSendFreq: 30 },
-    { variable: 'battery_tag',  variableFullName: 'Tag batería VRLA',    variableType: 'bool', variableSendFreq: 60 },
+    { variable: 'door_shelter',          variableFullName: 'Puerta shelter',                 variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'door_front',            variableFullName: 'Puerta frente',                  variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'door_rear',             variableFullName: 'Puerta trasera',                 variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'door_battery_cabinet',  variableFullName: 'Gabinete de baterías',           variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'pir_motion',            variableFullName: 'Movimiento interior (PIR)',      variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'fence_vibration',       variableFullName: 'Vibración cerco (corte/golpe)',  variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'copper_field_anomaly',  variableFullName: 'Movimiento de cobre',            variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'ground_continuity',     variableFullName: 'Continuidad de tierra',          variableType: 'bool',        variableSendFreq: 60 },
+    { variable: 'battery_beacons_count', variableFullName: 'BLE beacons baterías presentes', variableType: 'int',         variableSendFreq: 60 },
+    { variable: 'shelter_temp',          variableFullName: 'Temperatura shelter (°C)',       variableType: 'float',       variableSendFreq: 120 },
   ],
 };
 
-// GEN: 8 variables de generador/energía
+// GEN: 9 variables de generador/energía
 const GEN_TEMPLATE = {
-  name: 'WN-SITE-GEN v1',
-  description: 'Controlador de grupo electrógeno Telco — piloto Claro Corrientes',
+  name: 'WN-SITE-GEN v2',
+  description: 'Monitoreo predictivo de grupo electrógeno. MODBUS solo-lectura + sensórica externa con FFT on-edge.',
   widgets: [
-    { variable: 'fuel_level',        variableFullName: 'Nivel combustible (%)',    variableType: 'float', variableSendFreq: 60 },
-    { variable: 'genset_running',    variableFullName: 'Grupo en marcha',          variableType: 'bool',  variableSendFreq: 30 },
-    { variable: 'genset_temp',       variableFullName: 'Temperatura motor (°C)',   variableType: 'float', variableSendFreq: 60 },
-    { variable: 'genset_vib',        variableFullName: 'Vibración motor (g)',      variableType: 'float', variableSendFreq: 30 },
-    { variable: 'genset_amps',       variableFullName: 'Corriente arranque (A)',   variableType: 'float', variableSendFreq: 30 },
-    { variable: 'genset_temp_alarm', variableFullName: 'Alarma temperatura',       variableType: 'bool',  variableSendFreq: 30 },
-    { variable: 'genset_door',       variableFullName: 'Puerta caseta grupo',      variableType: 'bool',  variableSendFreq: 30 },
-    { variable: 'mains_voltage',     variableFullName: 'Tensión red (V)',          variableType: 'float', variableSendFreq: 30 },
+    { variable: 'fuel_level',             variableFullName: 'Nivel combustible (%)',          variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'genset_running',         variableFullName: 'Motor en marcha',                variableType: 'bool',        variableSendFreq: 30 },
+    { variable: 'exhaust_temp',           variableFullName: 'Temperatura escape (°C)',        variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'vibration_signature',    variableFullName: 'Firma vibracional (FFT)',        variableType: 'categorical', variableSendFreq: 60 },
+    { variable: 'crank_current',          variableFullName: 'Corriente arranque (A)',         variableType: 'float',       variableSendFreq: 30 },
+    { variable: 'alternator_voltage',     variableFullName: 'Tensión alternador (V)',         variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'battery_voltage',        variableFullName: 'Tensión batería arranque (V)',   variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'crank_attempts_failed',  variableFullName: 'Intentos fallidos consecutivos', variableType: 'int',         variableSendFreq: 30 },
+    { variable: 'mains_voltage',          variableFullName: 'Tensión red eléctrica (V)',      variableType: 'float',       variableSendFreq: 60 },
   ],
 };
 

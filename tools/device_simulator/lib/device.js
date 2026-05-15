@@ -120,7 +120,7 @@ class SimulatedDevice {
     if (!this._connected) return;
     if (this._state[varName] === undefined) return;
     // Evolucionar el valor (booleanos no cambian, floats hacen drift)
-    this._state[varName] = engine.evolve(varName, this._state[varName]);
+    this._state[varName] = engine.evolve(varName, this._state[varName], this._state);
     this._publish(varName);
   }
 
@@ -176,20 +176,68 @@ class SimulatedDevice {
     this._publish(varName);
   }
 
+  _cancelActiveTimers() {
+    for (const t of this._timers) clearTimeout(t);
+    this._timers = [];
+  }
+
   _runScenario(name) {
-    const steps = engine.SCENARIOS[name];
-    if (!steps) {
+    const scenario = engine.SCENARIOS[name];
+    if (!scenario) {
       console.warn(`${this.tag} unknown scenario: ${name}`);
       return;
     }
-    console.log(`${this.tag} running scenario "${name}" (${steps.length} steps)`);
-    for (const step of steps) {
+
+    // Validar que TODAS las variables del scenario existen en el device
+    const allVars = new Set();
+    for (const step of scenario.steps) {
+      for (const v of Object.keys(step.set)) allVars.add(v);
+    }
+    const missing = [...allVars].filter(v => this._state[v] === undefined);
+    if (missing.length > 0) {
+      console.warn(`${this.tag} scenario "${name}" aborted — variables not in device: ${missing.join(', ')}`);
+      return;
+    }
+
+    // Cancelar timers activos (escenario previo o trigger pendiente)
+    this._cancelActiveTimers();
+
+    const flags = [];
+    if (scenario.noCleanup) flags.push('noCleanup');
+    if (scenario.isMaintenanceEvent) flags.push('MAINTENANCE');
+    const flagsStr = flags.length ? ` [${flags.join(', ')}]` : '';
+
+    console.log(`${this.tag} running scenario "${name}" (${scenario.steps.length} steps, ${scenario.duration_ms}ms)${flagsStr}`);
+
+    // Programar cada step
+    for (const step of scenario.steps) {
       const t = setTimeout(() => {
-        if (this._state[step.sensor] === undefined) return;
-        this._state[step.sensor] = step.value;
-        this._publish(step.sensor);
-      }, step.atMs);
+        for (const [varName, val] of Object.entries(step.set)) {
+          this._set(varName, val);
+        }
+      }, step.at);
       this._timers.push(t);
+    }
+
+    // Cleanup automático al final, salvo flag noCleanup
+    if (!scenario.noCleanup) {
+      const cleanup = setTimeout(() => {
+        const initial = this._role === 'SEC'
+          ? engine.initialSecState()
+          : engine.initialGenState();
+        for (const varName of Object.keys(this._state)) {
+          if (this._state[varName] !== initial[varName]) {
+            this._set(varName, initial[varName]);
+          }
+        }
+        console.log(`${this.tag} scenario "${name}" complete — state restored`);
+      }, scenario.duration_ms);
+      this._timers.push(cleanup);
+    } else {
+      const endLog = setTimeout(() => {
+        console.log(`${this.tag} scenario "${name}" complete — state preserved (noCleanup)`);
+      }, scenario.duration_ms);
+      this._timers.push(endLog);
     }
   }
 

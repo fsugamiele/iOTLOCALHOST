@@ -29,10 +29,12 @@ const checkAuth = require('../middlewares/authentication.js').checkAuth;
 // Whitelist de escenarios — debe matchear sensor-engine.js del simulador
 const VALID_SCENARIOS = [
   'intrusion',
+  'copper_theft',
   'fuel_siphon',
+  'genset_no_start',
+  'genset_vibration_anomaly',
+  'battery_degraded',
   'maintenance',
-  'genset_failure',
-  'ground_loop_cut',
 ];
 
 // ────────── Helpers ────────────────────────────────────────────────
