@@ -162,6 +162,16 @@ class SimulatedDevice {
     } else if (command === 'scenario') {
       // Ejecuta un escenario pre-grabado (cmd.value es el nombre)
       this._runScenario(value);
+    } else if (command === 'reset') {
+      // Restaura todos los sensores a initialState y reinicia publicación periódica.
+      // _cancelActiveTimers() mata también los setInterval de startPublishing(),
+      // por eso se llama startPublishing() al final para reanudarlos.
+      this._cancelActiveTimers();
+      this._state = this._role === 'SEC' ? engine.initialSecState() : engine.initialGenState();
+      for (const varName of Object.keys(this._state)) {
+        this._publish(varName);
+      }
+      this.startPublishing();
     } else {
       console.warn(`${this.tag} unknown command: ${command}`);
     }

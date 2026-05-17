@@ -263,4 +263,32 @@ router.post('/simulator/scenario', checkAuth, async (req, res) => {
   }
 });
 
+// ────────── POST /reset ──────────────────────────────────────────
+// Body: { dId }
+// Resetea TODOS los sensores del device a su initialState.
+router.post('/simulator/reset', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const userId = req.userData._id;
+    const body = req.body || {};
+    const { dId } = body;
+
+    if (!isValidDId(dId)) {
+      return badRequest(res, 'Invalid or missing dId');
+    }
+
+    const device = await Device.findOne({ userId, dId, firmwareType: 'wanomi-sim' }).lean();
+    if (!device) {
+      return res.status(404).json({ status: 'error', error: 'Simulated device not found' });
+    }
+
+    const command = { command: 'reset' };
+    await publishCommand(dId, command);
+    return res.json({ status: 'success', dId });
+
+  } catch (error) {
+    return internalError(res, error);
+  }
+});
+
 module.exports = router;
