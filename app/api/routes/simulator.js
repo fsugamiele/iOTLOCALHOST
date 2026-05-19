@@ -115,11 +115,33 @@ router.get('/simulator/devices', checkAuth, async (req, res) => {
   if (!isApiEnabled()) return notFound(res);
   try {
     const userId = req.userData._id;
+
+    // 1. Cargar devices simulados (incluyendo templateId, lo necesitamos para join)
     const devices = await Device.find(
       { userId, firmwareType: 'wanomi-sim' },
-      { dId: 1, name: 1, siteId: 1, templateName: 1, _id: 0 }
+      { dId: 1, name: 1, siteId: 1, templateName: 1, templateId: 1, _id: 0 }
     ).lean();
-    return res.json({ status: 'success', data: devices });
+
+    // 2. Cargar templates únicos en una sola query
+    const templateIds = [...new Set(devices.map(d => d.templateId).filter(Boolean))];
+    const templates = await Template.find(
+      { _id: { $in: templateIds }, userId }
+    ).lean();
+    const widgetsByTemplateId = {};
+    templates.forEach(t => {
+      widgetsByTemplateId[t._id.toString()] = t.widgets || [];
+    });
+
+    // 3. Enriquecer cada device con sus widgets
+    const enriched = devices.map(d => ({
+      dId: d.dId,
+      name: d.name,
+      siteId: d.siteId,
+      templateName: d.templateName,
+      templateWidgets: widgetsByTemplateId[d.templateId?.toString()] || [],
+    }));
+
+    return res.json({ status: 'success', data: enriched });
   } catch (error) {
     return internalError(res, error);
   }
