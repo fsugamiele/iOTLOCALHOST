@@ -510,3 +510,75 @@ aa02744  feat(simulator): re-template SEC/GEN to match Claro pitch (v2)
 ### Próximo paso
 
 **Sim-3 (panel oculto):** ya re-planificado en sesión #6 como versión simplificada (1-2 días). Panel `/demo/simulator` con lista de devices + toggles + botones de escenarios. Sin pulido visual, solo para que el operador controle la demo desde una segunda pantalla.
+
+---
+
+## Sesión #8 — 2026-05-18/19 — Reset documental + seguridad + Sim-3 paso 3
+
+### Pivot estratégico
+Tras debate del equipo (Asesor telco, Ex-técnico, Ing electrónico industrial,
+Ing software senior, Backend Mongo/EMQX, Seguridad física, Marketing,
+Confiabilidad industrial), se decidió que la demo a Claro debe comunicar
+las 4 patas del valor de Wanomi (DEC-PHIL-3), no solo "cards cambiando de
+color en un panel":
+
+1. Disuasión local (sirena, estrobo, audio en sitio)
+2. Notificación inteligente (Telegram con foto+ubicación)
+3. Acción física automática (lock, válvula, apagado)
+4. Trazabilidad forense (cronología inmutable con HMAC)
+
+### Incidentes de seguridad
+- **DEC-incident-1** (2026-05-18): Token Telegram bot @Wanomi_bot expuesto
+  en chat al pegar mensaje de BotFather. Revocado y rotado el mismo día.
+- **DEC-incident-2** (2026-05-18): PAT GitHub expuesto en chat durante setup
+  del push inicial. Token viejo revocado. PAT nuevo (Fine-grained, scope
+  solo iOTLOCALHOST, 90 días) generado y guardado en password manager.
+- Protocolo resultante documentado en `SECRETS.md` (DEC-PROC-1).
+
+### Auditoría del repo (28 commits en feature/telco-support)
+Antes de proponer trabajo nuevo se auditó el estado real del código (DEC-PROC-2).
+Hallazgos clave:
+- **Fase 4 backend ya completo**: Site, ForensicEvent, HMAC chain, PDF export,
+  forensic dispatcher, webhooks integration — todo implementado.
+- **Fase 4 frontend inexistente**: no hay pages/sites/, no hay forensic UI.
+- **Sim-3 paso 3 en progreso**: 3 archivos Vue sin commitear con reactividad
+  MQTT validada E2E.
+
+### Bugs resueltos
+- **Vue 2 reactivity en DevicePanel**: cards no actualizaban al recibir MQTT.
+  Causa: keys de `liveValues` no pre-inicializadas → Vue 2 no configura
+  getters/setters. Fix: pre-inicializar todas las keys con `null` en `created()`.
+- **Vue 2 SPA + template strings inline**: `template: "..."` no funciona en
+  runtime SPA (no hay compilador). Fix: mover todo render a SFC `<template>`.
+
+### Decisiones técnicas tomadas (DEC-HW-1..4, DEC-DATA-1..5, DEC-SW-1..6, DEC-PHIL-1..3, DEC-PROC-1..2)
+Ver `docs/wanomi_modelo_conceptual.md` sección "Decisiones acumuladas".
+
+### Commits de esta sesión
+
+```
+7ebdb5a  chore: tighten .gitignore for stale artifacts and snapshots
+3c4eb56  docs: add project documentation structure
+d79916f  feat(simulator-api): enrich GET /simulator/devices with templateWidgets
+b582a7a  feat(simulator): add demo simulator panel (Sim-3 step 3)
+87cf308  chore: track app/README.md, test.html and util/ scripts
+```
+
+### Archivos creados/modificados
+
+- `SECRETS.md` — protocolo de manejo de secrets
+- `docs/STATUS.md` — estado del proyecto (punto de entrada para nueva sesión)
+- `docs/INVENTARIO_AUTO.md` — inventario regenerable del repo
+- `docs/wanomi_modelo_conceptual.md` — modelo conceptual v0.2 con auditoría
+- `scripts/inventario.sh` — generador de INVENTARIO_AUTO.md
+- `.gitignore` — reforzado (node_modules, snapshots, Zone.Identifier, artefactos)
+- `app/api/routes/simulator.js` — GET /simulator/devices enriquecido con templateWidgets
+- `app/pages/demo/simulator.vue` — panel simulador master-detail
+- `app/components/Simulator/DeviceList.vue` — lista agrupada por site
+- `app/components/Simulator/DevicePanel.vue` — widgets en vivo con MQTT (631 líneas)
+
+### Próximo paso
+
+**Sim-3 paso 4**: agregar grilla de botones de escenarios al `DevicePanel.vue`.
+Filtrado SEC vs GEN, estado activo + countdown, disable durante escenario activo.
+Estimado: 1 día. Luego cierre de Sim-3 con commit y arranque de planificación Sim-3.5.

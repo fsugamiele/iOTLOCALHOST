@@ -1,8 +1,8 @@
 # Inventario automático
 
-**Generado**: 2026-05-19 17:46:54
+**Generado**: 2026-05-19 23:23:04
 **Branch**: feature/telco-support
-**Último commit**: afdb857 — feat(simulator): add reset command — POST /simulator/reset + applyCommand case
+**Último commit**: 87cf308 — chore: track app/README.md, test.html and util/ scripts
 
 > ⚠️ ARCHIVO AUTO-GENERADO. NO EDITAR A MANO.
 > Para regenerar: `./scripts/inventario.sh`
@@ -13,23 +13,7 @@
 
 ```
 ## feature/telco-support...origin/feature/telco-support
- M app/api/routes/simulator.js
-?? SECRETS.md
-?? app/README.md
-?? app/Snip20210311_8.png
-?? app/components/Simulator/
-?? app/iotix@1.0.0
-?? app/nuxt
-?? app/pages/demo/
-?? app/rebar.lock
-?? app/test.html
-?? app/util/
-?? docs/CodigoCorregido/
-?? docs/INVENTARIO_AUTO.md
-?? docs/STATUS.md
-?? docs/wanomi_modelo_conceptual.md
-?? scripts/
-?? tools/device_simulator/node_modules/
+ M docs/INVENTARIO_AUTO.md
 ```
 
 ---
@@ -193,6 +177,11 @@ lib/sensor-engine.js 7956 bytes
 ## Últimos 30 commits (rama actual)
 
 ```
+87cf308 chore: track app/README.md, test.html and util/ scripts
+b582a7a feat(simulator): add demo simulator panel (Sim-3 step 3)
+d79916f feat(simulator-api): enrich GET /simulator/devices with templateWidgets
+3c4eb56 docs: add project documentation structure
+7ebdb5a chore: tighten .gitignore for stale artifacts and snapshots
 afdb857 feat(simulator): add reset command — POST /simulator/reset + applyCommand case
 c9ed3ee docs: log Sim-1.2 — template v2 aligned with Claro pitch (DEC-46 to DEC-53)
 aa02744 feat(simulator): re-template SEC/GEN to match Claro pitch (v2)
@@ -218,11 +207,6 @@ b93b0ab feat(routes): add Site CRUD with bind/unbind endpoints
 330416c feat(models): extend Device with telco fields (siteId, iccid, imei, apn)
 5919170 feat(models): add ForensicEvent model with HMAC integrity
 13ec33f feat(models): add Site model for telco pilot
-1f49495 docs: defer ESP8266 main.cpp modularization (Phase 4A Step 2)
-42f30ca refactor: move tasmota_bridge to routes/bridges/tasmota
-e5877e5 docs: add Phase 4 context (Telco/Claro pilot) + reference docs
-afd6e92 docs(claude.md): document Fase 2 completion with bugs fixed during testing
-48aa95f docs(readme): add Fase 1 & 2 features, update architecture, Wanomi Claude
 ```
 
 ---
@@ -254,6 +238,6 @@ afd6e92 docs(claude.md): document Fase 2 completion with bugs fixed during testi
 - **Total de routes**: 11
 - **Total de pages**: 11
 - **Total de componentes Vue**: 44
-- **Total de commits en la branch**: 57
-- **Commits desde master**: 28
+- **Total de commits en la branch**: 62
+- **Commits desde master**: 33
 
