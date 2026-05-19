@@ -30,3 +30,23 @@ mongodata/
 tools/device_simulator/sites_real.json
 tools/device_simulator/site_images/
 tools/device_simulator/devices_state.json
+
+# Artefactos de instalación npm (fuera de app/)
+tools/device_simulator/node_modules/
+
+# Snapshots y trabajo temporal
+docs/CodigoCorregido/
+wanomi-snapshots/
+
+# Artefactos de build/runtime sueltos
+app/nuxt
+app/iotix@*
+app/rebar.lock
+
+# Screenshots y archivos binarios temporales
+app/Snip*.png
+app/*.png
+
+# Zone.Identifier (Windows download metadata)
+*.Zone.Identifier
+*:Zone.Identifier
