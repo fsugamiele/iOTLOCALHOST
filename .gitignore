@@ -50,3 +50,6 @@ app/*.png
 # Zone.Identifier (Windows download metadata)
 *.Zone.Identifier
 *:Zone.Identifier
+
+# Inventario auto-generado (regenerar con ./scripts/inventario.sh)
+docs/INVENTARIO_AUTO.md

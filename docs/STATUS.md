@@ -1,8 +1,8 @@
 # Wanomi — Estado del proyecto
 
-**Última actualización**: 2026-05-19 (fin de sesión #8)
+**Última actualización**: 2026-05-20 (cierre sesión #8)
 **Branch activa**: feature/telco-support
-**HEAD**: 87cf308 (sincronizado con origin)
+**HEAD**: e9afdf1 (sincronizado con origin)
 **Para nueva sesión**: leer este archivo + `docs/INVENTARIO_AUTO.md`
 
 ---
@@ -101,6 +101,20 @@ Estimado tras Sim-3.5: ~3-5 días.
 
 | ID | Decisión | Notas |
 |---|---|---|
+| DEC-STRAT-1 | Enterprise market focus; consumer fuera de scope este ciclo | Debate equipo 2026-05-19 |
+| DEC-STRAT-2 | Demo = herramienta interna viva; diseñar el producto | Debate equipo 2026-05-19 |
+| DEC-STRAT-3 | Realidad primero; decisiones cross-área | Debate equipo 2026-05-19 |
+| DEC-PRED-1 | Predictivo Nivel 2 (condición) para Claro; ML es roadmap futuro | No prometer ML en el pitch |
+| DEC-ARCH-1 | Edge distribuida confirmada: Hub+Mongo por site; NO base central | Corrige error previo de Backend senior |
+| DEC-ARCH-2 | NOC recibe eventos/alarmas/estados, no dato crudo | Patrón: dato denso en edge |
+| DEC-SENSOR-1 | Estrategia híbrida: físico + soft sensor inferido | Síntesis Vibración vs Confiabilidad |
+| DEC-SENSOR-2 | Soft sensors corren en el Hub local | Hub tiene CPU de sobra |
+| DEC-SENSOR-3 | Flag `source: physical\|inferred` obligatorio en toda variable | Honestidad arquitectónica |
+| DEC-FORENSIC-2 | Variables forenses requieren medición física (no inferida) | Valor probatorio |
+| DEC-HMAC-1 | Checkpoints HMAC firmados cada N eventos por Hub | Verificación sin validar cadena entera |
+| DEC-STACK-1 | No migrar Vue 2 / Nuxt 2 ahora; deuda documentada; código nuevo migrable | Post-Claro |
+| DEC-DASH-1 | Dos dashboards: operador (mapa + alarmas) + admin (debug/config) | |
+| DEC-DASH-2 | Tres superficies, una verdad: cellowner / técnico on-site / NOC | |
 | DEC-PROC-2 | Auditoría de código existente antes de proponer features | Aprendida tras "redescubrir" Fase 4 |
 | DEC-PROC-1 | Protocolo de manejo de secrets (ver SECRETS.md) | Post-incidentes Telegram + PAT |
 | DEC-PHIL-3 | Las 4 patas del valor: disuasión + notif + acción + forense | Pivot estratégico |
