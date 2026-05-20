@@ -582,3 +582,150 @@ b582a7a  feat(simulator): add demo simulator panel (Sim-3 step 3)
 **Sim-3 paso 4**: agregar grilla de botones de escenarios al `DevicePanel.vue`.
 Filtrado SEC vs GEN, estado activo + countdown, disable durante escenario activo.
 Estimado: 1 día. Luego cierre de Sim-3 con commit y arranque de planificación Sim-3.5.
+
+---
+
+## Sesión #8 (cont.) — Debate libre de equipo + decisiones estratégicas
+
+**Fecha**: 2026-05-19
+**Formato**: debate libre de las 4 áreas (15 especialistas) + 2 rondas
+**Resultado**: marco estratégico definido + 9 decisiones técnicas
+
+### MARCO ESTRATÉGICO DEFINIDO POR FRANCO
+
+Las 3 tensiones transversales quedan resueltas:
+
+- **DEC-STRAT-1 — Marco Enterprise**: Wanomi 2.0 se diseña para el mercado
+  enterprise (telco/infraestructura crítica). El segmento consumer
+  (comercio/hogar del Doc Ejecutivo original) NO es el foco de este ciclo.
+- **DEC-STRAT-2 — Demo como herramienta interna viva**: se diseña el
+  PRODUCTO, no la demo. La demo/simulador es herramienta interna de prueba
+  del sistema, que se enriquece progresivamente con nuevos sensores y
+  escenarios simulados. No es un artefacto descartable.
+- **DEC-STRAT-3 — Realidad primero**: todas las decisiones se toman en base
+  a la realidad técnica. Si algo no se adapta, se discute entre todas las
+  áreas y especialistas antes de avanzar.
+
+### DECISIONES TÉCNICAS (consensos del debate)
+
+- **DEC-PRED-1 — Predictivo Nivel 2 para Claro**: el alcance realista es
+  "preventivo basado en condición" (tendencias, baselines, proyección de
+  degradación), NO machine learning. Ejemplos concretos construibles:
+  degradación de batería de arranque por regresión de voltaje en reposo,
+  consumo anómalo de combustible vs promedio móvil, pérdida de eficiencia
+  de AC por temperatura de shelter en subida sostenida. Nivel 3 (ML,
+  detección multivariable, FFT clasificada) es roadmap futuro, NO se
+  promete en el pitch.
+
+- **DEC-ARCH-1 — Arquitectura edge distribuida confirmada**: cada site
+  tiene su propio Hub (Orange Pi) con su propio MongoDB local. El dato
+  denso de sensores vive local en el site. NO existe una base central con
+  todos los sites (esto invalida la preocupación previa de escalabilidad de
+  288M docs — era un modelo mental equivocado del Backend senior, corregido
+  por Franco). Beneficio adicional: soberanía del dato (argumento de venta
+  fuerte para telco — el dato nunca sale del site del cliente).
+
+- **DEC-ARCH-2 — Capa de agregación NOC**: el NOC no se conecta a 200 Mongos.
+  Cada Hub publica al NOC solo eventos, estados y alarmas (vía MQTT a broker
+  central), no el dato crudo de cada sensor. Patrón: dato denso en el edge,
+  dato resumido en el centro. Esta capa de agregación es lo que ahora hay
+  que diseñar (reemplaza la falsa preocupación de escalabilidad de Mongo).
+
+- **DEC-SENSOR-1 — Estrategia híbrida físico + soft sensor**: se aplican
+  soft sensors (virtual sensing) para reducir cantidad de sensores físicos
+  y puntos de falla. Variables críticas y forenses → sensor físico.
+  Variables inferibles → soft sensor derivado de las mediciones ancla.
+  Ejemplos de inferencia: carga del generador desde corriente×tensión,
+  vida útil de aceite desde horas+temperatura+ciclos, nivel de combustible
+  por integración de consumo (con recalibración periódica contra medición
+  física).
+
+- **DEC-SENSOR-2 — Soft sensors corren en el Hub local**: cada Hub recibe
+  datos físicos por MQTT, ejecuta los modelos de inferencia localmente
+  (tiene CPU de sobra), y genera variables virtuales tratadas igual que las
+  físicas en dashboard y reglas.
+
+- **DEC-SENSOR-3 — Flag de procedencia obligatorio**: cada variable lleva
+  source: physical | inferred. Se distingue en el dashboard (iconito) y
+  ESPECIALMENTE en el log forense. Honestidad arquitectónica no negociable.
+
+- **DEC-FORENSIC-2 — Variables forenses requieren medición física**: un
+  dato medido tiene valor probatorio; un dato inferido es estimación. Para
+  la pata forense (reclamos legales por robo de cobre/combustible), las
+  variables que sostienen evidencia DEBEN ser físicas. (Trampa señalada por
+  Confiabilidad industrial, aceptada por el equipo.)
+
+- **DEC-HMAC-1 — Checkpoints HMAC firmados cada N eventos**: cada Hub tiene
+  su cadena forense local; al sincronizar con el NOC envía checkpoints
+  firmados para que el NOC verifique integridad sin validar la cadena
+  entera de cada site. Resuelve la impracticabilidad de validar cadenas
+  largas (>100k eventos).
+
+- **DEC-STACK-1 — No migrar Vue 2 / Nuxt 2 ahora**: están en EOL pero
+  funcionan y no hay bug bloqueante. Migración = reescritura del frontend,
+  riesgo de regresión alto, semanas que no hay antes de Claro. Se documenta
+  como deuda técnica con plan post-Claro. El backend (Node/Express/Mongo/
+  EMQX) NO está en EOL. CONDICIÓN: todo código frontend nuevo se escribe de
+  forma migrable (lógica separada de la vista, sin trucos solo-Vue2).
+
+- **DEC-DASH-1 — Dos dashboards**: (a) "operador" = mapa con sites
+  coloreados por estado + lista priorizada de alarmas + drill-down + cards
+  cambiando de color según estado (mezcla de widgets del simulador demo y
+  de la plataforma existente). Es la pantalla principal del NOC. (b) "admin"
+  = doble select sitio+plantilla, para configuración y debugging interno.
+  Las reglas no solo notifican: ACCIONAN otros dispositivos según necesidad.
+
+- **DEC-DASH-2 — Tres superficies, una verdad**: la misma información se ve
+  en tres lugares según el actor: (1) cellowner — acceso remoto al panel de
+  sus sites, con alarma + recomendación de acción; (2) técnico de
+  mantenimiento — display físico conectado al Hub local en el shelter,
+  funciona sin conexión celular; (3) NOC — dashboard centralizado con visión
+  global. Hub local alimenta display en sitio + sube resumen al NOC.
+
+### LOS TRES ACTORES (modelo de "día en la vida")
+
+El diseño del producto se ancla en tres actores reales:
+
+1. **Cellowner** (dueño de zona, 15-30 sites): no vive mirando pantallas.
+   Wanomi lo molesta solo cuando importa, y le dice QUÉ HACER, no solo qué
+   pasó. Ej.: "generador CR00073 falla en ~40hs por degradación de batería,
+   programá reemplazo".
+2. **Técnico de mantenimiento**: llega físicamente al shelter, mira el
+   display local del Hub, ve estado y alarmas sin depender de señal.
+3. **NOC**: visión global, ve el card ponerse rojo en el dashboard central.
+
+### DESACUERDOS PRODUCTIVOS REGISTRADOS
+
+- Vibración propuso soft sensors agresivamente; Confiabilidad los frenó con
+  3 trampas (deriva sin ancla física, necesidad de datos de entrenamiento,
+  valor forense de lo medido vs inferido). Síntesis: estrategia híbrida.
+- Ing software senior planteó urgencia de migrar stack; Frontend y Backend
+  lo frenaron. Síntesis: deuda documentada, no urgencia.
+- Backend senior admitió públicamente error de modelo mental (base central
+  vs edge distribuida). Corregido por Franco.
+
+### DEPENDENCIA CRÍTICA PARA PRÓXIMA SESIÓN
+
+El diagrama eléctrico + BOM del WN-SEC y sensores (pedido a Ing.
+electrónico) DEPENDE de cerrar primero la tabla de sensores físicos vs soft
+sensors. No se puede dibujar el circuito hasta definir qué sensores físicos
+quedan. PRIMER ENTREGABLE TÉCNICO de sesión #9: tabla física-vs-virtual.
+
+### ENTREGABLES PENDIENTES (no urgentes para demo)
+
+- **Doc 4 — Plan de Comercialización post-Claro** (Arquitecto B2B): modelo
+  de negocio enterprise, pricing enterprise, roadmap de cuentas (Claro →
+  Movistar → Telecom → torreras), SLA, defensibilidad, proyección del canal.
+  Para la conversación POST-demo.
+- **Pitch deck** (Copywriter): primeras 5 slides sin jerga técnica
+  (problema en pesos → "llegar antes" → 3 actores → soberanía del dato),
+  profundidad técnica de slide 6 en adelante.
+- **Variante enterprise del branding** (Diseñador gráfico): Obsidiana base,
+  verde enfriado hacia teal/cian técnico, ámbar/rojo solo para alarmas.
+
+### PRÓXIMO PASO
+
+Sesión #9: definir tabla sensores físicos vs soft sensors (habilita BOM +
+diagrama eléctrico). En paralelo, retomar Sim-3 paso 4 (botones de
+escenarios) sigue pendiente del lado de implementación.
+
