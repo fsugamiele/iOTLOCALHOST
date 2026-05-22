@@ -71,29 +71,18 @@ escenarios) pendiente — 1 día estimado. Demo a Claro estimada en 2-3 semanas.
 
 ---
 
-## Próximos pasos (en orden)
+## Estado — Sesión #9 cerrada (2026-05-22)
 
-### 1. Sim-3 paso 4 — Botones de escenarios — 1 día
-- Agregar grilla de botones de escenarios al `DevicePanel.vue`
-- Filtrado por device role (SEC vs GEN)
-- Estado del escenario activo + countdown
-- Disable durante escenario activo
-- Test funcional con cada uno de los 7 escenarios
-- Commit final cierre Sim-3
+Primer entregable #9 COMPLETO: tabla físico-vs-soft congelada + modelo de producto
+Connect/Sense (un Hub, dos modos) + 11 entradas DEC + 4 RISK registradas en wanomi.md.
+Identidad de producto redefinida: capa de datos estandarizada y soberana + fierro en
+puntos ciegos. D-H cerrado en forma realista (matriz de drivers + survey por sitio).
 
-### 2. Sim-3.5 — 13-16 días (post-cierre de Sim-3)
-Plan detallado pendiente (Doc 3). Sub-fases:
-- Ampliar modelo Template con `samplingType` + `samplingParams` (1d)
-- Refactor simulator a devices multi-sensor por SEC/GEN (2d)
-- Motor de reglas ampliado (AND/OR + ventanas temporales) (3-4d)
-- Devices actuadores virtuales (sirena, cámara, lock, audio) (2d)
-- Telegram bot integration (1d)
-- Frontend dashboard con doble select (sitio + plantilla) (2-3d)
-- Frontend forensic chain (cronología visual + PDF export) (1d, backend ya hecho)
-- Pulido + ensayo + bitácora (2d)
+### Próximos pasos
 
-### 3. Pulido pre-demo Claro
-Estimado tras Sim-3.5: ~3-5 días.
+1. BOM + diagrama eléctrico del WN-SITE-CORE (Área 3) — siguiente entregable natural.
+2. Sim-3 paso 4 — botones de escenarios en DevicePanel.vue (estacionado desde inicio #9).
+3. Survey de telemetría por sitio en el piloto (Tier 1: CR00143, CR00070, CH00042, CR00061).
 
 ---
 

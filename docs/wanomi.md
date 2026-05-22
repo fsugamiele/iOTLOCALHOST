@@ -729,3 +729,134 @@ Sesión #9: definir tabla sensores físicos vs soft sensors (habilita BOM +
 diagrama eléctrico). En paralelo, retomar Sim-3 paso 4 (botones de
 escenarios) sigue pendiente del lado de implementación.
 
+---
+
+## Sesión #9 — Qué censar: sensores prioritarios para infraestructura Claro NEA
+
+**Fecha:** 2026-05-22
+**Área de trabajo:** 1 (Escenarios) + 3 (Hardware), con input de 2 (Software) y 4 (Marketing)
+**Insumos:** investigación profunda 4 áreas (web) + análisis Sytex 59 reportes + análisis Sytex 177 reportes (71 sites, 4 provincias, 9.164 L diésel)
+
+### Decisión central
+Se pasa de "cómo censar" (resuelto) a **"qué censar"**, anclado en el dolor operativo real y medido de Claro en sitios de torre del NEA. La identidad del producto cambia de "kits de sensores + Hub" a **"capa de datos estandarizada y soberana que detecta y notifica sobre el equipo existente, y mide físicamente los puntos ciegos críticos"**.
+
+---
+
+### Modelo de producto: un Hub, dos modos
+
+| Capa | Qué hace | Sitios objetivo |
+|---|---|---|
+| **Hub Wanomi** (común) | Ingesta, estandarización a schema canónico, reglas de detección en el edge, buffer offline (30–90 días), dashboard NOC, notificación | Todos |
+| **Modo Connect** (software) | Lee equipo existente (Modbus/SNMP/contacto seco/IP) y estandariza. Cero fierro nuevo. Time-to-data ~días | Sites equipados (genset inteligente, rectificador, ATS, CRAC) |
+| **Modo Sense** (hardware) | Sensores físicos en puntos ciegos | Sites obsoletos + blind spots de sites equipados |
+
+Un sitio puede ser Connect, Sense o híbrido. El dashboard no distingue origen salvo por el flag `source`. Topics canónicos: `wanomi/{site_id}/{equipo}/{variable}`.
+
+**Inteligencia en dos capas (honestas):**
+- **Capa 1 — Detección (día 1):** reglas + cruce de señales, sin baseline. ~80% del valor inmediato.
+- **Capa 2 — Predicción (progresiva):** tendencias/deriva sobre baseline propio de cada sitio. Madura con el tiempo. No se vende como promesa day-1.
+
+---
+
+### Tabla físico-vs-soft — CONGELADA sesión #9
+
+Convención de `source`:
+- `physical` — sensor propio Wanomi; dato independiente con valor forense.
+- `inferred` — soft sensor calculado en el Hub a partir de anclas físicas.
+- `connect` — leído del equipo existente (modo Connect, sin fierro nuevo).
+- `connect/physical` — híbrido: connect si el equipo expone el dato, físico si no.
+
+#### WN-SITE-CORE — núcleo (energía + combustible + seguridad integrada)
+
+| Variable | source | Origen / sensor | Detección día 1 | Justificación |
+|---|---|---|---|---|
+| `fuel_level_pct` | physical | Sonda hidrostática (capacitiva opcional) | Nivel < umbral; 0% inminente | Sender de fábrica miente (CR00058: clavado 24%, tanque vacío). Evidencia forense |
+| `genset_running` | physical | Acelerómetro chasis GEF (ADXL345/LIS3DH) | Marcha real vs reportada | Ancla anti-puenteo / anti-telemetría falsa |
+| `Vrms L1/L2/L3` | physical | PZEM-004T ×3 (o ATM90E36) | Caída de fase, ausencia total, intermitencia | Causa raíz de cascada (CH00070: pueblo sin energía) |
+| `Irms L1/L2/L3` | physical | CT del PZEM | Confirmación de carga en operación GEF | Distingue GEF cargado vs en vacío |
+| `freq_hz` | physical | PZEM / ATM90E36 | Frecuencia fuera de rango (CR00143: 49,5 Hz) | Calidad de energía rural |
+| `ats_position` | connect/physical | Contacto seco ATS → GPIO | Transferió / no transferió, latencia | Sites sin contacto accesible → relé seco |
+| `genset_params` (RPM, T°, P aceite, V batería arranque) | connect | Modbus al controlador GEF (Cummins PowerCommand / ComAp / DSE) | Alarma activa, arranque fallido | Dato que el GEF ya expone, hoy ignorado |
+| `door_open` | physical | Reed switch por gabinete crítico | Apertura no autorizada (MI00188) | SEC integrado, costo marginal |
+| `cabinet_tamper` | physical | Acelerómetro en gabinete TX | Forzado/golpe (puerta forzada por abajo) | El reed solo no cubre el modus operandi real |
+| `engine_running_est` | inferred | De corriente del alternador | Redundancia a `genset_running` | Cruce de señales |
+| `fuel_rate_lph` | inferred | Δ`fuel_level`/Δt | Consumo anómalo | Base del estimador de autonomía |
+| `autonomy_hours` | inferred | `fuel_level` ÷ `fuel_rate` proyectado | Aviso antes del 20% | El número que evita el site down |
+| `ac_outage_event` | inferred | `Vrms` 3φ + `genset_running` | Inicio de cascada | Dispara coordinación con cooperativa eléctrica |
+| `cascade_risk` | inferred | `ac_outage` + `autonomy` | Riesgo de site down en X horas | Prioriza el truck roll |
+| `theft_score` | inferred (a validar) | Δ`fuel` sin marcha / inconsistente con carga | Sifoneo | HIPÓTESIS — se valida en piloto, no se promete a Claro |
+| `intrusion_score` | inferred | `door_open` + `cabinet_tamper` + horario | Intrusión real vs falsa | Reduce ruido de alarmas al NOC |
+
+#### WN-SITE-ENV+ (add-on #1 — prioridad subió: HVAC = 12% en muestra 177, vs 6% en 59)
+
+| Variable | source | Origen / sensor | Detección día 1 | Justificación |
+|---|---|---|---|---|
+| `temp_battery_room` | physical | SHT31 | T° > 25 °C | Arrhenius: +8 °C ≈ ½ vida de batería VRLA |
+| `temp/humidity_cabinet` | physical | SHT31 ×N | Condensación (CR00215: termostato 30/30) | 21 incidentes HVAC en 177 |
+| `airflow_diff_pressure` | physical | SDP810 / MPXV7002DP | Filtro tapado / ventilador caído | Confirma flujo real, no que el AC "prende" |
+| `water_floor` | physical | Sonda resistiva | Filtración por lluvia | Clima NEA |
+| `hvac_health` | inferred | duty cycle + ∆T alcanzado | AC corre pero no enfría | Salud del compresor |
+| `battery_life_consumed` | inferred | Arrhenius sobre histórico de T° | Vida útil quemada | ROI silencioso |
+| `cooling_telemetry` | connect | Modbus/BACnet si el CRAC es inteligente | Set-point, estado | Sites equipados |
+
+#### WN-SITE-SURGE (add-on #2 — valor forense/seguro, NO preventivo)
+
+| Variable | source | Origen / sensor | Detección día 1 | Justificación |
+|---|---|---|---|---|
+| `lightning_event` | physical | AS3935 | Tormenta en aproximación (1–40 km) | 17 casos; CR00104 cascada >USD 20k |
+| `tower_accel` | physical | Acelerómetro | Confirma evento físico real | Triangula con AS3935 (evita falso positivo EM) |
+| `spd_counter` | connect/physical | Contacto del SPD/pararrayos | Continuidad de protección | Donde el SPD tenga interfaz |
+| `lightning_damage_likelihood` | inferred | AS3935 + accel + transient AC | Correlación daño-evento | Valor de reclamo a seguro, no prevención |
+
+> **Nota de alcance:** Loros / fauna (CH00145, 3 cortes de fibra) y fallas de módulo RF (EQ-003, 14 casos) quedan FUERA de alcance — son ingeniería de red, no infraestructura física.
+
+---
+
+### Registro de decisiones (DEC)
+
+**DEC-PRODUCT-1** — Arquitectura de producto: un Hub común, dos modos **Connect** (software, lee equipo existente) y **Sense** (hardware, puntos ciegos). Híbrido por sitio. Reemplaza el modelo "5 kits independientes".
+
+**DEC-PRODUCT-2** — Fusión de WN-SITE-GEN + WN-SITE-PWR en **WN-SITE-CORE** (un nodo, dos grupos de sensores, regla de cascada unificada). WN-SITE-SEC deja de ser kit y pasa a **feature integrada del CORE** (reed + acelerómetro, costo marginal). SURGE y ENV+ son add-ons modulares.
+
+**DEC-SENSOR-1** — Nivel de combustible: **sensor físico independiente del controlador del GEF**, tecnología **hidrostática por defecto** (retrofit sin perforar tanque), capacitiva opcional donde el tanque lo permita. Justificación dura: 2 casos documentados de sender de fábrica trabado (CR00058). `source: physical`, valor forense.
+
+**DEC-SENSOR-2** — Marcha del GEF: **acelerómetro físico en chasis** como ancla anti-puenteo (Powerx documenta puenteo de red al genset apagado). Corriente del alternador como redundancia inferida.
+
+**DEC-INTEL-1** — Inteligencia en dos capas: **detección (día 1, reglas, sin baseline)** se vende como capacidad inmediata; **predicción (progresiva, baseline por sitio)** se presenta como capacidad que madura, nunca como promesa day-1.
+
+**DEC-GTM-1** — Modelo comercial **managed self-hosted**: el Hub vive en el sitio (dato soberano, jurisdicción AR, resiliente a backhaul intermitente), Wanomi opera y mantiene el Hub bajo contrato. Desactiva la objeción del NOC centralizado.
+
+**DEC-GTM-2** — Pitch anclado en data propia de Claro: truck rolls evitables + site downs por tanque vacío + cascada de energía. **El robo de combustible NO es el claim principal** (sin caso medido en AR) — es capacidad latente.
+
+**DEC-SCOPE-1** — MVP de Connect integra primero la **pata energía: genset + ATS + rectificador** (≈60% del dolor). ENV+/HVAC se adelanta hacia fase 1-2 por su peso en la muestra 177 (12%). Aire "tonto", batería fina y cámara-AI: fase 2.
+
+**DEC-INTEGRATION-1** — Connect es un **framework multi-driver**, no un adapter único. El parque de Claro NEA es heterogéneo (sin marca unificada por equipo). Drivers priorizados por frecuencia:
+- **GEF:** Cummins PowerCommand + ComAp + DSE.
+- **ATS:** ComAp InteliATS² (entre otros) — reúsa el dialecto Modbus ComAp del driver de GEF, reúso casi total.
+- **Rectificadores:** ZTE / FTN / Realtek — SNMP con MIB propietario. **Driver más costoso de Connect.**
+- **AA:** Westric vía controladora (Modbus/serie); termostato manual → **Sense puro** (SHT31 + clamp para inferir duty cycle).
+
+**DEC-SCOPE-2** — El mapa de telemetría por sitio (qué va Connect / qué va Sense) **no es planificable desde escritorio**: se releva en el **survey de instalación de cada sitio del piloto**. Los formularios de preventivos no referencian marca de equipo por sitio.
+
+---
+
+### Riesgos abiertos (RISK)
+
+**RISK-INTEGRATION-1** — El adapter Modbus de Connect debe soportar **Cummins PowerCommand como ciudadano de primera** (confirmado en informe 177, §5.1), no solo ComAp/DSE. Mapas de registro distintos.
+
+**RISK-INTEGRATION-2** — La lectura de rectificadores **no es universal**: depende de que el puerto de gestión esté cableado y vivo, cosa rara en sitios rurales. Política: **Connect donde el puerto de gestión existe y responde; Sense (clamp DC + V de string) donde no.** No prometer lectura universal de rectificador a Claro.
+
+**RISK-DATA-1** — La hipótesis de robo de diésel en gensets telco AR **no tiene caso medido** en 59 ni 177 reportes. `theft_score` se valida con datos del piloto; no se promete a Claro.
+
+**RISK-METHOD-1** — El informe de 177 (generado por Kimi.ai) tiene cifras financieras contradictorias (ROI 0,2 meses; ahorros USD 179.200 en TL;DR vs USD 41.174 en §10.3). Se usan sus **hechos de campo** (validados), se **descartan sus proyecciones financieras**.
+
+---
+
+### Pendientes para próxima sesión
+
+- **D-H — CERRADO (forma realista):** No se cierra como "marca X en todos los sitios" sino como **matriz de drivers priorizada (DEC-INTEGRATION-1) + relevamiento por sitio en el survey del piloto (DEC-SCOPE-2)**. Parque confirmado: GEF Cummins PowerCommand; ATS ComAp InteliATS²; rectificadores ZTE/FTN/Realtek; AA Westric o termostato manual. Sin unificación de marca → el modelo Connect/Sense queda validado de raíz.
+- Sites Tier 1 candidatos a piloto (de informe 177): CR00143 Paso de la Patria (9 incidentes, todos los modos), CR00070 Ituzaingó (1.410 L), CH00042 Basail, CR00061 Arrocera (2 rayos/3 días), CH00R02 Lote 5.
+- 4 sites SIN GEF de respaldo (CH00076 La Eduvigis, CH00070 Lapachito, MI00131) — vulnerabilidad estructural + gancho comercial de urgencia.
+- **Siguiente entregable natural:** BOM + diagrama eléctrico del WN-SITE-CORE (Área 3).
+- **Sim-3 paso 4** (botones de escenarios en `DevicePanel.vue`) — estacionado desde inicio #9.
+
