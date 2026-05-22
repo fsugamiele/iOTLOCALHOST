@@ -1,8 +1,8 @@
 # Wanomi — Estado del proyecto
 
-**Última actualización**: 2026-05-20 (cierre sesión #8)
+**Última actualización**: 2026-05-22 (cierre sesión #9)
 **Branch activa**: feature/telco-support
-**HEAD**: e9afdf1 (sincronizado con origin)
+**HEAD**: 9ed5ceb (1 commit adelante de origin — pendiente push)
 **Para nueva sesión**: leer este archivo + `docs/INVENTARIO_AUTO.md`
 
 ---
