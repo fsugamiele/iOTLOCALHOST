@@ -1,8 +1,7 @@
 # Wanomi — Estado del proyecto
 
-**Última actualización**: 2026-05-22 (cierre sesión #9)
+**Última actualización**: 2026-05-23 (cierre sesión #10)
 **Branch activa**: feature/telco-support
-**HEAD**: 9ed5ceb (1 commit adelante de origin — pendiente push)
 **Para nueva sesión**: leer este archivo + `docs/INVENTARIO_AUTO.md`
 
 ---
@@ -71,18 +70,20 @@ escenarios) pendiente — 1 día estimado. Demo a Claro estimada en 2-3 semanas.
 
 ---
 
-## Estado — Sesión #9 cerrada (2026-05-22)
+## Estado — Sesión #10 cerrada (2026-05-23)
 
-Primer entregable #9 COMPLETO: tabla físico-vs-soft congelada + modelo de producto
-Connect/Sense (un Hub, dos modos) + 11 entradas DEC + 4 RISK registradas en wanomi.md.
-Identidad de producto redefinida: capa de datos estandarizada y soberana + fierro en
-puntos ciegos. D-H cerrado en forma realista (matriz de drivers + survey por sitio).
+Área 3 (Hardware). Paquete de diseño COMPLETO del **WN-SITE-CORE** (núcleo de sitio,
+monitoreo-only Connect+Sense): mapa de I/O → BOM → diagrama de conexionado normalizado →
+esquemático multi-hoja (5 hojas) → guía de layout (PCB 4 capas). 9 entradas DEC-HW + 4 RISK-HW
+registradas en wanomi.md. Entregables a commitear bajo `docs/hardware/`.
 
 ### Próximos pasos
 
-1. BOM + diagrama eléctrico del WN-SITE-CORE (Área 3) — siguiente entregable natural.
-2. Sim-3 paso 4 — botones de escenarios en DevicePanel.vue (estacionado desde inicio #9).
-3. Survey de telemetría por sitio en el piloto (Tier 1: CR00143, CR00070, CH00042, CR00061).
+1. **CAD (Área 3)**: captura del esquemático en KiCad + ERC → layout 4 capas + DRC → Gerbers.
+   Lo cierra el ingeniero electrónico; usar la guía de layout como referencia.
+2. **Survey de telemetría Tier 1** (CR00143, CR00070, CH00042, CR00061): resolver RISK-HW-1/2/3
+   (bus Modbus máster, sonda combustible, rectificador/ATS).
+3. **Sim-3 paso 4** — botones de escenarios en `DevicePanel.vue` (estacionado desde inicio #9).
 
 ---
 
@@ -114,6 +115,14 @@ puntos ciegos. D-H cerrado en forma realista (matriz de drivers + survey por sit
 | DEC-DATA-4 | Plantilla amplía con `samplingType` por widget | event/telemetry/aggregated |
 | DEC-DATA-1 | Cada sensor es device independiente | No concentrado en 1 device |
 | DEC-HW-1 | Modelo maestro-esclavo de hardware | ESP-NOW + LoRa + RS485 |
+| DEC-HW-2 | WN-SITE-CORE monitoreo-only (Connect+Sense); no actúa sobre genset | No interferir O&M Claro |
+| DEC-HW-3 | Alimentación −48 VDC planta primaria; DC-DC aislado wide-input + supercap | No 220 VAC ni batería de crank |
+| DEC-HW-4 | ESP32-S3 (no ESP8266); Ethernet por W5500 | El S3 no tiene MAC nativa |
+| DEC-HW-5 | Clamps + combustible vía ADS1115 16-bit | Exactitud forense; evita ADC2/WiFi |
+| DEC-HW-6 | RTC DS3231 en el CORE | Timestamp forense sin red/NTP |
+| DEC-HW-7 | PCB 4 capas | Barrera −48 V + EMC + impedancia Ethernet |
+| DEC-HW-8 | Aislación: DC-DC + ADM2483 + opto en entradas de campo | Solo 3 cruces de barrera |
+| DEC-HW-9 | Salidas + LoRa como footprint DNP | Acción física y esclavos, fuera de scope |
 
 Detalles completos en `docs/wanomi.md`.
 
@@ -130,6 +139,10 @@ Detalles completos en `docs/wanomi.md`.
 - **Auditoría del repo > memoria del context** — la realidad está en el código,
   no en el context window.
 - **Commits separados por concern** — bisect-friendly, una intención por commit.
+- **Esquemático ≠ Gerbers**: fabricar la PCB requiere layout + DRC en CAD.
+- El proveedor pide diagrama normalizado (borneras/IEC), no alcanza BOM + esquemas.
+- ESP32-S3 no tiene MAC Ethernet nativa (≠ ESP32 clásico) → W5500.
+- ESP32-S3 N16R8: GPIO35/36/37 ocupados por PSRAM octal; 0/3/45/46 strapping.
 
 ---
 
