@@ -908,3 +908,32 @@ Paquete = lo necesario para que el diseñador de PCB capture en KiCad, rutee y g
 - Para un núcleo enterprise el costo correcto es mayor: CORE ~$220-280 PVP, no el rango de catálogo
   comercial ($45-105). El sensor físico de combustible (forense) es el ítem de campo más caro y el más valioso.
 
+---
+
+## Sesión #11 — 2026-05-24 · Área 3 (CAD del WN-SITE-CORE)
+
+Revisión ERC del esquemático Rev A y cierre de Rev B. Pinout ESP32-S3
+verificado sin conflictos (strapping/PSRAM/duplicados). Kit de layout
+entregado para la etapa de ruteo humana en KiCad.
+
+DEC-HW-10 — Alimentación del lazo 4-20 mA: agregado boost +5V→24V (U14).
+  El front-end de combustible referenciaba +V_LOOP inexistente; con +5V el
+  sender de 2 hilos no arranca. El +24V alimenta lazo y wetting de entradas.
+DEC-HW-11 — Protección de entrada −48V de dos etapas: GDT a PE (energía) +
+  TVS SMBJ64A (clamp). El SMBJ58A tenía stand-off insuficiente (ecualización
+  ~57.6V) y clamp 93.6V > 75V del DC-DC.
+DEC-HW-12 — Front-end de entradas digitales: wetting definido desde +24V con
+  R por canal ~4k7 (≥3-5 mA, CTR confiable del TLP281); IN3 (presencia AC) pasa
+  a canal dedicado, preferentemente vía AC-fail del rectificador (no 220VAC en placa).
+DEC-HW-13 — WS2812: Schottky en VDD (~4.3V) para VIH compatible con DIN 3V3.
+
+RISK-HW-5 (abierto) — Coordinación de clamp: con SMBJ64A el clamp queda ~103V,
+  por encima de los 75V continuos del DC-DC. Confirmar rating transitorio del
+  URB4805YMD; si <100V/ms, módulo telecom surge-rated o limitador serie.
+
+BOM: placa $86.55 → $89.00; kit $139.55 → $142.00. Pinout sin cambios.
+Validaciones arrastradas (no frenan layout): H-4 ADS1115 vs RMS, H-6 hold-up, H-7 term. RS-485.
+
+Abierto al cierre #11: captura + ruteo 4 capas + Gerbers en KiCad (tarea humana,
+Área 3). Kit listo: reglas DRC, orden de layout/floorplan, script de export.
+

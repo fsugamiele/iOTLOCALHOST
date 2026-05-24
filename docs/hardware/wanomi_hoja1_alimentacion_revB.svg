@@ -1,0 +1,137 @@
+<svg viewBox="0 0 1060 640" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#141412"/>
+    </marker>
+    <marker id="arrG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#19C98A"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1060" height="640" rx="10" fill="#F5F3EE"/>
+
+  <!-- Title -->
+  <rect x="0" y="0" width="1060" height="56" rx="10" fill="#141412"/>
+  <text x="24" y="26" fill="#F5F3EE" font-size="17" font-weight="bold">wanomi · WN-SITE-CORE — Hoja 1: Alimentación y protección</text>
+  <text x="24" y="45" fill="#19C98A" font-size="13">Rev B · 2026-05-24 · −48 VDC planta → 5 V (aislado) → 3V3  ·  + lazo/wetting +24 V</text>
+  <text x="1036" y="34" fill="#F5F3EE" font-size="12" text-anchor="end">Diagrama de bloques (no esquemático)</text>
+
+  <!-- ===== FIELD BAND: −48V protection chain ===== -->
+  <text x="24" y="84" fill="#E84040" font-size="12" font-weight="bold">DOMINIO DE CAMPO  ·  −48 V (primario)</text>
+
+  <!-- chain boxes (amber/critico tint) -->
+  <!-- X1 -->
+  <rect x="20" y="96" width="104" height="52" rx="6" fill="#fff" stroke="#E84040" stroke-width="1.6"/>
+  <text x="72" y="118" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">X1</text>
+  <text x="72" y="135" font-size="10" text-anchor="middle" fill="#555">−48V/0V/PE</text>
+  <!-- F1 -->
+  <rect x="150" y="96" width="104" height="52" rx="6" fill="#fff" stroke="#E84040" stroke-width="1.6"/>
+  <text x="202" y="118" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">F1</text>
+  <text x="202" y="135" font-size="10" text-anchor="middle" fill="#555">fusible 1 A</text>
+  <!-- GDT1 NEW -->
+  <rect x="280" y="96" width="104" height="52" rx="6" fill="#FFF7E6" stroke="#F0A500" stroke-width="2.2"/>
+  <text x="332" y="118" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">GDT1</text>
+  <text x="332" y="135" font-size="10" text-anchor="middle" fill="#555">surge → PE</text>
+  <rect x="338" y="86" width="46" height="15" rx="7" fill="#F0A500"/>
+  <text x="361" y="97" font-size="9" font-weight="bold" text-anchor="middle" fill="#141412">NUEVO</text>
+  <!-- FL1 -->
+  <rect x="410" y="96" width="104" height="52" rx="6" fill="#fff" stroke="#E84040" stroke-width="1.6"/>
+  <text x="462" y="118" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">FL1</text>
+  <text x="462" y="135" font-size="10" text-anchor="middle" fill="#555">filtro EMI</text>
+  <!-- Q1 -->
+  <rect x="540" y="96" width="104" height="52" rx="6" fill="#fff" stroke="#E84040" stroke-width="1.6"/>
+  <text x="592" y="118" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">Q1</text>
+  <text x="592" y="135" font-size="10" text-anchor="middle" fill="#555">rev-pol DMP3098</text>
+  <!-- TVS1 changed -->
+  <rect x="670" y="96" width="104" height="52" rx="6" fill="#FFF7E6" stroke="#F0A500" stroke-width="2.2"/>
+  <text x="722" y="116" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">TVS1</text>
+  <text x="722" y="132" font-size="10" text-anchor="middle" fill="#555">SMBJ64A</text>
+  <text x="722" y="144" font-size="9" text-anchor="middle" fill="#999">(era 58A)</text>
+  <!-- U1 DC-DC straddling barrier -->
+  <rect x="800" y="90" width="200" height="64" rx="6" fill="#fff" stroke="#141412" stroke-width="1.8"/>
+  <text x="900" y="114" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">U1 · DC-DC aislado</text>
+  <text x="900" y="131" font-size="10" text-anchor="middle" fill="#555">18-75 V → 5 V · 10 W</text>
+  <text x="900" y="146" font-size="9" text-anchor="middle" fill="#555">≥1.5 kV aislación</text>
+
+  <!-- chain arrows -->
+  <line x1="124" y1="122" x2="148" y2="122" stroke="#141412" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="254" y1="122" x2="278" y2="122" stroke="#141412" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="384" y1="122" x2="408" y2="122" stroke="#141412" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="514" y1="122" x2="538" y2="122" stroke="#141412" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="644" y1="122" x2="668" y2="122" stroke="#141412" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="774" y1="122" x2="798" y2="122" stroke="#141412" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- isolation barrier through U1 -->
+  <line x1="900" y1="70" x2="900" y2="600" stroke="#19C98A" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="908" y="586" font-size="11" font-weight="bold" fill="#19C98A">barrera de aislación galvánica</text>
+
+  <!-- ===== LOGIC BAND ===== -->
+  <text x="916" y="84" fill="#19C98A" font-size="12" font-weight="bold" text-anchor="end">DOMINIO LÓGICO (secundario)</text>
+
+  <!-- +5V bus -->
+  <line x1="1000" y1="122" x2="1020" y2="122" stroke="#19C98A" stroke-width="2.2" marker-end="url(#arrG)"/>
+  <circle cx="1024" cy="122" r="4" fill="#19C98A"/>
+  <text x="1030" y="118" font-size="11" font-weight="bold" fill="#19C98A">+5V</text>
+  <!-- vertical +5V bus down then horizontal across logic band -->
+  <line x1="1024" y1="122" x2="1024" y2="230" stroke="#19C98A" stroke-width="2.2"/>
+  <line x1="160" y1="230" x2="1024" y2="230" stroke="#19C98A" stroke-width="2.2"/>
+  <text x="170" y="222" font-size="11" font-weight="bold" fill="#19C98A">bus +5V</text>
+
+  <!-- Branch 1: buck -> +3V3 -->
+  <line x1="220" y1="230" x2="220" y2="270" stroke="#19C98A" stroke-width="2" marker-end="url(#arrG)"/>
+  <rect x="160" y="272" width="120" height="52" rx="6" fill="#fff" stroke="#19C98A" stroke-width="1.6"/>
+  <text x="220" y="294" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">U2 · buck</text>
+  <text x="220" y="311" font-size="10" text-anchor="middle" fill="#555">5 V → 3V3 · 3 A</text>
+  <line x1="220" y1="324" x2="220" y2="356" stroke="#19C98A" stroke-width="2" marker-end="url(#arrG)"/>
+  <rect x="170" y="358" width="100" height="34" rx="6" fill="#E8F8F1" stroke="#19C98A" stroke-width="1.6"/>
+  <text x="220" y="380" font-size="12" font-weight="bold" text-anchor="middle" fill="#0F8A5F">+3V3</text>
+  <text x="220" y="410" font-size="9" text-anchor="middle" fill="#777">ESP32-S3 · sensores</text>
+  <text x="220" y="422" font-size="9" text-anchor="middle" fill="#777">ADS1115 · W5500 · RTC</text>
+
+  <!-- Branch 2: supercap hold-up -->
+  <line x1="470" y1="230" x2="470" y2="270" stroke="#19C98A" stroke-width="2" marker-end="url(#arrG)"/>
+  <rect x="400" y="272" width="140" height="52" rx="6" fill="#fff" stroke="#19C98A" stroke-width="1.6"/>
+  <text x="470" y="290" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">SC1 · hold-up</text>
+  <text x="470" y="306" font-size="10" text-anchor="middle" fill="#555">2×1F + ideal-diode</text>
+  <text x="470" y="319" font-size="9" text-anchor="middle" fill="#555">SS34 desde +5V</text>
+  <text x="470" y="344" font-size="9" text-anchor="middle" fill="#777">sostiene +5V para el</text>
+  <text x="470" y="356" font-size="9" text-anchor="middle" fill="#777">último aviso (H-6: ~1 s)</text>
+
+  <!-- Branch 3: boost +24V NEW -->
+  <line x1="760" y1="230" x2="760" y2="270" stroke="#19C98A" stroke-width="2" marker-end="url(#arrG)"/>
+  <rect x="690" y="272" width="140" height="52" rx="6" fill="#FFF7E6" stroke="#F0A500" stroke-width="2.2"/>
+  <text x="760" y="294" font-size="12" font-weight="bold" text-anchor="middle" fill="#141412">U14 · boost</text>
+  <text x="760" y="311" font-size="10" text-anchor="middle" fill="#555">5 V → 24 V (MT3608)</text>
+  <rect x="746" y="262" width="46" height="15" rx="7" fill="#F0A500"/>
+  <text x="769" y="273" font-size="9" font-weight="bold" text-anchor="middle" fill="#141412">NUEVO</text>
+
+  <line x1="760" y1="324" x2="760" y2="352" stroke="#F0A500" stroke-width="2.2"/>
+  <rect x="710" y="354" width="100" height="32" rx="6" fill="#FDEFCC" stroke="#F0A500" stroke-width="1.8"/>
+  <text x="760" y="375" font-size="12" font-weight="bold" text-anchor="middle" fill="#9A6B00">+24V</text>
+
+  <!-- +24V split to loop + wetting -->
+  <line x1="760" y1="386" x2="760" y2="412" stroke="#F0A500" stroke-width="2.2"/>
+  <line x1="620" y1="412" x2="900" y2="412" stroke="#F0A500" stroke-width="2.2"/>
+  <line x1="620" y1="412" x2="620" y2="446" stroke="#F0A500" stroke-width="2.2" marker-end="url(#arr)"/>
+  <line x1="900" y1="412" x2="900" y2="446" stroke="#F0A500" stroke-width="2.2" marker-end="url(#arr)"/>
+
+  <rect x="540" y="448" width="160" height="56" rx="6" fill="#fff" stroke="#F0A500" stroke-width="1.6"/>
+  <text x="620" y="470" font-size="11" font-weight="bold" text-anchor="middle" fill="#141412">Lazo 4-20 mA → X4</text>
+  <text x="620" y="486" font-size="10" text-anchor="middle" fill="#555">combustible (forense)</text>
+  <text x="620" y="499" font-size="9" text-anchor="middle" fill="#777">Rsense 150 Ω → ADS1115 A2</text>
+
+  <rect x="820" y="448" width="160" height="56" rx="6" fill="#fff" stroke="#F0A500" stroke-width="1.6"/>
+  <text x="900" y="470" font-size="11" font-weight="bold" text-anchor="middle" fill="#141412">Wetting entradas → X5</text>
+  <text x="900" y="486" font-size="10" text-anchor="middle" fill="#555">8 opto · R 4k7 (~5 mA)</text>
+  <text x="900" y="499" font-size="9" text-anchor="middle" fill="#777">IN3 (AC) front-end aparte</text>
+
+  <!-- Legend -->
+  <rect x="20" y="556" width="14" height="14" rx="3" fill="#FFF7E6" stroke="#F0A500" stroke-width="2"/>
+  <text x="40" y="567" font-size="11" fill="#141412">Nuevo / modificado en Rev B</text>
+  <rect x="250" y="556" width="14" height="14" rx="3" fill="#fff" stroke="#E84040" stroke-width="1.6"/>
+  <text x="270" y="567" font-size="11" fill="#141412">Dominio de campo (−48 V)</text>
+  <rect x="470" y="556" width="14" height="14" rx="3" fill="#fff" stroke="#19C98A" stroke-width="1.6"/>
+  <text x="490" y="567" font-size="11" fill="#141412">Dominio lógico (5 V / 3V3)</text>
+
+  <text x="1036" y="630" font-size="9" text-anchor="end" fill="#999">wanomi · Área 3 — Hardware · feature/telco-support · para docs/hardware/</text>
+</svg>

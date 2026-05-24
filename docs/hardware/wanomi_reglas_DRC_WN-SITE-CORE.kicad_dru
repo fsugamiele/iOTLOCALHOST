@@ -1,0 +1,60 @@
+(version 1)
+
+# ============================================================================
+# WN-SITE-CORE  ·  Reglas DRC custom  ·  KiCad 7/8  ·  Rev B (sesion #11)
+# Traduce la guia de layout (§3) + net classes de la revision ERC (§7).
+# ----------------------------------------------------------------------------
+# IMPORTAR:  Board Setup -> Custom Rules  (pegar este contenido).
+# REQUIERE definir antes, en Board Setup -> Net Classes, estas clases con
+# estos nombres exactos (los usan las condiciones de abajo):
+#   HV_FIELD : +48V, 0V, primario DC-DC, A/B bus RS-485 de campo, FGND
+#   PWR_5V   : +5V, +5V_ISO, +24V (lazo/wetting)
+#   PWR_3V3  : +3V3
+#   ETH_DIFF : TX+, TX-, RX-  (par diferencial W5500 <-> RJ45)  -> 100 ohm
+#   ANALOG   : CT1_S, CT2_S, FUEL_S, bias
+#   default  : resto (SPI, I2C, logica)
+#
+# NOTA: el par diferencial (impedancia 100 ohm, gap, length-match) se
+# configura en Net Classes / Differential Pairs, NO aca. Y el keep-out de
+# antena del ESP32-S3 es un "Rule Area / Keepout" dibujado en el layout
+# (5x10 mm sin cobre en las 4 capas), no una regla .dru.
+# ============================================================================
+
+# --- Barrera de aislacion -48V / campo (guia §3.1): 6 mm a todo lo no-HV ---
+(rule "Barrera aislacion -48V a logica"
+  (constraint clearance (min "6mm"))
+  (condition "A.NetClass == 'HV_FIELD' && B.NetClass != 'HV_FIELD'"))
+
+# --- Creepage extra de HV al borde de placa ---
+(rule "HV clearance al borde (creepage)"
+  (constraint edge_clearance (min "1.0mm"))
+  (condition "A.NetClass == 'HV_FIELD'"))
+
+# --- Anchos minimos de potencia (guia §3.6, IPC-2221 ajustar por corriente) ---
+(rule "Ancho minimo -48V / 0V"
+  (constraint track_width (min "1.0mm"))
+  (condition "A.NetClass == 'HV_FIELD'"))
+
+(rule "Ancho minimo rails 5V / 3V3 / 24V"
+  (constraint track_width (min "0.5mm"))
+  (condition "A.NetClass == 'PWR_5V' || A.NetClass == 'PWR_3V3'"))
+
+# --- Ethernet: separacion del par respecto del resto (guia §3.4) ---
+(rule "Clearance Ethernet diff vs otras nets"
+  (constraint clearance (min "0.25mm"))
+  (condition "A.NetClass == 'ETH_DIFF' && B.NetClass != 'ETH_DIFF'"))
+
+# --- Analogico: separacion del retorno ruidoso (guia §3.5) ---
+(rule "Clearance analogico vs HV"
+  (constraint clearance (min "1.0mm"))
+  (condition "A.NetClass == 'ANALOG' && B.NetClass == 'HV_FIELD'"))
+
+# --- Clearance general al borde de placa ---
+(rule "Clearance al borde de placa"
+  (constraint edge_clearance (min "0.3mm")))
+
+# --- Anillo de via de potencia (guia §3.6: vias multiples en paralelo) ---
+(rule "Via de potencia"
+  (constraint annular_width (min "0.25mm"))
+  (constraint hole (min "0.5mm"))
+  (condition "A.NetClass == 'HV_FIELD' || A.NetClass == 'PWR_5V'"))
