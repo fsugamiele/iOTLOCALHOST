@@ -1,26 +1,26 @@
 # STATUS — WN-SITE-CORE (feature/telco-support)
-Última sesión: #11 · 2026-05-24
+Última sesión: #12 · 2026-05-27
 
 ## Dónde estamos
-- Diseño WN-SITE-CORE: esquemático en Rev B (post-ERC). Monitoreo-only (Connect+Sense).
-- BOM Rev B cerrado ($89 placa / $142 kit). Guía de layout + reglas DRC + orden de layout listos.
-- Pinout ESP32-S3 verificado limpio.
+- WN-SITE-CORE: esquemático Rev B, ERC 0/0/0, diseño CONGELADO. DEC-HW-1..25 registradas.
+- Gerbers v1 exportados; **revisión mecánica pendiente (v2)**: reubicar ESP, rotar/correr USB, 4 montajes M3.
+- Arquitectura validada vs informe de equipamiento de Claro (Modbus RTU + TCP).
 
-## Próximos pasos (abiertos)
-1. [Área 3 · humano en KiCad] Capturar esquemático Rev B → ERC → layout 4 capas
-   → DRC → Gerbers. Usar el kit de layout (orden_layout, .kicad_dru, export_gerbers.sh).
-   Esta es la tarea que NO puede cerrarse en chat: requiere ruteo interactivo.
-2. [Área 3] Resolver RISK-HW-5 (rating transitorio del DC-DC vs clamp TVS) antes de fabricar.
-3. [Área 1] Survey telemetría Tier 1 (CR00143, CR00070, CH00042, CR00061) → RISK-HW-1/2/3.
-4. [Área 2] Sim-3 paso 4 — botones de escenarios en DevicePanel.vue (estacionado desde #9).
+## Próximos pasos
+1. [Área 3 · Flux] Revisión mecánica → DRC limpio → Gerbers v2.
+2. [Fab] Enviar **Gerbers v2** (no v1) a JLCPCB para fabricación y prueba funcional del prototipo.
+3. [Área 3 + Área 1] Cerrar RISK-HW-5 antes de despliegue en campo.
+4. [Área 2] Validar dying-gasp (AIN3) y mapas Modbus en banco (ComAp + Cummins).
+5. [Área 1] Survey Tier 1 (CR00143, CH00042, CR00070, CH00R02, CR00061).
+6. [Área 2] Sim-3 paso 4 — botones de escenarios en DevicePanel.vue (estacionado desde #9).
 
 ## Decisiones / riesgos
-- Nuevas: DEC-HW-10..13. Riesgo abierto: RISK-HW-5.
-- Validaciones de placa arrastradas: H-4, H-6, H-7 (ver wanomi.md #11).
+- Cerradas: DEC-HW-1..25. Riesgo abierto: RISK-HW-5.
+- Backlog de mejoras futuras: MEJORA-HW-1..4 (ver wanomi.md #12 y wn-site-core-cierre-sesion.md).
 
 ## Pendientes operativos del repo
 - #10: hacer `git push` de los +2 commits; mover `docs/cierre_sesion_10.md` → `docs/hardware/`.
-- #11: agregar a docs/hardware/ los entregables de la #11 (lista abajo) y este cierre.
+- #11/#12: Gerbers v2 pendientes en Flux (revisión mecánica).
 
 ---
 

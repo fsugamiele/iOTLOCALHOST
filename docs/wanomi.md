@@ -937,3 +937,41 @@ Validaciones arrastradas (no frenan layout): H-4 ADS1115 vs RMS, H-6 hold-up, H-
 Abierto al cierre #11: captura + ruteo 4 capas + Gerbers en KiCad (tarea humana,
 Área 3). Kit listo: reglas DRC, orden de layout/floorplan, script de export.
 
+---
+
+## Sesión #12 — 2026-05-27 · Área 3 (cierre WN-SITE-CORE)
+
+Decisiones de hardware DEC-HW-18..25. Revisión mecánica de Gerbers v1. Backlog de mejoras futuras registrado.
+
+DEC-HW-18 — TVS1 de entrada SMBJ64A → SMCJ64A-T7 (1500W, SMC). Clamp ~103V @Ipp=14.6A;
+  el GDT de 1ª etapa desvía el grueso del transitorio.
+DEC-HW-19 — Rectificador/Power Plant consultado por Modbus TCP vía W5500 en paralelo al
+  uplink MQTT; un solo RJ45 concentra ambos protocolos.
+DEC-HW-20 — Pinzas CT reposicionadas: CT1 en acometida comercial + CT2 cross-check forense
+  de salida GEF. Los valores eléctricos del GEF/Power Plant se leen por Modbus (no redundados con CT).
+DEC-HW-21 — Combustible: front-end 4-20 mA con sensor de nivel industrial; se descarta HC-SR04.
+DEC-HW-22 — U1 = Traco THN 10-4811WIR (railway EN50155/61373, IEC/EN/UL 62368-1, aislación
+  3kV, entrada 4:1 18-75V, 5V/2A 10W, package 1"×1"). Reemplaza al TEN 10-4811 (EOL / sólo
+  60950-1 / sin rating de surge).
+DEC-HW-23 — AS3935 detector de rayo: footprint DNP reservado. SPI compartido; CS=GPIO43,
+  IRQ=GPIO44 (libera consola UART0; debug por USB-C). Poblar sólo si el piloto valida demanda.
+DEC-HW-24 — R485T 120Ω poblado por defecto (BOM + Pick&Place); des-poblar por variante de sitio.
+DEC-HW-25 — Energización en piloto: fuente externa AC/DC o batería (24V o 48V, rango 18-75V
+  de U1). Respetar polaridad: TVS SMCJ64A unidireccional orientado para −48V negativo-a-masa.
+  Piloto usa fuente externa → sin cambio de placa.
+
+Revisión mecánica Gerbers v1 (sólo colocación; esquemático + ERC 0/0/0 + DEC-HW-1..25 intactos):
+- ESP32-S3 (U3) cuelga ~4.5mm del borde → reubicar, antena al borde, keepout 4 capas.
+- USB-C (JUSB1) apunta hacia adentro → rotar a borde al ras.
+- Agujeros de montaje ausentes → agregar 4× M3 (3.2mm) en esquinas con keepout.
+Acción: revisión en Flux → re-pour + re-ruteo → DRC → Gerbers v2.
+
+Backlog de mejoras futuras (NO en piloto):
+- MEJORA-HW-1: diodo OR Schottky desde USB-C 5V al riel +5V (commissioning sin −48V).
+- MEJORA-HW-2: entrada polaridad universal (puente / ideal-diode).
+- MEJORA-HW-3: variante 9-36V (THN 10-xx05WIR, mismo footprint) para sites 12-24V.
+- MEJORA-HW-4: front-end PoE PD + magnética en RJ45 (alimentación por cable de red).
+
+Estado al cierre: esquemático Rev B, ERC 0/0/0, diseño CONGELADO. DEC-HW-1..25 cerradas.
+Gerbers v1 exportados; revisión mecánica pendiente (v2) antes de enviar a JLCPCB.
+
