@@ -275,7 +275,7 @@ export default {
   mounted() {
     this._labelInterval = setInterval(() => {
       this.$forceUpdate();
-    }, 5000);
+    }, 1000);
   },
 
   beforeDestroy() {
