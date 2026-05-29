@@ -285,11 +285,12 @@ async function getDeviceMqttCredentials(dId, userId, firmwareType) {
     const newPassword = makeid(10);
 
     const result = await EmqxAuthRule.updateOne(
-      { type: "device", dId: dId },
+      { type: "device", userId: userId, dId: dId },
       {
         $set: {
           username: newUserName,
           password: hashPassword(newPassword),
+          publish: [userId + "/" + dId + "/+/sdata"],
           subscribe: subscribeTopics,
           updatedTime: Date.now()
         }
