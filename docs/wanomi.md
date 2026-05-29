@@ -975,3 +975,97 @@ Backlog de mejoras futuras (NO en piloto):
 Estado al cierre: esquemático Rev B, ERC 0/0/0, diseño CONGELADO. DEC-HW-1..25 cerradas.
 Gerbers v1 exportados; revisión mecánica pendiente (v2) antes de enviar a JLCPCB.
 
+
+## Sesión #13 — 2026-05-28 · Cierre Área 1 (Survey Tier 1 v2.0) + apertura Wanomi 3.0 Refactor
+
+### Contexto
+
+Sesión multi-tema. Tres bloques de trabajo encadenados:
+
+1. **Cierre de Área 1** — paquete metodológico completo de Survey Tier 1 para el piloto Claro NEA, incorporando los tres documentos técnicos producidos en paralelo (informe de marcas de equipamiento Claro AR, estudio de conectividad del Hub, paquete de diseño WN-SITE-CORE Rev B).
+2. **Paréntesis operativo** — diagnóstico del simulador WN-SEC/WN-GEN: los widgets no muestran datos. Diagnóstico realizado, no bloqueante. Pendiente de retomar (ver §C).
+3. **Decisión estratégica** — formalización de **Wanomi 3.0 Refactor** como nuevo ciclo de producto, con documentación nueva en paralelo al `docs/` legacy.
+
+### A · Cierre Área 1 — Survey Tier 1 v2.0 entregado
+
+Paquete de 5 archivos producido en `docs/survey/`:
+
+| Archivo | Líneas | Función |
+|---|---|---|
+| `README.md` | 89 | Índice + stack esperado del parque NEA + perfiles por sitio con marcas confirmadas |
+| `protocolo_survey.md` | 331 | Objetivos, RISKs con criterios de cierre, logística, gear list, plantilla cell owner, 7 DEC-SURVEY-* |
+| `checklist_campo.md` | 349 | Recorrido físico imprimible, sub-procedimientos por marca (ComAp/Cummins/Eltek), medición LTE B28 |
+| `formulario_captura.md` | 395 | Schema estructurado por sitio paralelo al modelo Site del backend, sección Hub Wanomi nueva |
+| `hipotesis_connect_sense.md` | 385 | Matriz Connect/Sense por cada uno de los 5 sites Tier 1 + estimaciones cruzadas pre-survey |
+
+**Estado:** listo para revisión con el equipo de Área 1 (Asesor profesional telco + Ex-técnico telco + Confiabilidad industrial + Seguridad física). No avanza a ejecución hasta esa revisión.
+
+### B · Decisiones del paquete Survey (DEC-SURVEY-1..7)
+
+| ID | Decisión |
+|---|---|
+| DEC-SURVEY-1 | Survey NO incluye trabajo en altura ni apertura de equipos energizados |
+| DEC-SURVEY-2 | Mediciones Modbus son lectura pasiva (sniffing) por default; activa solo con autorización del cell owner |
+| DEC-SURVEY-3 | Foto-documentación obligatoria de paneles frontales y traseros; sin foto el campo queda "sin verificar" |
+| DEC-SURVEY-4 | Captura por sitio = 1 archivo MD/JSON estructurado paralelo al modelo Site del backend |
+| DEC-SURVEY-5 | RISK-DATA-1 (theft_score) NO se cierra en este survey — requiere meses de operación |
+| DEC-SURVEY-6 | RISK-HW-4 (SDP810) **cerrado por diseño** en CORE Rev B. Survey solo determina ubicación del punto de toma |
+| DEC-SURVEY-7 | Cobertura LTE Cat M1 B28 (RSRP en lugar del Hub) es **variable de viabilidad de primera clase** del sitio |
+
+### C · Paréntesis simulador — diagnóstico realizado, retomada postergada
+
+Síntoma reportado: simulador corre, widgets vacíos. Diagnóstico aplicado en orden de costo (indicador MQTT navbar → user logueado → consola browser → log simulador → Mongo).
+
+**Hallazgo:** el seed se corrió contra `fsugamiele@gmail.com` (userId `69d135a2a7831f0014bd9074`) y no contra el `telco-test@wanomi.test` documentado en sesión #5 (DEC-36). Los 6 devices del simulador efectivamente están bind al user correcto del browser. **El userId mismatch — hipótesis inicial — no era el problema.** Las causas posibles que quedan abiertas (orden de probabilidad):
+
+1. Templates con widgets bind a `dId`s del seed viejo (que ya no existen).
+2. Pipeline EMQX → saver-webhook → MongoDB roto en algún paso (verificable con `db.data.find({...}).sort({time:-1}).limit(5)`).
+3. Frontend recibe los mensajes MQTT pero no encuentra widget que matchee el par `dId+variable`.
+
+**Decisión operativa:** pausar el simulador. No es bloqueante para Wanomi 3.0 Refactor; se retoma cuando se priorice por demo o por integración con la nueva arquitectura. Backlog: `BACKLOG-SIM-1`.
+
+### D · Apertura formal — Wanomi 3.0 Refactor
+
+Tras consolidar las decisiones estratégicas de las sesiones #8 a #12 (marco enterprise, Connect/Sense, edge distribuida, capa de agregación NOC, sensor híbrido físico+soft, dos dashboards, tres actores, framework multi-driver, sitio CORE+add-ons), Franco formaliza el inicio del ciclo **Wanomi 3.0**.
+
+**Definición:** Wanomi 3.0 NO es una iteración menor del producto existente. Es la materialización formal del producto enterprise diseñado en sesiones #8-#12, con documentación nueva en paralelo al `docs/` legacy. Las sesiones anteriores a #8 (Sim-1, Sim-2, demo Claro original, modelo "5 kits independientes") son **histórico** y no son base de diseño para 3.0.
+
+#### Decisiones nuevas (DEC-REF)
+
+| ID | Decisión |
+|---|---|
+| DEC-REF-1 | Wanomi 3.0 hereda como bases inalterables las decisiones estratégicas de las sesiones #8 a #12 (DEC-STRAT-1..3, DEC-PRED-1, DEC-ARCH-1..2, DEC-SENSOR-1..2, DEC-FORENSIC-2, DEC-HMAC-1, DEC-STACK-1, DEC-DASH-1..2, DEC-PRODUCT-1..2, DEC-INTEL-1, DEC-GTM-1..2, DEC-SCOPE-1..2, DEC-INTEGRATION-1, DEC-HW-1..25) |
+| DEC-REF-2 | Documentación del refactor vive en `docsRefactor/` (raíz del repo), con subcarpetas por área. `docs/` legacy queda como histórico inmutable |
+| DEC-REF-3 | Archivo maestro `docsRefactor/WanomiRefactor.md` consolida pilares + decisiones del refactor (DEC-REF-*) + roadmap de fases |
+| DEC-REF-4 | Las sesiones anteriores a #8 NO son base de diseño para 3.0. Sus decisiones quedan como referencia histórica solamente |
+| DEC-REF-5 | Próxima sesión = **reunión multi-área** (las 4 áreas, 15 roles) para validar bases del refactor y definir orden de ataque |
+
+#### Estructura nueva de documentación
+
+```
+IotLocalhost/
+├── docs/                    ← LEGACY, inmutable (no se borra, no se modifica)
+│   ├── wanomi.md             ← histórico completo
+│   ├── STATUS.md             ← estado del repo legacy (rama feature/telco-support)
+│   └── survey/               ← paquete Survey Tier 1 v2.0
+│
+└── docsRefactor/            ← NUEVO — Wanomi 3.0
+    ├── WanomiRefactor.md     ← documento maestro
+    ├── Hardware/             ← Área 3 — WN-SITE-CORE, add-ons, sub-nodos
+    ├── Software/             ← Área 2 — backend, frontend, firmware
+    ├── Estrategia/           ← Área 1 — escenarios, sites, integración Connect
+    └── Marketing/            ← Área 4 — pitch, branding, brochures
+```
+
+### E · Próximos pasos
+
+1. **Reunión multi-área de arranque** (próxima sesión #14): validar bases del refactor, priorizar áreas de ataque, definir entregable mínimo por área para la primera iteración. Agenda en `docsRefactor/agenda_reunion_inicial.md`.
+2. **Revisión Survey Tier 1** con Área 1 (en paralelo, fuera del refactor): aprobación o ajustes del paquete antes de coordinar visitas con cell owners.
+3. **Continuar Área 3** (independiente del refactor en su núcleo, pero alineado): revisión mecánica Gerbers v2 → fab JLCPCB.
+4. **Retomar simulador** (postergado): solo si la demo lo demanda o si hace falta para validar 3.0.
+
+### Lección registrada
+
+El simulador estaba bind al user correcto desde el principio. La hipótesis "userId mismatch" se sostuvo dos turnos antes de caer con un query a Mongo. **Aprendizaje:** validar contra datos crudos antes de proponer fix. El indicador "MQTT verde + auth refresh exitoso en log" debió hacer caer la hipótesis credencial-corrupta en el turno 1.
+
+---
