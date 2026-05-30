@@ -1069,3 +1069,29 @@ IotLocalhost/
 El simulador estaba bind al user correcto desde el principio. La hipótesis "userId mismatch" se sostuvo dos turnos antes de caer con un query a Mongo. **Aprendizaje:** validar contra datos crudos antes de proponer fix. El indicador "MQTT verde + auth refresh exitoso en log" debió hacer caer la hipótesis credencial-corrupta en el turno 1.
 
 ---
+
+### Sesión #14 — 2026-05-30 — Reunión multi-área de arranque Wanomi 3.0 Refactor
+
+**Objetivo:** ejecutar la agenda de 5 bloques de arranque del refactor.
+
+**Resultado:** MVP de Wanomi 3.0 definido + 10 DEC-REF nuevas (6 a 15) + biblioteca de campo caracterizada.
+
+**Desarrollo:**
+- **Bloque 1 (validación):** 0 decisiones heredadas tumbadas. Refuerzo de DEC-ARCH-2 con evidencia del simulador (commit 660d841). 5 entradas a backlog.
+- **Desvío documental (camino A):** se procesó la biblioteca de campo `cinetik.rar` (80+ archivos). Resultado: parque Connect caracterizado con evidencia dura.
+  - Familias de protocolo: **Modbus** (Eltek SmartPack S/II TCP, Vertiv SC200 TCP, ComAp RTU, MCX/Westric) + **SNMP** (Vertiv NCU, ZTE ZXDU CSU, Delta PSC3) + **contacto seco** (TLZ11).
+  - **5 familias de controlador GEF** identificadas (no 3): Cummins PCC, ComAp, DSE, + PowerWizard 2.1, + SDMO NEXYS/TELYS.
+  - **ComAp InteliATS NT** mapeado 100% a nivel registro (valores vivos + setpoints).
+  - Aporte de Franco: mapas Modbus de **ComAp InteliGen NT** y **Cummins PowerCommand** → dominio mecánico (°C/aceite/RPM/combustible) confirmado **Connect-able**.
+  - Datos crudos `Record2024_*.csv` = logs BMS litio. Gotcha: coma decimal (locale AR) en ingestión.
+  - Flags de seguridad: credenciales SNMP por defecto + archivos de credenciales en el rar (excluidos, no abiertos).
+- **Bloque 3 (MVP):** Connect-first sobre ComAp InteliGen + Eltek, CORE fuera de ruta crítica. Catálogo de **~40 reglas de detección día 1**. Refactor reutiliza widget/template + capa Site/Driver/RulePacks/NotificationRouter. Simulador como banco de pruebas.
+- **Bloque 4 (compromisos):** entregable iter 1 por área con responsable, fecha (relativa a T0) y dependencias. Ruta crítica: Marketing(pitch)→Estrategia(sitio)→instalación.
+
+**Decisiones:** DEC-REF-6 a DEC-REF-15 (ver `docsRefactor/WanomiRefactor.md` §5).
+
+**Renders recibidos:** prototipos Hub/CORE/sensores (Gemini) para Marketing. Corrección obligatoria: pantallas 220 V AC → −48 VDC telco.
+
+**Entregables generados (en outputs, a integrar al repo):** índice biblioteca, mapeo Modbus, matriz Connect, esqueleto SNMP, pata Sense, mapa GEF, registros consolidado GEF, catálogo detección, blueprint implementación, actualización WanomiRefactor.
+
+---

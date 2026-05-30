@@ -1,5 +1,5 @@
 # STATUS — IotLocalhost / Wanomi
-Última sesión: #13 · 2026-05-28
+Última sesión: #14 · 2026-05-30
 
 > A partir de la sesión #13 el proyecto se divide en dos tracks paralelos:
 > **Wanomi 3.0 Refactor** (nuevo ciclo, documentación en `docsRefactor/`) y
@@ -10,10 +10,12 @@
 ## Dónde estamos
 
 ### Wanomi 3.0 Refactor (nuevo track)
-- **Apertura formal** en sesión #13. Decisiones de partida registradas como DEC-REF-1..5.
-- Bases inalteradas heredadas: sesiones #8 a #12 (ver `docsRefactor/WanomiRefactor.md` §2).
-- Estructura de carpetas `docsRefactor/` creada con subcarpetas por área (Hardware / Software / Estrategia / Marketing).
-- Próxima sesión #14 = reunión multi-área de arranque.
+- **Sesión #14 ejecutada** (2026-05-30). Reunión multi-área completada.
+- MVP definido: Connect-first sobre ComAp InteliGen + Eltek, 1 sitio Tier 1, ~60 días.
+- 10 nuevas DEC-REF registradas (DEC-REF-6..15) en `docsRefactor/WanomiRefactor.md`.
+- Biblioteca de campo Cinetik caracterizada: 5 familias GEF, Modbus+SNMP+contacto seco.
+- Documentos de alcance iter 1 generados por área en `docsRefactor/<Área>/iteracion_1_alcance.md`.
+- Próxima sesión #15 = revisión iter 1 (disparador: sitio ComAp confirmado o T0+3).
 
 ### Tracks legacy aún abiertos
 - **WN-SITE-CORE Rev B**: esquemático congelado, ERC 0/0/0, DEC-HW-1..25 registradas. Gerbers v1 exportados. Revisión mecánica pendiente para Gerbers v2.
@@ -24,30 +26,34 @@
 
 ## Próximos pasos
 
-### Bloque A — Wanomi 3.0 Refactor (prioritario)
+### Ruta crítica inmediata (post-sesión #14)
 
-1. **[#14, multi-área]** Reunión de arranque del refactor: validar bases, priorizar áreas, definir entregable mínimo de la primera iteración. Agenda en `docsRefactor/agenda_reunion_inicial.md`.
-2. **[Por área]** Cada área produce en su subcarpeta de `docsRefactor/` el primer documento de alcance (1-3 páginas): qué heredo, qué cambia, qué entrego en la iteración 1.
+1. **[GATE] Estrategia:** pre-filtrado de escritorio de candidatos Tier 1 (T0+1) → survey → sitio ComAp confirmado (T0+3).
+2. **[PARALELO] Software:** extender simulador con registros ComAp → pipeline e2e + reglas + notificaciones.
+3. **[PARALELO] Hardware:** integrar Hub + enclosure provisorio.
+4. **[TEMPRANO] Marketing:** pitch draft + corrección de renders.
 
-### Bloque B — Cierres legacy en paralelo
+**Bloqueos a resolver (DOC-GAP-1):** conseguir tablas de registro Cummins PCC / DSE / PowerWizard / NEXYS-TELYS + Eltek `350020.073` + MIBs SNMP (Vertiv/ZTE/Delta). Verificar escalas contra fuente primaria antes de flashear.
 
-3. **[Área 1]** Revisión del paquete Survey Tier 1 v2.0 con el equipo de Área 1 → ajustes → coordinación con cell owners para visitas.
-4. **[Área 3 · Flux]** Revisión mecánica Gerbers v1 → DRC limpio → Gerbers v2.
-5. **[Fab]** Enviar Gerbers v2 (no v1) a JLCPCB.
-6. **[Área 3 + Área 1]** Cerrar RISK-HW-5 antes del despliegue en campo.
-7. **[Área 2]** Validar dying-gasp (AIN3) y mapas Modbus en banco (ComAp + Cummins).
-8. **[Backlog]** Sim-3 paso 4 + retomada del simulador (no bloqueante).
+**Riesgos vivos:**
+- **R-MVP-1:** sin sitio ComAp en los 5 candidatos → plan B (driver otra familia). Mitigación: pre-filtrado T0+1.
+- **RISK-OPS-1:** upgrade de schema en N Mongos distribuidos (Fase 2-3).
+- **SECURITY:** rotar credenciales SNMP por defecto en equipos de campo.
 
-### Pendientes operativos del repo
-- `#10`: `git push` de los +2 commits pendientes; mover `docs/cierre_sesion_10.md` → `docs/hardware/`.
-- `#13`: subir `docsRefactor/` al repo + commit del cierre de sesión #13 en `docs/wanomi.md` y `docs/STATUS.md`.
+**Backlog del refactor:** BACKLOG-REF-1..6, GOTCHA-1 (coma decimal), BACKLOG-SIM-1 (retomar simulador como banco de pruebas — ahora con propósito nuevo).
+
+### Cierres legacy en paralelo
+
+- **[Área 3 · Flux]** Revisión mecánica Gerbers v1 → DRC limpio → Gerbers v2 → JLCPCB.
+- **[Área 3 + Área 1]** Cerrar RISK-HW-5 antes del despliegue en campo.
+- **[Área 1]** Revisión Survey Tier 1 v2.0 con equipo de Área 1 → coordinación con cell owners.
 
 ---
 
 ## Decisiones / riesgos
 
 ### Wanomi 3.0
-- DEC-REF-1..5 registradas en `docs/wanomi.md` §sesión #13 (mismo contenido replicado en `docsRefactor/WanomiRefactor.md`).
+- DEC-REF-1..15 registradas. DEC-REF-6..15 en sesión #14 (ver `docsRefactor/WanomiRefactor.md` §5).
 
 ### Legacy
 - Cerradas: DEC-HW-1..25, DEC-SURVEY-1..7.
