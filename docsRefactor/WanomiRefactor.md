@@ -1,7 +1,7 @@
 # Wanomi 3.0 — Refactorización
 
 **Documento maestro del refactor.**
-Versión 0.1 · 2026-05-28 · Fecha de apertura: sesión #13
+Versión 0.2 · 2026-05-30 · Actualizado: sesión #14
 
 ---
 
@@ -89,52 +89,42 @@ Estas decisiones son base inalterable de Wanomi 3.0 (DEC-REF-1). Cualquier propu
 
 ## 3 · Mapa de tracks por área
 
-Cada área de Wanomi tiene su propia carpeta en `docsRefactor/`. La estructura inicial de tracks por área es:
+Orden de ataque de iteración 1 (ruta crítica explícita, definida en sesión #14):
 
-### Área 1 · Estrategia (`docsRefactor/Estrategia/`)
+1. **[GATE] Estrategia** — survey express → matriz de controlador por sitio → **1 sitio ComAp confirmado**. Bloquea la convergencia en sitio real. Pre-filtrado de escritorio en T0+1 para detectar riesgo temprano.
+2. **[PARALELO] Software** — pipeline e2e contra el simulador (no bloqueado por el survey, gracias a DEC-REF-14).
+3. **[PARALELO] Hardware** — Hub funcional + enclosure provisorio.
+4. **[TEMPRANO] Marketing** — pitch draft (lo necesita Estrategia para acceder a cellowners) + renders corregidos.
 
-- Escenarios de aplicación enterprise (telco, infraestructura crítica).
-- Survey Tier 1 (paquete v2.0 ya producido en `docs/survey/` — referencia, no se mueve).
-- Cuentas pos-Claro: Movistar, Telecom, torreras independientes.
-- Vertical-out: ¿cuándo y cómo se sale de telco hacia otras infraestructuras críticas?
-- Definición y refinamiento del cliente ideal de Wanomi 3.0.
+Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y lab durante iter 1.
 
-### Área 2 · Software (`docsRefactor/Software/`)
-
-- Backend: refactor del modelo de datos para soportar Connect+Sense (ya hay Site, ForensicEvent, HMAC chain — base sólida).
-- Frontend: pages/sites/ + dashboards (operador + admin) + display local del Hub.
-- Capa de agregación NOC: broker central + parsers por driver Connect.
-- Drivers Connect: ComAp (familia IG-NT/IS-NT/IL-NT/IC-NT) + Cummins PCC 2.x/3.x + Eltek SmartPack S Modbus TCP.
-- Firmware ESP32-S3 del WN-SITE-CORE (lectura sensores + Modbus RTU + reporte al Hub).
-- Firmware Hub (Orange Pi Zero 3 + BG95-M3 + KSZ8794CNX): Mongo local, soft sensors, sync al NOC.
-- Plan de migración Vue 2 → Vue 3 (deuda DEC-STACK-1) — post-piloto.
-
-### Área 3 · Hardware (`docsRefactor/Hardware/`)
-
-- WN-SITE-CORE Rev B → Gerbers v2 → fab → prototipo (track legacy ya en curso, hereda 3.0).
-- Add-ons modulares: SURGE (AS3935 + acelerómetro), ENV+ (SDP810 ya integrado en CORE, sensores adicionales separables).
-- Sub-nodos opcionales: WN-FENCE (ADXL345), WN-COPPER (QMC5883L magnetómetro), WN-DOOR (reed switch), WN-BLE-TRACK (escaneo iBeacons).
-- Hub Wanomi: arquitectura ya definida en `conectividad_recomendada_hub.pdf`. Falta especificar enclosure + integración mecánica.
-- Variantes de instalación por tipo de sitio (urbano / rural / SURGE).
-
-### Área 4 · Marketing (`docsRefactor/Marketing/`)
-
-- Pitch deck Wanomi 3.0 (5 slides sin jerga + profundidad técnica desde slide 6).
-- Branding enterprise: paleta obsidiana + verde técnico (teal/cian) + ámbar/rojo solo para alarmas.
-- Brochure técnico para cellowners.
-- Plan de comercialización post-Claro (Arquitecto B2B).
-- Materiales para conversaciones con torreras y operadores secundarios.
+> Detalle de entregables y responsables por área: ver `docsRefactor/<Área>/iteracion_1_alcance.md`.
 
 ---
 
 ## 4 · Roadmap inicial (fases lógicas)
 
-Este roadmap es una propuesta de orden lógico. **Se valida y refina en la reunión multi-área de la sesión #14.**
+**MVP de Wanomi 3.0** (mínimo end-to-end, 1 sitio, ~60 días, definido en sesión #14):
 
-### Fase 0 — Arranque (sesión #14)
-- Reunión multi-área para validar bases y priorizar áreas de ataque.
-- Cada área produce un documento de alcance (1-3 pp.) en su subcarpeta: qué heredo, qué cambia, qué entrego en la iteración 1.
-- Definición del MVP de Wanomi 3.0 (qué entra, qué queda fuera).
+**ENTRA:**
+1. 1 sitio Tier 1 con **ComAp InteliGen confirmado**.
+2. 1 **Hub** (Orange Pi Zero 3 + Modbus RTU/TCP + Mongo local), enclosure provisorio.
+3. **Connect**: lectura eléctrica + mecánica + estado (cascada de energía + salud de motor) con `source: connect`.
+4. **Motor de reglas** robustecido + RulePacks (~40 reglas día 1, auto-calibradas + cross-equipo).
+5. **Notificación**: dashboard + Telegram + evento MQTT al NOC.
+6. **`pages/sites/`**: lista + detalle de 1 sitio (mapa + estado vivo + alarmas).
+7. **Read-only estricto**.
+8. Validación contra **simulador** → instalación en sitio → **30 días** con captura de ≥1 cascada real.
+9. **Pitch deck** cerrado con vista en vivo del sitio + renders corregidos.
+
+**FUERA (Fase 1+):** CORE Rev B (track paralelo) · motor SNMP · otras 4 familias GEF · Sense físico (combustible Cummins, vibración) · SURGE/ENV+/sub-nodos · dashboards completos · migración Vue 3 · predictivo más allá de soft sensors · control remoto (escritura).
+
+---
+
+### Fase 0 — Arranque (sesión #14) ✅ COMPLETADA
+- Reunión multi-área ejecutada. MVP definido.
+- Documentos de alcance iter 1 generados por área (ver `docsRefactor/<Área>/iteracion_1_alcance.md`).
+- 10 nuevas DEC-REF registradas (DEC-REF-6..15).
 
 ### Fase 1 — Diseño consolidado
 - Cada área completa su diseño de iteración 1.
@@ -158,7 +148,7 @@ Este roadmap es una propuesta de orden lógico. **Se valida y refina en la reuni
 - Tier 2 (15 sites adicionales).
 - Conversaciones con cuentas post-Claro.
 
-> **Importante:** las duraciones no se asignan en este documento. Se asignan en la reunión #14 con criterio realista por área.
+> Las duraciones de Fases 1-4 se definen al inicio de cada fase con criterio realista por área. Fase 0 completada en sesión #14.
 
 ---
 
@@ -171,25 +161,32 @@ Este roadmap es una propuesta de orden lógico. **Se valida y refina en la reuni
 | DEC-REF-3 | 2026-05-28 | Archivo maestro `docsRefactor/WanomiRefactor.md` consolida pilares + DEC-REF-* + roadmap |
 | DEC-REF-4 | 2026-05-28 | Sesiones anteriores a #8 NO son base de diseño para 3.0. Histórico solamente |
 | DEC-REF-5 | 2026-05-28 | Próxima sesión #14 = reunión multi-área de arranque del refactor |
+| DEC-REF-6 | 2026-05-30 | **MVP de Wanomi 3.0 = Connect-first** sobre ComAp InteliGen + Eltek SmartPack S en 1 sitio Tier 1. El WN-SITE-CORE Rev B queda **fuera de la ruta crítica** del MVP (sigue su track de fab en paralelo) |
+| DEC-REF-7 | 2026-05-30 | El sitio piloto se elige **por controlador** (criterio eliminatorio: ComAp presente), no por conveniencia geográfica. Gate único del MVP |
+| DEC-REF-8 | 2026-05-30 | Connect es framework de **triple-modalidad**: Modbus (TCP+RTU) + SNMP + contacto seco / digital I/O. Amplía DEC-INTEGRATION-1 |
+| DEC-REF-9 | 2026-05-30 | Alcance GEF ampliado a **5 familias de controlador**: + PowerWizard 2.1 + SDMO NEXYS/TELYS (evidencia de campo: grupos Wilson y Monte Ralo) |
+| DEC-REF-10 | 2026-05-30 | Notificación del MVP = **MQTT event al NOC** (pilar DEC-ARCH-2) + **Telegram** (alerta humana) + **dashboard**. NO se construye capa de consumo del NOC en el MVP |
+| DEC-REF-11 | 2026-05-30 | Inteligencia del MVP = **amplitud en detección** (~40 reglas día 1, RulePacks auto-calibradas + cross-equipo), NO predictivo amplio. Honra DEC-INTEL-1 / DEC-PRED-1 |
+| DEC-REF-12 | 2026-05-30 | Lectura del MVP = ComAp **InteliGen** (eléctrico + mecánico + estado en una conexión) + Eltek SmartPack S. El dominio mecánico (°C/aceite/RPM/combustible) **es Connect-able** vía controlador de motor |
+| DEC-REF-13 | 2026-05-30 | **Read-only estricto** en el MVP. Registros de comando (arranque/parada/E-Stop) deshabilitados en firmware por seguridad. Reabrir solo con decisión explícita + contrato |
+| DEC-REF-14 | 2026-05-30 | El simulador (DEC-STRAT-2) se extiende como **banco de pruebas**: emite registros ComAp/Cummins simulados para validar driver + reglas + notificaciones sin equipo físico |
+| DEC-REF-15 | 2026-05-30 | El refactor **reutiliza** el modelo `variable→widget→template`; lo extiende con capa **Site** (compone templates por equipo), capa **Driver** (Modbus), **RulePacks** por tipo de equipo y **NotificationRouter**. Device se generaliza a Equipment con `driverConfig` |
 
 > Las DEC-REF-* se agregan a este documento y NO se modifican retroactivamente. Cambios de criterio se registran como nuevas DEC-REF.
 
 ---
 
-## 6 · Próxima reunión — Sesión #14
+## 6 · Próxima reunión — Sesión #15
 
-**Objetivo:** validar las bases del refactor + priorizar áreas de ataque + definir entregable mínimo por área para la primera iteración.
+**Objetivo:** revisión de iteración 1 — pipeline contra simulador funcionando + sitio confirmado.
 
-**Asistentes:** las 4 áreas, 15 roles (ver `agenda_reunion_inicial.md`).
+**Disparador:** cuando Estrategia confirme sitio ComAp o se cumpla T0+3.
 
-**Outputs esperados:**
-1. Confirmación o ajuste de los pilares §1.
-2. Confirmación o ajuste de las decisiones heredadas §2.
-3. Orden de prioridad consensuado para las áreas.
-4. Entregable comprometido por área para Fase 1.
-5. Definición del MVP Wanomi 3.0.
-
-**Agenda detallada:** ver `docsRefactor/agenda_reunion_inicial.md`.
+**Entradas esperadas:**
+1. **Software:** simulador ComAp emitiendo registros + pipeline e2e básico corriendo.
+2. **Estrategia:** pre-filtrado (T0+1) + avance hacia confirmación de sitio.
+3. **Hardware:** estado del Hub funcional.
+4. **Marketing:** pitch draft avanzado + renders corregidos.
 
 ---
 
