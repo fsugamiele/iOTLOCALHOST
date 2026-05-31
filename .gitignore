@@ -57,6 +57,7 @@ app/*.png
 docs/INVENTARIO_AUTO.md
 
 # Drafts y backups sueltos en raíz (sesiones #13-#14, contenido ya integrado)
+/claude_code_setup.sh
 /RefactorWanomi.zip
 /STATUS.md
 /WanomiRefactor.md
