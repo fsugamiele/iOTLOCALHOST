@@ -55,3 +55,11 @@ app/*.png
 
 # Inventario auto-generado (regenerar con ./scripts/inventario.sh)
 docs/INVENTARIO_AUTO.md
+
+# Drafts y backups sueltos en raíz (sesiones #13-#14, contenido ya integrado)
+/RefactorWanomi.zip
+/STATUS.md
+/WanomiRefactor.md
+/agenda_reunion_inicial.md
+/session13_wanomi.md
+docs/*.bak
