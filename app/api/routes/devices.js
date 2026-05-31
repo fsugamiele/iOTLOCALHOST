@@ -323,8 +323,10 @@ async function getSaverRules(userId) {
 
 //create saver rule
 async function createSaverRule(userId, dId, status) {
-
- 
+  if (!global.saverResource) {
+    console.error("[createSaverRule] ERROR: saver resource not ready for dId=" + dId + " — rule NOT created");
+    return false;
+  }
   try {
     const url = "http://"+process.env.EMQX_API_HOST+":8085/api/v4/rules";
 

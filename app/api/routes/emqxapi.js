@@ -84,8 +84,7 @@ try {
         console.log(("***** Creating missing emqx webhook resources: " + missing.join(", ") + " *****").green);
         createMissingResources(missing);
       } else {
-        // All resources ready — reconcile MongoDB rules with EMQX
-        reconcileRules();
+        console.log("[EMQX] All webhook resources present.".green);
       }
 
     } else {
@@ -144,10 +143,7 @@ async function createMissingResources(missing) {
             }
         }
 
-        setTimeout(() => {
-            console.log("***** Emqx WH resources created! Refreshing... *****".green);
-            listResources();
-        }, 1000);
+        console.log("***** Emqx WH resources created *****".green);
     } catch (error) {
         console.log("Error creating resources");
         console.log(error);
@@ -260,18 +256,47 @@ async function emqxRuleExists(emqxRuleId) {
 
 async function reconcileSaverRules() {
   const rules = await SaverRule.find({});
-  let recreated = 0;
+  let ok = 0, fixed = 0, errors = 0;
 
   for (const rule of rules) {
-    const exists = await emqxRuleExists(rule.emqxRuleId);
-    if (exists) continue;
-
     try {
+      const ruleUrl = "http://" + process.env.EMQX_API_HOST + ":8085/api/v4/rules/" + rule.emqxRuleId;
+      let existingRule = null;
+      try {
+        const res = await axios.get(ruleUrl, auth);
+        if (res.status === 200 && res.data.code === 0) existingRule = res.data.data;
+      } catch (_) {}
+
+      if (existingRule && existingRule.enabled) {
+        ok++;
+        continue;
+      }
+
+      // Exists but disabled — attempt PUT to re-enable
+      // Fallback to recreate if PUT is unsupported (EMQX 4.2.x returns 404/405)
+      if (existingRule && !existingRule.enabled && rule.status) {
+        let enabledViaput = false;
+        try {
+          const putRes = await axios.put(ruleUrl, { enabled: true }, auth);
+          if (putRes.status === 200) {
+            fixed++;
+            enabledViaput = true;
+            console.log(("  ✔ SaverRule enabled (PUT) dId=" + rule.dId).green);
+          } else {
+            console.log(("  ⚠ PUT → HTTP " + putRes.status + " for dId=" + rule.dId + " — falling back to recreate").yellow);
+          }
+        } catch (putErr) {
+          console.log(("  ⚠ PUT failed dId=" + rule.dId + ": " + putErr.message + " — falling back to recreate").yellow);
+        }
+        if (enabledViaput) continue;
+        // Fall through to recreate path below
+      }
+
+      // Missing or PUT fallback — recreate
       const topic = rule.userId + "/" + rule.dId + "/+/sdata";
       const rawsql = 'SELECT topic, payload FROM "' + topic + '" WHERE payload.save = 1';
-
       const emqxRule = {
-        rawsql: rawsql,
+        rawsql,
         actions: [{
           name: "data_to_webserver",
           params: {
@@ -282,21 +307,23 @@ async function reconcileSaverRules() {
         description: "SAVER-RULE",
         enabled: rule.status
       };
-
-      const url = "http://" + process.env.EMQX_API_HOST + ":8085/api/v4/rules";
-      const res = await axios.post(url, emqxRule, auth);
-
-      if (res.status === 200 && res.data.data) {
-        await SaverRule.updateOne({ _id: rule._id }, { emqxRuleId: res.data.data.id });
-        recreated++;
-        console.log(("  ✔ SaverRule recreated for dId=" + rule.dId).green);
+      const createUrl = "http://" + process.env.EMQX_API_HOST + ":8085/api/v4/rules";
+      const createRes = await axios.post(createUrl, emqxRule, auth);
+      if (createRes.status === 200 && createRes.data.data) {
+        await SaverRule.updateOne({ _id: rule._id }, { emqxRuleId: createRes.data.data.id });
+        fixed++;
+        console.log(("  ✔ SaverRule recreated dId=" + rule.dId).green);
+      } else {
+        errors++;
+        console.log(("  ✘ SaverRule create failed dId=" + rule.dId + " (HTTP " + (createRes.status || '?') + ")").red);
       }
     } catch (err) {
-      console.log(("  ✘ Error recreating SaverRule for dId=" + rule.dId + ": " + err.message).red);
+      errors++;
+      console.log(("  ✘ Error reconciling SaverRule dId=" + rule.dId + ": " + err.message).red);
     }
   }
 
-  return recreated;
+  return { ok, fixed, errors };
 }
 
 async function reconcileAlarmRules() {
@@ -425,14 +452,14 @@ async function reconcileActuatorRules() {
 async function reconcileRules() {
   console.log("***** Starting EMQX ↔ MongoDB rules reconciliation *****".cyan);
   try {
-    const [s, a, r] = await Promise.all([
+    const [saver, alarm, actuator] = await Promise.all([
       reconcileSaverRules(),
       reconcileAlarmRules(),
       reconcileActuatorRules()
     ]);
     console.log(
-      ("***** Reconciliation complete — recreated: " +
-       s + " saver, " + a + " alarm, " + r + " actuator rules *****").cyan
+      ("***** Reconcile — saver: " + saver.ok + " ok, " + saver.fixed + " fixed, " + saver.errors +
+       " err | alarm: " + alarm + " recreated | actuator: " + actuator + " recreated *****").cyan
     );
   } catch (err) {
     console.log("Error during rules reconciliation:".red);
@@ -440,9 +467,70 @@ async function reconcileRules() {
   }
 }
 
-setTimeout(() => {
-  console.log("LISTING RESORUCES!!!!!!!!!");
-  listResources();
-}, process.env.EMQX_RESOURCES_DELAY);
+// ----------------------------------------
+// Active polling — replaces fixed delay
+// ----------------------------------------
+async function waitForSaverResource({ intervalMs = 3000, timeoutMs = 120000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+
+  while (Date.now() < deadline) {
+    attempt++;
+    try {
+      const url = "http://" + process.env.EMQX_API_HOST + ":8085/api/v4/resources/";
+      const res = await axios.get(url, auth);
+
+      if (res.status === 200) {
+        res.data.data.forEach(r => {
+          if (r.description === "saver-webhook") global.saverResource = r;
+          if (r.description === "alarm-webhook")  global.alarmResource = r;
+          if (r.description === "rule-webhook")   global.ruleResource  = r;
+        });
+
+        const missing = [];
+        if (!global.saverResource) missing.push("saver");
+        if (!global.alarmResource) missing.push("alarm");
+        if (!global.ruleResource)  missing.push("rule");
+
+        if (missing.length > 0) {
+          console.log(("[EMQX] Creating missing resources: " + missing.join(", ")).yellow);
+          await createMissingResources(missing);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+
+        const statusRes = await axios.get(
+          "http://" + process.env.EMQX_API_HOST + ":8085/api/v4/resources/" + global.saverResource.id,
+          auth
+        );
+        const isAlive = (statusRes.data?.data?.status || []).some(s => s.is_alive);
+
+        if (isAlive) {
+          console.log(("[EMQX] saver resource ready — attempt " + attempt).green);
+          return true;
+        }
+
+        console.log(("[EMQX] saver resource not alive yet (attempt " + attempt + ") — retrying in " + intervalMs + "ms...").yellow);
+      }
+    } catch (e) {
+      console.log(("[EMQX] probe error (attempt " + attempt + "): " + e.message).yellow);
+    }
+
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+
+  console.error("[EMQX] ERROR: saver resource not ready after " + timeoutMs + "ms — rules for NEW devices will NOT be created until next restart");
+  return false;
+}
+
+async function initEmqxResources() {
+  const ready = await waitForSaverResource({
+    intervalMs: 3000,
+    timeoutMs: Math.max(parseInt(process.env.EMQX_RESOURCES_DELAY || 30000) * 4, 120000)
+  });
+  if (ready) await reconcileRules();
+}
+
+initEmqxResources();
 
 module.exports = router;
