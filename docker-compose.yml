@@ -30,14 +30,15 @@ services:
     container_name: emqx
     image: emqx/emqx:4.2.3
     restart: always
+    # override CMD: bypass start.sh's 25s liveness probe that kills EMQX on clean volumes
+    command: /opt/emqx/bin/emqx foreground
     ports:
       - 18083:18083
       - 1883:1883
       - 8883:8883
       - 8083:8083
       - 8085:8081
-      - 3001:3001
-      
+
 
     volumes:
       - vol-emqx-data:/opt/emqx/data
