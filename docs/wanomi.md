@@ -58,6 +58,61 @@
 
 ## Log de Sesiones
 
+### Sesión #16 — 2026-06-01 ✅ CERRADA
+**Foco:** Área 2 — Software · Paso B: drivers Connect (simulador ATS + Cummins)
+
+#### ENV-1 — Normalización de entorno ✅
+- Detectado: stack de producción completo corría en máquina dev
+- Fix: bajado prod stack, levantado solo `docker-compose.yml` (Mongo + EMQX)
+- Node corre fuera de Docker con `npm run start`
+- Creado `docs/ENV.md` con topología y regla operativa
+
+#### EMQX crash loop — resuelto ✅
+- Causa raíz: `start.sh` watchdog mataba EMQX a los ~40s con volúmenes limpios
+  (HTTP management no bindeaba a tiempo)
+- Fix: `command: /opt/emqx/bin/emqx foreground` en `docker-compose.yml`
+- Fix adicional: `WEBHOOKS_HOST=localhost` en `app/.env` (webhooks apuntaban a
+  hostname Docker `node` inexistente en dev)
+- Fix adicional: `127.0.0.1 mongo` en `/etc/hosts` del host
+
+#### Limpieza de MongoDB ✅
+- Borrados: data (22.268), notifications (3.130), devices (14), sites (3),
+  templates (8), saverrules (11), rules (5), users legacy (2)
+- Conservados: emqxauthrules (21), emqxsaverrules (1), users dev (2)
+
+#### Paso B.1 — Extensión del simulador ✅
+**Archivos modificados (4 commits):**
+- `app/api/models/device.js` — campos `deviceType` + `driverConfig` (DEC-REF-15)
+- `app/api/models/data.js` — `value: Mixed` para variables categóricas
+- `tools/device_simulator/lib/sensor-engine.js` — `initialAtsState()`,
+  `initialCumminsState()`, `evolve()` extendido, 2 escenarios InteliATS
+- `tools/device_simulator/lib/device.js` — `SharedSiteState` + `_initialState(role)`
+- `tools/device_simulator/seed.js` — templates ATS/CUMMINS, `MVP_SITE=CR00061`,
+  `deviceType` + `driverConfig` en payload
+- `tools/device_simulator/sites_real.json` — CR00061 Arrocera Repeater agregado
+- `docker-compose.yml` — EMQX foreground fix
+
+**Decisiones técnicas:**
+- `deviceType` como campo interno en `_state` (no publicado) para discriminar en
+  `evolve()` sin pasar parámetro extra
+- `SharedSiteState` = objeto plano por site; ATS escribe `gen_running`,
+  Cummins lo lee — coherencia inter-equipo sin pub/sub (DEC-REF-11)
+- `value: Mixed` en data.js necesario para vars categóricas — gap no contemplado
+  en DEC-REF-16, resuelto en esta sesión
+
+**Validación pipeline:**
+- CR00061: SEC + GEN + ATS (7/7 vars) + CUMMINS (11/11 vars) → Mongo ✅
+- `transfer_state: "AUTO"` y `gen_status: "STOPPED"` guardados como strings ✅
+- EMQX: 0 reinicios post-fix, estable ✅
+
+#### Pendiente (Paso B siguiente)
+- B.2: Modelo de datos `driverConfig` completo en schema (Modbus RTU params)
+- B.3: RulePack semilla cross-equipo (cascada energética)
+- B.4: NotificationRouter
+- B.5: `pages/sites/` mínimo
+
+---
+
 ### Sesión #5 — 2026-05-05 ✅ CERRADA
 **Foco:** Plataforma Wanomi — backend Fase 4B + 4C.1 + 4C.2 (soporte Telco)
 
