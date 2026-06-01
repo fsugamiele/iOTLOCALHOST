@@ -1,7 +1,7 @@
 # Wanomi 3.0 — Refactorización
 
 **Documento maestro del refactor.**
-Versión 0.2 · 2026-05-30 · Actualizado: sesión #14
+Versión 0.3 · 2026-05-31 · Actualizado: sesión #15
 
 ---
 
@@ -171,6 +171,8 @@ Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y 
 | DEC-REF-13 | 2026-05-30 | **Read-only estricto** en el MVP. Registros de comando (arranque/parada/E-Stop) deshabilitados en firmware por seguridad. Reabrir solo con decisión explícita + contrato |
 | DEC-REF-14 | 2026-05-30 | El simulador (DEC-STRAT-2) se extiende como **banco de pruebas**: emite registros ComAp/Cummins simulados para validar driver + reglas + notificaciones sin equipo físico |
 | DEC-REF-15 | 2026-05-30 | El refactor **reutiliza** el modelo `variable→widget→template`; lo extiende con capa **Site** (compone templates por equipo), capa **Driver** (Modbus), **RulePacks** por tipo de equipo y **NotificationRouter**. Device se generaliza a Equipment con `driverConfig` |
+| DEC-REF-16 | 2026-05-31 | El MVP Connect adopta **dos drivers día 1**: **ComAp InteliATS PWR** (estado/transferencia/cascada) + **Cummins PowerCommand** (mecánico + eléctrico del grupo). Enmienda DEC-REF-12: el dominio mecánico llega vía PowerCommand, **no se asume InteliGen**. Habilita reglas cross-equipo reales (DEC-REF-11). **La selección de sitio piloto queda abierta** hasta tener más candidatos; el sitio no es bloqueante para el track Software (DEC-REF-14, simulador como banco de pruebas). El rectificador se confirma en survey. |
+| DEC-REF-17 | 2026-05-31 | `createSaverRule()` endurecido contra la race condition causa de BACKLOG-SIM-1: (a) `waitForSaverResource` con poll activo hasta `is_alive:true` reemplaza el `setTimeout(EMQX_RESOURCES_DELAY)` fijo; (b) guard ruidoso en `createSaverRule()` (retorna `false` + log de error si el resource no está, en vez de fallar en silencio); (c) `reconcileSaverRules()` al arranque que repara rules faltantes o `enabled=false` (PUT con fallback a recreación), idempotente. Verificado: EMQX 4.2.3 acepta `PUT /api/v4/rules/{id}`. Archivos: `app/api/routes/emqxapi.js`, `app/api/routes/devices.js`. |
 
 > Las DEC-REF-* se agregan a este documento y NO se modifican retroactivamente. Cambios de criterio se registran como nuevas DEC-REF.
 

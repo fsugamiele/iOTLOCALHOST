@@ -1095,3 +1095,37 @@ El simulador estaba bind al user correcto desde el principio. La hipótesis "use
 **Entregables generados (en outputs, a integrar al repo):** índice biblioteca, mapeo Modbus, matriz Connect, esqueleto SNMP, pata Sense, mapa GEF, registros consolidado GEF, catálogo detección, blueprint implementación, actualización WanomiRefactor.
 
 ---
+
+### Sesión #15 — 2026-05-31 — Revisión de iteración 1 del refactor + cierre de BACKLOG-SIM-1
+
+**Objetivo:** revisar avance de iter 1 y destrabar lo bloqueado. Se trabajó el GATE (Estrategia) y el Bloque 2 (Software).
+
+**Resultado:** R-MVP-1 mitigado con evidencia de campo · MVP migrado a dos drivers (DEC-REF-16) · BACKLOG-SIM-1 cerrado con causa raíz probada y fix de raíz aplicado (DEC-REF-17) · pipeline e2e verde verificada.
+
+**Desarrollo:**
+
+- **GATE / Estrategia — R-MVP-1 mitigado.** Franco aportó el formulario de PM del sitio **CR00061 "Arrocera Repeater"** (Corrientes NEA, −28.88 / −56.40). Evidencia de placa:
+  - **Grupo electrógeno:** Cummins Power Generation, controlador **PowerCommand HMI211** (Modbus RTU / RS485). Estado vivo: batería 12.6 V, motor frío (64 °F), aceite 0 PSI (standby), **2969.1 hrs** acumuladas. Grupo sano y viable para piloto.
+  - **ATS:** controlador **ComAp InteliATS PWR** (Modbus RTU / RS485) — estado de transferencia, red/grupo disponible, ATS cerrado red/grupo, bloqueo de transferencia.
+  - **Rectificador / planta DC:** no identificado en las fotos (sin placa visible). **Pendiente de confirmar en survey.**
+  - **Hallazgo clave:** el ComAp del sitio es un **InteliATS** (controlador de ATS), **no un InteliGen** (controlador de grupo) como asumía DEC-REF-12. El dominio mecánico llega vía Cummins PowerCommand. La cascada de energía completa requiere **ambos** controladores → justifica dos drivers.
+  - CR00061 queda registrado como **evidencia de viabilidad del parque** (ComAp + Cummins confirmado en campo), **no como sitio piloto cerrado**. La selección de sitio se mantiene abierta hasta tener más candidatos (DEC-REF-16).
+
+- **Decisión de drivers (DEC-REF-16).** Se evaluaron 3 opciones (un driver Cummins / un driver InteliATS / dos drivers). Franco eligió **dos drivers día 1**, coherente con DEC-GTM-2 (pitch anclado en la cascada de energía, que cruza ambos controladores) y DEC-REF-11 (reglas cross-equipo, que por definición leen de >1 equipo). Costo incremental acotado: ambos mapas ya caracterizados en #14 (InteliATS NT 100%, PowerCommand aportado por Franco) y la capa Driver genérica ya prevista en DEC-REF-15.
+
+- **Riesgos nuevos registrados:**
+  - **R-MVP-2** (topología bus Modbus RTU): el InteliATS está en el shelter y el Cummins en el grupo afuera, a varios metros → probablemente no comparten un bus RS485 corto. O bus largo bien terminado, o el Hub necesita dos puertos Modbus RTU (segmentos separados). Se resuelve en survey, no de escritorio. Coincide con R3 del roadmap técnico (múltiples controladores en RS485, scan 1-32).
+  - **DOC-GAP (PowerCommand Modbus):** confirmar que el PCC del sitio expone puerto Modbus RTU activo y no requiere módulo de comunicación adicional. Sin eso, el driver Cummins no tiene de dónde leer.
+
+- **Bloque 2 / Software — diagnóstico de estado real.** Diagnóstico read-only contra el repo (vía Claude Code). Hallazgo honesto: la implementación de iter 1 **no había arrancado**. No existen drivers Modbus, ni `modbus-serial`, ni `Equipment`/`driverConfig` (schema sigue `Device` legacy), ni RulePacks, ni NotificationRouter, ni `pages/sites/`. El simulador existe pero emite **solo variables legacy SEC/GEN**, cero registros ComAp/Cummins. El stack estaba caído.
+
+- **BACKLOG-SIM-1 — causa raíz probada (H2).** Tras levantar el stack se confirmó: los 6 devices del simulador (userId `69d135a2a7831f0014bd9074`) se sembraron **sin saver rule** en EMQX ni doc en `saverrules`. Causa: race condition entre el seed y `global.saverResource`, que se setea recién tras `EMQX_RESOURCES_DELAY` (30 s). Sin saver rule, EMQX no reenvía los topics al webhook → cero inserts en `data` → frontend vacío. H1 (templates con dId viejo) descartada por código; H3 (frontend no renderiza) queda como verificación manual de UI pendiente.
+  - **Fix inmediato:** creación de las 6 saver rules faltantes (EMQX + doc Mongo), device por device, idempotente. Pipeline verificada con el **simulador real** (`run.js`, 6/6 devices): **84 inserts en 90 s**. Pipeline e2e legacy → **CORRE-OK**.
+
+- **Fix de raíz (DEC-REF-17).** Se endureció el mecanismo de creación de saver rules: `waitForSaverResource` (poll activo, reemplaza el delay fijo), guard ruidoso en `createSaverRule()`, y `reconcileSaverRules()` al arranque (idempotente). Verificación post-aplicación: reconcile resolvió **7 ok, 4 fixed, 0 err**; los **4 devices legacy huérfanos** (`2090`, `tMQrX4Lr`, `JQYfpRp5`, `Skkq3vj7`) — que tenían `saverrules.status=true` pero rule EMQX `enabled=false` — fueron reparados por PUT 200 (sin recrear, sin duplicar). Conteo final: exactamente **10 saver rules, todas `enabled=true`, sin duplicados**, `payload_tmpl` idéntico carácter por carácter entre rules reparadas y sanas. Confirmado que EMQX 4.2.3 acepta `PUT /api/v4/rules/{id}`.
+
+**Decisiones:** DEC-REF-16, DEC-REF-17 (ver `docsRefactor/WanomiRefactor.md` §5).
+
+**Escrituras de código:** `app/api/routes/emqxapi.js` (bloques A-E: waitForSaverResource, initEmqxResources, reconcileSaverRules con manejo enabled=false + retorno {ok,fixed,errors}, reconcileRules con log N/M/K) · `app/api/routes/devices.js` (guard en createSaverRule).
+
+---

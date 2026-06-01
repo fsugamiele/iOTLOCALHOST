@@ -1,5 +1,5 @@
 # STATUS — IotLocalhost / Wanomi
-Última sesión: #14 · 2026-05-30
+Última sesión: #15 · 2026-05-31
 
 > A partir de la sesión #13 el proyecto se divide en dos tracks paralelos:
 > **Wanomi 3.0 Refactor** (nuevo ciclo, documentación en `docsRefactor/`) y
@@ -9,13 +9,13 @@
 
 ## Dónde estamos
 
-### Wanomi 3.0 Refactor (nuevo track)
-- **Sesión #14 ejecutada** (2026-05-30). Reunión multi-área completada.
-- MVP definido: Connect-first sobre ComAp InteliGen + Eltek, 1 sitio Tier 1, ~60 días.
-- 10 nuevas DEC-REF registradas (DEC-REF-6..15) en `docsRefactor/WanomiRefactor.md`.
-- Biblioteca de campo Cinetik caracterizada: 5 familias GEF, Modbus+SNMP+contacto seco.
-- Documentos de alcance iter 1 generados por área en `docsRefactor/<Área>/iteracion_1_alcance.md`.
-- Próxima sesión #15 = revisión iter 1 (disparador: sitio ComAp confirmado o T0+3).
+### Estado: BACKLOG-SIM-1 cerrado. Pipeline e2e legacy verde. MVP a dos drivers. Paso B (drivers Connect) no arrancado.
+
+**Logrado en #15:**
+- R-MVP-1 mitigado (CR00061 = evidencia de viabilidad; sitio piloto aún abierto).
+- DEC-REF-16: MVP a dos drivers día 1 (ComAp InteliATS PWR + Cummins PowerCommand).
+- BACKLOG-SIM-1 CERRADO: causa raíz H2 probada + fix de raíz (DEC-REF-17) + 4 huérfanos reparados.
+- Pipeline e2e legacy verificada (84 inserts/90 s con simulador real).
 
 ### Tracks legacy aún abiertos
 - **WN-SITE-CORE Rev B**: esquemático congelado, ERC 0/0/0, DEC-HW-1..25 registradas. Gerbers v1 exportados. Revisión mecánica pendiente para Gerbers v2.
@@ -24,23 +24,34 @@
 
 ---
 
-## Próximos pasos
+**Bloqueante a resolver ANTES del Paso B:**
+- **ENV-1 (normalización de entorno):** durante la #15 se corrió el container `node` de **producción** (`docker_compose_production.yml`) contra el **Mongo de desarrollo** (`docker-compose.yml`). Entorno híbrido. **Normalizar** a un entorno de dev coherente (o documentar explícitamente la topología) antes de construir los drivers, para no diagnosticar sobre base ambigua.
 
-### Ruta crítica inmediata (post-sesión #14)
-
-1. **[GATE] Estrategia:** pre-filtrado de escritorio de candidatos Tier 1 (T0+1) → survey → sitio ComAp confirmado (T0+3).
-2. **[PARALELO] Software:** extender simulador con registros ComAp → pipeline e2e + reglas + notificaciones.
-3. **[PARALELO] Hardware:** integrar Hub + enclosure provisorio.
-4. **[TEMPRANO] Marketing:** pitch draft + corrección de renders.
-
-**Bloqueos a resolver (DOC-GAP-1):** conseguir tablas de registro Cummins PCC / DSE / PowerWizard / NEXYS-TELYS + Eltek `350020.073` + MIBs SNMP (Vertiv/ZTE/Delta). Verificar escalas contra fuente primaria antes de flashear.
+**Paso B — iter 1 Software (no arrancado), orden propuesto:**
+1. Extender el simulador a los dos equipos: variables **InteliATS PWR** (transfer_state, mains/gen V+Hz, gen_status) + **Cummins PowerCommand** (oil_pressure, coolant_temp, rpm, run_hours, battery_voltage, fuel_level, fault_code/bitmaps 42100-42110). Archivos: `tools/device_simulator/lib/sensor-engine.js`, `lib/device.js`, `seed.js`.
+2. Modelo de datos: `driverConfig` + `deviceType` en el schema (extender sin romper legacy). Archivo: `app/api/models/device.js`.
+3. RulePack semilla **cross-equipo** (cascada InteliATS + PowerCommand) — honra DEC-REF-11.
+4. NotificationRouter (dashboard + Telegram + evento MQTT al NOC).
+5. `pages/sites/` mínima (lista + detalle de 1 sitio).
+6. Drivers Modbus reales (`modbus_comap.js`, `modbus_cummins.js`) — **fast-follow, no MVP**: el simulador reemplaza el fierro en iter 1 (DEC-REF-14).
 
 **Riesgos vivos:**
-- **R-MVP-1:** sin sitio ComAp en los 5 candidatos → plan B (driver otra familia). Mitigación: pre-filtrado T0+1.
-- **RISK-OPS-1:** upgrade de schema en N Mongos distribuidos (Fase 2-3).
-- **SECURITY:** rotar credenciales SNMP por defecto en equipos de campo.
+- **R-MVP-1** (atenuado, no cerrado): GATE de Estrategia sigue abierto — falta confirmar sitio piloto entre ≥2-3 candidatos. CR00061 prueba que el parque objetivo existe.
+- **R-MVP-2** (nuevo): topología del bus Modbus RTU (InteliATS en shelter vs Cummins en grupo) → ¿bus largo o dos puertos en el Hub? Se releva en survey.
+- **DOC-GAP (PowerCommand):** confirmar que el PCC expone Modbus RTU activo sin módulo extra.
+- **DOC-GAP (rectificador):** marca/modelo de la planta DC de CR00061 sin confirmar.
+- **RISK-OPS-1** (heredado): upgrade de schema en N Mongos distribuidos (Fase 2-3).
+- **SECURITY** (heredado): rotar credenciales SNMP por defecto en equipos de campo.
 
-**Backlog del refactor:** BACKLOG-REF-1..6, GOTCHA-1 (coma decimal), BACKLOG-SIM-1 (retomar simulador como banco de pruebas — ahora con propósito nuevo).
+**Verificaciones pendientes:**
+- **H3 (frontend):** confirmar a mano que el dashboard renderiza los datos al seleccionar un device. El backend ya está verde; la UI no se verificó.
+
+**Notas de housekeeping:**
+- Credencial de `fsugamiele@gmail.com` expuesta en logs de la #15 → es usuario de prueba, **sin acción requerida**.
+
+**Decisiones / Wanomi 3.0:** DEC-REF-1..17 registradas. DEC-REF-16..17 en sesión #15 (ver `docsRefactor/WanomiRefactor.md` §5).
+
+**Próxima sesión #16:** Paso B — construcción de los dos drivers Connect sobre la pipeline ya verde. Prerrequisito: ENV-1 normalizado.
 
 ### Cierres legacy en paralelo
 
@@ -51,9 +62,6 @@
 ---
 
 ## Decisiones / riesgos
-
-### Wanomi 3.0
-- DEC-REF-1..15 registradas. DEC-REF-6..15 en sesión #14 (ver `docsRefactor/WanomiRefactor.md` §5).
 
 ### Legacy
 - Cerradas: DEC-HW-1..25, DEC-SURVEY-1..7.
