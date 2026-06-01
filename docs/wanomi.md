@@ -113,6 +113,104 @@
 
 ---
 
+### Sesión #17 — 2026-06-01 ✅ CERRADA (parcial — reunión de diseño)
+**Foco:** Área 2 — Software · Reunión de diseño de la capa de inteligencia del Hub
+**Formato:** reunión Área 2 (Backend senior, Ing. software senior, Integración OSS/BSS, Frontend) + Franco decisor
+
+#### Naturaleza de la sesión
+Sesión de DISEÑO, no de implementación. No se tocó código. Se debatieron y
+cerraron las decisiones arquitectónicas de la capa de inteligencia del Hub
+antes de implementar. Pendiente de implementación: el motor, los packs, la
+NotificationRouter y la tabla de fallas.
+
+#### Hallazgo que disparó la reunión
+El motor de reglas actual (EMQX) es estructuralmente 1 device → 1 variable →
+1 actuador. EMQX 4.x no soporta JOIN entre topics, por lo tanto NO puede
+hacer reglas cross-equipo. La cascada energética (DEC-REF-11) requiere
+correlacionar variables de >1 equipo. Conclusión: el motor cross-equipo NO
+vive en EMQX — es un motor nuevo en el edge (Hub), como ya anticipaba el
+blueprint (refactor_implementacion_software.md, DEC-SENSOR-2).
+
+#### Los 4 tipos de regla (marco conceptual acordado)
+- **Tipo D (umbral directo):** un valor, un límite fijo definido por nosotros.
+- **Tipo C (auto-calibrada):** lee el setpoint del propio equipo por Modbus y
+  alarma contra ese valor real. Fallback a D si el setpoint no se puede leer.
+- **Tipo S (stateful/ventana):** mira evolución temporal (ej. 3 arranques
+  fallidos en 2 min). Ventana acotada ~1h máx por diseño.
+- **Cross-equipo:** correlaciona >1 equipo del site (ej. cascada: red cae en
+  ATS → Cummins debe arrancar → si no arranca en 30s = site down). Valor
+  diferencial no-copiable.
+
+#### Decisiones registradas
+
+**DEC-REF-18 — Motor de reglas edge**
+- Proceso Node SEPARADO (se copia tal cual al Hub Orange Pi). No es módulo del
+  backend. "Producto, no demo" (DEC-STRAT-2).
+- Evalúa sobre el stream MQTT local DIRECTO, en paralelo al saver-webhook. NO
+  lee de Mongo para evaluar (desacople sano: si el saver falla, el motor sigue
+  detectando).
+- Estado del site COMPLETO en memoria (~37 KB para CR00061: 37 variables).
+- Al arrancar, hidrata estado con `reconstruct` desde Mongo local (~250ms,
+  ~150 lecturas indexadas). Recupera "última sesión sana" → sin ventana ciega
+  ni falsas alarmas al NOC tras reinicio.
+- Las saver rules PERMANECEN en EMQX (DEC-REF-17 intacto). EMQX deja de ser
+  cerebro de detección; vuelve a ser broker + persistencia.
+- Schema RuleDefinition: campo discriminador `type` (D/C/S/cross), `severity`,
+  `recommendation` (el "qué hacer" de DEC-DASH-1, texto humano listo para la
+  vista), `source_filter`, `on_missing_ref`, `reset_behavior`. Expresión
+  cross-equipo ESTRUCTURADA (árbol JSON), NUNCA string evaluable (seguridad).
+
+**DEC-REF-19 — Gestión de reglas centralizada (managed self-hosted, DEC-GTM-1)**
+- Catálogo versionado en el NOC = fuente de verdad única.
+- Una regla NO es código, es un DATO (RuleDefinition en Mongo). Agregar regla =
+  insertar registro, sin reinstalar ni reiniciar el Hub.
+- Bajada por PULL: el Hub pregunta al centro cuando tiene señal (robusto ante
+  conectividad celular intermitente del BG95-M3). Reconciliación de versión =
+  mismo patrón idempotente que reconcileSaverRules() (DEC-REF-17).
+- Subida: SOLO eventos resumidos, nunca telemetría cruda (DEC-ARCH-2 intacto).
+  Reglas bajan curadas, telemetría sube resumida — flujos opuestos.
+
+**DEC-REF-20 — Salvaguardas del sync**
+- Anillos `canary → production` con promoción manual. Mecanismo listo desde
+  ahora; valor real en Tier 2 (hoy con 1 sitio, ese sitio ES el canary).
+- Validación obligatoria en el Hub antes de aplicar: regla inaplicable
+  (equipo ausente) → se ignora con log; regla malformada → se rechaza y se
+  REPORTA al NOC como evento.
+- Rollback por versión vía reconcile. El Hub CONSERVA la versión anterior
+  inactiva (rollback instantáneo sin depender del enlace celular). Todo
+  rollback auditado en el forensic chain (Fase 4B).
+
+#### Cambio de método — catálogo de reglas
+Se DESCARTA "fabricar ~40 reglas para llegar al número". Se adopta método
+falla-primero (instrucción de Franco): para cada equipo del site, listar
+fallas posibles → daño operativo si no se detecta → ¿el equipo expone el dato
+para detectarla? → tipo de regla. El número de reglas es CONSECUENCIA del
+análisis, no cuota. El "~40" del blueprint es estimación de magnitud, no meta.
+Cada regla se justifica por su columna "daño operativo" (lo que se vende a Claro).
+
+Decode de bitmaps NFPA: UNA regla de decode por bitmap (no una por bit). 4
+reglas de decode (42100/01/02/10), no 64 reglas infladas.
+
+#### Capa 2 — Predicción (aclaración, DEC-PRED-1 / DEC-INTEL-1)
+- Detección (D/C/S/cross) = día 1, sin historia, ~80% del valor inmediato.
+- Predicción = tendencia sobre el histórico local del sitio (regresión, NO ML).
+  Madura con el tiempo (necesita semanas de baseline). NO se promete ML en el
+  pitch (sería mentir).
+- Mecanismo: soft sensor (DEC-SENSOR-2) lee histórico de Mongo local, calcula
+  deriva, GENERA una variable `inferred` (ej. battery_health_projection). Una
+  regla D normal vigila esa variable. La predicción REUSA el motor de reglas —
+  no es un motor separado.
+
+#### Pendiente para próxima sesión (Área 2)
+- Bloque 3 — NotificationRouter: schema severidad→canales, dónde vive el texto
+  de recomendación, formato del evento MQTT al NOC.
+- Tabla de fallas→reglas de CR00061: partir de tabla físico-vs-soft (sesión #9)
+  + informe de alarmas equipamiento Claro. Entregable concreto que reemplaza
+  la cuota de 40 reglas.
+- Implementación del motor edge (DEC-REF-18) — recién después de cerrar la tabla.
+
+---
+
 ### Sesión #5 — 2026-05-05 ✅ CERRADA
 **Foco:** Plataforma Wanomi — backend Fase 4B + 4C.1 + 4C.2 (soporte Telco)
 

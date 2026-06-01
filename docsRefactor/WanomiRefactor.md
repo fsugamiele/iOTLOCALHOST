@@ -1,7 +1,7 @@
 # Wanomi 3.0 — Refactorización
 
 **Documento maestro del refactor.**
-Versión 0.3 · 2026-05-31 · Actualizado: sesión #15
+Versión 0.4 · 2026-06-01 · Actualizado: sesión #17
 
 ---
 
@@ -173,6 +173,9 @@ Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y 
 | DEC-REF-15 | 2026-05-30 | El refactor **reutiliza** el modelo `variable→widget→template`; lo extiende con capa **Site** (compone templates por equipo), capa **Driver** (Modbus), **RulePacks** por tipo de equipo y **NotificationRouter**. Device se generaliza a Equipment con `driverConfig` |
 | DEC-REF-16 | 2026-05-31 | El MVP Connect adopta **dos drivers día 1**: **ComAp InteliATS PWR** (estado/transferencia/cascada) + **Cummins PowerCommand** (mecánico + eléctrico del grupo). Enmienda DEC-REF-12: el dominio mecánico llega vía PowerCommand, **no se asume InteliGen**. Habilita reglas cross-equipo reales (DEC-REF-11). **La selección de sitio piloto queda abierta** hasta tener más candidatos; el sitio no es bloqueante para el track Software (DEC-REF-14, simulador como banco de pruebas). El rectificador se confirma en survey. |
 | DEC-REF-17 | 2026-05-31 | `createSaverRule()` endurecido contra la race condition causa de BACKLOG-SIM-1: (a) `waitForSaverResource` con poll activo hasta `is_alive:true` reemplaza el `setTimeout(EMQX_RESOURCES_DELAY)` fijo; (b) guard ruidoso en `createSaverRule()` (retorna `false` + log de error si el resource no está, en vez de fallar en silencio); (c) `reconcileSaverRules()` al arranque que repara rules faltantes o `enabled=false` (PUT con fallback a recreación), idempotente. Verificado: EMQX 4.2.3 acepta `PUT /api/v4/rules/{id}`. Archivos: `app/api/routes/emqxapi.js`, `app/api/routes/devices.js`. |
+| DEC-REF-18 | 2026-06-01 | **Motor de reglas edge** — proceso Node SEPARADO (deployable en Hub Orange Pi). Evalúa stream MQTT local directo en paralelo al saver-webhook; estado del site completo en memoria (~37 KB para CR00061). Al arrancar, hidrata desde Mongo local con `reconstruct` (~250 ms, ~150 lecturas indexadas) — sin ventana ciega ni falsas alarmas tras reinicio. Expresiones cross-equipo ESTRUCTURADAS (árbol JSON, nunca eval). EMQX vuelve a ser broker + persistencia; las saver rules (DEC-REF-17) permanecen intactas. |
+| DEC-REF-19 | 2026-06-01 | **Gestión de reglas centralizada (managed self-hosted, DEC-GTM-1)** — catálogo versionado en el NOC = fuente de verdad única. Una regla es un DATO (RuleDefinition en Mongo), no código: agregar regla = insertar registro, sin reinstalar Hub. Bajada por PULL (robusto ante conectividad celular intermitente del BG95-M3); reconciliación idempotente igual que `reconcileSaverRules()` (DEC-REF-17). Subida: solo eventos resumidos (DEC-ARCH-2 intacto). |
+| DEC-REF-20 | 2026-06-01 | **Salvaguardas del sync** — anillos `canary → production` con promoción manual (mecanismo listo desde ahora; valor real en Tier 2). Validación obligatoria en el Hub antes de aplicar: regla inaplicable → ignorada con log; regla malformada → rechazada y reportada al NOC como evento. Rollback por versión: el Hub conserva la versión anterior inactiva (rollback instantáneo sin enlace celular). Todo rollback auditado en la forensic chain (Fase 4B). |
 
 > Las DEC-REF-* se agregan a este documento y NO se modifican retroactivamente. Cambios de criterio se registran como nuevas DEC-REF.
 
