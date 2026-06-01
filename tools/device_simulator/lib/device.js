@@ -20,14 +20,15 @@ class SimulatedDevice {
   /**
    * @param {Object}   opts
    * @param {string}   opts.dId            8-char device id (de devices_state.json)
-   * @param {string}   opts.role           'SEC' | 'GEN'
+   * @param {string}   opts.role           'SEC' | 'GEN' | 'ATS' | 'CUMMINS'
    * @param {string}   opts.siteCode       siteCode al que pertenece (CR00015, etc.)
    * @param {string}   opts.mqttUsername   credencial MQTT (de getDeviceCredentials)
    * @param {string}   opts.mqttPassword   credencial MQTT plain (NUNCA loguear)
    * @param {string}   opts.userId         extraído del topic prefix
    * @param {Array}    opts.variables      [{variable, variableSendFreq, ...}] del template
+   * @param {Object}   opts.sharedState    estado compartido del site (default: {})
    */
-  constructor({ dId, role, siteCode, mqttUsername, mqttPassword, userId, variables }) {
+  constructor({ dId, role, siteCode, mqttUsername, mqttPassword, userId, variables, sharedState }) {
     this._dId = dId;
     this._role = role;
     this._siteCode = siteCode;
@@ -35,10 +36,20 @@ class SimulatedDevice {
     this._password = mqttPassword; // MQTT credential — NUNCA logueado
     this._userId = userId;
     this._variables = variables;
-    this._state = role === 'SEC' ? engine.initialSecState() : engine.initialGenState();
+    this._sharedState = sharedState || {};
+    this._state = this._initialState(role);
     this._client = null;
     this._timers = [];
     this._connected = false;
+  }
+
+  _initialState(role) {
+    switch (role) {
+      case 'SEC':     return engine.initialSecState();
+      case 'ATS':     return engine.initialAtsState();
+      case 'CUMMINS': return engine.initialCumminsState();
+      default:        return engine.initialGenState();  // GEN y legacy
+    }
   }
 
   get tag() {
@@ -120,8 +131,13 @@ class SimulatedDevice {
     if (!this._connected) return;
     if (this._state[varName] === undefined) return;
     // Evolucionar el valor (booleanos no cambian, floats hacen drift)
-    this._state[varName] = engine.evolve(varName, this._state[varName], this._state);
+    this._state[varName] = engine.evolve(varName, this._state[varName], this._state, this._sharedState);
+    if (varName === 'gen_status') this._syncSharedState();
     this._publish(varName);
+  }
+
+  _syncSharedState() {
+    this._sharedState.gen_running = this._state.gen_status === 'RUNNING';
   }
 
   _publish(varName) {
@@ -167,7 +183,7 @@ class SimulatedDevice {
       // _cancelActiveTimers() mata también los setInterval de startPublishing(),
       // por eso se llama startPublishing() al final para reanudarlos.
       this._cancelActiveTimers();
-      this._state = this._role === 'SEC' ? engine.initialSecState() : engine.initialGenState();
+      this._state = this._initialState(this._role);
       for (const varName of Object.keys(this._state)) {
         this._publish(varName);
       }
@@ -183,6 +199,7 @@ class SimulatedDevice {
       return;
     }
     this._state[varName] = value;
+    if (varName === 'gen_status') this._syncSharedState();
     this._publish(varName);
   }
 

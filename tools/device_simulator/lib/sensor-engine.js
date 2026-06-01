@@ -38,6 +38,36 @@ function initialGenState() {
   };
 }
 
+function initialAtsState() {
+  return {
+    deviceType:     'ATS',    // metadata interna — no publicada
+    transfer_state: 'AUTO',
+    mains_voltage:  220.0,
+    mains_freq:     50.0,
+    gen_voltage:    0.0,
+    gen_freq:       0.0,
+    load_kw:        5.0,
+    gen_status:     'STOPPED',
+  };
+}
+
+function initialCumminsState() {
+  return {
+    deviceType:      'CUMMINS',  // metadata interna — no publicada
+    oil_pressure:    0.0,
+    coolant_temp:    30.0,
+    rpm:             0,
+    run_hours:       0.0,
+    battery_voltage: 12.6,
+    fuel_level:      75.0,
+    fault_code:      0,
+    bitmap_42100:    0,
+    bitmap_42101:    0,
+    bitmap_42102:    0,
+    bitmap_42110:    0,
+  };
+}
+
 function jitter(magnitude) {
   return (Math.random() - 0.5) * 2 * magnitude;
 }
@@ -46,26 +76,83 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-// evolve recibe el estado completo del device para drift contextual
-function evolve(variable, currentValue, deviceState) {
+// evolve recibe el estado completo del device y el sharedState del site
+function evolve(variable, currentValue, deviceState, sharedState) {
+  sharedState = sharedState || {};
+
   // Bool, int (counts), categorical strings: no drift en idle
   if (typeof currentValue === 'boolean') return currentValue;
   if (typeof currentValue === 'string') return currentValue;
   if (Number.isInteger(currentValue) &&
-      (variable === 'battery_beacons_count' || variable === 'crank_attempts_failed')) {
+      (variable === 'battery_beacons_count' || variable === 'crank_attempts_failed' ||
+       variable === 'fault_code' || variable.startsWith('bitmap_'))) {
     return currentValue;
   }
 
   // Floats con drift contextual
   switch (variable) {
-    case 'shelter_temp':
-      return clamp(currentValue + jitter(0.3), 18, 30);
+    // ── InteliATS PWR ────────────────────────────────────────────
+    case 'mains_voltage':
+      if (deviceState && deviceState.deviceType === 'ATS') {
+        if (currentValue < 100) return currentValue;
+        return clamp(currentValue + jitter(3), 210, 230);
+      }
+      // legacy GEN
+      if (currentValue < 100) return currentValue;
+      return clamp(currentValue + jitter(2), 215, 225);
+
+    case 'mains_freq':
+      return clamp(currentValue + jitter(0.2), 49.5, 50.5);
+
+    case 'gen_voltage': {
+      const atsRunning = deviceState && deviceState.gen_status !== 'STOPPED';
+      if (!atsRunning) return 0;
+      return clamp(currentValue + jitter(2), 215, 225);
+    }
+
+    case 'gen_freq': {
+      const atsRunning = deviceState && deviceState.gen_status !== 'STOPPED';
+      if (!atsRunning) return 0;
+      return clamp(currentValue + jitter(0.1), 49.8, 50.2);
+    }
+
+    case 'load_kw':
+      return clamp(currentValue + jitter(0.5), 0, 15);
+
+    // ── Cummins PowerCommand ─────────────────────────────────────
+    case 'rpm': {
+      const target = sharedState.gen_running ? 1500 : 0;
+      if (currentValue < target) return Math.min(currentValue + 100, target);
+      if (currentValue > target) return Math.max(currentValue - 100, target);
+      return currentValue + (target > 0 ? Math.round(jitter(10)) : 0);
+    }
+
+    case 'oil_pressure':
+      if (!sharedState.gen_running) return 0;
+      return clamp(currentValue + jitter(1), 35, 55);
+
+    case 'coolant_temp':
+      if (sharedState.gen_running) {
+        return clamp(currentValue + jitter(1), 75, 95);
+      }
+      return clamp(currentValue - 1, 30, currentValue);
+
+    case 'run_hours':
+      // incremento por tick asume variableSendFreq 60s → 1/60 hr por tick
+      return sharedState.gen_running ? currentValue + (1 / 60) : currentValue;
 
     case 'fuel_level': {
-      // Solo consume si motor corriendo (~0.05% por lectura)
+      if (deviceState && deviceState.deviceType === 'CUMMINS') {
+        const consuming = sharedState.gen_running || false;
+        return clamp(currentValue - (consuming ? 0.1 : 0) + jitter(0.02), 0, 100);
+      }
+      // legacy GEN
       const consumption = deviceState && deviceState.genset_running ? 0.05 : 0;
       return clamp(currentValue - consumption + jitter(0.02), 0, 100);
     }
+
+    case 'shelter_temp':
+      return clamp(currentValue + jitter(0.3), 18, 30);
 
     case 'exhaust_temp': {
       if (deviceState && deviceState.genset_running) {
@@ -85,11 +172,6 @@ function evolve(variable, currentValue, deviceState) {
 
     case 'battery_voltage':
       return clamp(currentValue + jitter(0.05), 12.0, 13.0);
-
-    case 'mains_voltage':
-      // Solo drift si red está OK (no zero)
-      if (currentValue < 100) return currentValue;
-      return clamp(currentValue + jitter(2), 215, 225);
 
     case 'crank_current':
       return 0;  // siempre 0 fuera de eventos de arranque
@@ -213,11 +295,35 @@ const SCENARIOS = {
       { at: 85000, set: { door_front: 0, door_shelter: 0 } },
     ],
   },
+
+  mains_failure_ats_transfer: {
+    description: 'Corte de red — ATS transfiere a generador',
+    duration_ms: 60000,
+    steps: [
+      { at: 0,     set: { mains_voltage: 0 } },
+      { at: 2000,  set: { gen_status: 'STARTING' } },
+      { at: 8000,  set: { gen_status: 'RUNNING', gen_voltage: 220.0, gen_freq: 50.0 } },
+      { at: 10000, set: { transfer_state: 'AUTO' } },
+    ],
+  },
+
+  mains_restore: {
+    description: 'Restauración de red — ATS vuelve a red, generador se apaga',
+    duration_ms: 30000,
+    noCleanup: true,
+    steps: [
+      { at: 0,    set: { mains_voltage: 220.0, mains_freq: 50.0 } },
+      { at: 5000, set: { gen_status: 'STOPPED', gen_voltage: 0, gen_freq: 0 } },
+    ],
+  },
+
 };
 
 module.exports = {
   initialSecState,
   initialGenState,
+  initialAtsState,
+  initialCumminsState,
   evolve,
   SCENARIOS,
 };

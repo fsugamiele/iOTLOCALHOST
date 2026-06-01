@@ -18,7 +18,9 @@ const deviceSchema = new Schema({
     siteId:       { type: String },
     iccid:        { type: String },
     imei:         { type: String },
-    apn:          { type: String }
+    apn:          { type: String },
+    deviceType:   { type: String, default: '' },
+    driverConfig: { type: Object, default: {} }
 });
 
 // Validator

@@ -69,6 +69,40 @@ const GEN_TEMPLATE = {
   ],
 };
 
+// ATS: 7 variables ComAp InteliATS PWR (honra DEC-REF-16)
+const ATS_TEMPLATE = {
+  name: 'WN-ATS-InteliATS-PWR',
+  description: 'ComAp InteliATS PWR — estado de transferencia, tensiones y frecuencias de red y generador.',
+  widgets: [
+    { variable: 'transfer_state', variableFullName: 'Estado de transferencia',        variableType: 'categorical', variableSendFreq: 30 },
+    { variable: 'mains_voltage',  variableFullName: 'Tensión red (V)',                variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'mains_freq',     variableFullName: 'Frecuencia red (Hz)',            variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'gen_voltage',    variableFullName: 'Tensión generador (V)',          variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'gen_freq',       variableFullName: 'Frecuencia generador (Hz)',      variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'load_kw',        variableFullName: 'Carga activa (kW)',              variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'gen_status',     variableFullName: 'Estado del generador',          variableType: 'categorical', variableSendFreq: 30 },
+  ],
+};
+
+// CUMMINS: 11 variables Cummins PowerCommand (honra DEC-REF-16)
+const CUMMINS_TEMPLATE = {
+  name: 'WN-GEN-Cummins-PowerCommand',
+  description: 'Cummins PowerCommand — monitoreo mecánico y eléctrico del grupo electrógeno.',
+  widgets: [
+    { variable: 'oil_pressure',    variableFullName: 'Presión aceite (psi)',          variableType: 'float', variableSendFreq: 60 },
+    { variable: 'coolant_temp',    variableFullName: 'Temperatura refrigerante (°C)', variableType: 'float', variableSendFreq: 60 },
+    { variable: 'rpm',             variableFullName: 'RPM motor',                     variableType: 'int',   variableSendFreq: 30 },
+    { variable: 'run_hours',       variableFullName: 'Horas de marcha (h)',           variableType: 'float', variableSendFreq: 60 },
+    { variable: 'battery_voltage', variableFullName: 'Tensión batería arranque (V)',  variableType: 'float', variableSendFreq: 60 },
+    { variable: 'fuel_level',      variableFullName: 'Nivel combustible (%)',         variableType: 'float', variableSendFreq: 60 },
+    { variable: 'fault_code',      variableFullName: 'Código de falla',              variableType: 'int',   variableSendFreq: 30 },
+    { variable: 'bitmap_42100',    variableFullName: 'Status word (42100)',           variableType: 'int',   variableSendFreq: 60 },
+    { variable: 'bitmap_42101',    variableFullName: 'Alarm word 1 (42101)',          variableType: 'int',   variableSendFreq: 60 },
+    { variable: 'bitmap_42102',    variableFullName: 'Alarm word 2 (42102)',          variableType: 'int',   variableSendFreq: 60 },
+    { variable: 'bitmap_42110',    variableFullName: 'Event word (42110)',            variableType: 'int',   variableSendFreq: 60 },
+  ],
+};
+
 const readState = () => fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : {};
 const writeState = (s) => fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 2));
 
@@ -121,6 +155,8 @@ async function ensureDevice(token, siteCode, role, templateId, templateName) {
     templateId,
     templateName,
     firmwareType: 'wanomi-sim',
+    deviceType: role,
+    driverConfig: { protocol: 'wanomi-sim' },
   });
   await api.bindDevice(token, r.dId, siteCode);
   console.log(`  ${siteCode}-${role} created (dId: ${r.dId}), bound to ${siteCode}`);
@@ -171,12 +207,16 @@ async function main() {
 
   // ── Templates ─────────────────────────────────────────────────────
   console.log('── Templates ─────────────────────────────────────────');
-  const secTemplateId = await ensureTemplate(token, SEC_TEMPLATE);
-  const genTemplateId = await ensureTemplate(token, GEN_TEMPLATE);
+  const secTemplateId     = await ensureTemplate(token, SEC_TEMPLATE);
+  const genTemplateId     = await ensureTemplate(token, GEN_TEMPLATE);
+  const atsTemplateId     = await ensureTemplate(token, ATS_TEMPLATE);
+  const cumminsTemplateId = await ensureTemplate(token, CUMMINS_TEMPLATE);
 
   // ── Sites + Devices ────────────────────────────────────────────────
   const newState = { ...existingState };
   let sitesCreated = 0, sitesSkipped = 0, devsCreated = 0, devsSkipped = 0;
+  // Roles por site: SEC+GEN para todos; ATS+CUMMINS solo en CR00061 (site MVP)
+  const MVP_SITE = 'CR00061';
 
   for (const site of sites) {
     console.log(`\n── ${site.siteCode} — ${site.nombre} ──`);
@@ -186,13 +226,19 @@ async function main() {
     await ensureSite(token, site);
     if (sitesBefore) sitesSkipped++; else sitesCreated++;
 
-    // Devices SEC + GEN
+    // Devices: SEC+GEN para todos; ATS+CUMMINS solo para el site MVP
     if (!newState[site.siteCode]) newState[site.siteCode] = {};
 
-    for (const [role, templateId, templateName] of [
-      ['SEC', secTemplateId, SEC_TEMPLATE.name],
-      ['GEN', genTemplateId, GEN_TEMPLATE.name],
-    ]) {
+    const roles = [
+      ['SEC', secTemplateId,     SEC_TEMPLATE.name],
+      ['GEN', genTemplateId,     GEN_TEMPLATE.name],
+    ];
+    if (site.siteCode === MVP_SITE) {
+      roles.push(['ATS',     atsTemplateId,     ATS_TEMPLATE.name]);
+      roles.push(['CUMMINS', cumminsTemplateId, CUMMINS_TEMPLATE.name]);
+    }
+
+    for (const [role, templateId, templateName] of roles) {
       if (newState[site.siteCode][role]) {
         console.log(`  ${site.siteCode}-${role} already in state file (dId: ${newState[site.siteCode][role].dId})`);
         devsSkipped++;
