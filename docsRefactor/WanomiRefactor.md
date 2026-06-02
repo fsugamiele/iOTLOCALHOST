@@ -1,7 +1,7 @@
 # Wanomi 3.0 — Refactorización
 
 **Documento maestro del refactor.**
-Versión 0.4 · 2026-06-01 · Actualizado: sesión #17
+Versión 0.5 · 2026-06-02 · Actualizado: sesión #18
 
 ---
 
@@ -176,6 +176,8 @@ Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y 
 | DEC-REF-18 | 2026-06-01 | **Motor de reglas edge** — proceso Node SEPARADO (deployable en Hub Orange Pi). Evalúa stream MQTT local directo en paralelo al saver-webhook; estado del site completo en memoria (~37 KB para CR00061). Al arrancar, hidrata desde Mongo local con `reconstruct` (~250 ms, ~150 lecturas indexadas) — sin ventana ciega ni falsas alarmas tras reinicio. Expresiones cross-equipo ESTRUCTURADAS (árbol JSON, nunca eval). EMQX vuelve a ser broker + persistencia; las saver rules (DEC-REF-17) permanecen intactas. |
 | DEC-REF-19 | 2026-06-01 | **Gestión de reglas centralizada (managed self-hosted, DEC-GTM-1)** — catálogo versionado en el NOC = fuente de verdad única. Una regla es un DATO (RuleDefinition en Mongo), no código: agregar regla = insertar registro, sin reinstalar Hub. Bajada por PULL (robusto ante conectividad celular intermitente del BG95-M3); reconciliación idempotente igual que `reconcileSaverRules()` (DEC-REF-17). Subida: solo eventos resumidos (DEC-ARCH-2 intacto). |
 | DEC-REF-20 | 2026-06-01 | **Salvaguardas del sync** — anillos `canary → production` con promoción manual (mecanismo listo desde ahora; valor real en Tier 2). Validación obligatoria en el Hub antes de aplicar: regla inaplicable → ignorada con log; regla malformada → rechazada y reportada al NOC como evento. Rollback por versión: el Hub conserva la versión anterior inactiva (rollback instantáneo sin enlace celular). Todo rollback auditado en la forensic chain (Fase 4B). |
+| DEC-REF-21 | 2026-06-02 | **NotificationRouter** — 3 severidades: `info` / `warning` / `critical`. Ruteo por consecuencia operativa: warning→dashboard+NOC+Telegram SIEMPRE (DEC-GTM-2, no opcional); critical→tres canales con tono interruptor. `recommendation` vive en RuleDefinition (DEC-REF-18). Formato por canal: Telegram=texto humano; NOC=evento estructurado; dashboard=objeto completo. Evento NOC a `wanomi/noc/{siteId}/event`; bridge NetCool en standby (bloqueado sin credenciales Claro). Deduplicación por correlación de causa raíz declarada en datos: cada regla nombra su evento padre; el router agrupa consecuencias bajo evento padre en ventana de correlación. |
+| DEC-REF-22 | 2026-06-02 | **Modelo de eventos unificado** — toda alarma persiste con su valor numérico disparador. Flag `forensic` derivado del `source` de la variable (DEC-SENSOR-3): physical+categoría legal → cadena HMAC (DEC-FORENSIC-2 intacto); resto → forensic:false, solo historial. Predicción usa telemetría cruda Forma A (regresión sobre curva completa, ~43k puntos/mes, 1×/hora en Orange Pi); Forma B descartada por menor acierto. Reusa `forensic_dispatcher.js` + hook alarm-webhook (Fase 4C.2). Retención 30-90d; cooldown extendido a persistencia (anti-tormenta). |
 
 > Las DEC-REF-* se agregan a este documento y NO se modifican retroactivamente. Cambios de criterio se registran como nuevas DEC-REF.
 

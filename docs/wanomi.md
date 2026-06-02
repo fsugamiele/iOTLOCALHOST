@@ -211,6 +211,108 @@ reglas de decode (42100/01/02/10), no 64 reglas infladas.
 
 ---
 
+### Sesión #18 — 2026-06-01 ✅ CERRADA (reunión de diseño, continuación #17)
+**Foco:** Área 2 — NotificationRouter + modelo de eventos + catálogo de fallas CR00061
+**Formato:** reunión Área 2 + Vibración/Confiabilidad (Área 3) + Franco decisor
+
+#### Naturaleza
+Sesión de DISEÑO, no de implementación. Cierra los bloques pendientes de la
+reunión iniciada en #17 (NotificationRouter) y produce el entregable: catálogo
+de fallas→reglas de CR00061 por método falla-primero.
+
+#### DEC-REF-21 — NotificationRouter
+- TRES niveles de severidad (no dos), alineados al parser de alarmas Claro:
+  `info` (evento programado) / `warning` (anómalo pero operativo) / `critical`
+  (el equipo se detiene / site cayendo).
+- Ruteo por consecuencia operativa: info→dashboard; warning→dashboard+NOC+
+  **Telegram SIEMPRE** (es el "llegar antes" de DEC-GTM-2, NO opcional);
+  critical→los tres canales con tono interruptor.
+- `recommendation` (el "qué hacer") vive en la RuleDefinition (DEC-REF-18),
+  heredado de la columna "Acción sugerida" del informe de alarmas Claro.
+- El router FORMATEA por canal: Telegram=texto humano; NOC=evento estructurado
+  (código+interpretación+severidad); dashboard=objeto completo.
+- Evento NOC va a MQTT central `wanomi/noc/{siteId}/event`; el bridge a NetCool
+  de Claro queda en standby (bloqueado esperando protocolo/IP/credenciales de
+  Claro) sin bloquear el router.
+- DEDUPLICACIÓN por correlación de causa raíz, DECLARADA EN DATOS: cada regla
+  puede nombrar su evento padre; el router agrupa consecuencias bajo el evento
+  padre en ventana de correlación. Mecanismo GENERAL (no parche de cascada).
+  La cascada energética = `ac_outage_event` (soft sensor ya en tabla sesión #9)  es el evento padre; mains/transfer/gen/load son sus consecuencias.
+
+#### DEC-REF-22 — Modelo de eventos unificado
+- Toda Alarm/Event se persiste como historial CON su valor numérico disparador.
+- Flag `forensic` derivado del `source` de la variable (DEC-SENSOR-3):
+  physical+categoría legal → entra a la cadena HMAC (DEC-FORENSIC-2 respetado);
+  todo lo demás → forensic:false, solo historial. En CR00061 (Connect puro),
+  casi todo es forensic:false hasta instalar Sense — la cadena HMAC se "activa"
+  de verdad con el hardware Sense (sonda combustible, etc.).
+- PREDICCIÓN (DEC-REF-18) usa TELEMETRÍA CRUDA (Forma A): regresión sobre la
+  curva completa = más acertada (ve la degradación antes de cruzar umbral). La
+  Orange Pi la procesa holgadamente (regresión sobre ~43k puntos/mes en ms,
+  corriendo 1×/hora, no por muestra). DESCARTADA la Forma B (predecir desde
+  eventos) por menor acierto — los eventos son para forense/trazabilidad/
+  reportes, no para predecir.
+- Reusa `forensic_dispatcher.js` + cadena HMAC + hook alarm-webhook (Fase 4C.2,
+  YA implementado).
+- Retención 30-90 días (~18 MB en CR00061). Cooldown de DEC-REF-21 extendido a
+  persistencia: mismo cruce dentro de cooldown no se re-registra (anti-tormenta).
+
+#### Corrección de proceso (instrucción de Franco)
+Se DESCARTA fabricar reglas para llegar a una cuota (~40). Método correcto:
+falla→daño operativo→¿dato disponible?→tipo de regla. El número es CONSECUENCIA.
+Distinción clave revelada: (1) alarma del controlador (lo que el equipo ya grita
+— no diferencial) vs (2) inferencia de salud (combinar variables para deducir
+estado de un subsistema que el controlador NO reporta — el valor no-copiable).
+El catálogo prioriza (2).
+
+#### ENTREGABLE — Catálogo de inferencias de salud CR00061 (43 inferencias)
+Método falla-primero por subsistema. Convención de confianza:
+🟢 Directo (alta confianza, día 1) · 🟡 Inferido (confianza media, afina con
+histórico) · 🔵 Hipótesis (a validar en piloto, NO se promete a Claro) ·
+🔴 Necesita Sense (mapa de ruta, futuro hardware).
+
+Subsistemas:
+- A · Generación de energía (A1-A7): presión aceite, no toma carga, sobrecarga,
+  desequilibrio fases, calidad energía, governor/AVR(🔵), vibración(🔴 Sense).
+- B · Motor/combustible/inyección (B1-B6): aire en combustible(🟢 alarma 73),
+  pérdida rendimiento(🔵), combustión pobre(🔵), filtro tapándose(🔵), estado
+  bomba inyectora(🔴), identificar inyector(🔴). NOTA: bomba/inyectores NO se
+  diagnostican directo por Modbus — se detecta síntoma, no causa. No sobrevender.
+- C · Lubricación/fluidos (C1-C6): temp refrigerante, pérdida gradual presión
+  aceite, pérdida refrigeración, aceite degradado (soft sensor run_hours+temp),
+  nivel refrigerante(🔴), calidad aceite(🔴).
+- D · Horas/mantenimiento (D1-D4) ★ mejor relación valor/confiabilidad:
+  SERVICE 250h próximo(🟢), service vencido(🟢), horas anómalas, arranques
+  excesivos. Aritmética pura sobre contadores confiables.
+- E · Arranque + CARGADOR DE FLOTE (E1-E6): batería degradada(🟡), arranque
+  fallido, gen lucha por arrancar, **E4 cargador no recupera batería(🟡)**,
+  **E5 cargador caído(🟡)**, **E6 tensión flote rectificador(🟢, futuro Eltek)**.
+  [Cargador de flote agregado por Franco — falla silenciosa de alto impacto:
+  batería de arranque muere sin aviso → gen no arranca en el corte.]
+- F · Red/ATS (F1-F4): tensión red, frecuencia, transfer inconsistente, gen
+  RUNNING sin tensión.
+- G · Combustible (G1-G4): bajo(<15%)⚠️, crítico⚠️, autonomía proyectada,
+  nivel forense(🔴 Sense). ⚠️ G1/G2/G3 dependen del sender de fábrica que MIENTE
+  (CR00058: clavado 24% con tanque vacío, tabla sesión #9). Baja confianza hasta
+  validar contra sonda física. Valor forense real necesita Sense.
+- H · Cascada cross-equipo (H1-H4): corte+gen no arranca 30s(crítica), cascada
+  completa(evento padre), transferencia sin generación, site down.
+- I · Salud del monitoreo (I1-I5): pérdida comunicación, decode bitmaps
+  42100/01/02/10.
+
+Distribución por confianza: 🟢 ~22 · 🟡 ~10 · 🔵 5 · 🔴 8. El número ~40 del
+blueprint apareció SOLO como consecuencia del análisis, no como cuota.
+Las 🟢+🟡 son el producto Connect real hoy; las 🔵 son "el sistema aprende"
+(sin sobrevender); las 🔴 son argumento de upsell a Sense (limitación → roadmap
+comercial).
+
+#### Pendiente para próxima sesión
+- Implementación del motor edge (DEC-REF-18) + los packs de reglas del catálogo.
+- NotificationRouter (DEC-REF-21).
+- Validar DevicePanel con ATS/CUMMINS en /dashboard (B.4.5, gap detectado).
+
+---
+
 ### Sesión #5 — 2026-05-05 ✅ CERRADA
 **Foco:** Plataforma Wanomi — backend Fase 4B + 4C.1 + 4C.2 (soporte Telco)
 
