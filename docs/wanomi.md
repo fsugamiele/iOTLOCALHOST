@@ -1422,27 +1422,38 @@ El simulador estaba bind al user correcto desde el principio. La hipótesis "use
 ---
 
 ### Sesión #20 — 2026-06-03 ✅ CERRADA (implementación — NotificationRouter real)
-**Foco:** Área 2 — NotificationRouter real (DEC-REF-21) + schema extendido (DEC-REF-23)
+**Foco:** Área 2 — NotificationRouter real (DEC-REF-21) + schema Notification extendido (DEC-REF-23)
 
-#### Entregables
-5 archivos modificados:
-- `app/api/models/notifications.js` — schema extendido con campos motor edge: `ruleId`, `inferenceId`, `label`, `severity`, `recommendation`, `siteId`, `reason`, `source`. Campos EMQX legacy mantenidos opcionales para compatibilidad. DEC-REF-23.
-- `edge-engine/siteState.js` — DeviceRO agrega `userId` y `name`; reconstruct guarda `_userId` y `_deviceName` por device en siteState
-- `edge-engine/ruleEngine.js` — `fireAlarm()` extrae `_userId` y `_deviceName` de siteState y los agrega al objeto alarm antes de llamar a `notify()`
-- `edge-engine/notificationRouter.js` — stub reemplazado por implementación real con 4 canales:
-  - Canal 1: MQTT `{userId}/dummy-did/dummy-var/notif` (texto plano, compatible con dashboard existente)
-  - Canal 2: MQTT `wanomi/noc/{siteId}/event` (JSON estructurado, DEC-REF-21)
-  - Canal 3: `NotificationRO.create()` en colección `notifications` con campos semánticamente correctos
-  - Canal 4: Telegram via `https.get()` — feature flag por env (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID_DEFAULT`)
-- `edge-engine/index.js` — `notificationRouter.init({ mqttClient, siteId })` en handler `connect`
+#### Decisión nueva
+**DEC-REF-23 — Schema Notification extendido:** campos motor edge agregados
+(`ruleId`, `inferenceId`, `label`, `severity`, `recommendation`, `siteId`,
+`reason`, `source`). Campos EMQX (`emqxRuleId`, `condition`, `variableFullName`)
+mantenidos opcionales para compatibilidad. Motor edge nunca mapea semántica
+incorrecta a campos legacy. Campo `source: 'emqx' | 'edge-engine'` permite
+discriminar origen. Decisión motivada por DEC-STRAT-2 (producto, no demo):
+el shim de compatibilidad propuesto inicialmente fue descartado.
+
+#### Archivos modificados
+- `app/api/models/notifications.js` — schema extendido (DEC-REF-23)
+- `edge-engine/siteState.js` — reconstruct agrega `_userId` y `_deviceName`
+- `edge-engine/ruleEngine.js` — fireAlarm enriquece alarm con userId y deviceName
+- `edge-engine/notificationRouter.js` — implementación real (4 canales)
+- `edge-engine/index.js` — notificationRouter.init() en handler connect
 
 #### Validación E2E
-- oil_pressure_psi=10 → Mongo guardó con `source='edge-engine'`, `userId`, `deviceName='CR00061-CUMMINS'`, `siteId='CR00061'`, `severity='critical'` ✅
-- Canal MQTT notif y NOC event enviados correctamente ✅
-- Telegram: OFF (credenciales no cargadas en .env — sin cambio de código requerido)
+Notificación guardada en Mongo con todos los campos correctos:
+- source: 'edge-engine' ✅
+- ruleId: 'cummins-A1-oil-pressure' ✅
+- userId: '6a1ddc27442190ad13f1da4a' ✅
+- deviceName: 'CR00061-CUMMINS' ✅
+- siteId: 'CR00061' ✅
+- readed: false ✅
+- emqxRuleId / condition / variableFullName: '' ✅ (campos legacy vacíos)
+- Telegram: OFF — activar cargando TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID_DEFAULT en .env
 
 #### Pendiente sesión #21
-- Evaluadores tipo C y S
-- Telegram: agregar `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID_DEFAULT` a `/app/.env` para activar canal 4
+- Activar Telegram: cargar credenciales de SECRETS.md al .env
+- Evaluador tipo C (auto-calibrado vs setpoint Modbus)
+- Evaluador tipo S (stateful/ventana temporal)
 
 ---
