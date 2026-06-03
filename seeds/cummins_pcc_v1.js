@@ -14,6 +14,7 @@ const pack = {
     {
       ruleId:      'cummins-A1-oil-pressure',
       label:       'Presión de aceite baja',
+      variableLabel: 'Presión de aceite',
       inferenceId: 'A1',
       type:        'D',
       severity:    'critical',
@@ -30,6 +31,7 @@ const pack = {
     {
       ruleId:      'cummins-D1-service-due-soon',
       label:       'Service 250h próximo (≤20h restantes)',
+      variableLabel: 'Horas hasta próximo service',
       inferenceId: 'D1',
       type:        'D',
       severity:    'warning',
@@ -46,6 +48,7 @@ const pack = {
     {
       ruleId:      'cummins-D2-service-overdue',
       label:       'Service 250h vencido',
+      variableLabel: 'Horas hasta próximo service',
       inferenceId: 'D2',
       type:        'D',
       severity:    'critical',
@@ -62,6 +65,7 @@ const pack = {
     {
       ruleId:      'cummins-G2-fuel-critical',
       label:       'Nivel de combustible crítico (<15%)',
+      variableLabel: 'Nivel de combustible',
       inferenceId: 'G2',
       type:        'D',
       severity:    'critical',

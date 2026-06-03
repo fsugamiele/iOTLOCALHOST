@@ -48,6 +48,7 @@ function fireAlarm({ rule, value, deviceId, reason, cooldownState, siteState }) 
     deviceName:        devState._deviceName || '',
     inferenceId:       rule.inferenceId,
     label:             rule.label,
+    variableLabel:     rule.variableLabel || '',
     severity:          rule.severity,
     recommendation:    rule.recommendation,
     correlationParent: rule.correlationParent,

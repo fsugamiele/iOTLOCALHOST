@@ -59,6 +59,7 @@ function sendNocEvent(alarm) {
     deviceId:          alarm.deviceId,
     deviceName:        alarm.deviceName,
     variable:          alarm.variable,
+    variableLabel:     alarm.variableLabel,
     value:             alarm.value,
     reason:            alarm.reason,
     siteId:            _siteId,
@@ -87,6 +88,7 @@ async function saveToMongo(alarm) {
       dId:             alarm.deviceId,
       deviceName:      alarm.deviceName,
       variable:        alarm.variable,
+      variableFullName: alarm.variableLabel || '',
       value:           typeof alarm.value === 'number' ? alarm.value : null,
       payload:         { severity: alarm.severity, recommendation: alarm.recommendation, value: alarm.value },
       readed:          false,
@@ -94,7 +96,6 @@ async function saveToMongo(alarm) {
       // campos legacy EMQX — vacíos, solo para compatibilidad de schema
       emqxRuleId:      '',
       condition:       '',
-      variableFullName:'',
     });
   } catch (err) {
     console.error('[notifRouter] Mongo save error:', err.message);
@@ -109,16 +110,15 @@ function sendTelegram(alarm) {
                 alarm.severity === 'warning'  ? '⚠️' : 'ℹ️';
 
   const text = [
-    `${emoji} *${alarm.label}*`,
+    `${emoji} ${alarm.label}`,
     `Site: ${_siteId} · Device: ${alarm.deviceName || alarm.deviceId}`,
-    `Valor: ${alarm.variable} = ${alarm.value}`,
+    `Valor: ${alarm.variableLabel || alarm.variable} = ${alarm.value}`,
     `→ ${alarm.recommendation}`,
   ].join('\n');
 
   const params = new URLSearchParams({
-    chat_id:    TELEGRAM_CHAT_ID,
+    chat_id: TELEGRAM_CHAT_ID,
     text,
-    parse_mode: 'Markdown',
   });
 
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?${params}`;
