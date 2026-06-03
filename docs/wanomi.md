@@ -1457,3 +1457,26 @@ Notificación guardada en Mongo con todos los campos correctos:
 - Evaluador tipo S (stateful/ventana temporal)
 
 ---
+
+### Sesión #21 — 2026-06-03 ✅ CERRADA (Telegram E2E + variableLabel)
+**Foco:** Área 2 — activación canal Telegram + nombre legible de variable en alarmas
+
+#### Entregables
+- Canal Telegram validado end-to-end con credenciales reales (chat de Franco, chat_id 8528874867, bot @Wanomi_bot)
+- Bug Markdown resuelto: `parse_mode='Markdown'` rompía snake_case (`oil_pressure_psi` → cursiva sin guiones). Solución: texto plano.
+- `variableLabel` (nombre legible, DEC-47) agregado a RuleDefinition + las 4 reglas Cummins + propagado a los 4 canales del NotificationRouter
+- `variableFullName` poblado correctamente en Mongo (fix de duplicado que lo pisaba con '')
+
+#### Setup de entorno
+- `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID_DEFAULT` cargados en `app/.env`
+- chat_id correcto obtenido vía getUpdates tras /start al bot
+
+#### Aprendizaje de validación
+- El error HTTP de Telegram en tests previos era timing: SIGTERM cerraba el proceso antes de que el socket HTTPS completara el round-trip. En producción (motor permanente) no ocurre. Para validación manual: esperar ~8s antes del kill.
+
+#### Commits
+- 7a2d97c — variableLabel legible + fix Markdown Telegram (4 archivos)
+
+#### Pendiente sesión #22
+- Evaluador tipo C (auto-calibrado vs setpoint Modbus, fallback a D) — requiere conversación de diseño previa
+- Evaluador tipo S (stateful/ventana temporal)
