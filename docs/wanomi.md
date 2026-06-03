@@ -1384,3 +1384,39 @@ El simulador estaba bind al user correcto desde el principio. La hipótesis "use
 **Escrituras de código:** `app/api/routes/emqxapi.js` (bloques A-E: waitForSaverResource, initEmqxResources, reconcileSaverRules con manejo enabled=false + retorno {ok,fixed,errors}, reconcileRules con log N/M/K) · `app/api/routes/devices.js` (guard en createSaverRule).
 
 ---
+
+### Sesión #19 — 2026-06-03 ✅ CERRADA (implementación — motor edge v1)
+**Foco:** Área 2 — implementación del motor de reglas edge (DEC-REF-18)
+
+#### Entregables
+8 archivos nuevos creados y validados E2E:
+- `app/api/models/rule_definition.js` — ConditionSchema + RuleDefinitionSchema (subdoc embebido)
+- `app/api/models/rule_pack.js` — RulePack model, colección 'rulepacks'
+- `seeds/cummins_pcc_v1.js` — seed A1, D1, D2, G2 (upsert idempotente)
+- `edge-engine/index.js` — entry point: Mongo + reconstruct + suscripción MQTT
+- `edge-engine/siteState.js` — loadPacks(): índice + hidratación reconstruct
+- `edge-engine/ruleEngine.js` — processMessage() + fireAlarm() + cooldown en RAM
+- `edge-engine/notificationRouter.js` — stub DEC-REF-21 (log estructurado)
+- `edge-engine/evaluators/typeD.js` — evaluateD(): 6 operadores, null-safe
+
+#### Validación E2E
+- A1 oil_pressure_psi=10 → CRITICAL ✅
+- G2 fuel_level_pct=8 → CRITICAL ✅ (caveat CR00058 propagado en recommendation)
+- D1 hours_to_next_service_250=15 → WARNING ✅
+- A1 oil_pressure_psi=40 → silencio ✅ (no cruza umbral)
+- Cooldown por regla → correcto ✅ (no re-dispara dentro de la ventana)
+
+#### Fixes en el camino
+- Schemas RO inline en siteState.js — los models de app/api usan import (Babel/Nuxt), no son require-ables desde proceso Node separado
+- Topic real del broker: `+/+/+/sdata` con userId en parts[0], dId en parts[1]
+- deviceType en DB corregido: 'CUMMINS' → 'cummins-pcc' (naming canónico, DEC-INTEGRATION-1)
+- QoS 0 + disconnect rápido = race condition en tests manuales (simulador permanente no tiene este issue)
+
+#### Deuda registrada
+- **BACKLOG-EDGE-1:** `source_filter` no evaluado en v1 — campo `_source` ausente en el stream por variable individual. Implementar cuando el driver Modbus publique con `_source` en el estado del device.
+
+#### Pendiente sesión #20
+- NotificationRouter real: Telegram + evento MQTT al NOC (DEC-REF-21)
+- Evaluadores tipo C y S
+
+---
