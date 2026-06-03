@@ -14,8 +14,19 @@ const notificationSchema = new Schema({
     condition: { type: String, required: [true] },
     variable: { type: String, required: [true] },
     variableFullName: { type: String, required: [true] },
-    readed: {type: Boolean, required: [true]},
-    time: {type: Number, required: [true]}
+    readed:          { type: Boolean, default: false },
+    time:            { type: Number },
+    // ── campos motor edge (DEC-REF-23, sesión #20) ──
+    // Los campos EMQX arriba se mantienen opcionales para compatibilidad.
+    // El motor edge llena estos; nunca usa emqxRuleId/condition/variableFullName.
+    ruleId:          { type: String },
+    inferenceId:     { type: String },
+    label:           { type: String },
+    severity:        { type: String, enum: ['info', 'warning', 'critical'] },
+    recommendation:  { type: String },
+    siteId:          { type: String },
+    reason:          { type: String },
+    source:          { type: String },   // 'emqx' | 'edge-engine'
 
 });
 

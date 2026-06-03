@@ -2,7 +2,8 @@ require('dotenv').config();
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks }      = require('./siteState');
-const { processMessage } = require('./ruleEngine');
+const { processMessage }      = require('./ruleEngine');
+const notificationRouter      = require('./notificationRouter');
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -25,6 +26,7 @@ async function start() {
   const client = mqtt.connect(MQTT_HOST, { username: MQTT_USER, password: MQTT_PASS });
 
   client.on('connect', () => {
+    notificationRouter.init({ mqttClient: client, siteId: SITE_ID });
     client.subscribe(MQTT_TOPIC, err => {
       if (err) {
         console.error('[edge-engine] Error suscripción MQTT:', err.message);

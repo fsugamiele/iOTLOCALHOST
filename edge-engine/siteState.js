@@ -6,7 +6,7 @@ const RulePack = require('../app/api/models/rule_pack');
 const SiteRO   = mongoose.models.SiteRO   || mongoose.model('SiteRO',
   new Schema({ siteCode: String, devices: [String] }, { collection: 'sites' }));
 const DeviceRO = mongoose.models.DeviceRO || mongoose.model('DeviceRO',
-  new Schema({ dId: String, deviceType: String },     { collection: 'devices' }));
+  new Schema({ dId: String, deviceType: String, userId: String, name: String }, { collection: 'devices' }));
 const DataRO   = mongoose.models.DataRO   || mongoose.model('DataRO',
   new Schema({ dId: String, variable: String, value: Schema.Types.Mixed, time: Number },
              { collection: 'data' }));
@@ -35,9 +35,9 @@ async function loadPacks(siteId, siteState) {
     return { packs };
   }
 
-  const devices = await DeviceRO.find({ dId: { $in: dIds } }, { dId: 1, deviceType: 1 }).lean();
-  const deviceTypeMap = {};
-  for (const d of devices) deviceTypeMap[d.dId] = d.deviceType;
+  const devices = await DeviceRO.find({ dId: { $in: dIds } }, { dId: 1, deviceType: 1, userId: 1, name: 1 }).lean();
+  const deviceInfoMap = {};
+  for (const d of devices) deviceInfoMap[d.dId] = { deviceType: d.deviceType, userId: d.userId, name: d.name };
 
   let hydrated = 0;
   for (const dId of dIds) {
@@ -54,7 +54,9 @@ async function loadPacks(siteId, siteState) {
     }
 
     if (Object.keys(vars).length > 0) {
-      vars._deviceType = deviceTypeMap[dId] || '';
+      vars._deviceType = deviceInfoMap[dId]?.deviceType || '';
+      vars._userId     = deviceInfoMap[dId]?.userId     || '';
+      vars._deviceName = deviceInfoMap[dId]?.name       || '';
       siteState.set(dId, vars);
       hydrated++;
     }

@@ -1,5 +1,5 @@
 const { evaluateD } = require('./evaluators/typeD');
-const notify        = require('./notificationRouter');
+const { notify }    = require('./notificationRouter');
 
 function processMessage({ dId, variable, value, siteState, packs, cooldownState }) {
   const deviceState = siteState.get(dId) || {};
@@ -25,13 +25,13 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState 
           continue;
       }
       if (triggered) {
-        fireAlarm({ rule, value, deviceId: dId, reason: 'threshold', cooldownState });
+        fireAlarm({ rule, value, deviceId: dId, reason: 'threshold', cooldownState, siteState });
       }
     }
   }
 }
 
-function fireAlarm({ rule, value, deviceId, reason, cooldownState }) {
+function fireAlarm({ rule, value, deviceId, reason, cooldownState, siteState }) {
   const now       = Date.now();
   const lastFired = cooldownState.get(rule.ruleId) || 0;
   const cooldownMs = (rule.cooldownSec || 0) * 1000;
@@ -40,8 +40,12 @@ function fireAlarm({ rule, value, deviceId, reason, cooldownState }) {
 
   cooldownState.set(rule.ruleId, now);
 
+  const devState = siteState ? siteState.get(deviceId) || {} : {};
+
   const alarm = {
     ruleId:            rule.ruleId,
+    userId:            devState._userId     || '',
+    deviceName:        devState._deviceName || '',
     inferenceId:       rule.inferenceId,
     label:             rule.label,
     severity:          rule.severity,
