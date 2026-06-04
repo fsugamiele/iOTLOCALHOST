@@ -1,4 +1,5 @@
 const { evaluateD } = require('./evaluators/typeD');
+const { evaluateC } = require('./evaluators/typeC');
 const { notify }    = require('./notificationRouter');
 
 function processMessage({ dId, variable, value, siteState, packs, cooldownState }) {
@@ -15,7 +16,19 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState 
         case 'D':
           triggered = evaluateD(rule, value);
           break;
-        case 'C':
+        case 'C': {
+          const res = evaluateC(rule, value, deviceState);
+          triggered = res.fired;
+          if (triggered) {
+            fireAlarm({
+              rule, value, deviceId: dId,
+              reason: res.mode === 'fallback' ? 'threshold-fallback' : 'threshold-calibrated',
+              mode: res.mode, thresholdUsed: res.thresholdUsed,
+              cooldownState, siteState,
+            });
+          }
+          continue;
+        }
         case 'S':
         case 'cross':
           console.log(`[ruleEngine] Tipo ${rule.type} pendiente — regla ${rule.ruleId} omitida`);
@@ -31,7 +44,7 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState 
   }
 }
 
-function fireAlarm({ rule, value, deviceId, reason, cooldownState, siteState }) {
+function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldownState, siteState }) {
   const now       = Date.now();
   const lastFired = cooldownState.get(rule.ruleId) || 0;
   const cooldownMs = (rule.cooldownSec || 0) * 1000;
@@ -56,6 +69,8 @@ function fireAlarm({ rule, value, deviceId, reason, cooldownState, siteState }) 
     variable:          rule.variable,
     value,
     reason,
+    mode:              mode || 'direct',
+    thresholdUsed:     thresholdUsed !== undefined ? thresholdUsed : null,
     ts:                new Date().toISOString(),
   };
 
