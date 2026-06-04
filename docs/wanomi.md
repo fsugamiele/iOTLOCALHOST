@@ -1480,3 +1480,40 @@ Notificación guardada en Mongo con todos los campos correctos:
 #### Pendiente sesión #22
 - Evaluador tipo C (auto-calibrado vs setpoint Modbus, fallback a D) — requiere conversación de diseño previa
 - Evaluador tipo S (stateful/ventana temporal)
+
+### Sesión #22 — 2026-06-03 ✅ CERRADA (implementación — evaluador tipo C)
+**Foco:** Área 2 — evaluador tipo C auto-calibrado contra setpoint Modbus, fallback a tipo D, validación E2E con 5 casos
+
+#### Entregables
+- `edge-engine/evaluators/typeC.js` — evaluador completo, retorna `{ fired, mode, thresholdUsed }`
+  - Modo `calibrated`: setpoint disponible en siteState → compara valor observado contra setpoint real del equipo
+  - Modo `fallback`: sin setpoint + `fallbackToD=true` → compara contra `condition.value` (umbral de respaldo)
+  - Modo `no-ref`: sin setpoint + sin fallback → `on_missing_ref` decide (alarm | ignore)
+- `edge-engine/ruleEngine.js` extendido: `case 'C'` separado, `fireAlarm()` acepta `mode` + `thresholdUsed`
+- `edge-engine/notificationRouter.js`: schema NotificationRO + `saveToMongo()` con campos `mode`/`thresholdUsed`
+- `app/api/models/rule_definition.js`: campo `setpointSource.variable` (String) — nombre de la key en siteState
+- Arnés de validación E2E (5 casos, dId real Z5tKK1rN) en `seeds/_dev/` — TODOS PASS ✅
+
+#### Decisiones registradas
+- DEC-REF-24: Estándar de comunicación de alarmas v1 — formato jerárquico con contexto numérico explícito
+- DEC-REF-25: Driver normaliza, evaluador compara — separación de responsabilidades
+
+#### Incidente de seguridad
+- TELEGRAM_BOT_TOKEN real expuesto en commit 3c4eb56 (SECRETS.md). Decisión: NO rotar (repo privado, sin push). SECRETS.md removido del tracking (git rm --cached + .gitignore). Documentado en SECRETS.md §Incidente #22.
+
+#### Errores de validación resueltos
+- `canary: true` en pack de prueba → `loadPacks()` filtra `{ canary: false }` → motor invisible al pack. Fix: `canary: false`
+- `DID = 'CR00061-CUMMINS'` era el nombre, no el dId → `siteState.has()` devuelve false. Fix: `DID = 'Z5tKK1rN'`
+
+#### Commits
+- 97b9db0 — schema: setpointSource.variable en RuleDefinition (#22)
+- 9d71b0a — feat(edge): evaluador tipo C auto-calibrado con fallback a D (#22)
+- aa45d13 — docs(sesion-18): NotificationRouter + modelo eventos + catálogo fallas CR00061 — DEC-REF-21/22
+
+#### Pendiente sesión #23
+- 2b: evento INFO cuando setpoint no está disponible (cooldown keyed `${ruleId}:no-setpoint`)
+- Aplicar formato DEC-REF-24 en NotificationRouter (Telegram/NOC/dashboard)
+- BACKLOG-EDGE-2: escalada temporal del fallback (INFO→ATENCIÓN tras N minutos)
+- BACKLOG-EDGE-3: limpiar shim legacy en `app/api/models/notifications.js`
+- Fix DeprecationWarnings de Mongoose en el log del motor
+- Evaluadores tipo S y cross
