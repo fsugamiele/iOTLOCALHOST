@@ -27,6 +27,7 @@ const RuleDefinitionSchema = new Schema({
   setpointSource: {
     register: { type: Number },
     scale:    { type: Number, default: 1 },
+    variable: { type: String },   // NOMBRE de la key en siteState donde el driver publica el setpoint real (ej. 'coolant_temp_warning_setpoint'). NO confundir con `variable` raíz (la variable observada). DEC-REF-18, #22
   },
   fallbackToD: { type: Boolean, default: true },
 
