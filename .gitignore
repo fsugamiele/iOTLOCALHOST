@@ -64,3 +64,5 @@ docs/INVENTARIO_AUTO.md
 /agenda_reunion_inicial.md
 /session13_wanomi.md
 docs/*.bak
+seeds/_dev/
+SECRETS.md
