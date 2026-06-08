@@ -1517,3 +1517,48 @@ Notificación guardada en Mongo con todos los campos correctos:
 - BACKLOG-EDGE-3: limpiar shim legacy en `app/api/models/notifications.js`
 - Fix DeprecationWarnings de Mongoose en el log del motor
 - Evaluadores tipo S y cross
+
+### Sesión #23 — 2026-06-08 ✅ CERRADA (implementación — DEC-REF-24 en router + sub-paso 2b)
+**Foco:** Área 2 — aplicar formato de alarmas DEC-REF-24 en los cuatro canales del NotificationRouter + evento INFO de configuración cuando el setpoint no está disponible
+
+#### Entregables
+- Campo `unit` agregado a `RuleDefinition` (schema) + seed Cummins completo con unidades reales (kPa, h, %)
+- DEC-REF-24 aplicado en los cuatro canales del router:
+  - **Telegram**: plantilla jerárquica completa con línea de umbral según `mode` (fijo/calibrado/respaldo); fix del bug de líneas duplicadas heredado de #21
+  - **NOC event**: agregados `mode`, `thresholdUsed`, `unit` al JSON estructurado
+  - **Dashboard MQTT**: reemplazado el texto legacy incomprensible por formato compacto `[SEVERITY] label | site | value unit | umbral: X`
+  - **Mongo**: campo `unit` persistido (schema inline + saveToMongo)
+- `fireAlarm()` propaga `unit` desde la RuleDefinition; `thresholdUsed` ahora se propaga para tipo D (`rule.condition?.value`)
+- **Sub-paso 2b**: evento INFO de configuración separado en `ruleEngine.js` case 'C' — cuando `mode='fallback'|'no-ref'`, emite un segundo mensaje (severity `info`, reason `setpoint-unavailable`) con cooldown propio `${ruleId}:no-setpoint`, independiente del operativo. Acción apunta a configuración del controlador, NO al enlace Modbus (DEC-REF-24).
+
+#### Validación E2E
+- A1 oil_pressure=10 (tipo D) → CRITICAL ✅; Mongo: `unit:"kPa"`, `mode:"direct"`, `thresholdUsed:15` ✅; Telegram renderizó plantilla completa con `Umbral: 15 kPa (fijo)` ✅
+- C3 coolant_temp=100 sin setpoint (tipo C, fallback) → DOS mensajes separados ✅:
+  - OPERATIVO: `{severity:"warning", mode:"fallback", reason:"threshold-fallback", thresholdUsed:90}`
+  - INFO 2b: `{severity:"info", mode:"fallback", reason:"setpoint-unavailable", thresholdUsed:90}`
+- Confirmado: nunca mezclados (DEC-REF-24 cumplido)
+
+#### Decisiones de diseño (v1, registradas)
+- **Site name = `_siteId`** ("CR00061") suficiente para v1; perfeccionable con nombre legible en BD cuando haya más sites
+- Línea de umbral mostrada en TODOS los modos: `direct`→(fijo), `calibrated`→(calibrado), `fallback`→(respaldo — setpoint no disponible), `no-ref`→omitida
+- Cooldown del INFO 2b vive en `ruleEngine.js` (el router emite, no decide) — opción D acordada
+
+#### Aprendizajes / deuda
+- **Re-seed obligatorio tras cambio de seed**: las reglas en Mongo NO se actualizan al editar el archivo seed. Hay que re-correr `node seeds/cummins_pcc_v1.js`. El campo `unit` apareció vacío en la primera validación por esto.
+- **Path roto en arneses `seeds/_dev/`**: tres archivos (`_validate_typeC_seed.js`, `_validate_typeC_check.js`, `_validate_setpointSource.js`) tenían `require('../app/...')` cuando el correcto es `require('../../app/...')` — consistente con una reubicación a `_dev/` posterior a #22. Corregido en disco local. **NO commiteado** (`seeds/_dev/` gitignoreado). Si se vuelven a tocar, el path correcto es `../../`.
+- DeprecationWarnings de Mongoose persisten en el log (no bloqueantes) — pendiente de #22, sigue abierto.
+
+#### Commits (4)
+- 28a6844 — feat(rules): add unit field to RuleDefinition + cummins seed (#23)
+- fb57e57 — feat(edge-engine): apply DEC-REF-24 alarm format to all notification channels (#23)
+- 7f3bcce — fix(edge-engine): propagate thresholdUsed for type D rules (#23)
+- 5034fca — feat(edge-engine): emit INFO event when setpoint unavailable, sub-step 2b (#23)
+
+#### Estado de seguridad (sin cambios desde #22)
+- Commit `3c4eb56` con token Telegram sigue en historial. **17 commits sin pushear** (13 previos + 4 de #23). Rotación vía BotFather `/revoke` pendiente ANTES de cualquier push.
+
+#### Pendiente sesión #24
+- BACKLOG-EDGE-2: escalada temporal del fallback (INFO → ATENCIÓN tras N minutos)
+- BACKLOG-EDGE-3: limpiar shim legacy en `app/api/models/notifications.js`; agregar `mode`/`thresholdUsed`/`unit` a las páginas de lectura del dashboard
+- Fix DeprecationWarnings de Mongoose
+- Evaluadores tipo S (stateful/ventana) y cross-equipo (requiere reunión multi-especialista — familia H del catálogo CR00061)
