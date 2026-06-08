@@ -38,7 +38,8 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState 
           continue;
       }
       if (triggered) {
-        fireAlarm({ rule, value, deviceId: dId, reason: 'threshold', cooldownState, siteState });
+        fireAlarm({ rule, value, deviceId: dId, reason: 'threshold',
+                    thresholdUsed: rule.condition?.value, cooldownState, siteState });
       }
     }
   }
