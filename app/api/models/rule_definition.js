@@ -10,6 +10,7 @@ const RuleDefinitionSchema = new Schema({
   ruleId:      { type: String, required: true },
   label:       { type: String, required: true },
   variableLabel: { type: String, default: '' },  // nombre legible de la variable (DEC-47, UI español)
+  unit:          { type: String },               // unidad de medida (ej. 'kPa', 'h', '%', 'rpm')
   inferenceId: { type: String, required: true },
 
   type: { type: String, enum: ['D', 'C', 'S', 'cross'], required: true },
