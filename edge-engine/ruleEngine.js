@@ -27,6 +27,33 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState 
               cooldownState, siteState,
             });
           }
+          // Sub-paso 2b: INFO de configuración cuando setpoint no disponible (DEC-REF-24)
+          if (res.mode === 'fallback' || res.mode === 'no-ref') {
+            const noSetpointKey = `${rule.ruleId}:no-setpoint`;
+            const lastNoSetpoint = cooldownState.get(noSetpointKey) || 0;
+            const cooldownMs = (rule.cooldownMinutes || 60) * 60 * 1000;
+            if (Date.now() - lastNoSetpoint > cooldownMs) {
+              cooldownState.set(noSetpointKey, Date.now());
+              notify({
+                ruleId:         rule.ruleId,
+                inferenceId:    rule.inferenceId,
+                label:          rule.label,
+                variableLabel:  rule.variableLabel || '',
+                unit:           rule.unit || '',
+                severity:       'info',
+                recommendation: `Setpoint de "${rule.variableLabel || rule.variable}" no disponible en siteState. Verificar configuración del controlador y variable "${rule.setpointSource?.variable || 'no definida'}".`,
+                deviceId:       dId,
+                deviceName:     deviceState._deviceName || dId,
+                variable:       rule.variable,
+                value,
+                mode:           res.mode,
+                thresholdUsed:  res.thresholdUsed,
+                userId:         deviceState._userId || '',
+                ts:             new Date().toISOString(),
+                reason:         'setpoint-unavailable',
+              });
+            }
+          }
           continue;
         }
         case 'S':
