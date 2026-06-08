@@ -22,6 +22,7 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     // ── tipo C: modo de disparo + umbral efectivo (DEC-REF-24, #22) ──
     mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref'], default: 'direct' },
     thresholdUsed: { type: Number, default: null },
+    unit:          { type: String, default: '' },
   }, { collection: 'notifications' })
 );
 
@@ -42,7 +43,9 @@ function init({ mqttClient, siteId }) {
 function sendMqttNotif(alarm) {
   if (!_mqttClient || !alarm.userId) return;
   const topic = `${alarm.userId}/dummy-did/dummy-var/notif`;
-  const msg   = `The rule: when the ${alarm.label} is ${alarm.recommendation} than ${alarm.value}`;
+  const unit = alarm.unit ? ` ${alarm.unit}` : '';
+  const thr  = alarm.thresholdUsed != null ? ` | umbral: ${alarm.thresholdUsed}${unit}` : '';
+  const msg  = `[${alarm.severity.toUpperCase()}] ${alarm.label} | ${_siteId} | ${alarm.value}${unit}${thr}`;
   _mqttClient.publish(topic, msg, { qos: 0 }, err => {
     if (err) console.error('[notifRouter] MQTT notif error:', err.message);
   });
@@ -64,6 +67,9 @@ function sendNocEvent(alarm) {
     variable:          alarm.variable,
     variableLabel:     alarm.variableLabel,
     value:             alarm.value,
+    mode:              alarm.mode || 'direct',
+    thresholdUsed:     alarm.thresholdUsed ?? null,
+    unit:              alarm.unit || '',
     reason:            alarm.reason,
     siteId:            _siteId,
     ts:                alarm.ts,
@@ -89,6 +95,7 @@ async function saveToMongo(alarm) {
       mode:             alarm.mode || 'direct',
       thresholdUsed:    (alarm.thresholdUsed !== undefined && alarm.thresholdUsed !== null)
                           ? alarm.thresholdUsed : null,
+      unit:             alarm.unit || '',
       // campos comunes
       userId:          alarm.userId,
       dId:             alarm.deviceId,
@@ -114,24 +121,30 @@ function sendTelegram(alarm) {
 
   const emoji = alarm.severity === 'critical' ? '🔴' :
                 alarm.severity === 'warning'  ? '⚠️' : 'ℹ️';
+  const unit  = alarm.unit ? ` ${alarm.unit}` : '';
 
-  const text = [
-    `${emoji} ${alarm.label}`,
-    `Site: ${_siteId} · Device: ${alarm.deviceName || alarm.deviceId}`,
-    `Valor: ${alarm.variableLabel || alarm.variable} = ${alarm.value}`,
-    `→ ${alarm.recommendation}`,
-  ].join('\n');
+  const lines = [
+    `${emoji} ${alarm.label} — ${_siteId}`,
+    `Dispositivo: ${alarm.deviceName || alarm.deviceId} | Variable: ${alarm.variableLabel || alarm.variable} = ${alarm.value}${unit}`,
+  ];
 
-  const params = new URLSearchParams({
-    chat_id: TELEGRAM_CHAT_ID,
-    text,
-  });
+  if (alarm.mode === 'direct') {
+    lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (fijo)`);
+  } else if (alarm.mode === 'calibrated') {
+    lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (calibrado)`);
+  } else if (alarm.mode === 'fallback') {
+    lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (respaldo — setpoint no disponible)`);
+  }
+  // mode='no-ref': omitir línea de umbral
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?${params}`;
+  lines.push(`→ ${alarm.recommendation}`);
+
+  const text   = lines.join('\n');
+  const params = new URLSearchParams({ chat_id: TELEGRAM_CHAT_ID, text });
+  const url    = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?${params}`;
   https.get(url, res => {
-    if (res.statusCode !== 200) {
+    if (res.statusCode !== 200)
       console.error(`[notifRouter] Telegram error: HTTP ${res.statusCode}`);
-    }
   }).on('error', err => {
     console.error('[notifRouter] Telegram request error:', err.message);
   });

@@ -64,6 +64,7 @@ function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldow
     variableLabel:     rule.variableLabel || '',
     severity:          rule.severity,
     recommendation:    rule.recommendation,
+    unit:              rule.unit || '',
     correlationParent: rule.correlationParent,
     deviceId,
     variable:          rule.variable,
