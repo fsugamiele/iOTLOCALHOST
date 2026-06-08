@@ -1554,8 +1554,22 @@ Notificación guardada en Mongo con todos los campos correctos:
 - 7f3bcce — fix(edge-engine): propagate thresholdUsed for type D rules (#23)
 - 5034fca — feat(edge-engine): emit INFO event when setpoint unavailable, sub-step 2b (#23)
 
-#### Estado de seguridad (sin cambios desde #22)
-- Commit `3c4eb56` con token Telegram sigue en historial. **17 commits sin pushear** (13 previos + 4 de #23). Rotación vía BotFather `/revoke` pendiente ANTES de cualquier push.
+#### Estado de seguridad — RISK-SEC-1 actualizado
+- Corrección de supuesto: el commit `3c4eb56` con el token Telegram YA ESTÁ EN
+  ORIGIN (pusheado). La condición de aceptación de riesgo de #22 ("repo privado,
+  sin push") ya no se cumple en sentido estricto.
+- **Decisión de Franco (#23):** rotación de credenciales DIFERIDA deliberadamente
+  durante la fase de desarrollo. Token de bot de pruebas (@Wanomi_bot) en repo
+  privado. Riesgo aceptado y acotado a desarrollo.
+- **GATILLO OBLIGATORIO — pasaje a producción:** rotar TODAS las credenciales
+  como parte del despliegue productivo, NO solo el token Telegram:
+  - TELEGRAM_BOT_TOKEN (BotFather /revoke)
+  - MONGODB credenciales (iotixmongo/iotixpassmongodev)
+  - MQTT credenciales (superiotix/iotixsuperuser)
+  - FORENSIC_HMAC_SECRET
+  El historial git con secretos de desarrollo deja de ser relevante una vez que
+  producción usa credenciales nuevas y distintas.
+- 5 commits de #23 sin pushear (28a6844→ff33467). Los 13 previos ya en origin.
 
 #### Pendiente sesión #24
 - BACKLOG-EDGE-2: escalada temporal del fallback (INFO → ATENCIÓN tras N minutos)
