@@ -1481,7 +1481,7 @@ Notificación guardada en Mongo con todos los campos correctos:
 - Evaluador tipo C (auto-calibrado vs setpoint Modbus, fallback a D) — requiere conversación de diseño previa
 - Evaluador tipo S (stateful/ventana temporal)
 
-### Sesión #22 — 2026-06-03 ✅ CERRADA (implementación — evaluador tipo C)
+### Sesión #22 — 2026-06-04 ✅ CERRADA (implementación — evaluador tipo C)
 **Foco:** Área 2 — evaluador tipo C auto-calibrado contra setpoint Modbus, fallback a tipo D, validación E2E con 5 casos
 
 #### Entregables
@@ -1506,9 +1506,9 @@ Notificación guardada en Mongo con todos los campos correctos:
 - `DID = 'CR00061-CUMMINS'` era el nombre, no el dId → `siteState.has()` devuelve false. Fix: `DID = 'Z5tKK1rN'`
 
 #### Commits
-- 97b9db0 — schema: setpointSource.variable en RuleDefinition (#22)
-- 9d71b0a — feat(edge): evaluador tipo C auto-calibrado con fallback a D (#22)
-- aa45d13 — docs(sesion-18): NotificationRouter + modelo eventos + catálogo fallas CR00061 — DEC-REF-21/22
+- 13b551f — chore(security): untrack SECRETS.md, revert to placeholders (#22)
+- 49d63d4 — feat(rules): setpointSource.variable en RuleDefinition (#22)
+- 52e8177 — feat(edge-engine): evaluador tipo C auto-calibrado con fallback (#22)
 
 #### Pendiente sesión #23
 - 2b: evento INFO cuando setpoint no está disponible (cooldown keyed `${ruleId}:no-setpoint`)
