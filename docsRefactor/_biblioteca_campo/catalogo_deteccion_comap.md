@@ -1,5 +1,7 @@
 # Catálogo de detección — reglas desde datos ComAp InteliATS NT
 
+> ⚠️ **Estado:** documento de diseño pre-implementación (≈#15-#17). El motor de reglas edge fue implementado y validado en #18-#24 (DEC-REF-18 a 26). Para el estado vigente, ver `docs/wanomi.md` (Log de Sesiones) y `docsRefactor/WanomiRefactor.md` §5. Este documento se conserva como contexto histórico de diseño.
+
 **Sesión #14 · Bloque 3 (B2 ampliado) · Área 2 + Confiabilidad**
 Premisa: el sistema ya tiene motor de reglas/alarmas (a robustecer). Este catálogo lo **alimenta** con el controlador ComAp ya mapeado.
 Honestidad arquitectónica (DEC-INTEL-1 / DEC-PRED-1): **detección = día 1 (reglas, sin baseline)**; lo que necesita historia se marca como *stateful* o *madurando*.

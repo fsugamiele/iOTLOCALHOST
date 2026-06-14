@@ -1,5 +1,7 @@
 # Software — Alcance Iteración 1
 
+> ⚠️ **Estado:** documento de diseño pre-implementación (≈#15-#17). El motor de reglas edge fue implementado y validado en #18-#24 (DEC-REF-18 a 26). Para el estado vigente, ver `docs/wanomi.md` (Log de Sesiones) y `docsRefactor/WanomiRefactor.md` §5. Este documento se conserva como contexto histórico de diseño.
+
 **Área:** 2 · Software
 **Definido en:** sesión #14 · 2026-05-30
 
