@@ -1576,3 +1576,51 @@ Notificación guardada en Mongo con todos los campos correctos:
 - BACKLOG-EDGE-3: limpiar shim legacy en `app/api/models/notifications.js`; agregar `mode`/`thresholdUsed`/`unit` a las páginas de lectura del dashboard
 - Fix DeprecationWarnings de Mongoose
 - Evaluadores tipo S (stateful/ventana) y cross-equipo (requiere reunión multi-especialista — familia H del catálogo CR00061)
+
+### Sesión #24 — 2026-06-14 ✅ CERRADA (implementación — BACKLOG-EDGE-2: escalada temporal del fallback)
+**Foco:** Área 2 — escalada temporal del INFO de configuración (fallback) a transición warning tras N minutos sin setpoint
+
+#### Entregables
+- Campo `escalateAfterMinutes` en `RuleDefinition` (opt-in, default `null`)
+- Escalada temporal en `ruleEngine.js` case 'C': cuando una regla persiste en `fallback`/`no-ref` ≥ `escalateAfterMinutes`, el INFO escala a una transición `warning` (reason `setpoint-unavailable-escalated`), UNA sola vez por episodio (marca idempotente `${ruleId}:no-setpoint:escalated`)
+- Inicio de episodio registrado en `${ruleId}:no-setpoint:start` (medición en tiempo-de-eventos)
+- Reset en silencio al recuperar el setpoint (`mode='calibrated'`): borra las tres keys del episodio
+- Arnés E2E en `seeds/_dev/` (4 archivos, gitignoreado): seed + publish + check (con poll de reintentos) + `.sh`
+
+#### Decisiones de diseño (debatidas por el equipo, registradas)
+- **D1 — disparo reactivo (Opción A):** la escalada se evalúa en el próximo mensaje entrante, NO con un `setInterval`. Preserva la arquitectura event-driven del motor (DEC-REF-18). El episodio se mide en **tiempo-de-eventos**, no wall-clock. Condición de Confiabilidad: el "equipo enmudece del todo" (silencio total del stream) queda FUERA de alcance → BACKLOG-EDGE-4.
+- **D3 — bypass inmediato de la transición:** la escalada INFO→warning se emite al instante (no espera el cooldown del INFO), porque una transición de estado es información nueva, no repetición. Marca idempotente impide re-emisión y re-bypass.
+- **reason diferenciado:** INFO conserva `setpoint-unavailable`; la escalada usa `setpoint-unavailable-escalated`. Permite al NOC filtrar/priorizar y a Confiabilidad medir tasa de escalada como KPI (decisión del equipo, debate #24).
+- **Parámetros calibrables en producción:** `escalateAfterMinutes` y cooldowns son afinables con datos reales; el mecanismo queda cerrado.
+
+#### Contrato de eventos (tres eventos distinguibles por campo estructurado)
+| Evento | severity | reason |
+|---|---|---|
+| Operativo fallback | `warning` | `threshold-fallback` |
+| INFO configuración (2b) | `info` | `setpoint-unavailable` |
+| Escalada temporal (EDGE-2) | `warning` | `setpoint-unavailable-escalated` |
+
+#### Validación E2E (CR00061 / Z5tKK1rN, motor real, 3 casos — TODOS OK ✅)
+- **E1 escalada idempotente:** INFO a t+0.2s + escalada a t+9s ("sigue no disponible tras 0.1 min"); mensaje posterior NO re-escaló → exactamente 1 escalada ✅
+- **E2 reset:** la recuperación del setpoint cerró el episodio antes de escalar → 0 escaladas ✅
+- **E3 no-regresión:** `escalateAfterMinutes=null` → INFO sí, 0 escaladas (comportamiento #23 intacto) ✅
+
+#### Hallazgo de proceso (registrado honestamente)
+Durante el diseño del refuerzo de E2, el equipo debatió un "segundo episodio" (parpadeo setpoint cae/vuelve/cae) que resultó **arquitectónicamente imposible**: el handler de `index.js` hace `deviceState[variable] = value` y NUNCA borra keys; el simulador (`device.js`) tiene guarda explícita que prohíbe publicar `null`. La ausencia real de setpoint = la key nunca se pobló (sitio sin configurar), no un parpadeo. El reset codificado cubre el caso real único: "ausente desde arranque → configurado → calibrated". Lección: auditar el código real ANTES de proponer (DEC-PROC-2) — la propuesta inicial de `setpoint=null` contradecía la guarda del simulador.
+
+#### Commit (1, sin push)
+- d83ed7e — feat(edge-engine): escalada temporal de fallback INFO→warning (BACKLOG-EDGE-2)
+- 7 commits sin pushear (6 de #23 + este). Branch `feature/telco-support` ahead by 7.
+
+#### Observaciones no bloqueantes
+- `[notifRouter] Telegram request error:` (vacío) en el log del motor — esperado en entorno de validación (token de pruebas sin red al API). Los otros 3 canales OK.
+- NODE_PATH debe propagarse al `.sh` cuando los scripts usan `require('mqtt')` sin path absoluto (descubierto en la 1ª corrida del arnés).
+- Motores huérfanos en `pgrep -f edge-engine` (residuos de arranques previos) — nota de higiene: chequear antes de arrancar para evitar dos motores compitiendo por el stream.
+- DeprecationWarnings de Mongoose persisten (arrastrado desde #22, no bloqueante).
+
+#### Pendiente sesión #25
+- **BACKLOG-EDGE-4 (heartbeat/staleness — detección de silencio):** REQUIERE reunión multi-especialista de diseño antes de tocar código. Origen: corolario de alcance de DEC-REF-26. El motor es reactivo (DEC-REF-18) — detecta lo que LLEGA, no lo que DEJA de llegar; un equipo que enmudece no dispara ninguna evaluación. Introducir detección de silencio exige un reloj/barrido (`setInterval`) que el motor deliberadamente no tiene → toca los cimientos, es un tipo de detección nuevo. **Los 4 casos a distinguir (del debate #24):** (1) enlace celular caído (BG95-M3 sin señal — ~9/10 "perdí contacto"; dueño: técnico de enlace); (2) mantenimiento autorizado (equipo apagado a propósito — NO debe alarmar); (3) sitio sin energía (silencio masivo simultáneo); (4) equipo realmente colgado (el caso que SÍ queremos — mudo mientras el resto del site habla). Riesgo: un detector mal calibrado grita "caído" cuando era el módem o un mantenimiento → ruido → el cellowner ignora la alarma → se pierde credibilidad (DEC-GTM-2). Distinguir los 4 casos es ~la mitad del valor.
+- BACKLOG-EDGE-3: limpiar shim legacy en `app/api/models/notifications.js`; agregar `mode`/`thresholdUsed`/`unit` a las páginas de lectura del dashboard
+- Fix DeprecationWarnings de Mongoose
+- Evaluador tipo S (stateful/ventana)
+- Evaluador cross-equipo (familia H del catálogo CR00061) — requiere reunión multi-especialista
