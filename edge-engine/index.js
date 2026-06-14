@@ -16,7 +16,12 @@ const siteState    = new Map();
 const cooldownState = new Map();
 
 async function start() {
-  await mongoose.connect(MONGO_URI);
+  await mongoose.connect(MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    useCreateIndex: true,
+    useFindAndModify: false,
+  });
   console.log(`[edge-engine] Mongo conectado — ${MONGO_URI}`);
 
   const { packs } = await loadPacks(SITE_ID, siteState);

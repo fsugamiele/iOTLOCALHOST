@@ -85,6 +85,7 @@ const options = {
   useNewUrlParser: true,
   useCreateIndex: true,
   useUnifiedTopology: true,
+  useFindAndModify: false,
   authSource: "admin"
 };
 
