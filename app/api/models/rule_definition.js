@@ -19,6 +19,7 @@ const RuleDefinitionSchema = new Schema({
   recommendation:    { type: String, default: '' },
   correlationParent: { type: String, default: null },
   cooldownSec:       { type: Number, default: 300 },
+  escalateAfterMinutes: { type: Number, default: null }, // EDGE-2: minutos sin setpoint antes de escalar INFO→warning. null = sin escalada (opt-in). Calibrable en producción.
 
   deviceType: { type: String, required: true },
   variable:   { type: String, required: true },
