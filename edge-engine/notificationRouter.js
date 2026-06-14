@@ -106,9 +106,6 @@ async function saveToMongo(alarm) {
       payload:         { severity: alarm.severity, recommendation: alarm.recommendation, value: alarm.value },
       readed:          false,
       time:            Date.now(),
-      // campos legacy EMQX — vacíos, solo para compatibilidad de schema
-      emqxRuleId:      '',
-      condition:       '',
     });
   } catch (err) {
     console.error('[notifRouter] Mongo save error:', err.message);
