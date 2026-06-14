@@ -1624,3 +1624,50 @@ Durante el diseño del refuerzo de E2, el equipo debatió un "segundo episodio" 
 - Fix DeprecationWarnings de Mongoose
 - Evaluador tipo S (stateful/ventana)
 - Evaluador cross-equipo (familia H del catálogo CR00061) — requiere reunión multi-especialista
+
+### Sesión #25 — 2026-06-14 ✅ CERRADA (implementación — BACKLOG-EDGE-3 backend + housekeeping)
+**Foco:** Área 2 — persistencia de mode/thresholdUsed/unit en notifications + limpieza de shim legacy + housekeeping (DeprecationWarnings, pack huérfano)
+
+#### Entregables
+- **Schema `notifications.js`**: agregados `mode`/`thresholdUsed`/`unit` (el motor ya los construía desde #22-#23 pero Mongoose los descartaba en silencio por no estar declarados). Los 3 campos legacy EMQX (`emqxRuleId`/`condition`/`variableFullName`) pasados de `required:[true]` a opcionales.
+- **Shim legacy eliminado**: las líneas dummy `emqxRuleId:''` y `condition:''` en `saveToMongo()` (notificationRouter.js) ya no son necesarias y se quitaron. `variableFullName: alarm.variableLabel || ''` se mantiene (reuso legible, DEC-REF-23, NO es shim).
+- **DeprecationWarnings de Mongoose silenciados** en las DOS conexiones: backend (`app/api/index.js:91`, faltaba `useFindAndModify:false`) y motor edge (`edge-engine/index.js:19`, conectaba sin opciones). Arrastrado desde #22, cerrado.
+- **Pack huérfano `__validate_typeC_pack__`** (residuo de #22) borrado de Mongo.
+
+#### Validación E2E (CR00061 / Z5tKK1rN, motor real — TODOS OK ✅)
+- Alarma `cummins-A1-oil-pressure` (tipo D, oil_pressure_psi=5) → CRITICAL. Documento en Mongo: `mode:"direct"`, `thresholdUsed:15`, `unit:"kPa"` persistidos ✅; `emqxRuleId`/`condition` ausentes del documento (shim limpio) ✅; `variableFullName:"Presión de aceite"` poblado (DEC-REF-23 intacto) ✅.
+- Motor rearrancado tras el fix de warnings → log sin una sola DeprecationWarning (`grep -ci deprecat` = 0) ✅.
+
+#### Hallazgo de alcance — EDGE-3 era dos mitades de tamaño distinto
+El backlog decía "agregar mode/thresholdUsed/unit a las páginas de lectura del dashboard", asumiendo que esas páginas existían. **No existen.** Auditoría de las 3 vistas del frontend (`alarms.vue`, `rules.vue`, `dashboard.vue`):
+- Las tres son CONFIGURACIÓN de reglas legacy EMQX (formulario sensor+condición+actuador, `POST /rule` / `/alarm-rule`), NO lectura de eventos disparados.
+- Ninguna consume la colección `notifications`. **El feed de alarmas disparadas no existe en ninguna parte de la UI.**
+- `dashboard.vue` = vista admin de DEC-DASH-1 (grilla de widgets de un device seleccionado), sin mapa, sin feed, por device no por site.
+
+Confirmado contra docs: `pages/sites/` (con feed de alarmas) está especificado en `refactor_implementacion_software.md §6` y es el **punto 6 del MVP** (`WanomiRefactor.md §4`), reconocido como faltante en la auditoría de #19 ("Fase 4 frontend inexistente"). Es un track de diseño propio, no un sub-paso de EDGE-3. → BACKLOG-UI-1.
+
+**Conclusión:** EDGE-3 backend (3A+3B) cerrado. La "mitad frontend" nunca fue parte de EDGE-3; es BACKLOG-UI-1.
+
+#### Backlog nuevo registrado
+- **BACKLOG-UI-1** — construir `pages/sites/` (MVP punto 6, DEC-DASH-1 operador): lista (mapa Leaflet + pins por estado) + detalle de site (compone `DevicePanel`/`DeviceList` del simulador + feed de alarmas + estado vivo). El feed consume `notifications` y muestra `mode`/`thresholdUsed`/`unit` (habilitado por #25). Frontend migrable (DEC-STACK-1). Reutiliza componentes de Sim-3. REQUIERE reunión de diseño de Área 2 (Frontend Vue al frente) antes de código.
+- **BACKLOG-DATA-1** — inconsistencia de unidad en `cummins-A1-oil-pressure`: la variable se llama `oil_pressure_psi` pero la unidad persistida es `kPa` (umbral 15). **Pregunta abierta** (no asumir el fix): ¿qué unidad entrega realmente el driver/simulador en esa key? Si entrega kPa → renombrar la variable; si entrega psi → corregir unidad+umbral de la regla. Arrancar por recon del driver, NO por asumir.
+- **BACKLOG-RULE-1** — el pack productivo `cummins-pcc-v1` es 100% tipo D (4 reglas). Las features tipo C de #22-#24 (auto-calibrado, INFO 2b config, escalada temporal EDGE-2/DEC-REF-26) están implementadas y validadas por harness pero NO cableadas a ninguna regla viva del pack. Deuda de producto: el motor sabe más de lo que el pack le pide.
+
+#### Aprendizajes operativos
+- **Reglas embebidas**: las reglas viven como subdocumentos en `db.rulepacks.rules[]` (schema `rule_pack.js: rules:[RuleDefinitionSchema]`), NO en una colección `ruledefinitions` propia. Toda query de reglas va por `rulepacks` + `$unwind`.
+- **`pkill -f <patrón>` se autodestruye**: si el patrón coincide con la línea de comando del propio shell (eval con la cadena buscada), el pkill mata su propia shell (exit 144/SIGTERM). Para futuros kills: usar PID directo (`kill <pid>`) o filtrar el resultado de pgrep. Mismo gotcha que el self-match de `pgrep -f`, pero letal.
+- **Dos conexiones Mongo separadas**: el backend (`app/api/index.js`) y el motor edge (`edge-engine/index.js`) tienen conexiones independientes. Los warnings del log del motor NO se arreglan tocando el backend.
+- **Re-seed**: confirmado de nuevo — las reglas en Mongo no se actualizan al editar el seed; hay que re-correr `node seeds/cummins_pcc_v1.js` (con NODE_PATH propagado para resolver `dotenv`).
+
+#### Commits (3, sin push)
+- 6544280 — refactor(notifications): drop required on legacy EMQX fields, remove shim dummies
+- ef7702a — feat(notifications): persist mode/thresholdUsed/unit from edge engine
+- feda1d7 — chore(mongoose): silence deprecation warnings on both connections
+- **12 commits sin pushear** en feature/telco-support (9 previos + 3 de #25).
+
+#### Estado de seguridad — RISK-SEC-1 sin cambios
+- Rotación de credenciales sigue DIFERIDA a producción (decisión #23). Sin push esta sesión. El gatillo obligatorio de rotación al pasar a producción sigue vigente (TELEGRAM_BOT_TOKEN, MongoDB, MQTT, FORENSIC_HMAC_SECRET).
+
+#### Estado del entorno al cierre
+- Motor edge corriendo (PID 16365) con pack único `cummins-pcc-v1`, sin warnings. Si vas a cerrar el entorno, bajalo con `kill 16365` (NO `pkill -f`).
+- Pendiente #26 (Franco prioriza al abrir): BACKLOG-UI-1 (requiere diseño) · BACKLOG-EDGE-4 heartbeat (requiere diseño) · BACKLOG-DATA-1 · BACKLOG-RULE-1 · tipo S (requiere diseño) · cross-equipo familia H (requiere diseño).
