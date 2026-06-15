@@ -188,7 +188,11 @@ router.get("/notifications", checkAuth, async (req, res) => {
   try {
     const userId = req.userData._id;
 
-    const notifications = await getNotifications(userId);
+    const notifications = req.query.siteId
+      ? await getNotificationsBySite(userId, req.query.siteId, {
+          limit: req.query.limit ? parseInt(req.query.limit, 10) : 50
+        })
+      : await getNotifications(userId);
 
     const response = {
       status: "success",
@@ -366,6 +370,19 @@ function sendMqttNotif(notif) {
 async function getNotifications(userId) {
   try {
     const res = await Notification.find({ userId: userId, readed: false });
+    return res;
+  } catch (error) {
+    console.log(error);
+    return false;
+  }
+}
+
+async function getNotificationsBySite(userId, siteId, options = {}) {
+  try {
+    const { limit = 50 } = options;
+    const res = await Notification.find({ userId: userId, siteId: siteId })
+      .sort({ time: -1 })
+      .limit(limit);
     return res;
   } catch (error) {
     console.log(error);
