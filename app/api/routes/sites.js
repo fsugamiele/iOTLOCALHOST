@@ -4,6 +4,7 @@ const { checkAuth } = require("../middlewares/authentication.js");
 
 import Site   from "../models/site.js";
 import Device from "../models/device.js";
+import Template from "../models/template.js";
 
 const TIPO_ENUM             = ['BTS', 'shelter', 'repeater'];
 const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
@@ -19,6 +20,56 @@ router.get("/site", checkAuth, async (req, res) => {
     return res.json({ status: "success", data: sites });
   } catch (error) {
     console.log("ERROR GETTING SITES");
+    console.log(error);
+    return res.status(500).json({ status: "error", error });
+  }
+});
+
+//GET SITE FULL
+router.get("/site/:siteCode/full", checkAuth, async (req, res) => {
+  try {
+    const userId = req.userData._id;
+    const siteCode = req.params.siteCode;
+
+    // 1. El site
+    const site = await Site.findOne({ userId, siteCode });
+    if (!site) {
+      return res.status(404).json({ status: "error", error: "Site not found" });
+    }
+
+    // 2. Devices del site (filtro SOLO por siteId — agnóstico a firmwareType)
+    const devices = await Device.find(
+      { userId, siteId: siteCode },
+      { dId: 1, name: 1, siteId: 1, templateId: 1, _id: 0 }
+    ).lean();
+
+    // 3. Templates únicos → mapa de widgets por templateId
+    const templateIds = [...new Set(devices.map(d => d.templateId).filter(Boolean))];
+    const templates = await Template.find({ _id: { $in: templateIds }, userId }).lean();
+    const widgetsByTemplateId = {};
+    const nameByTemplateId = {};
+    templates.forEach(t => {
+      widgetsByTemplateId[t._id.toString()] = t.widgets || [];
+      nameByTemplateId[t._id.toString()] = t.name || "";
+    });
+
+    // 4. Devices enriquecidos (shape que DevicePanel consume)
+    const enriched = devices.map(d => ({
+      dId: d.dId,
+      name: d.name,
+      siteId: d.siteId,
+      templateName: d.templateId ? (nameByTemplateId[d.templateId.toString()] || "") : "",
+      templateWidgets: d.templateId ? (widgetsByTemplateId[d.templateId.toString()] || []) : []
+    }));
+
+    // 5. Respuesta: site + devices enriquecidos en un solo viaje
+    const cleanSite = JSON.parse(JSON.stringify(site));
+    return res.json({
+      status: "success",
+      data: { site: cleanSite, devices: enriched }
+    });
+  } catch (error) {
+    console.log("ERROR GETTING SITE FULL");
     console.log(error);
     return res.status(500).json({ status: "error", error });
   }
