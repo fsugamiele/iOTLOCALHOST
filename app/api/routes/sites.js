@@ -5,6 +5,7 @@ const { checkAuth } = require("../middlewares/authentication.js");
 import Site   from "../models/site.js";
 import Device from "../models/device.js";
 import Template from "../models/template.js";
+import Notification from "../models/notifications.js";
 
 const TIPO_ENUM             = ['BTS', 'shelter', 'repeater'];
 const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
@@ -70,6 +71,40 @@ router.get("/site/:siteCode/full", checkAuth, async (req, res) => {
     });
   } catch (error) {
     console.log("ERROR GETTING SITE FULL");
+    console.log(error);
+    return res.status(500).json({ status: "error", error });
+  }
+});
+
+//GET SITES STATUS
+router.get("/sites/status", checkAuth, async (req, res) => {
+  try {
+    const userId = req.userData._id;
+    const WINDOW_MS = 15 * 60 * 1000; // 2x cooldownSec default (300s) + margen; calibrable (DEC-REF-27)
+    const since = Date.now() - WINDOW_MS;
+
+    const sites = await Site.find({ userId }).lean();
+
+    const agg = await Notification.aggregate([
+      { $match: { userId: userId, time: { $gte: since },
+                  severity: { $in: ["warning", "critical"] } } },
+      { $group: { _id: "$siteId",
+                  hasCritical: { $max: { $cond: [ { $eq: ["$severity","critical"] }, 1, 0 ] } },
+                  hasWarning:  { $max: { $cond: [ { $eq: ["$severity","warning"]  }, 1, 0 ] } } } }
+    ]);
+    const statusBySite = {};
+    agg.forEach(a => {
+      statusBySite[a._id] = a.hasCritical ? "critical" : (a.hasWarning ? "warning" : "ok");
+    });
+
+    const data = sites.map(s => ({
+      siteCode: s.siteCode, nombre: s.nombre, lat: s.lat, lng: s.lng, tipo: s.tipo,
+      status: statusBySite[s.siteCode] || "ok"
+    }));
+
+    return res.json({ status: "success", data });
+  } catch (error) {
+    console.log("ERROR GETTING SITES STATUS");
     console.log(error);
     return res.status(500).json({ status: "error", error });
   }
