@@ -1763,3 +1763,73 @@ esta cuenta.
   `/notifications?siteId` + estado vivo por MQTT). Ajustes a DeviceList:
   SITE_LABELS desde modelo Site, roleLabel extendido CUMMINS/ATS.
 - BACKLOG-ARCH-1 (estructural, su propia sesión con seguridad + OSS/BSS).
+
+### Sesión #27 — 2026-06-17 ✅ CERRADA (reunión de diseño)
+**Foco:** BACKLOG-ARCH-1 — Modelo de tenancy NOC/cellowner/site + topología + distribución de reglas
+**Formato:** reunión multi-especialista (Backend senior, Integración OSS/BSS, Seguridad, Ing. software senior, Asesor profesional telco Área 1) + Franco decisor
+
+#### Naturaleza
+Sesión de DISEÑO puro, no implementación. No se tocó código. Define el modelo
+de tenancy del producto enterprise multi-cliente, su topología de topics y cómo
+se distribuyen los RulePacks. Disparada por el hallazgo de #26 (real-time del pin
+depende de cómo esté modelada la propiedad de alarmas — la jerarquía estaba
+decidida conceptualmente, DEC-DASH-2, pero sin modelo de datos).
+
+#### Recon previo (DEC-PROC-2)
+- User = name/email/password. CERO rol/tenant/admin. Greenfield para tenancy.
+- Todo cuelga de `userId: String` plano. Aislamiento a nivel dato, no rol.
+- `cellOwner` = string libre en Site (única huella de tenancy).
+- ACL `{userId}/#` YA existe (lazy en `getWebUserMqttCredentials`) — cimiento del
+  namespace por usuario parcialmente puesto.
+- DEC-REF-19/20 (distribución packs) decidido, NO implementado (seed manual).
+
+#### Decisiones (DEC-REF-28 a 31, ver registro en WanomiRefactor.md §5)
+- **DEC-REF-28** — jerarquía 4 niveles Operator→Zone→Site→Equipment. Modelo
+  completo, implementación colapsada a 1-1-1 (Claro/NEA/CR00061).
+- **DEC-REF-29** — autorización por grants {rol, alcance}. Cubre cellowner /
+  gerente multi-zona / NOC / Wanomi-superadmin con un mecanismo. Elegido sobre
+  role simple por el caso del gerente de zona (Franco: supervisa N zonas).
+- **DEC-REF-30** — topología híbrida. Telemetría intra-site queda en `{userId}/...`
+  (local, DEC-ARCH-2); eventos/alarmas + distribución de packs usan la capa
+  jerárquica `{operator}/{zone}/{site}/event`. Aislamiento estructural por rama.
+- **DEC-REF-31** — distribución de packs por el árbol. Catálogo a nivel Operator +
+  overrides por Zone; Hub pulea según su rama. Implementa DEC-REF-19/20 sobre el
+  árbol de DEC-REF-28.
+
+#### Razonamiento clave registrado
+- **Modelo completo, implementación colapsada** ("cimientos de edificio, amoblar un
+  departamento"): contemplar la jerarquía evita reescribir cuando llegue el 2º
+  operador; no construir gestión multi-tenant que con 1 cliente no se ejercita.
+- **Híbrido coherente con DEC-ARCH-2, no atajo**: el crudo es local → no necesita
+  jerarquía; solo lo que cruza el site (eventos suben, packs bajan) usa el árbol.
+- **Grants sobre role simple**: el gerente multi-zona rompe la etiqueta fija desde
+  día 1; reescribir permisos es superficie de fuga entre tenants.
+
+#### Hallazgo de la sesión — acceso a históricos (pregunta de Franco)
+La topología híbrida no impide ver históricos, pero los destapa como pieza a
+contemplar. El histórico crudo vive en el edge (DEC-ARCH-2); el acceso es por
+CONSULTA (no suscripción en vivo), gobernada por los mismos grants. Toca 3 capas:
+arquitectura de datos (cómo se trae del edge), backend (aplica grants server-side
+— NO delegable al frontend, o hay fuga), frontend (vista de históricos). ARCH-1
+garantiza que el modelo de grants contemple el acceso histórico; mecanismo de
+datos y vista → backlogs hijos.
+
+#### Backlogs hijos de ARCH-1 (dependen de este cimiento)
+- **BACKLOG-ARCH-2** — implementación del pull de packs (DEC-REF-19/20) sobre el árbol.
+- **BACKLOG-ARCH-3** — acceso a datos históricos: mecanismo de traída desde el edge
+  (pull/resúmenes/híbrido) + endpoint con filtrado por grants.
+- **BACKLOG-UI-3** — vista de históricos (selector de rango, tendencias, eventos pasados).
+- **BACKLOG-TENANT-1** — UI de gestión multi-tenant + flujo de alta/invitación de usuarios.
+- **BACKLOG-UI-2** (de #26) — pin/feed en vivo: ahora DESBLOQUEADO en diseño (la
+  topología de DEC-REF-30 define cómo el pin recibe alarmas: suscripción a la rama
+  jerárquica del usuario). Implementación pendiente.
+
+#### Estado
+- Sesión de diseño — sin commits de código. Solo docs (DEC-REF-28..31 + esta entrada).
+- Entorno de #26 puede seguir corriendo o bajarse (motor PID 29973, `kill` directo).
+
+#### Pendiente para próxima sesión
+- Franco prioriza: implementar el modelo de tenancy (schemas Operator/Zone/User+grants,
+  migración cellOwner→zoneId) — primer paso de ARCH-1 que toca código.
+- O retomar BACKLOG-UI-1 restante (`_siteCode.vue`) si se prefiere cerrar UI antes
+  de abrir el frente de tenancy.
