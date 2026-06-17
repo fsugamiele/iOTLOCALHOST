@@ -14,6 +14,11 @@ const siteSchema = new Schema({
     localidad:   { type: String },
     tipo:        { type: String, required: [true], enum: ['BTS', 'shelter', 'repeater'] },
     cellOwner:   { type: String, required: [true] },
+    // Tenancy (DEC-REF-28): relación al árbol Operator→Zone. OPCIONALES durante
+    // la migración (28.4a); pasan a required en 28.4c tras backfillear todos los
+    // sites. cellOwner queda LEGACY como red de seguridad hasta 28.4c.
+    operatorCode: { type: String },
+    zoneCode:     { type: String },
     devices:     { type: [String], default: [] },
     notes:       { type: String },
     createdTime: { type: Number }
