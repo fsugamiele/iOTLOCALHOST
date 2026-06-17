@@ -1671,3 +1671,95 @@ Confirmado contra docs: `pages/sites/` (con feed de alarmas) está especificado 
 #### Estado del entorno al cierre
 - Motor edge corriendo (PID 16365) con pack único `cummins-pcc-v1`, sin warnings. Si vas a cerrar el entorno, bajalo con `kill 16365` (NO `pkill -f`).
 - Pendiente #26 (Franco prioriza al abrir): BACKLOG-UI-1 (requiere diseño) · BACKLOG-EDGE-4 heartbeat (requiere diseño) · BACKLOG-DATA-1 · BACKLOG-RULE-1 · tipo S (requiere diseño) · cross-equipo familia H (requiere diseño).
+
+### Sesión #26 — 2026-06-17 ✅ CERRADA
+**Foco:** Área 2 — Software · BACKLOG-UI-1 (`pages/sites/`, punto 6 del MVP)
+**Formato:** reunión de diseño Área 2 (Frontend Vue al frente, Backend, OSS/BSS) + implementación backend + inicio frontend + Franco decisor
+
+#### Naturaleza
+Reunión de diseño de UI-1 auditada bullet a bullet contra el blueprint §6 y el
+código real (DEC-PROC-2), seguida de implementación backend (3 endpoints, E2E)
+e inicio de frontend (mapa Leaflet). Cierre de DEC-REF-27 (estado del pin).
+
+#### Lo construido y validado (E2E contra motor real, 4 commits, sin push)
+- **ea3ea26** — `GET /notifications?siteId=X`: feed por site (helper dedicado
+  `getNotificationsBySite`, no toca el badge unread). E2E: 21 notifs reales de
+  CR00061, campos #25 completos.
+- **9290a95** — `GET /site/:siteCode/full`: site + devices con templates
+  compuestos. Filtra SOLO por `siteId`, nunca por firmwareType (funciona con
+  simulador `wanomi-sim` hoy y hardware `wanomi`/`telco` mañana). E2E: 4 devices
+  (SEC/GEN/ATS/CUMMINS) con `templateWidgets`, shape que DevicePanel consume.
+- **1f61a57** — `GET /sites/status`: status de pin server-side, agregación única
+  escalable a N sites (DEC-ARCH-2). E2E: alarma MQTT real → CR00061 critical,
+  otros 3 ok.
+- **bd1ff55** — `pages/sites/index.vue`: mapa Leaflet crudo (sin vue2-leaflet,
+  DEC-STACK-1), pins coloreados por DEC-REF-27, `L.divIcon` (esquiva bug Webpack
+  4). leaflet ^1.9.4 dep nueva. Validado visualmente contra el mapa NEA en vivo.
+- **17 commits sin pushear** en feature/telco-support (13 previos + 4 de #26).
+
+#### DEC-REF-27 — Estado del pin del mapa (ver registro en WanomiRefactor.md §5)
+Status server-side, peor severidad vigente en ventana 15 min, INFO no pinta
+(opción A). Auto-resolución por silencio. Celeste para INFO abierto a validar
+con Claro post-MVP.
+
+#### Hallazgo que frenó el cierre completo de UI-1 — real-time del pin
+El pin solo se actualiza al recargar la página (defecto detectado por Franco al
+validar). Recon: el cliente MQTT del browser (`layouts/default.vue`) NO emite
+las alarmas (`notif`) al bus de Nuxt — solo toast + re-fetch del badge; solo
+`sdata`/`actdata` van al bus. El Canal 2 del router (`wanomi/noc/{siteId}/event`,
+JSON con siteId+severity) tiene el dato correcto, confirmado en vivo, pero el
+browser no tiene ACL sobre ese topic. Abrirla es decisión de seguridad/tenancy.
+→ Real-time diferido a BACKLOG-UI-2, dependiente de BACKLOG-ARCH-1.
+Franco eligió enfoque opción 3 (aislamiento por namespace `{userId}/...`,
+sin tocar ACLs, aislamiento entre clientes por estructura).
+
+#### Backlogs nuevos / actualizados
+- **BACKLOG-UI-2 (nuevo)** — pin/feed en vivo (real-time sin reload). Dependiente
+  de ARCH-1. Enfoque elegido: opción 3 (namespace por usuario).
+- **BACKLOG-ARCH-1 (nuevo)** — Tenancy + provisioning + distribución de reglas en
+  mundo NOC/cellowner/site. Jerarquía decidida conceptualmente (DEC-DASH-2) pero
+  SIN modelo de datos (`cellOwner` es string, todo cuelga de `userId` plano).
+  Distribución de RulePacks: mecanismo YA decidido (DEC-REF-19/20: pull Hub→NOC,
+  regla=dato, idempotente, canary→production, rollback) pero NO implementado (hoy
+  seed manual). Falta decidir: cellowner usuario vs atributo; topología de topics;
+  modelo de propiedad sites/devices/alarmas; sub-catálogos de packs por cellowner;
+  ACLs. Requiere reunión multi-especialista con seguridad + OSS/BSS.
+- **BACKLOG-DATA-1 (actualizado)** — inconsistencia oil pressure ahora TRIPLE:
+  template (`oil_pressure`, label psi) vs regla/notif (`oil_pressure_psi`, unit
+  kPa). Tres fuentes a reconciliar. Recon del driver primero.
+- **BACKLOG (housekeeping)** — `cooldownSec` (operativo, `fireAlarm`) vs
+  `cooldownMinutes` (INFO 2b): dos cooldowns con propósitos distintos. Documentar
+  o unificar. (NO es zombie — se corrigió esa conclusión intermedia.)
+
+#### Aprendizajes operativos
+- `cooldownSec` NO es zombie: aplicado en `fireAlarm()` (default 300s). El motor
+  re-emite cada cooldown mientras la condición persiste → habilita la
+  auto-resolución por silencio de DEC-REF-27.
+- Las alarmas NO están en el bus de Nuxt: el handler de `default.vue` trata
+  `notif` distinto de `sdata`/`actdata`. Por eso el real-time necesita decisión
+  de arquitectura, no un parche.
+- Endpoints nuevos, no extender los existentes con consumidores: el feed por site
+  y el status van en helpers/handlers dedicados (badge-unread vs feed, lista vs
+  status divergen a futuro — DEC-DASH-2).
+- `import` para modelos, nunca `require` (lección #21), reutilizado sin incidente.
+- Backend Nuxt no recarga serverMiddleware en hot: cambios en rutas Express
+  requieren restart del backend para tomarlos.
+
+#### Estado de seguridad — RISK-SEC-1
+Sin cambios de política (rotación diferida a producción). AGREGAR al checklist de
+rotación: credencial dev `fsugamielecinetiksrl@gmail.com` (apareció en chat esta
+sesión). Checklist: TELEGRAM_BOT_TOKEN, MongoDB, MQTT, FORENSIC_HMAC_SECRET, +
+esta cuenta.
+
+#### Estado del entorno al cierre
+- Backend Express :3001 + Nuxt :3000 (mismo proceso npm run dev) corriendo.
+- Motor edge corriendo PID 29973. Si se baja: `kill 29973` directo, NUNCA
+  `pkill -f` (self-match letal, lección #25).
+- Se agregó `127.0.0.1 mongo` a /etc/hosts (fix dev #16, ausente en este entorno).
+
+#### Pendiente para próxima sesión (Área 2)
+- BACKLOG-UI-1 restante: `pages/sites/_siteCode.vue` (detalle: compone
+  DevicePanel por equipo desde `/site/:siteCode/full` + feed desde
+  `/notifications?siteId` + estado vivo por MQTT). Ajustes a DeviceList:
+  SITE_LABELS desde modelo Site, roleLabel extendido CUMMINS/ATS.
+- BACKLOG-ARCH-1 (estructural, su propia sesión con seguridad + OSS/BSS).
