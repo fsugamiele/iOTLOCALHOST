@@ -44,7 +44,10 @@ router.post("/login", async (req, res) => {
     if (bcrypt.compareSync(password, user.password)) {
       user.set("password", undefined, { strict: false });
 
-      const token = jwt.sign({ userData: user }, process.env.JWT_SECRET, {
+      // 28.x.1 — JWT lleva SOLO identidad, no grants. Los grants se leen frescos
+      // de DB en cada request (checkAuth), DB como fuente de verdad única.
+      const tokenPayload = { userData: { _id: user._id, email: user.email } };
+      const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
         expiresIn: 60 * 60 * 24 * 30
       });
 
@@ -165,6 +168,18 @@ router.post(
     }
   }
 );
+
+//GET /me — identidad + grants frescos del request actual (28.x.1)
+router.get("/me", checkAuth, (req, res) => {
+  return res.json({
+    status: "success",
+    data: {
+      _id: req.userData._id,
+      email: req.userData.email,
+      grants: req.userData.grants
+    }
+  });
+});
 
 //**********************
 //**** FUNCTIONS *******
