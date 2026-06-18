@@ -1929,3 +1929,39 @@ temp (/tmp/.fr_pw) y borrarlo, NO inline en el comando.
   prefiere cerrar UI antes de la autorización.
 - Housekeeping menor: DeprecationWarnings de Mongoose no silenciados en seeds
   (sí en backend/motor edge desde #25).
+
+### Sesión #29 — 2026-06-18 ✅ CERRADA (implementación — BACKLOG-ARCH-1 / sub-paso 28.x)
+**Foco:** Área 2 — autorización por grants frescos de DB. Cierra ARCH-1.
+**Formato:** implementación con reuniones de diseño puntuales (equipo Área 2 + Asesor Telco) + Franco decisor.
+
+#### Naturaleza
+Último sub-paso de ARCH-1, el más delicado (toca login y autenticación). Lleva el árbol de tenancy de "modelado" a "efectivo": el grant ahora controla quién ve qué. Tres sub-pasos de sustancia, reordenados respecto al plan de Claude Code (seed ANTES del helper, para validar el aislamiento con datos reales en vez de hacia adelante).
+
+#### Sub-pasos completados
+- **28.x.1** (`f994036`) — grants fuera del JWT. El token firmaba el doc Mongoose completo, congelando permisos 30 días. Ahora `/login` firma solo identidad `{_id, email}`; `checkAuth` lee grants frescos de DB cada request (`findById.select('grants').lean()`); nuevo `GET /me` devuelve identidad + grants (base de la Opción B / DEC-REF-32). Casos: user inexistente→401, error DB→500 (distinguidos), grants ausente→[]. `require().default` (sin precedente de import ESM en middlewares). E2E 7 casos.
+- **28.x.2** (`0425840`) — seed `cellowner-nea@wanomi.test`, grant `{role:"cellowner", scope:{operatorCode:"claro", zoneCode:"nea"}}`. Necesario para validar aislamiento (el superadmin que ve todo no lo ejercita). Pre-flight aborta si falta Operator/Zone; idempotente en dos niveles. E2E 4 casos: `/me` devolvió el primer grant CON scope (revalida 28.x.1).
+- **28.x.3** (`6f1515d`, docs `72742bd`) — helper `scopeFilterFor`/`buildReadFilter` + 7 reads migrados. Filtro pasa de `{userId}` a `{userId OR alcance-del-grant}`. Helper puro y centralizado (DEC-REF-33). E2E 7 casos, aislamiento en AMBAS direcciones: cellowner-nea ve los 4 sites Claro/NEA que NO son suyos; outsider sin grant ve 0 (no los de Claro); gate niega con 404; forensic `$in` sirve el evento al autorizado; `/sites/status` cross-verificado contra Mongo directo.
+
+#### Decisiones registradas
+- **DEC-REF-32** (`cc200ed`) — frontend obtiene grants vía `GET /me`, no del JWT ni del response del login (Opción B). Consumo diferido a BACKLOG-TENANT-1.
+- **DEC-REF-33** (`72742bd`) — autorización en el gate del Site; derivados confían en el gate (punto único centralizado en `buildReadFilter`). Elegido sobre defensa en profundidad (premature hardening). Gatillo de revisión: si un refactor afloja/duplica el gate, vuelve a la mesa.
+
+#### Hallazgos clave
+- **El join Site→derivadas es por siteCode STRING:** `notifications.siteId` y `forensicevents.siteId` guardan el siteCode (string), no un ObjectId. El nombre `siteId` es engañoso. Simplifica el `$in` (sin mapear ObjectIds). Verificado en vivo.
+- **Composición `$or:[{userId}, scope]` — el grant SUMA, no reemplaza:** el dueño sigue viendo lo suyo vía userId; el grant agrega visibilidad. Superadmin (`{}`) descarta el userId (ve todo). Sin grant (`null`) → solo `{userId}`.
+- **Tokens de E2E firmados directo** (`jwt.sign` con JWT_SECRET) sin passwords — válido porque el test valida reads, no el flujo de login (cubierto en 28.x.1/2).
+
+#### Seguridad — RISK-SEC-1 (rotación diferida a producción)
+AGREGAR al checklist: `cellowner-nea@wanomi.test` / `cellownerNEA-dev-2026` (password de dev, en `origin` desde `0425840`). Coherente con la decisión vigente (credenciales de dev en repo, rotar en pasaje a producción).
+
+#### Backlog nuevo
+- **BACKLOG-PERF-1** — índices faltantes: `notifications.siteId` y `sites.operatorCode`/`zoneCode` → COLLSCAN. Irrelevante con 4 sites/24 notifs; pesa al entrar el 2º operador o crecer notifs.
+
+#### Estado
+- ARCH-1 **COMPLETO**: árbol de tenancy modelado, datos migrados, Y autorización efectiva. 28.x.4 (writes) nunca fue del MVP → BACKLOG-TENANT-3.
+- 5 commits de #29 (`cc200ed`→`6f1515d`), pusheados a `origin/feature/telco-support`.
+- Backend levantado durante la sesión; build de Nuxt necesario para E2E (lección reconfirmada).
+
+#### Próximo foco (decidido con el equipo)
+- **#30 → BACKLOG-ARCH-3** (acceso a históricos con filtrado por grants). Razón: capitalizar el helper de scope mientras está fresco. NOTA DE ALCANCE: ARCH-3 son DOS piezas — (a) mecanismo de traída desde el edge (DEC-ARCH-2: el crudo vive en el edge, NO en Mongo central) = diseño nuevo sin resolver; (b) endpoint con filtrado por grants = reusa `buildReadFilter` directo. El recon de #30 NO debe asumir que es solo "agregar un filtro a una query existente".
+- Candidatos diferidos: BACKLOG-UI-2 (pin/feed en vivo — arrastra construir la rama de eventos de DEC-REF-30 primero), BACKLOG-ARCH-2 (pull de RulePacks).
