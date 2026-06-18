@@ -3,6 +3,7 @@ const router      = express.Router();
 const crypto      = require("crypto");
 const PDFDocument = require("pdfkit");
 const { checkAuth } = require("../middlewares/authentication.js");
+const { buildReadFilter } = require("../middlewares/scope.js");
 
 import Site          from "../models/site.js";
 import ForensicEvent from "../models/forensic_event.js";
@@ -11,14 +12,15 @@ import Operator      from "../models/operator.js";
 // GET /api/forensic-events?siteCode=...
 router.get("/forensic-events", checkAuth, async (req, res) => {
   try {
-    const userId       = req.userData._id;
     const { siteCode } = req.query;
 
     if (!siteCode) {
       return res.status(400).json({ status: "error", error: "siteCode is required" });
     }
 
-    const site = await Site.findOne({ userId, siteCode });
+    // Gate del Site (DEC-REF-33). Eventos derivados sueltan userId.
+    const siteFilter = await buildReadFilter(req, 'Site');
+    const site = await Site.findOne({ ...siteFilter, siteCode });
     if (!site) {
       return res.status(404).json({ status: "error", error: "site not found" });
     }
@@ -39,14 +41,15 @@ router.get("/forensic-events", checkAuth, async (req, res) => {
 // GET /api/forensic-events/verify?siteCode=...
 router.get("/forensic-events/verify", checkAuth, async (req, res) => {
   try {
-    const userId       = req.userData._id;
     const { siteCode } = req.query;
 
     if (!siteCode) {
       return res.status(400).json({ status: "error", error: "siteCode is required" });
     }
 
-    const site = await Site.findOne({ userId, siteCode });
+    // Gate del Site (DEC-REF-33). Eventos derivados sueltan userId.
+    const siteFilter = await buildReadFilter(req, 'Site');
+    const site = await Site.findOne({ ...siteFilter, siteCode });
     if (!site) {
       return res.status(404).json({ status: "error", error: "site not found" });
     }
@@ -315,7 +318,10 @@ router.get("/forensic-events/export", checkAuth, async (req, res) => {
       return res.status(400).json({ status: "error", error: "from must be <= to" });
     }
 
-    const site = await Site.findOne({ userId, siteCode });
+    // Gate del Site (DEC-REF-33). Eventos derivados sueltan userId.
+    // userId se conserva para exportMeta (Operador que exportó el PDF).
+    const siteFilter = await buildReadFilter(req, 'Site');
+    const site = await Site.findOne({ ...siteFilter, siteCode });
     if (!site) {
       return res.status(404).json({ status: "error", error: "site not found" });
     }

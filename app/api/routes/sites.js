@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
+const { buildReadFilter } = require("../middlewares/scope.js");
 
 import Site   from "../models/site.js";
 import Device from "../models/device.js";
@@ -15,8 +16,8 @@ const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
 //GET SITES
 router.get("/site", checkAuth, async (req, res) => {
   try {
-    const userId = req.userData._id;
-    let sites = await Site.find({ userId });
+    const filter = await buildReadFilter(req, 'Site');
+    let sites = await Site.find(filter);
     sites = JSON.parse(JSON.stringify(sites));
     return res.json({ status: "success", data: sites });
   } catch (error) {
@@ -29,24 +30,24 @@ router.get("/site", checkAuth, async (req, res) => {
 //GET SITE FULL
 router.get("/site/:siteCode/full", checkAuth, async (req, res) => {
   try {
-    const userId = req.userData._id;
     const siteCode = req.params.siteCode;
 
-    // 1. El site
-    const site = await Site.findOne({ userId, siteCode });
+    // 1. El site (gate autorización — DEC-REF-33)
+    const siteFilter = await buildReadFilter(req, 'Site');
+    const site = await Site.findOne({ ...siteFilter, siteCode });
     if (!site) {
       return res.status(404).json({ status: "error", error: "Site not found" });
     }
 
-    // 2. Devices del site (filtro SOLO por siteId — agnóstico a firmwareType)
+    // 2. Devices del site — derivados sueltan userId, confían en el gate (DEC-REF-33)
     const devices = await Device.find(
-      { userId, siteId: siteCode },
+      { siteId: siteCode },
       { dId: 1, name: 1, siteId: 1, templateId: 1, _id: 0 }
     ).lean();
 
-    // 3. Templates únicos → mapa de widgets por templateId
+    // 3. Templates únicos → mapa de widgets por templateId (derivado, sin userId)
     const templateIds = [...new Set(devices.map(d => d.templateId).filter(Boolean))];
-    const templates = await Template.find({ _id: { $in: templateIds }, userId }).lean();
+    const templates = await Template.find({ _id: { $in: templateIds } }).lean();
     const widgetsByTemplateId = {};
     const nameByTemplateId = {};
     templates.forEach(t => {
@@ -79,14 +80,19 @@ router.get("/site/:siteCode/full", checkAuth, async (req, res) => {
 //GET SITES STATUS
 router.get("/sites/status", checkAuth, async (req, res) => {
   try {
-    const userId = req.userData._id;
     const WINDOW_MS = 15 * 60 * 1000; // 2x cooldownSec default (300s) + margen; calibrable (DEC-REF-27)
     const since = Date.now() - WINDOW_MS;
 
-    const sites = await Site.find({ userId }).lean();
+    const siteFilter  = await buildReadFilter(req, 'Site');
+    const notifFilter = await buildReadFilter(req, 'Notification');
 
+    const sites = await Site.find(siteFilter).lean();
+
+    // Spread del filtro de tenancy en el $match: combina con time/severity vía AND
+    // implícito. Si notifFilter es {$or:[...]}, queda {$or, time, severity} = AND OK.
     const agg = await Notification.aggregate([
-      { $match: { userId: userId, time: { $gte: since },
+      { $match: { ...notifFilter,
+                  time: { $gte: since },
                   severity: { $in: ["warning", "critical"] } } },
       { $group: { _id: "$siteId",
                   hasCritical: { $max: { $cond: [ { $eq: ["$severity","critical"] }, 1, 0 ] } },

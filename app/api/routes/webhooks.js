@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
+const { buildReadFilter } = require("../middlewares/scope.js");
 var mqtt = require("mqtt");
 const axios = require("axios");
 const colors = require("colors");
@@ -186,13 +187,13 @@ router.post("/rule-webhook", async (req, res) => {
 //GET NOTIFICATIONS
 router.get("/notifications", checkAuth, async (req, res) => {
   try {
-    const userId = req.userData._id;
+    const filter = await buildReadFilter(req, 'Notification');
 
     const notifications = req.query.siteId
-      ? await getNotificationsBySite(userId, req.query.siteId, {
+      ? await getNotificationsBySite(filter, req.query.siteId, {
           limit: req.query.limit ? parseInt(req.query.limit, 10) : 50
         })
-      : await getNotifications(userId);
+      : await getNotifications(filter);
 
     const response = {
       status: "success",
@@ -367,9 +368,12 @@ function sendMqttNotif(notif) {
 }
 
 //GET ALL NOT READED NOTIFICATIONS
-async function getNotifications(userId) {
+// Reciben el filtro ya compuesto por buildReadFilter (DEC-REF-33) — el route
+// es el único punto que aplica autorización; los helpers solo agregan los
+// filtros propios (readed, siteId, time, limit).
+async function getNotifications(filter) {
   try {
-    const res = await Notification.find({ userId: userId, readed: false });
+    const res = await Notification.find({ ...filter, readed: false });
     return res;
   } catch (error) {
     console.log(error);
@@ -377,10 +381,10 @@ async function getNotifications(userId) {
   }
 }
 
-async function getNotificationsBySite(userId, siteId, options = {}) {
+async function getNotificationsBySite(filter, siteId, options = {}) {
   try {
     const { limit = 50 } = options;
-    const res = await Notification.find({ userId: userId, siteId: siteId })
+    const res = await Notification.find({ ...filter, siteId: siteId })
       .sort({ time: -1 })
       .limit(limit);
     return res;
