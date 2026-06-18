@@ -1833,3 +1833,99 @@ datos y vista → backlogs hijos.
   migración cellOwner→zoneId) — primer paso de ARCH-1 que toca código.
 - O retomar BACKLOG-UI-1 restante (`_siteCode.vue`) si se prefiere cerrar UI antes
   de abrir el frente de tenancy.
+
+### Sesión #28 — 2026-06-18 ✅ CERRADA (implementación)
+**Foco:** BACKLOG-ARCH-1 — Implementación del modelo de tenancy (DEC-REF-28..31)
+**Formato:** implementación con reuniones de diseño puntuales (Backend senior, Seguridad, Ing. software senior, Integración OSS/BSS, Frontend Vue) + Franco decisor
+
+#### Naturaleza
+Implementación de las decisiones de diseño de #27. Construye el árbol de tenancy
+en modelo Y datos, migra el campo legacy `cellOwner` a la relación con el árbol.
+Greenfield primero (modelos nuevos), migración de lo viejo al final. Seis
+sub-pasos atómicos, un commit por sub-paso.
+
+#### Sub-pasos completados
+- **28.1** (`136dc8f`) — modelos Operator + Zone. Códigos string legibles
+  (operatorCode/zoneCode) como identidad técnica inmutable; displayName mutable.
+  Zone unique compuesto {operatorCode, zoneCode}. Greenfield, cero consumidores.
+- **28.2** (`286e5c4`) — User + grants[]. Shape objeto {role enum, scope
+  {operatorCode, zoneCode, siteCode}}, default []. Solo MODELA grants; lectura
+  por DB y autorización diferidas a 28.x.
+- **28.3** (`1e62333`) — seed MVP. Operator claro (Claro Argentina), Zone
+  claro/nea (NEA), grant superadmin a la cuenta institucional admin@wanomi.com
+  (NO la personal — separación de roles). Idempotente, URI explícita (evita
+  fallback a base /wanomi equivocada), @babel/register para importar modelos ESM.
+- **28.4a** (`1bba1f0`) — Site backfill. operatorCode/zoneCode OPCIONALES +
+  seed migrate_cellowner.js. 4 sites Claro backfilleados a claro/nea. cellOwner
+  conservado (red de seguridad). Campos opcionales primero para no invalidar datos.
+- **28.4b** (`36d4f8f`) — migrar consumidores. forensic.js resuelve operador del
+  árbol (Operator.displayName por operatorCode) con fallback a cellOwner — un PDF
+  forense nunca debe salir vacío. sites.js whitelist + validación migradas.
+  Validado E2E: PDF de CR00061 muestra "Operador: Claro Argentina".
+- **28.4c** (`6b36026`) — endurecer schema. operatorCode/zoneCode → required
+  (4/4 sites verificados válidos). cellOwner deprecado SUAVE (opcional, conservado
+  como dato auditable + fallback PDF), con condición de salida explícita
+  (BACKLOG-TENANT-2). POST simplificado. Cierra la migración.
+
+#### Hallazgos clave (para sub-pasos siguientes)
+- **Para 28.x (autorización por grants — el próximo, el más delicado):**
+  - El grant superadmin quedó como `{role:"superadmin"}` SIN campo `scope`
+    (Mongo omite el objeto vacío). La autorización debe reconocer superadmin por
+    `role` e IGNORAR scope — NO asumir que scope existe (leer scope.X sobre un
+    superadmin daría error de undefined).
+  - Usuario SIN campo `grants` = sin permisos (tratar ausente como []). Mongoose
+    no materializa el default [] en documentos preexistentes.
+  - **El aislamiento por `userId` está vigente:** la cuenta Wanomi NO ve CR00061
+    (es de la cuenta personal) — el endpoint forense filtra Site.findOne({userId,
+    siteCode}). Confirmado en vivo durante el E2E del PDF (Wanomi → "site not
+    found"; cuenta personal → OK).
+  - **Trabajo concreto de 28.x:** además de leer grants de DB, hay que cambiar el
+    filtro de los endpoints que hoy usan {userId} plano (forensic.js, sites.js,
+    notifications, etc.) para que el superadmin los atraviese — el filtro pasa de
+    {userId} a {userId OR alcance-del-grant}. Necesita datos multi-grant
+    (superadmin + un cellowner acotado) para validar el aislamiento real.
+- **Para 28.4 (resuelto, registrado):** `cellOwner: "Claro"` era el OPERADOR, no
+  la zona (nombre engañoso). zoneCode (nea) es dato NUEVO aportado, no migrado.
+  El backfill asumió "todos los sites Claro = NEA" — válido MVP litoral; revisar
+  si entran sites de otras zonas.
+
+#### Backlogs nuevos
+- **BACKLOG-TENANT-2** — borrado definitivo de cellOwner (schema + Mongo $unset)
+  cuando la integridad referencial haga el fallback del PDF código muerto.
+- **BACKLOG-PDF-1** — humanizar el userId del exportador en el PDF forense (hoy
+  muestra el ObjectId crudo "Operador (userId): 6a1ddc27...").
+- **Integridad referencial en creación de sites** — diferida; obligatoria cuando
+  haya UI de alta (validar operatorCode/zoneCode contra Operators/Zones para no
+  crear sites huérfanos).
+
+#### Método consolidado
+- Seeds con modelos ESM (export default) bajo node directo: requieren
+  `@babel/register` + `@babel/preset-env` (NO @nuxt/babel-preset-app — falla por
+  polyfills core-js) + `NODE_PATH=<app>/node_modules` (resuelve dotenv/modelos).
+  Patrón establecido esta sesión, reusable para todo seed futuro.
+- Verificación de schema sin levantar backend: cargar el modelo bajo
+  @babel/register e inspeccionar schema.paths / validateSync sobre datos reales.
+
+#### Seguridad — RISK-SEC-1 (rotación diferida a producción)
+AGREGAR al checklist de rotación dos cuentas que aparecieron en chat esta sesión:
+- admin@wanomi.com (cuenta institucional Wanomi, superadmin)
+- fsugamielecinetiksrl@gmail.com (cuenta personal, dueña de CR00061)
+Patrón limpio de manejo de password en E2E (logrado en 28.4b): leerlo de archivo
+temp (/tmp/.fr_pw) y borrarlo, NO inline en el comando.
+
+#### Estado
+- 6 commits, branch feature/telco-support. ARCH-1: base de tenancy COMPLETA
+  (modelo + datos + migración). Falta solo 28.x (autorización por grants).
+- Backend reiniciado durante la sesión (PID 97190, :3001 + :3000). Modelos ESM,
+  kill directo nunca pkill -f.
+
+#### Pendiente para próxima sesión
+- **28.x — autorización por grants frescos de DB** (el sub-paso más delicado de
+  ARCH-1): quitar grants del JWT, leerlos de DB, cambiar el filtro de los endpoints
+  de {userId} plano a {userId OR alcance-del-grant} para dar visión global al
+  superadmin Wanomi. Toca login (users.js) + el patrón de autorización de todos los
+  endpoints que filtran por userId. Necesita datos multi-grant para validar. Cierra ARCH-1.
+- Alternativa: BACKLOG-UI-1 restante (`_siteCode.vue`, vista detalle) si se
+  prefiere cerrar UI antes de la autorización.
+- Housekeeping menor: DeprecationWarnings de Mongoose no silenciados en seeds
+  (sí en backend/motor edge desde #25).
