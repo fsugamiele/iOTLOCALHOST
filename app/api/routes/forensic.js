@@ -6,6 +6,7 @@ const { checkAuth } = require("../middlewares/authentication.js");
 
 import Site          from "../models/site.js";
 import ForensicEvent from "../models/forensic_event.js";
+import Operator      from "../models/operator.js";
 
 // GET /api/forensic-events?siteCode=...
 router.get("/forensic-events", checkAuth, async (req, res) => {
@@ -102,7 +103,7 @@ const SEVERITY_ORDER = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
 // ── PDF rendering ─────────────────────────────────────────────────────────────
 
-function renderPage1(doc, site, events, chainResult, exportMeta) {
+function renderPage1(doc, site, events, chainResult, exportMeta, operatorLabel) {
   doc.addPage();
   const marginL  = doc.page.margins.left;
   const contentW = doc.page.width - marginL - doc.page.margins.right;
@@ -116,7 +117,7 @@ function renderPage1(doc, site, events, chainResult, exportMeta) {
   doc.font('Helvetica').fontSize(10);
   doc.text(`Site Code:    ${site.siteCode}`);
   doc.text(`Nombre:       ${site.nombre}`);
-  doc.text(`Tipo:         ${site.tipo}   |   Operador: ${site.cellOwner}`);
+  doc.text(`Tipo:         ${site.tipo}   |   Operador: ${operatorLabel}`);
   if (site.lat != null)   doc.text(`Coordenadas:  ${site.lat}, ${site.lng}`);
   if (site.direccion)     doc.text(`Dirección:    ${site.direccion}`);
   // Ajuste B: sumar localidad, provincia, notes
@@ -341,6 +342,14 @@ router.get("/forensic-events/export", checkAuth, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('X-Content-Type-Options', 'nosniff');
 
+    // Resolver el operador del árbol de tenancy (DEC-REF-28). Fallback a cellOwner
+    // legacy si el lookup falla — un PDF forense NUNCA debe salir con campo vacío.
+    let operatorLabel = site.cellOwner;
+    if (site.operatorCode) {
+      const operator = await Operator.findOne({ operatorCode: site.operatorCode });
+      if (operator && operator.displayName) operatorLabel = operator.displayName;
+    }
+
     const doc = new PDFDocument({ autoFirstPage: false, margin: 36 });
 
     // Ajuste 2: error handler + headersSent guard
@@ -351,7 +360,7 @@ router.get("/forensic-events/export", checkAuth, async (req, res) => {
 
     doc.pipe(res);
 
-    renderPage1(doc, site, events, chainResult, exportMeta);
+    renderPage1(doc, site, events, chainResult, exportMeta, operatorLabel);
     renderEventsTable(doc, events, chainResult);
     renderAnnexA(doc, events);
     renderAnnexB(doc, events);
