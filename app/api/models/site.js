@@ -13,12 +13,16 @@ const siteSchema = new Schema({
     provincia:   { type: String },
     localidad:   { type: String },
     tipo:        { type: String, required: [true], enum: ['BTS', 'shelter', 'repeater'] },
-    cellOwner:   { type: String, required: [true] },
-    // Tenancy (DEC-REF-28): relación al árbol Operator→Zone. OPCIONALES durante
-    // la migración (28.4a); pasan a required en 28.4c tras backfillear todos los
-    // sites. cellOwner queda LEGACY como red de seguridad hasta 28.4c.
-    operatorCode: { type: String },
-    zoneCode:     { type: String },
+    // cellOwner: LEGACY/DEPRECATED (28.4c). Ya no es required ni editable; se
+    // conserva como dato fuente auditable de la migración (DEC-REF-28) y como
+    // fallback del PDF forense. Borrado definitivo: cuando la integridad
+    // referencial garantice que el lookup del Operator siempre resuelve y el
+    // fallback sea código muerto (BACKLOG-TENANT-2).
+    cellOwner:   { type: String },
+    // Tenancy (DEC-REF-28): relación al árbol Operator→Zone. REQUIRED desde 28.4c
+    // (todos los sites backfilleados, 4/4 verificado).
+    operatorCode: { type: String, required: [true] },
+    zoneCode:     { type: String, required: [true] },
     devices:     { type: [String], default: [] },
     notes:       { type: String },
     createdTime: { type: Number }

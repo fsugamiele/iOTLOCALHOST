@@ -116,8 +116,8 @@ router.post("/site", checkAuth, async (req, res) => {
     const userId  = req.userData._id;
     const newSite = req.body.newSite;
 
-    if (!newSite || !newSite.siteCode || !newSite.nombre || !newSite.tipo || !newSite.operatorCode || !newSite.zoneCode || !newSite.cellOwner) {
-      return res.status(400).json({ status: "error", error: "siteCode, nombre, tipo, operatorCode, zoneCode and cellOwner are required" });
+    if (!newSite || !newSite.siteCode || !newSite.nombre || !newSite.tipo || !newSite.operatorCode || !newSite.zoneCode) {
+      return res.status(400).json({ status: "error", error: "siteCode, nombre, tipo, operatorCode and zoneCode are required" });
     }
     if (!TIPO_ENUM.includes(newSite.tipo)) {
       return res.status(400).json({ status: "error", error: "tipo must be one of: BTS, shelter, repeater" });
@@ -126,9 +126,6 @@ router.post("/site", checkAuth, async (req, res) => {
     newSite.userId      = userId;
     newSite.createdTime = Date.now();
     newSite.devices     = [];
-    // NOTA TRANSICIÓN (28.4b): el POST pide cellOwner Y operatorCode/zoneCode porque
-    // el schema aún requiere cellOwner (legacy). En 28.4c, cuando cellOwner deje de
-    // ser required, el POST se simplifica a pedir solo operatorCode/zoneCode.
 
     const site = await Site.create(newSite);
     return res.json({ status: "success", siteCode: site.siteCode });
