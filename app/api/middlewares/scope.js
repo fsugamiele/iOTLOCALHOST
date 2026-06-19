@@ -7,7 +7,8 @@
 // CommonJS por consistencia con el resto de middlewares (authentication.js
 // usa el mismo patrón require('../models/x').default).
 
-const Site = require('../models/site.js').default;
+const Site   = require('../models/site.js').default;
+const Device = require('../models/device.js').default;
 
 // scopeFilterFor(grants, modelName) — pura en parámetros (no recibe req),
 // pero hace I/O a Mongo para resolver siteCodes en modelos derivados.
@@ -71,4 +72,39 @@ async function buildReadFilter(req, modelName) {
   return { $or: [ { userId }, scope ] };
 }
 
-module.exports = { scopeFilterFor, buildReadFilter };
+// resolveScopedDIds(req) — devuelve array de dIds alcanzables por el usuario actual.
+// Resolución para colecciones que NO tienen siteId propio (Data): el alcance del
+// grant se materializa como un set de dIds, NO como un filtro directo sobre la
+// colección. El caller (30.2: dataprovider.js) compondrá con un {dId:{$in:[...]}}.
+//
+// Reusa scopeFilterFor(grants, 'Site') — única traducción grants→filtro, alineado
+// con DEC-REF-33 (single point of authorization). La materialización a dIds se
+// hace sobre Device (que tiene userId Y siteId):
+//   scope === null   (sin grant útil)  → dIds de devices del propio userId
+//   scope === {}     (superadmin)      → todos los dIds
+//   scope positivo                      → dIds de devices propios OR en sites del scope
+//
+// El caso "sin grant" SIGUE devolviendo devices del userId aunque no tengan siteId
+// poblado — no rompe al dueño con devices huérfanos (Device.siteId es opcional en
+// el schema; 10/10 poblados hoy pero la garantía debe sostenerse en el helper).
+//
+// Costo: 1 query (superadmin/sin-grant) o 2 (con scope: Site.find + Device.distinct).
+// Sin migración de datos, sin índice nuevo (Device.userId/.siteId sin índice
+// secundario hoy — 10 devices, irrelevante; queda para BACKLOG-PERF-1).
+async function resolveScopedDIds(req) {
+  const userId = req.userData._id;
+  const grants = req.userData.grants || [];
+  const scope  = await scopeFilterFor(grants, 'Site');
+
+  if (scope === null)                  return Device.distinct('dId', { userId });
+  if (Object.keys(scope).length === 0) return Device.distinct('dId');
+
+  const sites = await Site.find(scope, { siteCode: 1, _id: 0 }).lean();
+  const siteCodes = sites.map(s => s.siteCode);
+
+  const orParts = [{ userId }];
+  if (siteCodes.length) orParts.push({ siteId: { $in: siteCodes } });
+  return Device.distinct('dId', { $or: orParts });
+}
+
+module.exports = { scopeFilterFor, buildReadFilter, resolveScopedDIds };
