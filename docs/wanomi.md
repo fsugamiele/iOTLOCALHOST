@@ -1965,3 +1965,42 @@ AGREGAR al checklist: `cellowner-nea@wanomi.test` / `cellownerNEA-dev-2026` (pas
 #### Próximo foco (decidido con el equipo)
 - **#30 → BACKLOG-ARCH-3** (acceso a históricos con filtrado por grants). Razón: capitalizar el helper de scope mientras está fresco. NOTA DE ALCANCE: ARCH-3 son DOS piezas — (a) mecanismo de traída desde el edge (DEC-ARCH-2: el crudo vive en el edge, NO en Mongo central) = diseño nuevo sin resolver; (b) endpoint con filtrado por grants = reusa `buildReadFilter` directo. El recon de #30 NO debe asumir que es solo "agregar un filtro a una query existente".
 - Candidatos diferidos: BACKLOG-UI-2 (pin/feed en vivo — arrastra construir la rama de eventos de DEC-REF-30 primero), BACKLOG-ARCH-2 (pull de RulePacks).
+
+### Sesión #30 — 2026-06-19 ✅ CERRADA (implementación — BACKLOG-ARCH-3)
+**Foco:** Área 2 — acceso a históricos gobernado por grants. Cierra ARCH-3.
+**Formato:** implementación con reuniones de diseño de Área 2 (Backend Senior, Ing. Software Senior, Integración OSS/BSS, Frontend Vue) + panel ampliado consultado para retención de datos + Franco decisor.
+
+#### Naturaleza
+Tercer y último backlog hijo de ARCH-1. **Reframe clave de apertura:** el histórico crudo NO está hoy en el edge — el Hub físico aún no existe; vive en la Mongo central, persistido vía saver-webhook. ARCH-3 construye el mecanismo DEFINITIVO de servir históricos por consulta filtrada por grants, con la Mongo central como primera fuente enchufable detrás de una costura limpia — el Hub será un adaptador futuro sin reescritura. Tres sub-pasos atómicos, un commit por sub-paso.
+
+#### Sub-pasos completados
+- **30.1** (`4fe7175`) — `resolveScopedDIds(req)` en `scope.js`: traduce grants → set de dIds permitidos, materializado sobre `Device` (que tiene `userId` Y `siteId`), reusando `scopeFilterFor` (DEC-REF-33, single point of authorization). Casos: superadmin → `Device.distinct('dId')`; sin scope → propios; con grant → `$or` de propios y devices de los sites del scope. Validado E2E 5/5 con caso de exclusión cross-tenant (Site+Device efímeros `operatorCode='movistar'/zoneCode='noa'` — cellowner-nea NO ve ese dId). Sin migración de datos, sin índice nuevo.
+- **30.2** (`43083fe`) — costura `historyProvider` en `services/`: `query({dId, variable, sinceMs})` sin autorización (vive ARRIBA, DEC-REF-33). Mañana se le cambia la fuente (Hub remoto, pre-agregados, hybrid) sin tocar callers. Gate temporal `hasDataGate(userId, dId, variable)` por `Data.findOne` como andamiaje — refactor INVISIBLE (respuesta byte-idéntica a la previa). Opción B (gate por Data) elegida sobre Opción A (gate por Device) para preservar invisibilidad literal en el caso huérfano. Catch sin tocar, sin reformateos cosméticos.
+- **30.3** (`237a8c5`, DEC-REF-34) — swap del gate temporal al definitivo: `resolveScopedDIds` (puro scope de grants, sin componer `userId` del caller — eso reintroduciría el ownership que ARCH-3 vino a sacar). Cambio de conducta DELIBERADO. E2E 12/12 (6 casos × 2 endpoints) con device efímero `EFEM-CLARO-CN15` (Claro/NEA, `userId=Wanomi`): cellowner-nea ve por grant; **personal sin grant NO ve** (separación de roles probada — caso ★).
+
+#### Hallazgos clave
+- **Reframe de DEC-ARCH-2:** la decisión restringe lo que cruza al NOC (resumido), NO dice que el histórico viva hoy en el edge. El crudo está en Mongo central vía saver-webhook; el Hub físico es Fase 4 (WN-H1-TELCO). Construir el mecanismo definitivo con la fuente actual como adaptador, NO diseñar un pull-desde-edge contra un Hub inexistente.
+- La pregunta "¿el Hub entrega crudo o resumido?" YA estaba resuelta en la doc: dos flujos opuestos — al NOC sube resumido (DEC-ARCH-2 / DEC-REF-19), el cellowner consulta crudo a pedido filtrado por grants (nota de alcance ARCH-1). No era pregunta abierta.
+- **Caso huérfano de 30.3 NO es retención:** el dato no se borra, solo no se muestra en el drill-down del aparato borrado. Visibilidad ≠ existencia del dato. Coherente con DEC-REF-33 (grants = fuente única de verdad de visibilidad).
+- **El E2E prueba el MECANISMO de separación de roles sobre device efímero**; sobre datos reales NO muerde aún por BACKLOG-TENANT-4 (devices de Claro con `userId=personal`). El día que se ejecute TENANT-4, ARCH-3 discrimina sobre datos reales sin tocar código.
+
+#### Backlogs nuevos
+- **BACKLOG-TENANT-4** — devices de Claro con `userId` = cuenta personal de Franco; anula la separación de roles de 28.3 en la práctica. Expuesto por 30.1 caso #2 (personal-sin-grant → mismos dIds que cellowner-nea sobre el dataset real). Fix: migrar `userId` a cuenta de servicio/superadmin, paralelo a la migración de sites de 28.4a (probablemente un solo barrido). Disparador: antes de producción o antes del 2º operador — lo que llegue primero.
+- **BACKLOG-DATA-RETENTION** — falta política de retención formalizada (buffer 30–90 días del Hub, histórico para predicción DEC-PRED-1, cadena forense inmutable DEC-HMAC-1 / DEC-FORENSIC-2). Regla dura: el dato forense no se borra jamás. Requiere panel ampliado (Hardware, Asesor Telco, Big Data / Data Analyst, Cellowner). No urgente para el piloto.
+
+#### Estado
+- 3 commits de #30 (`4fe7175` → `43083fe` → `237a8c5`). Branch `feature/telco-support` 3 commits adelante de origin. **SIN PUSH** — el gatillo de push sigue requiriendo autorización explícita de Franco.
+- DEC-REF-34 registrada en `docsRefactor/WanomiRefactor.md` (después de DEC-REF-33, antes de la nota de alcance ARCH-1).
+- ARCH-3 **COMPLETO**: helper de resolución + costura limpia + gate de grants efectivo. Toda la familia ARCH-1 / -3 cerrada.
+
+#### Seguridad — RISK-SEC-1
+Sin cambios — rotación de credenciales sigue diferida a producción. El gatillo de rotación al pasar a producción sigue vigente.
+
+#### Pendiente para próxima sesión
+Franco prioriza al abrir #31 entre los backlogs disponibles:
+- **BACKLOG-ARCH-2** — pull de RulePacks (mecanismo de distribución diferido desde #27).
+- **BACKLOG-UI-3** — vista de históricos en el frontend (ahora con backend listo).
+- **BACKLOG-UI-2** — pin/feed en vivo (arrastra rama de eventos de DEC-REF-30).
+- **BACKLOG-EDGE-4** — heartbeat/staleness (silencio total del stream — corolario de DEC-REF-26).
+- **BACKLOG-TENANT-4** — migración de `userId` de devices de Claro (separación de roles efectiva).
+- **BACKLOG-DATA-RETENTION** — política formal de retención (requiere panel ampliado).
