@@ -2,34 +2,26 @@ const express = require('express');
 const router = express.Router();
 const { checkAuth } = require('../middlewares/authentication.js');
 
-//models import
-import Data from '../models/data.js';
 import { query as historyQuery } from '../services/historyProvider.js';
-
-// Gate temporal (andamiaje 30.2) — preserva la invisibilidad de hoy
-// (dId/variable ajeno → success + []). Chequea presencia de DATOS, no
-// ownership del device (preserva el flujo del huérfano: dueño con Data
-// sobreviviente a Device borrado sigue viendo sus muestras). En 30.3
-// esto se reemplaza por resolveScopedDIds — REINTRODUCE el caso huérfano
-// (porque deriva de Device), decisión a tomar explícitamente ahí.
-async function hasDataGate(userId, dId, variable) {
-  const hit = await Data.findOne({ userId, dId, variable }, { _id: 1 }).lean();
-  return !!hit;
-}
+import { resolveScopedDIds } from '../middlewares/scope.js';
 
 
 router.get('/get-last-data', checkAuth, async (req, res) => {
 
   try {
 
-    const userId = req.userData._id;
     const chartTimeAgo = req.query.chartTimeAgo;
     const dId = req.query.dId;
     const variable = req.query.variable;
 
     const timeAgoMs = Date.now() - (chartTimeAgo * 60 * 1000 );
 
-    if (!(await hasDataGate(userId, dId, variable))) {
+    // Gate de scope de grants (DEC-REF-34). Puro scope: NO se compone con
+    // userId del caller — eso reintroduciría el ownership que ARCH-3 vino
+    // a sacar. resolveScopedDIds ya cubre los devices propios en su rama
+    // "sin grant útil"; con grants, agrega los del scope.
+    const allowed = await resolveScopedDIds(req);
+    if (!allowed.includes(dId)) {
       return res.json({ status: "success", data: [] });
     }
 
@@ -63,14 +55,15 @@ router.get('/get-small-charts-data', checkAuth, async (req, res) => {
 
   try {
 
-    const userId = req.userData._id;
     const chartTimeAgo = req.query.chartTimeAgo;
     const dId = req.query.dId;
     const variable = req.query.variable;
 
     const timeAgoMs = Date.now() - (chartTimeAgo * 60 * 1000 );
 
-    if (!(await hasDataGate(userId, dId, variable))) {
+    // Gate de scope de grants (DEC-REF-34). Mismo patrón que /get-last-data.
+    const allowed = await resolveScopedDIds(req);
+    if (!allowed.includes(dId)) {
       return res.json({ status: "success", data: [] });
     }
 
