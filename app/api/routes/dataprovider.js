@@ -4,6 +4,18 @@ const { checkAuth } = require('../middlewares/authentication.js');
 
 //models import
 import Data from '../models/data.js';
+import { query as historyQuery } from '../services/historyProvider.js';
+
+// Gate temporal (andamiaje 30.2) — preserva la invisibilidad de hoy
+// (dId/variable ajeno → success + []). Chequea presencia de DATOS, no
+// ownership del device (preserva el flujo del huérfano: dueño con Data
+// sobreviviente a Device borrado sigue viendo sus muestras). En 30.3
+// esto se reemplaza por resolveScopedDIds — REINTRODUCE el caso huérfano
+// (porque deriva de Device), decisión a tomar explícitamente ahí.
+async function hasDataGate(userId, dId, variable) {
+  const hit = await Data.findOne({ userId, dId, variable }, { _id: 1 }).lean();
+  return !!hit;
+}
 
 
 router.get('/get-last-data', checkAuth, async (req, res) => {
@@ -17,8 +29,11 @@ router.get('/get-last-data', checkAuth, async (req, res) => {
 
     const timeAgoMs = Date.now() - (chartTimeAgo * 60 * 1000 );
 
+    if (!(await hasDataGate(userId, dId, variable))) {
+      return res.json({ status: "success", data: [] });
+    }
 
-    const data =  await Data.find({userId: userId, dId:dId, variable: variable, "time":{$gt: timeAgoMs}}).sort({"time":1});
+    const data = await historyQuery({ dId, variable, sinceMs: timeAgoMs });
 
 
     const response = {
@@ -55,8 +70,11 @@ router.get('/get-small-charts-data', checkAuth, async (req, res) => {
 
     const timeAgoMs = Date.now() - (chartTimeAgo * 60 * 1000 );
 
+    if (!(await hasDataGate(userId, dId, variable))) {
+      return res.json({ status: "success", data: [] });
+    }
 
-    const data =  await Data.find({userId: userId, dId:dId, variable: variable, "time": {$gt: timeAgoMs}}).sort({"time":1});
+    const data = await historyQuery({ dId, variable, sinceMs: timeAgoMs });
 
 
     const response = {
