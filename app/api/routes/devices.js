@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
+const { buildReadFilter } = require("../middlewares/scope.js");
 const axios = require("axios");
 const crypto = require("crypto");
 
@@ -30,9 +31,10 @@ const auth = {
 router.get("/device", checkAuth, async (req, res) => {
   try {
     const userId = req.userData._id;
+    const filter = await buildReadFilter(req, 'Device');
 
     //get devices
-    var devices = await Device.find({ userId: userId });
+    var devices = await Device.find(filter);
 
     //mongoose array to js array
     devices = JSON.parse(JSON.stringify(devices));
