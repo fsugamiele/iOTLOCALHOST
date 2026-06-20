@@ -7,6 +7,7 @@
 // CommonJS por consistencia con el resto de middlewares (authentication.js
 // usa el mismo patrón require('../models/x').default).
 
+const mongoose = require('mongoose');
 const Site   = require('../models/site.js').default;
 const Device = require('../models/device.js').default;
 
@@ -37,6 +38,25 @@ async function scopeFilterFor(grants, modelName) {
     if (sites.length === 0) return null;
     const codes = sites.map(s => s.siteCode);
     return { siteId: { $in: codes } };
+  }
+
+  if (modelName === 'Template') {
+    const siteFilter = buildSiteScopeFilter(scoped);
+    const sites = await Site.find(siteFilter, { siteCode: 1, _id: 0 }).lean();
+    if (sites.length === 0) return null;
+    const codes = sites.map(s => s.siteCode);
+
+    // Site → Device → Template (dos saltos; el scope vive en el Site)
+    const devices = await Device.find(
+      { siteId: { $in: codes } },
+      { templateId: 1, _id: 0 }
+    ).lean();
+    const tplIds = [...new Set(devices.map(d => d.templateId))]
+      .filter(id => mongoose.Types.ObjectId.isValid(id))
+      .map(id => mongoose.Types.ObjectId(id));
+    if (tplIds.length === 0) return null;
+
+    return { _id: { $in: tplIds } };
   }
 
   return null;

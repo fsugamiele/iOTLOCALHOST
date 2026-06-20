@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { checkAuth } = require('../middlewares/authentication.js');
+const { buildReadFilter } = require('../middlewares/scope.js');
 
 //models import
 import Template from '../models/template.js';
@@ -11,11 +12,9 @@ router.get('/template', checkAuth, async (req, res) => {
 
     try {
 
-        const userId = req.userData._id;
+        const filter = await buildReadFilter(req, 'Template');
+        const templates = await Template.find(filter);
 
-        const templates = await Template.find({userId: userId});
-
-        console.log(userId);
         console.log(templates)
 
         const response = {
