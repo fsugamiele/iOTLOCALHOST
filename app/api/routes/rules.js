@@ -275,9 +275,9 @@ async function sendMqttConfigUpdate(userId, dId, variable, freqSeconds) {
   }
 }
 
-async function getRules(userId) {
+async function getRules(dIds) {
   try {
-    return await Rule.find({ userId });
+    return await Rule.find({ dId: { $in: dIds } });
   } catch (error) {
     return [];
   }

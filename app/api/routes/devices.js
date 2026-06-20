@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
+const mongoose = require("mongoose");
 const axios = require("axios");
 const crypto = require("crypto");
 
@@ -39,17 +40,17 @@ router.get("/device", checkAuth, async (req, res) => {
     //mongoose array to js array
     devices = JSON.parse(JSON.stringify(devices));
 
-    //get saver rules
-    const saverRules = await getSaverRules(userId);
+    // Enrichments confían en el gate (DEC-REF-33): filtran por los devices ya
+    // autorizados, no por el userId del caller.
+    const dIds   = devices.map(d => d.dId);
+    const tplIds = [...new Set(devices.map(d => d.templateId))]
+      .filter(id => mongoose.Types.ObjectId.isValid(id))
+      .map(id => mongoose.Types.ObjectId(id));
 
-    //get templates
-    const templates = await getTemplates(userId);
-
-    //get alarm rules
-    const alarmRules = await getAlarmRules(userId);
-
-    //get rules
-    const rules = await global.getRules(userId);
+    const saverRules = await getSaverRules(dIds);
+    const templates  = await getTemplates(tplIds);
+    const alarmRules = await getAlarmRules(dIds);
+    const rules      = await global.getRules(dIds);
 
     //saver rules to -> devices
     devices.forEach((device, index) => {
@@ -270,9 +271,9 @@ router.put("/saver-rule", checkAuth, async (req, res) => {
 //**** FUNCTIONS *******
 //********************** 
 
-async function getAlarmRules(userId) {
+async function getAlarmRules(dIds) {
   try {
-    const rules = await AlarmRule.find({ userId: userId });
+    const rules = await AlarmRule.find({ dId: { $in: dIds } });
     return rules;
   } catch (error) {
     return "error";
@@ -304,9 +305,9 @@ async function selectDevice(userId, dId) {
 */
 
 //get templates
-async function getTemplates(userId) {
+async function getTemplates(tplIds) {
   try {
-    const templates = await Template.find({ userId: userId });
+    const templates = await Template.find({ _id: { $in: tplIds } });
     return templates;
   } catch (error) {
     return false;
@@ -314,9 +315,9 @@ async function getTemplates(userId) {
 }
 
 //get saver rules
-async function getSaverRules(userId) {
+async function getSaverRules(dIds) {
   try {
-    const rules = await SaverRule.find({ userId: userId });
+    const rules = await SaverRule.find({ dId: { $in: dIds } });
     return rules;
   } catch (error) {
     return false;
