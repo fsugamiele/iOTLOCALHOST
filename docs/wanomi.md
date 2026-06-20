@@ -2004,3 +2004,38 @@ Franco prioriza al abrir #31 entre los backlogs disponibles:
 - **BACKLOG-EDGE-4** — heartbeat/staleness (silencio total del stream — corolario de DEC-REF-26).
 - **BACKLOG-TENANT-4** — migración de `userId` de devices de Claro (separación de roles efectiva).
 - **BACKLOG-DATA-RETENTION** — política formal de retención (requiere panel ampliado).
+
+### Sesión #31 — 2026-06-19 ✅ CERRADA (implementación — BACKLOG-UI-3, frente backend)
+**Foco:** Área 2 — migrar la familia device + template + enrichments a grants (alcance A). Cierra el backend que UI-3 necesita.
+**Formato:** implementación con reuniones de diseño de Área 2 (Backend Senior, Ing. Software Senior, Integración OSS/BSS) + Franco decisor.
+
+#### Naturaleza
+Continuación de ARCH-1: 28.x.3 migró 7 reads a grants pero dejó afuera la familia device/template/enrichments (filtraban por `userId` plano). El cellowner-nea veía sus sites (por grant) pero NO sus devices, ni plantillas, ni reglas. UI-3 (vista de históricos con nombres legibles vía `template.widgets`, DEC-47) exige el backend cerrado primero (cimientos antes de amoblar, DEC-REF-28). Alcance A: migrar device + template + enrichments completos antes de tocar frontend. Tres sub-pasos atómicos, un commit por sub-paso.
+
+#### Sub-pasos completados
+- **31.1** (`2c8c40e`) — `GET /device` → `buildReadFilter(req, 'Device')`. Migración mínima (1 import + 1 línea): filtro pasa de `{userId}` plano a `{userId OR scope}`. `scopeFilterFor` ya cubría 'Device' (misma rama que Notification/ForensicEvent, ejercitada en 30.1). E2E 4/4 con exclusión cross-tenant: cellowner-nea ve sus 10 dIds Claro/NEA por GRANT (no ownea ninguno), NO un device efímero claro/noa (★ corte por zona). Enrichments salieron vacíos — esperado, se migran en 31.3.
+- **31.2** (`d79237d`) — `GET /template` → grants. Recon reveló que Template NO es migración chica: no tiene `siteId` ni tenencia propia (es un molde compartido). Rama nueva `'Template'` en `scopeFilterFor` que resuelve Site→Device→Template (dos saltos; el scope vive en el Site) y devuelve `{ _id: { $in: tplIds } }` con guarda `ObjectId.isValid`. Hallazgo: `Device.templateId` es string hex, `Template._id` es ObjectId → join requiere conversión. Endpoint standalone (sin gate de Site arriba) por eso necesita rama propia, sin contradecir DEC-REF-33. E2E 4/4: cellowner-nea ve sus 4 templates (por sus devices visibles), NO el efímero claro/noa (★ corte propagado Site→Device→Template). `mongoose` agregado a imports de scope.js.
+- **31.3** (`5a86963`) — los 4 enrichments (`getSaverRules/getTemplates/getAlarmRules/getRules` + global.getRules en rules.js) migran de `find({userId})` a filtrar por la lista de devices ya autorizada: `{dId: {$in: dIds}}` (saver/alarm/rules) y `{_id: {$in: tplIds}}` (template). Patrón DEC-REF-33: el gate resuelve los devices visibles una vez; los enrichments confían, no reimplementan scope. Hallazgo del recon: hoy traían TODA la base del caller y repartían en memoria por `dId` — el `userId` era el filtro de seguridad implícito. `getRules` cross-module (global) tiene un solo caller → cambio de firma safe. E2E 4/4 con fixtures positivos (reglas efímeras del userId personal colgadas de un device REAL → cellowner las ve por su DEVICE, no por ownership: template/saverRule/alarmRules/rules POBLADOS, inverso de 31.1) Y negativos (reglas en device claro/noa → NO visibles). Teardown verificado 0 residuos por `countDocuments` (riesgo alto: positivos colgaban de device real).
+
+#### Hallazgos clave
+- **Template no tiene tenencia propia:** es un molde compartido por devices de muchos sitios/zonas. Su visibilidad es DERIVADA del device que lo referencia, no propia. Descartado denormalizar `siteId`/`zoneCode` al schema (rompe la naturaleza compartida + dato falso, contra DEC-STRAT-2).
+- **`Device.templateId` (string hex) vs `Template._id` (ObjectId):** el join requiere `ObjectId(device.templateId)` con guarda `isValid`. El enrichment actual (`devices.js:59-61`) joinea con `==` flojo que funciona por coerción accidental, no por diseño.
+- **Filtro de seguridad implícito en los enrichments:** traían toda la base del `userId` del caller y repartían en memoria. La migración a `{$in: dIds}` además de arreglar la autorización reduce el volumen traído (solo lo de los devices pedidos).
+- **Endpoint standalone vs derivado:** Template juega dos roles según el endpoint. En `GET /site/:siteCode/full` es derivado (suelta userId, confía en el gate del Site, DEC-REF-33). En `GET /template` standalone es recurso primario → necesita rama propia de scope. No hay contradicción.
+
+#### Backlog nuevo
+- **BACKLOG-API-1** — hardening de los enrichments de `/device` (registrado en WanomiRefactor.md §5b). Dos concerns deferidos de 31.3 por single-concern: (1) normalizar retornos de error de los 4 helpers a `[]` (`false`/`"error"`/`[]` inconsistentes → `.filter()` sobre no-array tira TypeError → 500, latente); (2) fix del `==` flojo en el template join (ObjectId↔string coerción accidental) + `===` en los 3 joins por `dId`.
+
+#### Cleanup cosmético pendiente
+- `console.log(templates)` en `templates.js` (dejado intacto por single-concern en 31.2).
+- `const userId` huérfano en el handler `GET /device` (sin uso tras 31.3; dejado por no ser del concern).
+
+#### Estado
+- Alcance A COMPLETO: device + template + enrichments migrados a grants. El cellowner-nea recibe sus devices Claro/NEA con plantilla legible y reglas pobladas — cimientos de UI-3 listos.
+- 3 commits (`2c8c40e` → `d79237d` → `5a86963`), **pusheados** a `origin/feature/telco-support` (`adcfc9d..5a86963`).
+- Backend en punto de corte limpio. NO se introdujeron DEC-REF nuevas (todo es aplicación de DEC-REF-33).
+- Build de Nuxt necesario para cada E2E (serverMiddleware — lección reconfirmada).
+
+#### Próximo foco
+- **#32 → 31.4 (frontend de UI-3):** `historyClient.js` (JS plano, migrable DEC-STACK-1) + `HistoryChart.vue` presentational (Highcharts) + `pages/history.vue` standalone (selectores site→device→variable→preset de rango). Selector de variables desde `template.widgets` filtrado por `variableType` (excluir booleanas), mostrando `variableFullName` + unit.
+- **Decisiones aparcadas para abrir en 31.4:** (a) selector template-only vs híbrido (cruzar con `data.distinct` para ofrecer solo variables con historia real — evita gráficos vacíos); (b) destino de BACKLOG-TENANT-5 (repurpose con contenido nuevo o ID nuevo — quedó ambiguo tras la reversión de su contenido original en la apertura de #31).

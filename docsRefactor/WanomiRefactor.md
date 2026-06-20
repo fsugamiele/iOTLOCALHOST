@@ -195,6 +195,12 @@ Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y 
 
 > Las DEC-REF-* se agregan a este documento y NO se modifican retroactivamente. Cambios de criterio se registran como nuevas DEC-REF.
 
+### 5b · Backlog de hardening de API (BACKLOG-API-*)
+
+| ID | Fecha | Descripción |
+|---|---|---|
+| BACKLOG-API-1 | 2026-06-19 | **Hardening de los enrichments de `GET /device`.** Deferido de 31.3 (#31) por single-concern. (1) **Retornos de error inconsistentes:** los 4 helpers devuelven distinto en `catch` — `getSaverRules`→`false`, `getTemplates`→`false`, `getAlarmRules`→`"error"` (string), `getRules`→`[]`. El `forEach` del handler hace `.filter()` sobre el retorno → `false.filter()`/`"error".filter()` lanzan TypeError → 500. Latente (happy path siempre devuelve array). Fix: normalizar los 4 a `[]` en error. (2) **`==` flojo en el template join** (`devices.js:59-61`): `template._id` (ObjectId) `==` `device.templateId` (string hex) funciona por coerción accidental. Fix: conversión explícita (`ObjectId.isValid` + comparar como ObjectId, igual que la rama 'Template' de scope.js) + `===` en los 3 joins por `dId`. |
+
 ---
 
 ## 6 · Próxima reunión — Sesión #15
