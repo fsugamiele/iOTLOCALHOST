@@ -2039,3 +2039,60 @@ Continuación de ARCH-1: 28.x.3 migró 7 reads a grants pero dejó afuera la fam
 #### Próximo foco
 - **#32 → 31.4 (frontend de UI-3):** `historyClient.js` (JS plano, migrable DEC-STACK-1) + `HistoryChart.vue` presentational (Highcharts) + `pages/history.vue` standalone (selectores site→device→variable→preset de rango). Selector de variables desde `template.widgets` filtrado por `variableType` (excluir booleanas), mostrando `variableFullName` + unit.
 - **Decisiones aparcadas para abrir en 31.4:** (a) selector template-only vs híbrido (cruzar con `data.distinct` para ofrecer solo variables con historia real — evita gráficos vacíos); (b) destino de BACKLOG-TENANT-5 (repurpose con contenido nuevo o ID nuevo — quedó ambiguo tras la reversión de su contenido original en la apertura de #31).
+
+### Sesión #32 — 2026-06-21 ✅ CERRADA (implementación — BACKLOG-UI-3, frente frontend)
+**Foco:** Área 2 — cerrar UI-3 end-to-end conectando los 3 archivos nuevos del frontend al backend gobernado por grants (cerrado en #31). Sub-paso 31.4.
+**Formato:** implementación con Área 2 (Frontend Vue al frente + Backend Senior + Ing. Software Senior + Integración OSS/BSS) + decisión de presets con Asesor telco Área 1 + Confiabilidad + Franco decisor.
+
+#### Naturaleza
+Cierre del BACKLOG-UI-3 (la vista de históricos para el cellowner). El backend quedó listo en #31 (alcance A: device + template + enrichments por grants). #32 construye los 3 archivos del frontend en orden de pieza más reusable a pieza más integradora: módulo de fetch puro → componente presentational → página con selectores en cadena. Tres sub-pasos atómicos + 1 fix de store + 1 ajuste de presets (decisión de producto).
+
+#### Decisiones abiertas de #31 resueltas
+- **Selector de variables: template-only** (no híbrido con `data.distinct`). 3 voces de Área 2 alineadas (Backend Senior, Ing. Software Senior, Integración OSS/BSS): el híbrido obliga a endpoint nuevo + estado en cadena en el cliente para evitar un caso degenerado (variable declarada sin datos). En operación real, los devices Telco mandan lo que la plantilla declara. Coherente con DEC-47 (nombres legibles desde `variableFullName`); el caso degenerado lo cubre el cartel "Sin datos en este rango" del componente chart. **Formalizado como DEC-REF-35** sobre el código ya implementado en 31.4c (fija el invariante para futuras vistas: export, análisis, dashboards alternativos).
+- **BACKLOG-TENANT-5 RETIRADO.** Contenido original (diferir enrichments) fue revertido en la apertura de #31 e implementado en 31.3; el ID quedó con historia contradictoria y NO se reutiliza (línea-lápida explícita). Resuelve la ambigüedad de `wanomi.md:2041`. Próximo backlog de tenancy usa **-6** (no -5). Lección consolidada: IDs mencionados en conversación NO se reutilizan aunque nunca se hayan registrado formalmente — el rastro conversacional cuenta como "historia".
+
+#### Sub-pasos completados
+- **31.4a** (`013f680`) — `app/services/historyClient.js`: módulo de fetch puro (DEC-STACK-1, migrable Vue 3). `fetchHistory({axios, token, dId, variable, chartTimeAgo})` sin Vue, sin store, sin auth — el caller pasa token explícito. Refleja invisibilidad de DEC-REF-34: dId fuera de scope → `[]` sin throw. Dir nuevo `app/services/` (paralelo a backend `app/api/services/`). E2E 2/2 con login real (β: leer creds de env local, no jwt.sign), TEST_USER_EMAIL/PWD agregados a `.env`.
+- **31.4b** (`91425b7`) — `app/components/HistoryChart.vue`: componente presentational, sin fetch, sin auth, sin saber del backend. 4 estados mutuamente excluyentes (loading/error/empty/data). Highcharts (consistencia con `Rtnumberchart.vue`, ya instalado via `nuxt-highcharts`), envuelto en `<client-only>` (SSR safety). Compensación timezone preservada. Decisión (a) sobre unit en eje Y (sin label, unidad embebida en `variableFullName`) — 4/4 voces alineadas; `widget.unit` separado es BACKLOG si aparece necesidad. Validación visual con `pages/test-history.vue` descartable (borrado pre-commit, no afectó `test.vue` tracked).
+- **store fix** (`7a22a70`) — `app/store/index.js`: `getDevices` action ahora retorna la promesa del axios → dispatch awaitable. Cambio mínimo (1 palabra). Los 11 callers existentes son fire-and-forget, cero regresión. Pre-requisito de 31.4c para serializar la carga inicial.
+- **31.4c** (`5c5d1ad`) — `app/pages/history.vue`: página standalone con selectores en cadena (site → device → variable → rango). `el-select` (Element UI, patrón vivo en `DashboardNavbar.vue` + `templates.vue` — import + registro local por componente, NO global). v-model a primitivos (siteCode, dId, variable slug), objetos derivados por computed. Guard de coherencia en `fetchHistory` (anti-timing de watchers). `mounted()` con `Promise.all([axios /site, dispatch getDevices])` — espera AMBOS antes de habilitar UI, evita "dropdown vacío fantasma". Permisos NO reimplementados en cliente (DEC-REF-33).
+
+#### Decisión de producto — presets de rango
+Set decidido con Asesor telco Área 1 + Confiabilidad + Área 2: **1h / 24h / 7d / 30d**. 90d+ NO entra al selector — es uso de análisis (Confiabilidad), va a backlog (BACKLOG-UI-5). Costo técnico nulo: 1 línea en `rangePresets`, sin cambios en historyClient/HistoryChart/backend. Coherente con DEC-STRAT-2 (producto, no demo): los presets están dimensionados al flujo operativo esperado en producción, no a sembrados puntuales del simulador.
+
+#### Hallazgos clave (recon que evitó daños)
+- **Llave `device.siteId == site.siteCode`** (string, no ObjectId; nombre engañoso "siteId" guarda siteCode). El recon lo confirmó comparando dos `printjson` reales — no de memoria. Misma llave usada en `scope.js` para Notification/ForensicEvent/Device desde 28.x.3.
+- **`el-select` registro por-componente, NO global.** El primer recon vio el USO en `templates.vue` pero no el REGISTRO. El micro-recon vio `DashboardNavbar.vue:109` (`import { Select, Option } from 'element-ui'` + `[Select.name]: Select`) — patrón establecido. El primer intento sin imports renderizó solo `<label>` (silencioso, ningún error de servidor). Lección: recon de USO ≠ recon de REGISTRO.
+- **`seed.js` del simulador es bootstrap de tenancy**, NO generador de muestras (`run.js` lo es). Correr `seed.js` con la tenancy de #29-31 ya armada habría chocado con unique constraints o duplicado bindings. Descartado tras el recon. Para datos frescos del gate visual: seed ad-hoc mínimo (`seeds/_dev/_seed_fresh_data.js`, 7 muestras una por hora dentro de 24h, valores variados, idempotente).
+- **Build de Nuxt obligatorio** tras cada cambio en `pages/`, `components/`, `services/`, `store/`. El gate visual del preset "30 días" falló inicialmente por bundle stale (compilado 26 min antes del edit). `timestamps de .nuxt/dist vs archivo` es el diagnóstico rápido.
+- **`dispatch('getDevices')` no era awaitable** (action sin `return`). Diagnóstico previo al diseño de `mounted()` evitó dropdown-vacío-fantasma sin serializar la carga inicial. 11 callers fire-and-forget verificados antes de tocar el store.
+
+#### Validación
+Gate visual real (no inyección de rango como en 31.4a) con fixture honesto: cellowner-nea logueado, `/history`, cadena de 4 selectores funcionando, chart con 7 puntos en preset "24h", reseteo correcto al re-elegir site. Cross-verificado con `chartTimeAgo` viajando entre presets. Sin errores rojos de consola (los del shell scaffolding ya identificados en 31.4b como ruido).
+
+#### Decisión registrada
+- **DEC-REF-35** — formaliza el invariante de "selectores de variables salen de `template.widgets`, no de slugs crudos". Registrada sobre código ya implementado (31.4c); las próximas vistas que listen variables al usuario lo heredan sin debate. Bump WanomiRefactor.md 0.9 → 0.10.
+
+#### Backlog nuevo
+- **BACKLOG-UI-4** — link de navegación a `/history` en el sidebar. Acceso por URL directa en el MVP; el sidebar/menú principal queda como sub-paso aparte cuando se defina el layout completo del cellowner. (Registrado en WanomiRefactor.md §5c.)
+- **BACKLOG-UI-5** — vista de análisis / export de largo plazo (ventanas 90d+, MTBF, degradación multi-mes). Justificación: Confiabilidad (Área 1) — el análisis de largo plazo es uso distinto del histórico operativo, pide export no preset en chart de línea simple. Disparador: cuando exista rol de confiabilidad consumiendo datos. (Registrado en WanomiRefactor.md §5c.)
+
+#### Estado
+- BACKLOG-UI-3 **COMPLETO**: backend (alcance A, cerrado en #31) + frontend (alcance B, esta sesión). El cellowner-nea ve sus históricos de Claro/NEA por grant, con nombres legibles, en el preset que elija.
+- 4 commits (`013f680` → `91425b7` → `7a22a70` → `5c5d1ad`). Branch 4 commits adelante de origin. **SIN PUSH** — el gatillo sigue requiriendo autorización explícita de Franco.
+- DEC-REF-35 nueva (única decisión arquitectural de la sesión); el resto fue aplicación de DEC-47, DEC-REF-33/34, DEC-STACK-1, DEC-STRAT-2. Versión WanomiRefactor.md bumpeada a 0.10.
+- 2 archivos descartables en `seeds/_dev/` (gitignored, no commiteables): `_test_historyClient.js` (harness 31.4a) y `_seed_fresh_data.js` (fixture gate visual).
+
+#### Cleanup cosmético pendiente
+- `console.log(templates)` en `templates.js` (heredado de #31).
+- `const userId` huérfano en handler `GET /device` (heredado de #31).
+
+#### Próximo foco
+Franco prioriza al abrir #33 entre los backlogs disponibles:
+- **BACKLOG-UI-4** — link sidebar a `/history` (chico, cierra UX del cellowner).
+- **BACKLOG-API-1** — hardening enrichments `/device` (TypeError latente + `==` flojo de template join).
+- **BACKLOG-ARCH-2** — pull de RulePacks (mecanismo de distribución diferido desde #27).
+- **BACKLOG-UI-2** — pin/feed en vivo (arrastra rama de eventos de DEC-REF-30).
+- **BACKLOG-EDGE-4** — heartbeat/staleness.
+- **BACKLOG-TENANT-4** — migración `userId` de devices de Claro a cuenta de servicio.
+- **BACKLOG-DATA-RETENTION** — política formal de retención.
