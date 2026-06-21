@@ -51,7 +51,7 @@ export const actions = {
       }
     };
 
-    this.$axios.get("/device", axiosHeader)
+    return this.$axios.get("/device", axiosHeader)
     .then(res => {
       console.log(res.data.data);
 
