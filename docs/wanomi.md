@@ -2096,3 +2096,40 @@ Franco prioriza al abrir #33 entre los backlogs disponibles:
 - **BACKLOG-EDGE-4** — heartbeat/staleness.
 - **BACKLOG-TENANT-4** — migración `userId` de devices de Claro a cuenta de servicio.
 - **BACKLOG-DATA-RETENTION** — política formal de retención.
+
+---
+
+## Sesión #33 — Área 2 · BACKLOG-TENANT-4 ejecutada (migración userId Claro → cuenta de servicio)
+
+Objetivo: activar la tenancy construida en #28-32 sobre dato REAL. Hoy los sites y
+devices de Claro "pertenecían" a la cuenta personal de Franco — la cerradura puesta,
+la puerta abierta. Cerrada.
+
+**Recon (DEC-PROC-2, dato de producción):** el barrido era sites + devices, no devices
+solos — 28.4a nunca migró el userId de los sites (solo agregó operatorCode/zoneCode).
+No existía cuenta de servicio. Catch 1: auditados TODOS los gates de lectura por userId
+→ cero reads user-facing del cellowner cableados a mano; todo pasa por buildReadFilter
+/resolveScopedDIds (DEC-REF-33 respetada). Catch 2: emqxauthrules embebe userId en el
+topic/ACL y saver-webhook valida cruzado → riesgo de ingesta, NO cosmético → sacado del
+alcance, diferido al paso 4 (BACKLOG-TENANT-6).
+
+**Ejecución sobre dato real:** seed operator-claro (sin login, 401 confirmado) →
+migrate (4 sites + 10 devices, backup + idempotente + resumible tras corrida parcial) →
+ensayo de restore (undo probado: restore = pre-estado exacto, re-migrate = estado final)
+→ E2E dos puertas. Resultado: TENANT-4 muerde sobre dato real. Fila de oro: mismo
+recurso CR00061, cell 200 / Franco-personal 404 / super 200. Commits 483797e + ce53c6e,
+sin push.
+
+**Hallazgo abierto (BACKLOG-TENANT-7):** el E2E visual destapó que el select de
+notificaciones del dashboard muestra contenido de Claro a la cuenta personal — un
+endpoint sin gatear que se escapó al Catch 1. No es de 33.1; concern aparte, próximo a
+reconnear. 33.1 cierra validada; la fuga queda registrada ABIERTA.
+
+**Validación honesta:** tenancy probada sobre el gate de Site en ambas direcciones; el
+positivo del path histórico por dId queda diferido al paso 4 (sin ingest hoy). Dashboard
+sin widgets en los 3 usuarios = falta de ingest, NO tenancy (admin tampoco ve datos).
+
+Rumbo: 33.1 cierra. Próximo: recon de BACKLOG-TENANT-7 (fuga de notificaciones).
+
+#### Seguridad — RISK-SEC-1 (rotación diferida a producción)
+Actualización #33: rotación de credenciales (JWT_SECRET + passwords dev cellowner/franco/admin) confirmada por Franco como DIFERIDA a producción — entorno dev/localhost, tokens solo válidos contra localhost, sin riesgo de credenciales acá. Lección de método incorporada: para E2E con credenciales, firmar JWT directo con JWT_SECRET (no pasar passwords por el shell).
