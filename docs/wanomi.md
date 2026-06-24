@@ -2133,3 +2133,41 @@ Rumbo: 33.1 cierra. Próximo: recon de BACKLOG-TENANT-7 (fuga de notificaciones)
 
 #### Seguridad — RISK-SEC-1 (rotación diferida a producción)
 Actualización #33: rotación de credenciales (JWT_SECRET + passwords dev cellowner/franco/admin) confirmada por Franco como DIFERIDA a producción — entorno dev/localhost, tokens solo válidos contra localhost, sin riesgo de credenciales acá. Lección de método incorporada: para E2E con credenciales, firmar JWT directo con JWT_SECRET (no pasar passwords por el shell).
+
+---
+
+## Sesión #34 — Área 2 · BACKLOG-TENANT-7 — fuga de tenancy en derivados (fix de raíz)
+
+Continuación del hallazgo abierto de #33: la cuenta personal, sin grants ni sites/devices
+tras TENANT-4, seguía viendo notificaciones y templates de Claro CON contenido.
+
+**Diagnóstico (refutó la hipótesis inicial):** no fue "un endpoint que se escapó al Catch 1".
+El endpoint (GET /notifications) SÍ usa buildReadFilter. La causa raíz es la rama
+scope===null → {userId} del helper: para un usuario sin grants devuelve ownership, y los
+derivados (notifs/templates) quedaron pegados al userId viejo (no migrados en TENANT-4 a
+propósito). El ownership, que era inofensivo cuando todo era de la misma cuenta, se volvió
+fuga al migrar el dueño de sites/devices pero no de los derivados.
+
+**Decisión de producto antes del fix (Franco):** se eligió Camino B (fix de raíz, no parche
+por endpoint) invocando DEC-STRAT-2 — producto, no demo. Recon estructural confirmó que el
+"modo B2C standalone" (usuario sin operador con templates propios) existe en el CÓDIGO
+(/register vivo, schemas permisivos) pero NO en el producto Wanomi 3.0 (ningún flujo crea
+templates fuera de la cadena Site→Device→Template; template = catálogo por tipo de equipo,
+DEC-REF-15). El fantasma estructural no bloquea el fix. Paréntesis de producto: se documentó
+el flujo de uso real de Wanomi (catálogo de templates por Wanomi → onboarding operador →
+survey de equipos por sitio → composición) y se registró BACKLOG-TENANT-8 (dueño de
+templates = catálogo Wanomi).
+
+**Fix (DEC-REF-37, commit 00b397a):** centinela DENY para los 3 derivados sin tenencia propia
+(Notification, Template, ForensicEvent → 0-match en vez de ownership). Site y Device conservan
+{userId}. ForensicEvent incluido por defensa en profundidad (dato forense). resolveScopedDIds
+intacto. E2E sobre dato real: fuga cerrada (franco 24→0 notifs, 4→0 templates), legítimo
+preservado (cell 18 notifs + 4 templates por grant), sin regresión en site/device.
+
+**Método:** recon estructural antes de diseñar (DEC-PROC-2) — Franco frenó el diseño dos veces
+para confirmar estructura ("¿quién es un B2C sin sites? ¿cuándo se crea un template?") antes de
+comprometer el fix, evitando re-litigar la decisión de Template ya tomada en #31. Restart de
+Express obligatorio (serverMiddleware no hot-reloadea) — verificado que el E2E corrió contra el
+código nuevo.
+
+TENANT-7 cerrado de raíz. Pendiente del rumbo: simulador (paso 2-4), frontend pulido (paso 3).
