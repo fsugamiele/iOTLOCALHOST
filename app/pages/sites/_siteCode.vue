@@ -1,0 +1,320 @@
+<template>
+  <div class="content">
+    <!-- Header -->
+    <div class="row">
+      <div class="col-12">
+        <h2 class="title">
+          Detalle de sitio
+          <small class="text-muted ml-2">— {{ siteCode }}</small>
+        </h2>
+        <p class="text-muted mb-4">
+          <nuxt-link to="/sites"><i class="tim-icons icon-double-left"></i> Volver al mapa</nuxt-link>
+        </p>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div v-if="loading" class="row">
+      <div class="col-12 text-center">
+        <i class="tim-icons icon-refresh-01 spin"></i>
+        Cargando sitio...
+      </div>
+    </div>
+
+    <!-- Error / 404 / sin acceso -->
+    <div v-else-if="loadError" class="row">
+      <div class="col-12">
+        <card>
+          <div class="text-center text-danger">
+            <i class="tim-icons icon-alert-circle-exc"></i>
+            <h4>{{ loadError }}</h4>
+            <p>
+              <nuxt-link to="/sites">Volver al mapa</nuxt-link>
+            </p>
+          </div>
+        </card>
+      </div>
+    </div>
+
+    <!-- Contenido -->
+    <template v-else>
+      <!-- Mapa + metadata del sitio -->
+      <div class="row">
+        <div class="col-12">
+          <card>
+            <h4 class="card-title mb-1">
+              {{ site.nombre }}
+              <small class="text-muted ml-2">{{ site.tipo }}</small>
+            </h4>
+            <p class="text-muted mb-2" v-if="hasAddress">
+              <span v-if="site.direccion">{{ site.direccion }}</span>
+              <span v-if="site.localidad">, {{ site.localidad }}</span>
+              <span v-if="site.provincia"> ({{ site.provincia }})</span>
+            </p>
+
+            <div v-if="hasCoords" ref="mapEl" class="site-detail-map"></div>
+            <p v-else class="text-muted">Este sitio no tiene coordenadas cargadas.</p>
+
+            <div class="map-legend">
+              <span class="legend-item"><span class="dot dot-critical"></span> Urgencia</span>
+              <span class="legend-item"><span class="dot dot-warning"></span> Atención</span>
+              <span class="legend-item"><span class="dot dot-ok"></span> Normal</span>
+            </div>
+          </card>
+        </div>
+      </div>
+
+      <!-- Devices del site -->
+      <div class="row" v-if="devices.length > 0">
+        <div
+          v-for="device in devices"
+          :key="device.dId"
+          class="col-md-6 col-lg-4"
+        >
+          <card>
+            <template #header>
+              <h4 class="card-title mb-0">{{ device.name }}</h4>
+              <p class="card-category">
+                {{ device.templateName || '— sin template' }}
+              </p>
+            </template>
+
+            <div class="device-widgets" v-if="device.templateWidgets && device.templateWidgets.length > 0">
+              <div
+                v-for="widget in device.templateWidgets"
+                :key="widget.variable"
+                class="widget-row"
+              >
+                <div class="widget-label">
+                  {{ widget.variableFullName || widget.variable }}
+                </div>
+                <div class="widget-value">
+                  <badge type="default">—</badge>
+                  <small class="text-muted ml-2">{{ widget.variableType }}</small>
+                </div>
+              </div>
+            </div>
+            <p v-else class="text-muted mb-0">Sin variables declaradas.</p>
+          </card>
+        </div>
+      </div>
+      <div v-else class="row">
+        <div class="col-12">
+          <card>
+            <p class="text-muted text-center mb-0">
+              Este sitio no tiene dispositivos asociados.
+            </p>
+          </card>
+        </div>
+      </div>
+    </template>
+  </div>
+</template>
+
+<script>
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Colores de severidad — mismo criterio que pages/sites/index.vue (DEC-REF-27).
+const STATUS_COLOR = {
+  critical: '#E24B4A',
+  warning:  '#EF9F27',
+  ok:       '#639922',
+};
+
+export default {
+  name: 'SiteDetail',
+  middleware: 'authenticated',
+
+  data() {
+    return {
+      loading: true,
+      loadError: null,
+      site: null,
+      devices: [],
+      status: 'ok',
+      map: null,
+      marker: null,
+    };
+  },
+
+  computed: {
+    siteCode() {
+      return this.$route.params.siteCode;
+    },
+    hasCoords() {
+      return this.site && this.site.lat != null && this.site.lng != null;
+    },
+    hasAddress() {
+      return this.site && (this.site.direccion || this.site.localidad || this.site.provincia);
+    },
+  },
+
+  async mounted() {
+    await this.loadDetail();
+  },
+
+  beforeDestroy() {
+    if (this.map) {
+      this.map.remove();
+      this.map = null;
+    }
+  },
+
+  methods: {
+    async loadDetail() {
+      this.loading = true;
+      this.loadError = null;
+
+      const headers = { headers: { token: this.$store.state.auth.token } };
+
+      try {
+        // Doble fetch en paralelo: foto del site (/full) + color del pin (/sites/status).
+        // /full no devuelve status; reusar /sites/status mantiene el mismo criterio
+        // de color que el listado (DEC-REF-27) sin endpoint nuevo.
+        const [fullRes, statusRes] = await Promise.all([
+          this.$axios.get('/site/' + encodeURIComponent(this.siteCode) + '/full', headers),
+          this.$axios.get('/sites/status', headers),
+        ]);
+
+        if (fullRes.data.status !== 'success') {
+          throw new Error(fullRes.data.error || 'Error al cargar el sitio');
+        }
+
+        this.site = fullRes.data.data.site;
+        this.devices = fullRes.data.data.devices || [];
+
+        // Status del site puntual. Si no aparece (sin notifs recientes), default 'ok'.
+        const statusList = (statusRes.data && statusRes.data.data) || [];
+        const me = statusList.find((s) => s.siteCode === this.siteCode);
+        this.status = (me && me.status) || 'ok';
+      } catch (err) {
+        if (err.response && err.response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        if (err.response && err.response.status === 404) {
+          // 404 cubre dos casos: site inexistente y sin grant (DEC-REF-37 gate del Site).
+          this.loadError = 'Sitio no encontrado o sin acceso.';
+          return;
+        }
+        this.loadError = err.message || 'Error inesperado al cargar el sitio';
+        console.error('[SiteDetail] loadDetail error:', err);
+      } finally {
+        this.loading = false;
+        if (!this.loadError && this.site && this.hasCoords) {
+          this.$nextTick(() => {
+            this.initMap();
+            if (this.map) this.map.invalidateSize();
+          });
+        }
+      }
+    },
+
+    initMap() {
+      if (this.map) return;
+
+      this.map = L.map(this.$refs.mapEl).setView([this.site.lat, this.site.lng], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 18,
+      }).addTo(this.map);
+
+      const color = STATUS_COLOR[this.status] || STATUS_COLOR.ok;
+      const icon = L.divIcon({
+        className: 'site-pin-wrapper',
+        html: `<span class="site-pin" style="background:${color}"></span>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+      this.marker = L.marker([this.site.lat, this.site.lng], { icon })
+        .addTo(this.map)
+        .bindTooltip(`${this.site.nombre || this.site.siteCode} (${this.site.siteCode})`);
+    },
+  },
+};
+</script>
+
+<style scoped>
+.spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  margin-right: 0.5rem;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.site-detail-map {
+  height: 360px;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.map-legend {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-critical { background: #E24B4A; }
+.dot-warning  { background: #EF9F27; }
+.dot-ok       { background: #639922; }
+
+.device-widgets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.widget-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.widget-row:last-child {
+  border-bottom: none;
+}
+
+.widget-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.widget-value {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+</style>
+
+<style>
+/* Pin del marker — fuera de scope porque Leaflet inyecta el divIcon en su propio container. */
+.site-pin {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+</style>
