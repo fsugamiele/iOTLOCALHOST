@@ -11,12 +11,39 @@ const mongoose = require('mongoose');
 const Site   = require('../models/site.js').default;
 const Device = require('../models/device.js').default;
 
+// DENY sentinel (DEC-REF-37) — modelos derivados sin tenencia propia (Notification,
+// Template) que NO son alcanzados por ningún grant deben devolver "ningún doc",
+// NO ownership por userId. El ownership-fallback de buildReadFilter dejaba pasar
+// dato pegado al userId viejo post-TENANT-4 (causa raíz BACKLOG-TENANT-7).
+//
+// Símbolo para identidad referencial (=== en buildReadFilter). El filtro Mongo
+// real ({ $expr: false }) se devuelve en buildReadFilter — Mongo evalúa false
+// para cada doc, match 0. No depende de _id ni de generación de ObjectId.
+const DENY = Symbol('scope-deny');
+const DENY_FILTER = { $expr: false };
+
+// Modelos sin tenencia propia: visibilidad DERIVADA del Site (Notification por
+// siteId, ForensicEvent por siteId, Template por Device.templateId). NO conservan
+// ownership-fallback cuando no hay grant — fail-close. ForensicEvent es dato
+// forense generado por el motor edge de un sitio (no por un usuario suelto);
+// hoy todos sus endpoints gatean por Site previo, pero DENY lo blinda contra
+// un endpoint standalone futuro (defensa en profundidad, no premature hardening:
+// el costo es nulo y el dato es sensible). Site y Device son distintos: Site
+// es la raíz, y Device tiene siteId opcional en schema (un usuario sin grant
+// debe poder ver sus propios devices).
+function hasDenyFallback(modelName) {
+  return modelName === 'Notification'
+      || modelName === 'Template'
+      || modelName === 'ForensicEvent';
+}
+
 // scopeFilterFor(grants, modelName) — pura en parámetros (no recibe req),
 // pero hace I/O a Mongo para resolver siteCodes en modelos derivados.
 //
 // Retorna:
 //   {}    → superadmin (match all)
-//   null  → ningún grant alcanza este modelo (caller compone con userId)
+//   null  → ningún grant alcanza este modelo, caller compone con userId (ownership)
+//   DENY  → derivado sin tenencia propia sin alcance, caller materializa filtro 0-match (DEC-REF-37)
 //   { ... filtro Mongo positivo ... }
 async function scopeFilterFor(grants, modelName) {
   if (grants.some(g => g.role === 'superadmin')) return {};
@@ -25,14 +52,29 @@ async function scopeFilterFor(grants, modelName) {
   const scoped = grants.filter(g =>
     g.role !== 'superadmin' && g.scope && g.scope.operatorCode
   );
-  if (scoped.length === 0) return null;
+  if (scoped.length === 0) {
+    // DEC-REF-37: derivados sin tenencia propia → DENY; resto → null (ownership).
+    return hasDenyFallback(modelName) ? DENY : null;
+  }
 
   if (modelName === 'Site') {
     return buildSiteScopeFilter(scoped);
   }
 
-  // Derivadas: el join es por siteCode STRING (campo se llama siteId, recon 28.x.3).
-  if (modelName === 'Notification' || modelName === 'ForensicEvent' || modelName === 'Device') {
+  // Notification, ForensicEvent: derivados sin tenencia propia. Misma resolución
+  // (siteId join). Alcance vacío → DENY (DEC-REF-37).
+  if (modelName === 'Notification' || modelName === 'ForensicEvent') {
+    const siteFilter = buildSiteScopeFilter(scoped);
+    const sites = await Site.find(siteFilter, { siteCode: 1, _id: 0 }).lean();
+    if (sites.length === 0) return DENY;
+    const codes = sites.map(s => s.siteCode);
+    return { siteId: { $in: codes } };
+  }
+
+  // Device: alcance vacío conserva null → ownership. Por diseño (recon estructural
+  // #34: siteId opcional en schema, un usuario sin grant debe poder ver sus
+  // propios devices).
+  if (modelName === 'Device') {
     const siteFilter = buildSiteScopeFilter(scoped);
     const sites = await Site.find(siteFilter, { siteCode: 1, _id: 0 }).lean();
     if (sites.length === 0) return null;
@@ -43,7 +85,7 @@ async function scopeFilterFor(grants, modelName) {
   if (modelName === 'Template') {
     const siteFilter = buildSiteScopeFilter(scoped);
     const sites = await Site.find(siteFilter, { siteCode: 1, _id: 0 }).lean();
-    if (sites.length === 0) return null;
+    if (sites.length === 0) return DENY;  // DEC-REF-37
     const codes = sites.map(s => s.siteCode);
 
     // Site → Device → Template (dos saltos; el scope vive en el Site)
@@ -54,7 +96,7 @@ async function scopeFilterFor(grants, modelName) {
     const tplIds = [...new Set(devices.map(d => d.templateId))]
       .filter(id => mongoose.Types.ObjectId.isValid(id))
       .map(id => mongoose.Types.ObjectId(id));
-    if (tplIds.length === 0) return null;
+    if (tplIds.length === 0) return DENY;  // DEC-REF-37
 
     return { _id: { $in: tplIds } };
   }
@@ -75,9 +117,10 @@ function buildSiteScopeFilter(scoped) {
 // buildReadFilter(req, modelName) — wrapper que compone alcance del grant
 // con el filtro por userId del dueño actual.
 //
-// Composición "userId OR scope":
-//   scope === null  → { userId }         (sin alcance vía grant — solo lo propio)
-//   scope === {}    → {}                 (superadmin — descarta userId, ve TODO)
+// Composición:
+//   scope === DENY  → DENY_FILTER             (DEC-REF-37 — derivado sin tenencia, sin grant alcance)
+//   scope === null  → { userId }              (sin alcance vía grant — solo lo propio)
+//   scope === {}    → {}                      (superadmin — descarta userId, ve TODO)
 //   scope positivo  → { $or:[{userId}, scope] }
 //
 // Los reads de los endpoints user-facing usan SIEMPRE este wrapper —
@@ -87,6 +130,7 @@ async function buildReadFilter(req, modelName) {
   const grants = req.userData.grants || [];
   const scope  = await scopeFilterFor(grants, modelName);
 
+  if (scope === DENY) return DENY_FILTER;        // DEC-REF-37: 0-match filter, NO ownership fallback.
   if (scope === null) return { userId };
   if (Object.keys(scope).length === 0) return {};
   return { $or: [ { userId }, scope ] };
