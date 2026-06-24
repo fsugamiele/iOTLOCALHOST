@@ -223,6 +223,14 @@ Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y 
 | BACKLOG-UI-4 | 2026-06-21 | **Link de navegación a `/history` en el sidebar.** Hoy se accede por URL directa (MVP). El sidebar/menú principal del cellowner queda como sub-paso aparte cuando se defina el layout completo. Cambio chico (1 entry en `SideBar.vue` o equivalente). Disparador: definición del menú principal del cellowner. |
 | BACKLOG-UI-5 | 2026-06-21 | **Vista de análisis / export de largo plazo (90d+).** Ventanas largas (90d, 180d, 1y), MTBF, degradación multi-mes. Uso distinto del histórico operativo (que vive en `pages/history.vue` con presets 1h-30d): Confiabilidad (Área 1) pide export (CSV/PDF), no preset adicional en un chart de línea simple. Mezclarlo con el histórico operativo viola la separación de concerns y degrada la UX del cellowner. Disparador: cuando exista rol de confiabilidad consumiendo datos. |
 
+### 5d · Backlog del simulador (BACKLOG-SIM-*)
+
+> Nota: **BACKLOG-SIM-1** (race condition `createSaverRule`, sesiones #14-#15) **CERRADO** con DEC-REF-17. ID no se reutiliza (convención del repo, precedente: TENANT-5 retirado).
+
+| ID | Fecha | Descripción |
+|---|---|---|
+| BACKLOG-SIM-2 | 2026-06-23 | **Re-seedeo del simulador roto post multi-tenant (TENANT-4 + DEC-REF-37).** `tools/device_simulator/seed.js` está roto en dos niveles: (1) **por DENY** — corre como `fsugamiele@gmail.com` (sin grants); las lecturas de pre-existencia (`getTemplates`/`getSites`/`getDevices`) ven 0 → no detecta el piloto ya cargado → recrearía duplicados; (2) **por destino** — crea assets con `userId = caller`, pero post-TENANT-4 el piloto vive bajo `operator-claro` (service account, DEC-REF-36). Ninguna cuenta existente lo arregla: `operator-claro` no tiene login (DEC-REF-36, password random descartada), `admin@wanomi.com` puede loguear y leer pero crea bajo `userId=admin` no SERVICE. El seed asume el modelo pre-tenancy "yo creo, yo soy dueño", incompatible con el multi-tenant actual donde el dueño es la cuenta de servicio. **NO bloquea el piloto actual** (`devices_state.json` cacheado, `run.js` funciona vía `getdevicecredentials` que resuelve `userId` fresco desde el device — recon O1 de #34b). **Bloquea:** re-seedeo desde cero + alta de nuevos sites/devices por el simulador. **Requiere diseño:** operación admin-only que asigne `userId` arbitrario al crear (crear-a-nombre-de la service account), o un mecanismo de identidad para la service account distinto del login normal. NO urgente. Disparador: cuando se necesite re-seedear o dar de alta sitios nuevos por simulador. |
+
 ---
 
 ## 6 · Próxima reunión — Sesión #15

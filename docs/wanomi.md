@@ -2171,3 +2171,40 @@ Express obligatorio (serverMiddleware no hot-reloadea) — verificado que el E2E
 código nuevo.
 
 TENANT-7 cerrado de raíz. Pendiente del rumbo: simulador (paso 2-4), frontend pulido (paso 3).
+
+#### Higiene #34b — correcciones de registro
+
+Tres puntos cerrados con recon read-only, sin tocar código ni base:
+
+**1. Corrección del mapa de brecha MVP↔código (auditoría inicial sobrevalorada).**
+MVP-4 (motor de reglas + RulePacks ~40) NO es PARCIAL como dije en la auditoría inicial,
+sino **NO-EMPEZADO** como código vivo. `tools/device_simulator/lib/sensor-engine.js` es
+**motor de GENERACIÓN de muestras** (autónomo, funciones puras: `initialSecState/Gen/
+Ats/CumminsState`, `evolve(...)`, `SCENARIOS`), NO motor de EVALUACIÓN de reglas. Las 24
+notifications con `source:"edge-engine"` en DB (ruleIds `cummins-A1-oil-pressure`,
+`cummins-G2-fuel-critical`, `__test-C3`) son **fixtures de sesiones previas**, NO salida
+de un motor corriendo HOY. RulePacks en DB: 1 (`cummins-pcc-v1`, 4 rules vs ~40 target).
+Veredicto correcto: motor de evaluación de reglas pendiente de implementación
+(probable destino Hub-side, coherente con DEC-ARCH-1).
+
+**2. Estado del simulador post-#33/#34 (mejor de lo temido).**
+`run.js` **FUNCIONAL**: el bootstrap de cada device pasa por `POST /api/getdevicecredentials`
+(`webhooks.js:39`), que hace `Device.findOne({dId})` y devuelve `topic: device.userId + "/" + dId + "/"`.
+Como TENANT-4 puso los 10 devices con `userId=SERVICE`, el simulador automáticamente
+publica bajo el namespace correcto sin necesidad de saber quién es SERVICE — el backend
+resuelve la identidad fresca por device. La migración fue **transparente al ciclo de
+publicación**. Esto implica que **BACKLOG-TENANT-6 (trío de ingesta) revisa a la baja**:
+el path de publicación ya resuelve identidad por device en cada bootstrap, menos
+acoplado de lo temido. `seed.js` sigue ROTO (re-seedeo desde cero) — registrado en
+**BACKLOG-SIM-2** (no bloquea el piloto).
+
+**3. Asterisco password del simulador — VERIFICADO falso positivo.**
+`.env.simulator` (gitignored, dev-only) usa `USER_EMAIL=fsugamiele@gmail.com` con una
+password en claro. Hash bcrypt comparado contra `admin@wanomi.com`: **DIFIEREN**
+(`$2b$10$...0pYxSFBa` vs `$2b$10$...MIW1A3h.`, salts distintos). Son cuentas distintas
+con hashes distintos. La coincidencia visual del 6 dígitos que me llamó la atención no
+es evidencia de credencial compartida. **`.env.simulator` con password en claro sigue
+cubierto por RISK-SEC-1 (rotación diferida a producción, dev/localhost)** — sin cambios.
+
+**Método #34b**: lección de #33 aplicada — NO se ejecutó login para verificar passwords,
+sólo se compararon hashes en DB (read-only). Cero credenciales expuestas en transcript.
