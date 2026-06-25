@@ -137,13 +137,32 @@ export default {
       return this.$route.path === "/maps/full-screen";
     }
   },
-  mounted() {
+  watch: {
+    // Pieza 3 (DEC-REF-38) — refresh dinámico de suscripciones MQTT cuando cambia
+    // la lista de devices visibles. Desuscribe los que dejaron de estar; resuscribe
+    // todos (mqtt.js dedupe re-subscribe al mismo topic, es no-op).
+    '$store.state.devices': function (newList, oldList) {
+      if (!this.client) return;
+      const keyOf = (d) => d.userId + '/' + d.dId;
+      const newKeys = new Set((newList || []).map(keyOf));
+      (oldList || []).forEach((d) => {
+        if (!newKeys.has(keyOf(d))) {
+          ['sdata', 'notif', 'actdata'].forEach((t) =>
+            this.client.unsubscribe(d.userId + '/' + d.dId + '/+/' + t)
+          );
+        }
+      });
+      this.subscribeToDevices();
+    },
+  },
+  async mounted() {
     this.$store.dispatch("getNotifications");
     this.initScrollbar();
-
-    setTimeout(() => {
-      this.startMqttClient();
-    }, 2000);
+    // Pieza 3 (DEC-REF-38) — await getDevices ANTES de armar MQTT: la suscripción
+    // ahora es por (owner, dId) del scope; necesita el store poblado. Reemplaza el
+    // setTimeout(2000) mágico — orden explícito.
+    await this.$store.dispatch("getDevices");
+    this.startMqttClient();
   },
   beforeDestroy() {
     this.$nuxt.$off("mqtt-sender");
@@ -185,16 +204,28 @@ export default {
       }
     },
 
+    subscribeToDevices() {
+      // Pieza 3 (DEC-REF-38) — suscribe a sdata/notif/actdata por (owner, dId)
+      // del scope del grant. La ACL del web-user es α-estricta y solo autoriza
+      // estos topics; el namespace propio {auth_userId}/# queda inutilizado
+      // post-TENANT-4 (el dato vive en el namespace del owner, no del caller).
+      if (!this.client) return;
+      const devices = this.$store.state.devices || [];
+      devices.forEach((d) => {
+        if (!d.userId || !d.dId) return;
+        const base = d.userId + "/" + d.dId + "/+/";
+        ["sdata", "notif", "actdata"].forEach((t) => {
+          this.client.subscribe(base + t, { qos: 0 }, (err) => {
+            if (err) console.error("MQTT subscribe error:", base + t, err);
+          });
+        });
+      });
+    },
+
     async startMqttClient() {
       // Defensive cleanup before (re)starting to avoid listener accumulation
       this.$nuxt.$off("mqtt-sender");
       await this.getMqttCredentials();
-
-      //ex topic: "userid/did/variableId/sdata"
-      const deviceSubscribeTopic =
-        this.$store.state.auth.userData._id + "/+/+/sdata";
-      const notifSubscribeTopic =
-        this.$store.state.auth.userData._id + "/+/+/notif";
 
       const connectUrl =
         process.env.mqtt_prefix +
@@ -202,8 +233,6 @@ export default {
         ":" +
         this.options.port +
         this.options.endpoint;
-
-        
 
       try {
         this.client = mqtt.connect(connectUrl, this.options);
@@ -216,36 +245,9 @@ export default {
         console.log("Connection succeeded!");
         this.$store.commit("setMqttConnected", true);
 
-        //SDATA SUBSCRIBE
-        this.client.subscribe(deviceSubscribeTopic, { qos: 0 }, err => {
-          if (err) {
-            console.log("Error in DeviceSubscription");
-            return;
-          }
-          console.log("Device subscription Success");
-          console.log(deviceSubscribeTopic);
-        });
-
-        //NOTIF SUBSCRIBE
-        this.client.subscribe(notifSubscribeTopic, { qos: 0 }, err => {
-          if (err) {
-            console.log("Error in NotifSubscription");
-            return;
-          }
-          console.log("Notif subscription Success");
-          console.log(notifSubscribeTopic);
-        });
-
-        //ACTDATA SUBSCRIBE (para recibir actualizaciones de estado desde servidor/reglas)
-        const actdataSubscribeTopic = this.$store.state.auth.userData._id + "/+/+/actdata";
-        this.client.subscribe(actdataSubscribeTopic, { qos: 0 }, err => {
-          if (err) {
-            console.log("Error in ActdataSubscription");
-            return;
-          }
-          console.log("Actdata subscription Success");
-          console.log(actdataSubscribeTopic);
-        });
+        // Pieza 3 (DEC-REF-38) — (re)suscribir en cada connect/reconnect. clean:true
+        // pierde suscripciones al reconectar, así que re-armarlas acá es necesario.
+        this.subscribeToDevices();
       });
 
       this.client.on("error", async error => {
