@@ -171,4 +171,34 @@ async function resolveScopedDIds(req) {
   return Device.distinct('dId', { $or: orParts });
 }
 
-module.exports = { scopeFilterFor, buildReadFilter, resolveScopedDIds };
+// resolveScopedDIdsWithOwner(req) — como resolveScopedDIds pero devuelve
+// [{ dId, userId }] en lugar de [dId]. Necesario para construir ACLs MQTT B-narrow
+// (DEC-REF-38): el topic `{owner}/{dId}/...` requiere el userId del dueño ACTUAL
+// del device, no sólo el dId. Reusa `scopeFilterFor('Site')` — misma autorización
+// centralizada (DEC-REF-33), no la reimplementa. Mismas 3 ramas que resolveScopedDIds.
+//
+// scopeFilterFor('Site') nunca retorna DENY (Site no está en hasDenyFallback);
+// las 3 ramas alcanzables son null / {} / scope positivo.
+async function resolveScopedDIdsWithOwner(req) {
+  const userId = req.userData._id;
+  const grants = req.userData.grants || [];
+  const scope  = await scopeFilterFor(grants, 'Site');
+
+  let query;
+  if (scope === null) {
+    query = { userId };
+  } else if (Object.keys(scope).length === 0) {
+    query = {};
+  } else {
+    const sites = await Site.find(scope, { siteCode: 1, _id: 0 }).lean();
+    const siteCodes = sites.map(s => s.siteCode);
+    const orParts = [{ userId }];
+    if (siteCodes.length) orParts.push({ siteId: { $in: siteCodes } });
+    query = { $or: orParts };
+  }
+
+  const devices = await Device.find(query, { dId: 1, userId: 1, _id: 0 }).lean();
+  return devices.map(d => ({ dId: d.dId, userId: d.userId }));
+}
+
+module.exports = { scopeFilterFor, buildReadFilter, resolveScopedDIds, resolveScopedDIdsWithOwner };

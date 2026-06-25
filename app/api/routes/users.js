@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const axios = require("axios");
 const crypto = require("crypto");
 const { checkAuth } = require("../middlewares/authentication.js");
+const { resolveScopedDIdsWithOwner } = require("../middlewares/scope.js");
 
 const hashPassword = (pwd) => crypto.createHash("sha256").update(pwd).digest("hex");
 
@@ -126,7 +127,7 @@ router.post("/getmqttcredentials", checkAuth, async (req, res) => {
   try {
     const userId = req.userData._id;
 
-    const credentials = await getWebUserMqttCredentials(userId);
+    const credentials = await getWebUserMqttCredentials(userId, req);
 
     const response = {
       status: "success",
@@ -154,7 +155,7 @@ router.post(
   async (req, res) => {
     try {
       const userId = req.userData._id;
-      const credentials = await getWebUserMqttCredentials(userId);
+      const credentials = await getWebUserMqttCredentials(userId, req);
 
       const response = {
         status: "success",
@@ -186,8 +187,21 @@ router.get("/me", checkAuth, (req, res) => {
 //**********************
 
 // mqtt credential types: "user", "device", "superuser"
-async function getWebUserMqttCredentials(userId) {
+async function getWebUserMqttCredentials(userId, req) {
   try {
+    // DEC-REF-38 — ACL B-narrow α-estricta: subscribe a sdata/notif/actdata por dId
+    // del scope, publish solo a actdata por dId; más {userId}/# propio. Reescrito en
+    // cada llamada (CREATE y UPDATE) → scope fresco con grants actualizados (DEC-REF-29/32).
+    const owned = await resolveScopedDIdsWithOwner(req);
+    const subTopics = [userId + "/#"];
+    const pubTopics = [userId + "/#"];
+    for (const { dId, userId: owner } of owned) {
+      subTopics.push(owner + "/" + dId + "/+/sdata");
+      subTopics.push(owner + "/" + dId + "/+/notif");
+      subTopics.push(owner + "/" + dId + "/+/actdata");
+      pubTopics.push(owner + "/" + dId + "/+/actdata");
+    }
+
     var rule = await EmqxAuthRule.find({ type: "user", userId: userId });
 
     if (rule.length == 0) {
@@ -196,8 +210,8 @@ async function getWebUserMqttCredentials(userId) {
         userId: userId,
         username: makeid(10),
         password: hashPassword(plainPassword),
-        publish: [userId + "/#"],
-        subscribe: [userId + "/#"],
+        publish: pubTopics,
+        subscribe: subTopics,
         type: "user",
         time: Date.now(),
         updatedTime: Date.now()
@@ -220,6 +234,8 @@ async function getWebUserMqttCredentials(userId) {
         $set: {
           username: newUserName,
           password: hashPassword(newPassword),
+          publish: pubTopics,
+          subscribe: subTopics,
           updatedTime: Date.now()
         }
       }
