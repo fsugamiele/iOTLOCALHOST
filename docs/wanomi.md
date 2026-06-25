@@ -2222,3 +2222,64 @@ cubierto por RISK-SEC-1 (rotación diferida a producción, dev/localhost)** — 
 
 **Método #34b**: lección de #33 aplicada — NO se ejecutó login para verificar passwords,
 sólo se compararon hashes en DB (read-only). Cero credenciales expuestas en transcript.
+
+---
+
+## Sesión #35 — Área 2 · Auditoría de brecha + vista detalle de site (sub-paso 1) + TENANT-6 (dato vivo)
+
+Sesión larga, tres arcos encadenados. Hilo conductor: DEC-STRAT-2 (producto, no demo).
+
+**1. Auditoría de brecha MVP↔código (camino A, decisión de Franco).** Ante la pregunta
+"¿qué falta para cumplir las decisiones estratégicas?", se hizo recon estructurado read-only
+de los 9 puntos del MVP (§4) + pilares (§1). Resultado: ~55% software construible (Área 2),
+~35% hardware/survey (Áreas 1/3, correctamente diferido), ~10% marketing. Hallazgo: el "flag
+source en el dato" que Claude propuso como urgente YA estaba decidido (BACKLOG-EDGE-1: va con
+el driver Modbus, no antes) — la auditoría DEVOLVIÓ al rumbo de #32, confirmándolo como
+correcto en vez de abrir trabajo nuevo. Lección: auditar antes de proponer; la "urgencia" del
+flag source era falsa para el estado actual (dato simulado, no físico forense).
+
+**2. Vista detalle de site — sub-paso 1: la foto (commit 9cde3b4).** Creado `_siteCode.vue`
+(ruta /sites/:siteCode): mapa Leaflet con marcador por severidad (STATUS_COLOR, DEC-REF-27) +
+card por device con templateName y variables declaradas (placeholder "—"). Manejo de 404/
+sin-acceso presentable (DEC-REF-37). Link desde index.vue ya existía. Validado E2E en navegador
+(cellowner: foto completa 4 cards; franco: mensaje sin-acceso sin crash). Diseño de 3 sub-pasos
+acordado con equipo: foto → estado vivo (componente liviano de valor-vivo, NO widgets pesados;
+incluye widget categorical, estado "esperando dato" con ícono atenuado) → feed de alarmas.
+Sub-pasos 2 y 3 pendientes.
+
+**Hallazgo de entorno crítico:** el frontend corre en PRODUCCIÓN (`nuxt start` desde
+docker_compose_production.yml), NO dev. Todo cambio de página requiere REBUILD
+(`docker_nuxt_build.yml up` → `docker restart node`), no solo restart. El restart-solo
+alcanzaba para backend/serverMiddleware — por eso no había mordido hasta tocar una página.
+Corrige un supuesto que Claude tenía mal. `app/dist/` es artefacto muerto (nuxt generate viejo,
+no se sirve) — limpieza diferida.
+
+**3. TENANT-6 — dato vivo del cellowner (DEC-REF-38, commits 7111235/edc7bd1).** El bloqueante
+del sub-paso 2. Resultó ser CUATRO piezas, no tres (la 4ta descubierta en el E2E). Decisión de
+modelo: ACL MQTT B-narrow α-estricta (la llave exacta) sobre B-broad (descartada por fuga de
+tenancy futura) y β (descartada por fuga de CONTROL vía /config) — equivalente broker de
+DEC-REF-37. Piezas: (1) ACL device PERSONAL→SERVICE: NO migrada, auto-resuelta por self-heal de
+getDeviceMqttCredentials al primer bootstrap (verificado E2E: 0→10 ACL bajo SERVICE); (2) ACL
+web-user B-narrow vía helper nuevo resolveScopedDIdsWithOwner + getWebUserMqttCredentials (ambos
+paths); (3) frontend default.vue suscribe a namespaces de devices visibles (no a auth_userId),
+con await getDevices reemplazando setTimeout mágico + watch de refresh dinámico + re-subscribe
+en reconnect (clean:true) + quita namespace propio (decisión de escala de Franco). E2E sobre
+dato real: cellowner recibe delta MQTT del namespace SERVICE en consola (piezas 2+3 validadas);
+franco sin grants no recibe nada (no-fuga). 4ta pieza (saver rules → persistencia) desglosada
+como BACKLOG-TENANT-9 — NO afecta dato vivo, sí históricos.
+
+**Higiene #34b (commits previos + correcciones):** mapa de brecha corregido (MVP-4 motor de
+reglas = NO-EMPEZADO como código vivo, no PARCIAL); BACKLOG-SIM-2 (seed simulador roto post
+multi-tenant); nota errónea de #34b corregida (TENANT-6 NO estaba "a la baja"); asterisco
+password simulador = falso positivo verificado. Registros nuevos: DEC-REF-38, BACKLOG-TENANT-9
+(saver rules), BACKLOG-UI-6 (dashboard no renderiza widgets + pista SyntaxError), BACKLOG-SIM-2.
+
+**Método:** recon read-only antes de cada diseño (DEC-PROC-2), reiteradamente atrapó supuestos
+falsos (self-heal, 4ta pieza, flag source ya decidido). Franco frenó dos veces pidiendo
+explicación sin tecnicismos antes de aprobar decisiones de arquitectura (B-narrow, pieza 3) —
+y en una (namespace propio a escala) su pregunta cambió la recomendación del equipo. Simulador
+encendido solo para el E2E final, apagado después.
+
+**Pendiente del rumbo:** sub-paso 2 vista de site (componente valor-vivo, cañería ya lista) →
+sub-paso 3 (feed alarmas). Backlogs activables: TENANT-9 (persistencia, cuando se necesiten
+históricos Claro), UI-6 (dashboard, si bloquea demo).
