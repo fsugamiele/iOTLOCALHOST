@@ -2198,6 +2198,20 @@ el path de publicación ya resuelve identidad por device en cada bootstrap, meno
 acoplado de lo temido. `seed.js` sigue ROTO (re-seedeo desde cero) — registrado en
 **BACKLOG-SIM-2** (no bloquea el piloto).
 
+> **CORRECCIÓN (#35, recon sub-paso 2):** el punto 2 de arriba ERA INCORRECTO.
+> BACKLOG-TENANT-6 NO está revisado a la baja. La nota de #34b solo verificó un lado del
+> path (`getdevicecredentials` resuelve `userId` fresco), pero NO verificó los
+> `emqxauthrules`: los 10 devices Claro conservan ACL con `userId=PERSONAL`
+> (publish/subscribe a `PERSONAL_ID/dId/...`), mientras `device.userId=SERVICE` y
+> `getdevicecredentials` entrega `topic: SERVICE_ID/dId/`. Al publicar, EMQX rechazaría
+> por ACL violation (topic entregado ≠ topic permitido). Además, el frontend del
+> cellowner se suscribe a su PROPIO `userId`, pero el dato sale por `SERVICE_ID` —
+> namespaces que no se cruzan (problema de modelo de suscripción incompatible con
+> multi-tenancy, no solo de ACL). Conclusión correcta: BACKLOG-TENANT-6 es BLOQUEANTE
+> del dato vivo (sub-paso 2 de `_siteCode.vue`) y se ataca en #35. Evidencia: 0 muestras
+> en última hora, última muestra hace ~4 días (pre-TENANT-4), simulador apagado — el gap
+> no se manifestó antes porque nada publicó desde la migración.
+
 **3. Asterisco password del simulador — VERIFICADO falso positivo.**
 `.env.simulator` (gitignored, dev-only) usa `USER_EMAIL=fsugamiele@gmail.com` con una
 password en claro. Hash bcrypt comparado contra `admin@wanomi.com`: **DIFIEREN**
