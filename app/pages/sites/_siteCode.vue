@@ -86,11 +86,10 @@
                 class="widget-row"
               >
                 <div class="widget-label">
-                  {{ widget.variableFullName || widget.variable }}
+                  {{ labelOf(widget) }}
                 </div>
                 <div class="widget-value">
-                  <badge type="default">—</badge>
-                  <small class="text-muted ml-2">{{ widget.variableType }}</small>
+                  <live-value :config="liveConfig(device, widget)" />
                 </div>
               </div>
             </div>
@@ -114,6 +113,7 @@
 <script>
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import LiveValue from '@/components/LiveValue.vue';
 
 // Colores de severidad — mismo criterio que pages/sites/index.vue (DEC-REF-27).
 const STATUS_COLOR = {
@@ -125,6 +125,7 @@ const STATUS_COLOR = {
 export default {
   name: 'SiteDetail',
   middleware: 'authenticated',
+  components: { LiveValue },
 
   data() {
     return {
@@ -151,6 +152,7 @@ export default {
   },
 
   async mounted() {
+    await this.$store.dispatch('getDevices');
     await this.loadDetail();
   },
 
@@ -230,6 +232,27 @@ export default {
       this.marker = L.marker([this.site.lat, this.site.lng], { icon })
         .addTo(this.map)
         .bindTooltip(`${this.site.nombre || this.site.siteCode} (${this.site.siteCode})`);
+    },
+
+    labelOf(widget) {
+      return (widget.variableFullName || widget.variable || '')
+        .replace(/\s*\([^)]*\)\s*$/, '').trim();
+    },
+
+    liveConfig(device, widget) {
+      return {
+        userId: this.ownerOf(device.dId),
+        dId: device.dId,
+        variable: widget.variable,
+        variableType: widget.variableType,
+        variableFullName: widget.variableFullName,
+      };
+    },
+
+    ownerOf(dId) {
+      const list = this.$store.state.devices || [];
+      const d = list.find((x) => x.dId === dId);
+      return d ? d.userId : null;
     },
   },
 };
