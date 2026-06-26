@@ -2283,3 +2283,70 @@ encendido solo para el E2E final, apagado después.
 **Pendiente del rumbo:** sub-paso 2 vista de site (componente valor-vivo, cañería ya lista) →
 sub-paso 3 (feed alarmas). Backlogs activables: TENANT-9 (persistencia, cuando se necesiten
 históricos Claro), UI-6 (dashboard, si bloquea demo).
+
+## Sesión #36 — Área 2 · Vista detalle de site: sub-paso 2 (valor vivo por variable)
+
+Sesión de ejecución con un diagnóstico de campo en el medio. Hilo: DEC-STRAT-2 (producto, no demo).
+
+**1. Sub-paso 2 construido y validado (commit `bc9ceca`).** Componente `LiveValue.vue` (nuevo) +
+integración en `_siteCode.vue` — reemplaza el placeholder "—" del sub-paso 1 por el valor vivo
+por variable, dentro de las cards existentes. Patrón `$on` clonado de `Rtnumberchart.vue`
+(topic `{owner}/{dId}/{variable}`, escucha `topic+"/sdata"`, `$off` en `beforeDestroy`; se
+descartó el cuerpo del chart y el `getChartData` de histórico). Tratamiento por tipo:
+float/int = número + unidad, bool = Activo/Inactivo genérico, categorical = **verbatim**.
+Estado "esperando dato" = spinner atenuado (ver punto 3). Validado E2E sobre dato real
+(cellowner, CR00061 y CR00073: floats con decimales acotados, categóricos "AUTO"/"STOPPED"/
+"normal", bools, spinner mientras espera). 103 inserciones, 3 borrados, sin Co-Authored-By.
+
+**El recon corrigió varios supuestos de memoria (DEC-PROC-2 atrapó cada uno):**
+(a) `app/components/DevicePanel.vue` NO existe — el real es `Simulator/DevicePanel.vue`, sólo
+lo usa `pages/demo/simulator.vue`; el "mapa de labels DevicePanel:374-389" del arranque
+apuntaba a un componente que la vista de site no consume. (b) `app/serverMiddleware` NO existe
+— el equivalente es `app/api/middlewares/scope.js`. (c) El template NO trae `unit` ni
+`decimalPlaces` (shape de 4 campos: `variable`/`variableFullName`/`variableType`/
+`variableSendFreq`); la unidad va embebida en el paréntesis del `variableFullName` ("Nivel
+combustible (%)") y se parsea con la misma convención que `Simulator/DevicePanel.vue:369`.
+(d) Los 3 widgets categóricos (`transfer_state`, `gen_status`, `vibration_signature`) NO traen
+`states[]`/`labels{}` → el dominio de valores está sin documentar → valor **verbatim**, no se
+inventa mapeo (lo correcto producto; el mapeo localizado nace cuando el simulador/driver
+confirmen el dominio). (e) `/site/:siteCode/full` (`sites.js:31`) EXCLUYE `userId` a propósito
+(DEC-REF-33, "derivados sueltan userId, confían en el gate") → el owner del topic NO sale del
+payload sino del store (`$store.state.devices`, vía `getDevices`), evitando tocar el endpoint y
+contradecir DEC-REF-33. Guarda: `await dispatch('getDevices')` antes de `loadDetail` en
+`mounted` (patrón de pieza 3, #35).
+
+**Corrección de método (Franco frenó dos veces).** (i) Tras el recon, Claude reabrió el diseño
+del componente como "decisiones A/B" con debate de equipo — Franco señaló que el diseño YA
+estaba cerrado en #35 ("NO re-discutir, ejecutar"); las respuestas del recon eran
+CONFIRMACIONES, no decisiones nuevas. La opción "B" (inyectar userId en `/full`) era inventada,
+nunca estuvo sobre la mesa. (ii) Franco pidió explicación sin tecnicismos antes de aprobar el
+origen del owner (store vs payload). Precedente sostenido: el diseño y los registros previos
+mandan sobre la re-elaboración en-sesión.
+
+**2. Diagnóstico "sin variables / consola muda" → causa: simulador APAGADO (no era bug).**
+El instinto de Franco ("esto ya lo resolvimos") era correcto: el dato vivo se resolvió en #35;
+faltaba reproducir su condición. Diagnóstico read-only en orden de costo (precedente
+wanomi.md:1272): stack sano (node/emqx/mongo up, sin restart-loop; ambos compose traen emqx →
+**el stack de producción es el correcto**, descarta la hipótesis de "stack equivocado"); `ps`
+→ `run.js` NO corriendo. `devices_state.json` tenía los 4 dId correctos de CR00061
+(fbXULu7a/Yf86psyC/6z4LN2md/Z5tKK1rN). Simulador relanzado (`.env.simulator` + `run.js`):
+10 devices bootstrap OK, `current_conn` 1→11, sin ACL rejection → dato vivo fluyendo. Lección
+(wanomi.md:1324) aplicada: Claude había elaborado "no publica bajo SERVICE / ACL perdidas";
+el dato lo simplificó a "ni prendido". Layout confirmado: `_siteCode.vue` no declara layout →
+usa `default.vue`, que es dueño de TODA la maquinaria MQTT (cliente, handlers,
+`setMqttConnected`, `$emit` de deltas) Y monta `DashboardNavbar` → `$store.state.mqttConnected`
+está vivo en la página. La alarma de "layout equivocado" de Claude quedó descartada con dato real.
+
+**3. Retoques al componente (mismo commit `bc9ceca`).** (a) Formato por tipo: `int`→entero
+(`Math.round`), `float`→2 decimales (`toFixed(2)`) — el template no trae `decimalPlaces`, regla
+fija no inventada por variable. (b) Estado de espera: el "—" se reemplazó por spinner
+`icon-refresh-01` atenuado (mismo patrón que "Cargando sitio…"). (c) Estado honesto con
+`mqttConnected`: si broker conectado + sin valor → spinner (esperando); si broker caído + sin
+valor → `icon-simple-remove` atenuado (sin señal, no va a llegar) — reusa el estado del
+indicador del navbar con el significado correcto (DEC-REF-24, precisión).
+
+**Pendiente del rumbo:** sub-paso 3 (feed de alarmas). Demora de siembra (las variables tardan
+30-60s, su `variableSendFreq`, en poblarse al abrir un site) registrada como **BACKLOG-UI-7**
+(siembra del último valor al montar, depende de persistencia TENANT-9). **TENANT-9 sube de
+prioridad**: la demo a Claro va a querer cards pobladas al instante, no spinners de un minuto.
+Simulador quedó corriendo (PID 6857) — decisión de Franco si se baja.
