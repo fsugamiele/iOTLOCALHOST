@@ -2401,10 +2401,12 @@ Sesión larga: DOS reuniones de diseño (alarmas/feed/consola; cross-equipo/casc
   persistido). Commit `bc5cbea`.
 
 ### Estado git al cierre
-- Branch `feature/telco-support`, 5 commits locales SIN pushear:
-  [los 2 de #36] + `85bb848` (DEC-REF-39..46) + `f565837` (tipo S) +
-  `bc5cbea` (DEC-REF-47..50).
-- Working tree limpio (solo untracked los 2 archivos de hardware si siguen).
+- Branch `feature/telco-support`, 6 commits pusheados a `origin` al final de la
+  sesión (`120bb2c..ffd6a13`), branch sincronizada:
+  `bc9ceca` (sub-paso 2 valor vivo, #36) + `d0c9a34` (cierre #36) +
+  `85bb848` (DEC-REF-39..46) + `f565837` (tipo S) + `bc5cbea` (DEC-REF-47..50) +
+  `ffd6a13` (cierre #37).
+- Working tree limpio (solo untracked los 2 archivos de hardware).
 
 ### Entorno al cierre
 - Simulador PID `4647`, motor edge PID `5477` (con código nuevo del tipo S).
