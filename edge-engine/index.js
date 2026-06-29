@@ -14,6 +14,7 @@ const MQTT_TOPIC = '+/+/+/sdata';   // {userId}/{dId}/{variable}/sdata
 
 const siteState    = new Map();
 const cooldownState = new Map();
+const windowState   = new Map();
 
 async function start() {
   await mongoose.connect(MONGO_URI, {
@@ -63,7 +64,7 @@ async function start() {
     const deviceState = siteState.get(dId);
     deviceState[variable] = value;
 
-    processMessage({ dId, variable, value, siteState, packs, cooldownState });
+    processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState });
   });
 
   client.on('error', err => {

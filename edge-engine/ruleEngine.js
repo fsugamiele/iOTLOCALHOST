@@ -1,8 +1,9 @@
 const { evaluateD } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
+const { evaluateS } = require('./evaluators/typeS');
 const { notify }    = require('./notificationRouter');
 
-function processMessage({ dId, variable, value, siteState, packs, cooldownState }) {
+function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState }) {
   const deviceState = siteState.get(dId) || {};
   const deviceType  = deviceState._deviceType || null;
 
@@ -97,7 +98,19 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState 
           }
           continue;
         }
-        case 'S':
+        case 'S': {
+          const { fired, count, windowActual } = evaluateS(rule, value, windowState);
+          if (fired) {
+            fireAlarm({
+              rule, value, deviceId: dId,
+              reason: 'window',
+              thresholdUsed: rule.window?.countThreshold,
+              mode: 'window',
+              cooldownState, siteState,
+            });
+          }
+          continue;
+        }
         case 'cross':
           console.log(`[ruleEngine] Tipo ${rule.type} pendiente — regla ${rule.ruleId} omitida`);
           continue;

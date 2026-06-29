@@ -27,7 +27,7 @@ const notificationSchema = new Schema({
     siteId:          { type: String },
     reason:          { type: String },
     source:          { type: String },   // 'emqx' | 'edge-engine'
-    mode:          { type: String },   // 'direct'|'calibrated'|'fallback'|'no-ref'
+    mode:          { type: String },   // 'direct'|'calibrated'|'fallback'|'no-ref'|'window'
     thresholdUsed: { type: Number },
     unit:          { type: String },
 
