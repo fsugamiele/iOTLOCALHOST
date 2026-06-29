@@ -2350,3 +2350,74 @@ indicador del navbar con el significado correcto (DEC-REF-24, precisión).
 (siembra del último valor al montar, depende de persistencia TENANT-9). **TENANT-9 sube de
 prioridad**: la demo a Claro va a querer cards pobladas al instante, no spinners de un minuto.
 Simulador quedó corriendo (PID 6857) — decisión de Franco si se baja.
+
+## Sesión #37 — 2026-06-29 · Área 2 · Diseño alarmas/feed/consola + diseño cross-equipo/cascada + evaluador tipo S
+
+### Naturaleza
+Sesión larga: DOS reuniones de diseño (alarmas/feed/consola; cross-equipo/cascada)
++ implementación del evaluador tipo S. Área 2 con voces de especialistas + Área 1
+(Asesor Telco, Ex-técnico) + Seguridad/Tenancy + Hardware puntual. Franco decisor.
+
+### Reunión de diseño 1 — alarmas/feed/consola (DEC-REF-39..46)
+- Auditoría completa de la capa reglas/alarmas (#17-#34b): qué está decidido,
+  implementado, y abierto. Veredicto: motor existe (D/C validados #19-23), tipos
+  S/cross NO construidos, 24 notifs eran fixtures, 1 RulePack (4 reglas).
+- Decisiones: gobernanza Wanomi-managed (39); predicción/auto-baselining roadmap (40);
+  vista de cascada dedicada (41); consola de reglas superadmin central, constructor
+  cross v1, construcción en paralelo (42); feed = notifications por siteId gateado +
+  mapa de color por variable (43); real-time-lite notif→bus (44); coloreo server-side,
+  ACK no apaga color (45); ACK auditable acknowledgedBy+ackAt + write-auth (46).
+- Confirmado: sistema de roles/grants YA construido (#27-30), Wanomi=superadmin
+  (DEC-REF-29) — la consola se protege con ese rol, sin identidad nueva.
+
+### Implementación — evaluador tipo S (A2)
+- Recon dirigido A2: confirmó mislabel de `window` (es de tipo S, no C), estado en
+  RAM (`cooldownState`), reconstruct no rehidrata evaluación, plantilla typeC.
+- Diseño: estado en RAM pura (`windowState` Map), recorte A2 = conteo-en-ventana
+  (timeout de cascada → A3), contrato
+  `evaluateS(rule, value, windowState) → { fired, count, windowActual }`.
+- Construido: `typeS.js` (purga deslizante, reusa `evaluateD`), cableado en
+  `ruleEngine.js` + `index.js`, enum `'window'` en `notificationRouter.js` +
+  comentario en `notifications.js`.
+- Bug encontrado y corregido en E2E: `mode:'window'` faltaba en el enum del schema.
+- Validado E2E REAL con simulador (`genset_no_start`, `crank_attempts_failed`):
+  positiva (120s) dispara al 3er evento (14.36s), negativa (5s) NO dispara (purga
+  deslizante confirmada). Doc persistido OK. Pack y notifs de prueba limpiados de
+  Mongo.
+- Commit `f565837` (5 archivos). A2 CERRADO.
+
+### Reunión de diseño 2 — cross-equipo/cascada (DEC-REF-47..50 + BUG-SIM-1)
+- Recon dirigido A3: `crossExpr` 100% libre; `siteState` ya da acceso cross (sin
+  cambio estructural); temporizador resuelto con patrón typeC (sin reloj);
+  `correlationParent` propagado al NOC pero NO persistido; simulador SIN escenario
+  coordinado.
+- Debate B vs C con equipo completo (incl. Asesor Telco, Ex-técnico, Hardware):
+  decidido "B plus" = árbol AND/OR sobre estados + operador de suma entre equipos
+  (caso power plant Eltek de Claro). Secuencias y tendencias → roadmap.
+- BUG-SIM-1 VERIFICADO read-only: `sharedState` no se comparte entre devices
+  (`run.js` no lo pasa) → Cummins simulado roto de fondo. Se arregla en A3.
+- Decisiones registradas: DEC-REF-47 (`crossExpr` B plus), 48 (temporizador reactivo
+  `graceSec`), 49 (validación con simulador, no scripts), 50 (`correlationParent`
+  persistido). Commit `bc5cbea`.
+
+### Estado git al cierre
+- Branch `feature/telco-support`, 5 commits locales SIN pushear:
+  [los 2 de #36] + `85bb848` (DEC-REF-39..46) + `f565837` (tipo S) +
+  `bc5cbea` (DEC-REF-47..50).
+- Working tree limpio (solo untracked los 2 archivos de hardware si siguen).
+
+### Entorno al cierre
+- Simulador PID `4647`, motor edge PID `5477` (con código nuevo del tipo S).
+  Si se bajan: `kill <PID>` directo, NUNCA `pkill -f`.
+- Mongo limpio: `rulepacks` = solo `cummins-pcc-v1`; sin notifs de prueba.
+
+### Pendiente — A3 (próxima sesión), tres piezas en orden
+- **A3.1 — Fix BUG-SIM-1**: agrupar devices por `siteCode`, `sharedState` compartido
+  por site, pasarlo a cada device. Resucita coordinación ATS↔Cummins + arregla
+  Cummins. VA PRIMERO (sin banco de pruebas sano no se valida nada).
+- **A3.2 — Evaluador cross-equipo**: árbol AND/OR (primero) + hoja de suma
+  contemplada en diseño + temporizador reactivo (`graceSec`, DEC-REF-48).
+- **A3.3 — `correlationParent` persistido** + escenario de cascada real coordinado +
+  E2E.
+- Después de A3: A4 (RulePack cascada), A5-A8 (backend MVP), Fase B (frontend),
+  Carril 2 (consola). Ver secuenciamiento en bitácora de #37.
