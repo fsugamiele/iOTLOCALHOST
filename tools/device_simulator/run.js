@@ -39,11 +39,13 @@ async function main() {
     }
   }
 
-  // Aplanar a lista de devices: [{ siteCode, role, dId, password }]
+  // Aplanar a lista de devices: [{ siteCode, role, dId, password, sharedState }]
+  // sharedState: un objeto por site, MISMA referencia para todos sus devices (BUG-SIM-1).
   const configs = [];
   for (const [siteCode, roles] of entries) {
+    const siteShared = {};
     for (const [role, dev] of Object.entries(roles)) {
-      configs.push({ siteCode, role, dId: dev.dId, password: dev.password });
+      configs.push({ siteCode, role, dId: dev.dId, password: dev.password, sharedState: siteShared });
     }
   }
 
@@ -73,6 +75,7 @@ async function main() {
         mqttPassword: creds.password, // NUNCA logueado
         userId,
         variables: creds.variables,
+        sharedState: cfg.sharedState,
       }));
     } catch (err) {
       console.error(`Failed to bootstrap ${cfg.siteCode}/${cfg.role}: ${err.message}`);
