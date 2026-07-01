@@ -257,11 +257,13 @@ class SimulatedDevice {
           }
         }
         console.log(`${this.tag} scenario "${name}" complete — state restored`);
+        this.startPublishing();
       }, scenario.duration_ms);
       this._timers.push(cleanup);
     } else {
       const endLog = setTimeout(() => {
         console.log(`${this.tag} scenario "${name}" complete — state preserved (noCleanup)`);
+        this.startPublishing();
       }, scenario.duration_ms);
       this._timers.push(endLog);
     }
