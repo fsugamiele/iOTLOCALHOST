@@ -299,6 +299,7 @@ const SCENARIOS = {
   mains_failure_ats_transfer: {
     description: 'Corte de red — ATS transfiere a generador',
     duration_ms: 60000,
+    noCleanup: true,
     steps: [
       { at: 0,     set: { mains_voltage: 0 } },
       { at: 2000,  set: { gen_status: 'STARTING' } },
