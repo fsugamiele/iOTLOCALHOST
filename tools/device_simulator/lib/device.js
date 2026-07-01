@@ -184,8 +184,8 @@ class SimulatedDevice {
       // por eso se llama startPublishing() al final para reanudarlos.
       this._cancelActiveTimers();
       this._state = this._initialState(this._role);
-      for (const varName of Object.keys(this._state)) {
-        this._publish(varName);
+      for (const v of this._variables) {
+        this._publish(v.variable);
       }
       this.startPublishing();
     } else {
@@ -249,10 +249,9 @@ class SimulatedDevice {
     // Cleanup automático al final, salvo flag noCleanup
     if (!scenario.noCleanup) {
       const cleanup = setTimeout(() => {
-        const initial = this._role === 'SEC'
-          ? engine.initialSecState()
-          : engine.initialGenState();
-        for (const varName of Object.keys(this._state)) {
+        const initial = this._initialState(this._role);
+        for (const v of this._variables) {
+          const varName = v.variable;
           if (this._state[varName] !== initial[varName]) {
             this._set(varName, initial[varName]);
           }
