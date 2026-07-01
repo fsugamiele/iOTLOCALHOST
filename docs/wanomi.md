@@ -2423,3 +2423,122 @@ Sesión larga: DOS reuniones de diseño (alarmas/feed/consola; cross-equipo/casc
   E2E.
 - Después de A3: A4 (RulePack cascada), A5-A8 (backend MVP), Fase B (frontend),
   Carril 2 (consola). Ver secuenciamiento en bitácora de #37.
+
+## Sesión #38 — 2026-06-29/07-01 · Área 2 · A3.1 (banco de pruebas del simulador sano)
+
+### Naturaleza
+Sesión de ejecución larga (atravesó cambios de fecha): arranque de A3.1, con hallazgo de
+dos bugs adicionales del simulador que estaban enmascarados por BUG-SIM-1. Ciclo típico:
+recon read-only dirigido → sala/decisión → diseño con voces del equipo → fix mínimo →
+E2E real → commit propio. Franco decisor, Área 2 con voces (Backend Senior, Ing. Software,
+Asesor Telco, Hardware puntual).
+
+### A3.1 CERRADO — banco de pruebas del simulador sano
+7 commits en `feature/telco-support` (sin push):
+- `ce8a895` — `fix(simulator): compartir sharedState por site` (BUG-SIM-1).
+- `2e95c37` — `docs: registrar BUG-SIM-4` (cleanup destruye state).
+- `4f04af6` — `docs: ampliar BUG-SIM-4` (misma raíz en cleanup + reset).
+- `cf5f6c7` — `fix(simulator): restaurar state iterando template` (BUG-SIM-4).
+- `2e3b302` — `docs: registrar BUG-SIM-5` (timers congelados post-scenario).
+- `5ee28c8` — `fix(simulator): reiniciar ticks al terminar scenario` (BUG-SIM-5).
+- `359976d` — `feat(simulator): mains_failure_ats_transfer persistente` (noCleanup:true).
+
+### BUG-SIM-4 cerrado (dos manifestaciones, un fix)
+Raíz: la restauración de state iteraba `Object.keys(this._state)` crudo (incluía la
+metadata `deviceType`) con un ternario de init que solo cubría SEC/GEN. Sobre ATS/CUMMINS
+dejaba las vars en `undefined` (device mudo permanente) y habría publicado `deviceType`
+a MQTT en el path `reset`. **Fix de raíz** (ambos sitios, `device.js`): iterar
+`this._variables` (lista del template = frontera real-vs-metadata) y usar
+`this._initialState(this._role)` (cubre los 4 roles). Validado con doble corrida de
+cascada por captura MQTT: `POST_CLN_1` = 6 msgs ATS + 11 CUMMINS (con código viejo = 0),
+trigger #2 no aborta, cero warnings "skipping publish of deviceType".
+
+### BUG-SIM-5 cerrado (bug enmascarado por BUG-SIM-4)
+`_runScenario` llama `_cancelActiveTimers()` al inicio y mata los `setInterval` de
+`startPublishing`. Ninguna rama de fin de scenario los reinicia — el device deja de
+publicar periódicamente hasta el próximo `reset` o scenario. En la validación de la
+doble corrida (BUG-SIM-4) el ATS quedó silencioso entre `t=73.5s` (cleanup #1) y `t=121s`
+(trigger #2) — se interpretó como "OK", era este bug. **Fix**: llamar
+`this.startPublishing()` dentro del callback final de AMBAS ramas (cleanup y noCleanup),
+tras restaurar/preservar state (replica el patrón del comando `reset`). +2 líneas.
+Validado por observación: el ATS retoma ticks a los ~60s post-scenario y sigue tickando
+cada 30-60s por variable.
+
+### `mains_failure_ats_transfer` persistente
+`noCleanup:true` en el escenario de corte de red — el grupo queda corriendo hasta un
+`mains_restore` explícito, en vez de apagarse a los 60s. Más fiel a un corte sostenido
+real. Cambio de comportamiento documentado en el commit. Validación de vuelta a reposo
+al cierre de sesión: disparé `mains_restore` sobre `CR00061-ATS`; se ejecutaron los steps
+(mains_voltage→220, gen_status→STOPPED, gen_voltage/freq→0), el Cummins volvió a reposo
+(rpm=0, oil_pressure=0, run_hours estable, fuel_level=74.95 estable) y ambos devices
+siguieron tickando periódicamente post-scenario — BUG-SIM-5 fix validado también en la
+rama `mains_restore` (ya tenía `noCleanup:true`; era el path que hacía notorio el
+congelamiento).
+
+### Validación visual E2E en browser
+Franco entró a CR00061 con `cellowner-nea@wanomi.test` (grant `claro/nea`). Vio:
+- ATS con `gen_voltage ≈ 222V`, `gen_freq ≈ 50 Hz` con jitter en banda realista.
+- Cummins con `rpm = 1491`, `coolant_temp = 75°C`, `fuel_level` bajando monotónico,
+  `run_hours` acumulando. Física evolucionando en vivo. Cascada sostenida.
+- Placeholders visibles del ATS: `mains_freq` sigue oscilando ~50 Hz en corte (Área 1
+  debe modelar apagar a 0), `load_kw` con jitter aleatorio sin contexto (Área 1 modelo
+  de carga del sitio telco).
+
+### Descubrimiento colateral — visibilidad post-TENANT-4
+Sin bug de código: `fsugamielecinetiksrl@gmail.com` (usuario habitual de Franco por
+CLAUDE.md) no tiene `grants`, por lo que `buildReadFilter('Site')` devuelve DENY sobre
+CR00061 (owner: `operator-claro`, service account por DEC-REF-36). Camino de acceso
+humano correcto: entrar como `cellowner-nea@wanomi.test` (grant `claro/nea`) o
+`admin@wanomi.com` (superadmin). LiveValue arma el topic del owner del device desde
+`$store.state.devices` — no hay desajuste de topic MQTT.
+
+### Cadencia de publicación (aclarada con Franco)
+El simulador NO publica en stream continuo: cada variable tiene su `variableSendFreq`
+(30/60/120s por defecto en `seed.js`). Entre ticks el LiveValue muestra el último valor
+recibido. Excepción: dentro de un scenario los `_set` publican inmediatos por step
+(por eso la cascada se ve "en vivo"). Este comportamiento es esperado y alineado con
+firmware real. La lentitud de siembra al abrir un site pertenece a BACKLOG-UI-7
+(siembra del último valor conocido, depende de TENANT-9).
+
+### Pendientes / ítems levantados en esta sesión
+- **Área 1 — fidelidad física ATS**: `mains_freq` debe ir a 0 durante corte (hoy sigue
+  oscilando ~50 Hz sin condicional a red apagada); `load_kw` necesita modelo de carga
+  real del sitio telco (hoy `clamp(v + jitter(0.5), 0, 15)` sin contexto). Registrable
+  como backlog de fidelidad — NO bloqueante para la demo, pero visible en pantalla.
+- **Roadmap — página de escenarios**: UI para crear/disparar escenarios del simulador
+  desde el frontend (hoy se disparan a mano por MQTT sobre `simulator/{dId}/control`).
+  Facilitaría demos y QA.
+- **Nota Hardware (Área 3)**: `sharedState` modela física/cableado del sitio, NO
+  arquitectura de producto. El día del Hub real, `gen_running` se lee del fierro por
+  Modbus (o del PLC), no de mutación de un objeto compartido JS. El simulador
+  representa la señal, no el mecanismo.
+- **Roadmap — contrato MQTT Hub real ↔ simulador**: cuando llegue el Hub, validar
+  paridad del contrato en modo Connect (mismos topics, mismos payloads, misma
+  semántica de scenarios/control). Aparece con la primera integración de Hub.
+- **Aprendizaje operativo**: `pgrep -af "A\\|B"` NO alterna en regex de `pgrep` (usa
+  ERE, `\|` queda literal). Dio un falso "procesos caídos" al abrir #38 — el simulador
+  viejo (PID 4647) seguía vivo y contaminó una captura inicial. Verificar procesos con
+  `ps -ef | grep`.
+- **Observación menor (no bug)**: `this._timers` acumula refs a Timeouts ya expirados
+  después de cada scenario. Leak trivial, preexistente, no regresión de los fixes.
+  Micro-cleanup opcional (`_cancelActiveTimers` antes de `startPublishing` en el
+  callback) — no vale la pena en A3.1.
+- **Simulador filtrado**: en #38 corrió mucho tiempo con `--site=CR00061` (los otros 3
+  sitios sin devices publicando → cards estáticas, esperado, no bug). Al cierre se
+  relanzó SIN filtro (10 devices, 4 sitios). Decisión para futuras demos: si se corre
+  filtrado por costo/foco o completo por realismo.
+
+### Estado git al cierre
+- Branch `feature/telco-support`, **7 commits ahead de origin, SIN PUSH**: `ce8a895`,
+  `2e95c37`, `4f04af6`, `cf5f6c7`, `2e3b302`, `5ee28c8`, `359976d`.
+- Working tree limpio salvo 2 untracked de hardware (`~$nomi_guia_layout_WN-SITE-CORE.docx`,
+  `conectividad_recomendada_hub.pdf`) — arrastrados desde #37.
+- Sim al cierre: `node run.js` (todos los sites), post-`mains_restore` en reposo.
+
+### Pendiente — A3.2 y A3.3 (próxima sesión)
+- **A3.2**: evaluador cross-equipo (`crossExpr` AND/OR + hoja de suma) + temporizador
+  reactivo (`graceSec`, DEC-REF-48). Diseño ya cerrado en DEC-REF-47/48.
+- **A3.3**: `correlationParent` persistido (DEC-REF-50) + escenario de cascada real
+  coordinado + E2E que cierra A3.
+- Después: A4 (RulePack cascada), A5-A8 (backend MVP), Fase B (frontend), Carril 2
+  (consola). Secuenciamiento en bitácora #37.
