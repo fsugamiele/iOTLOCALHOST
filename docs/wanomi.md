@@ -2542,3 +2542,48 @@ firmware real. La lentitud de siembra al abrir un site pertenece a BACKLOG-UI-7
   coordinado + E2E que cierra A3.
 - Después: A4 (RulePack cascada), A5-A8 (backend MVP), Fase B (frontend), Carril 2
   (consola). Secuenciamiento en bitácora #37.
+
+## Sesión #39 — 2026-07-02 · Área 2 · Recon #39-R1 (verificación pre-A3.2)
+
+> **CORRECCIÓN (#39, recon #39-R1):** el cierre de #38 asentó "7 commits ahead de
+> origin, SIN PUSH". El recon #39-R1 verificó: 0 commits ahead, branch sincronizada
+> con origin (`git log origin/feature/telco-support..HEAD` vacío, `git status` "up to
+> date with origin"). Causa confirmada por Franco en sesión #39: push realizado y
+> autorizado por él entre el cierre de #38 y la apertura de #39. Sin anomalía de
+> proceso — la convención "push solo con orden explícita de Franco" se mantuvo;
+> solo faltó asentarlo. El registro de cierre de #38 era correcto al momento de
+> escribirse. Los 7 commits (`ce8a895`, `2e95c37`, `4f04af6`, `cf5f6c7`, `2e3b302`,
+> `5ee28c8`, `359976d`) están en origin.
+
+### Recon #39-R1 — resumen (read-only, pre-A3.2)
+
+Ejecución read-only limpia siguiendo la convención de recon dirigido de #37/#38.
+Entorno operativo confirmado: `edge-engine/index.js` (PID 5477) y `run.js` (PID 55328)
+corriendo desde antes de #39; docker `node`/`emqx`/`mongo` Up 3 días.
+
+**Hallazgos C — catálogo de RulePacks (DEC-REF-31):**
+- Schema `rule_pack.js` presente y sano (`packId`, `deviceType`, `version`, `canary`,
+  `rules[]` embebidas; colección `rulepacks`). 1 doc en Mongo: `cummins-pcc-v1`, 4 reglas
+  (A1, D1, D2, G2). Coincide 1:1 con el schema, sin campos extra.
+- Vínculo a tenancy AUSENTE (sin `operatorId`, `zoneId`, `overrides`). DEC-REF-31
+  cumplida a medias — registrado como **BACKLOG-RULE-2** en WanomiRefactor.md §5e.
+
+**Hallazgos D — inventario para A3.2:**
+- `crossExpr` **YA existe** en `rule_definition.js` (`type` enum incluye `'cross'`;
+  `crossExpr: Mixed, default null`) y está persistido en las 4 reglas vigentes con
+  valor `null`. Precisa el "crossExpr 100% libre" del recon #37 — registrado como
+  nota de implementación bajo la tabla DEC-REF en WanomiRefactor.md.
+- Alcance real de A3.2 = EVALUADOR + su despacho en `ruleEngine.js` (el gate por
+  `deviceType`+`variable` en `ruleEngine.js:12-13` saltearía las reglas `cross`) +
+  validación de forma del árbol. NO hay migración de schema.
+- Regla a nivel site ausente en el schema (alcance efectivo por `deviceType`; no por
+  `dId` ni por template).
+- `siteState` en `edge-engine`: `Map<dId, {vars..., _deviceType, _userId, _deviceName}>`.
+  `_deviceType` inyectado por `siteState.js:57-59` desde la colección `devices`. Un
+  evaluador `cross` puede resolver "el ATS del site" iterando `siteState.entries()`
+  sin hardcodear `dId` — supuesto de DEC-REF-47 sostenible.
+
+### Estado git al cierre de #39-R1
+Branch `feature/telco-support`, up to date con origin. 2 untracked de hardware
+arrastrados desde #37 (`~$nomi_guia_layout_WN-SITE-CORE.docx`,
+`conectividad_recomendada_hub.pdf`).
