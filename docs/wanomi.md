@@ -2587,3 +2587,111 @@ corriendo desde antes de #39; docker `node`/`emqx`/`mongo` Up 3 días.
 Branch `feature/telco-support`, up to date con origin. 2 untracked de hardware
 arrastrados desde #37 (`~$nomi_guia_layout_WN-SITE-CORE.docx`,
 `conectividad_recomendada_hub.pdf`).
+
+### A3.2 — evaluador cross-equipo (bajado a diff con doble STOP GATE)
+
+**Ciclo diseño-a-diff en gates.** Franco aprobó DEC-REF-51 (despacho por
+bypass del gate para reglas `type='cross'`, evaluación por cada mensaje
+del site contra `siteState` completo) tras el recon #39-R1. STOP GATE 1:
+verificaciones de forma (deviceType strings reales, enum `mode`, firma de
+`evaluateD`, patrón `windowState`, timestamp del handler). STOP GATE 2:
+diff propuesto — Franco lo rechazó con dos correcciones: **C1** hoja de
+suma se descarta al LOAD (no en runtime, categoría propia
+`reason:'sum-pending'`, evaluator boolean puro) y **C2** scoping por site
+(`_siteCode` inyectado en `siteState`, keys `${siteCode}:${ruleId}:*`,
+guard en despacho). STOP GATE 2b: diff corregido aprobado + tres
+verificaciones V1-V3 (fireAlarm sin `siteId` en firma — inyectado
+downstream por `_siteId` env var; `loadPacks` no filtra por deviceType;
+strings reales de escenarios — `transfer_state='MAINS_FAIL'` era supuesto,
+el simulador no lo emite). STOP GATE 3: V4 (`eq`/`neq` con `===`/`!==`
+strict — safe para strings) + diff aplicado (5 archivos, +163/-3).
+
+**E2E de mecánica del evaluador — validación por inyección directa.**
+
+*Setup*: pack efímero `test-cross-cascada-v1` en `rulepacks` con árbol
+AND de 3 hojas usando strings reales de V3 — `ATS.mains_voltage lt 50`,
+`ATS.gen_status neq "RUNNING"`, `cummins-pcc.oil_pressure_psi lt 5` —
+`graceSec:30`, `cooldownSec:60`. Motor edge relanzado (log confirmó
+`Packs cargados: cummins-pcc-v1, test-cross-cascada-v1` sin descartes).
+
+*Positiva*: 3 msgs de seed en T0=02:52:30 (sellan `:start`), 32s de
+espera, tick post-grace en T0+34s → dispara UNA vez con
+`mode:'cross', reason:'cross-tree-fired', siteId:'CR00061',
+severity:'critical'`. NOC event capturado en `wanomi/noc/CR00061/event`,
+persistido en `db.notifications` con `mode:'cross'` (validado el enum
+extendido — bug clase #37 prevenido en recon, no en runtime). Idempotencia:
+3 ticks adicionales con árbol sostenido true → 0 nuevas alarmas (contadores
+Mongo/NOC/edge log = 1).
+
+*Negativa (2 intentos, honesto)*: primer intento — publiqué
+`gen_status='RUNNING'` como superuser al topic para simular el arranque
+del gen; :start se limpió correctamente (evidencia: el disparo
+subsecuente esperó otros 30s completos, no fue inmediato). Pero apareció
+un rebrote a T+2:44 min: el sim internamente sigue con `gen_status='STOPPED'`,
+sus ticks periódicos re-publicaron ese valor y **el evaluador
+correctamente re-abrió el episodio y disparó tras un nuevo grace de 30s**.
+No fue bug del cross — reveló que publicar como superuser al topic NO
+muta el estado interno del simulador. Segundo intento: `set_sensor` por
+`simulator/{dId}/control` modifica el estado interno; sus ticks futuros
+publican el valor nuevo. **0 alarmas en 45s post-arranque del gen** →
+resolución por éxito validada limpiamente.
+
+*No-contaminación*: 6/6 eventos NOC con `siteId:'CR00061'`, cero de otros
+sites. Alcance limitado por SITE_ID env var (1 motor = 1 site hoy).
+
+*No-regresión tipo D*: el pack productivo `cummins-pcc-v1` siguió
+disparando `cummins-A1-oil-pressure` al recibir `oil_pressure_psi=0` de
+mi inyección (4 alarmas D en la franja, cooldown 60s entre disparos) —
+el bypass cross no interfiere con el gate D/C/S.
+
+### Hallazgos surgidos del E2E
+
+- **BUG-SIM-6 (nuevo, sin diagnosticar)** — el simulador `run.js` (PID
+  desde Jul01) figura conectado a EMQX pero no publica `sdata`
+  periódicos; canal de control vivo (comandos `set_sensor` recibidos y
+  procesados en `/tmp/simulator.log`). Publish muerto, control vivo —
+  recorta hipótesis pero no basta para concluir. Detectado en el intento
+  fallido de disparar `genset_no_start`. Registrado en WanomiRefactor.md
+  §5d. **Bloquea el E2E producto de DEC-REF-49 (A3.3)** y es
+  demo-relevante (LiveValues congelados). Requiere recon dirigido en la
+  apertura de A3.3, sin especular.
+
+- **Actualización BACKLOG-SIM-3** — `genset_no_start` intenta setear
+  `battery_voltage`, `crank_current`, `crank_attempts_failed`, que NO son
+  variables del ATS. El sim aborta el escenario con "variables not in
+  device". El escenario coordinado de cascada (DEC-REF-49) debe
+  diseñarse contemplando qué device recibe cada trigger.
+
+- **Lección operativa** — publicar como superuser al topic
+  `{userId}/{dId}/{var}/sdata` cambia el `siteState` del motor edge pero
+  NO el estado interno del simulador. Sus ticks periódicos pisan la
+  modificación. Manipulación del sim en E2E = `set_sensor` por
+  `simulator/{dId}/control` (afecta estado interno + publica).
+
+### Honestidad de validación
+
+Lo que se validó E2E: **la mecánica del evaluador cross** (árbol AND/OR,
+`graceSec`, idempotencia por episodio, resolución por éxito, scoping por
+site, persistencia `mode:'cross'`). Lo que NO se validó: **el E2E producto
+de DEC-REF-49** (cascada real coordinada con el simulador simulándola de
+verdad, DEC-REF-14 "producto no demo"). Ese queda pendiente para A3.3,
+precedido por el recon de BUG-SIM-6. Registrado sin eufemismos por
+decisión de Franco.
+
+### Cleanup del E2E (verificado antes/después)
+
+| Ítem | Antes | Después |
+|---|---|---|
+| Pack `test-cross-cascada-v1` en `rulepacks` | 1 doc | 0 (lista = `cummins-pcc-v1`) |
+| Notifs franja E2E (02:45–02:58 UTC) | 6 docs (2 cross + 4 cummins-A1) | 0 |
+| Sim state ATS (recon `/tmp/simulator.log`) | `mains_voltage=0`, `gen_status=RUNNING` | `mains_voltage=220`, `gen_status='STOPPED'` (reposo V3) |
+| mosquitto_sub PIDs 68021, 68022 | vivos | ambos killed |
+| Motor edge | PID 67888 con pack de prueba cargado | PID 78726 relanzado, `Packs cargados: cummins-pcc-v1` |
+| `run.js` PID 55328 | vivo desde Jul01 | vivo, intocado (escena BUG-SIM-6) |
+
+### Estado git al cierre de A3.2
+Branch `feature/telco-support`, 3 commits ahead de origin, SIN PUSH:
+- `d0fd67f` docs recon #39-R1.
+- `77d34c5` docs DEC-REF-51.
+- `08a922c` feat evaluador cross-equipo + graceSec (A3.2).
++ este commit de cierre. 2 untracked de hardware arrastrados desde #37.
