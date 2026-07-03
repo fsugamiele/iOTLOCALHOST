@@ -2668,6 +2668,26 @@ el bypass cross no interfiere con el gate D/C/S.
   modificación. Manipulación del sim en E2E = `set_sensor` por
   `simulator/{dId}/control` (afecta estado interno + publica).
 
+> **CORRECCIÓN (#39, recon #39-R2) — BUG-SIM-6 RETIRADO como falso positivo.**
+> Recon dirigido read-only tras el cierre inicial de A3.2. Tap pasivo de 150s
+> sobre `+/+/+/sdata` = **321 msgs, 10/10 devices publicando** (CR00061
+> completo: ATS `6z4LN2md`=25, GEN `Yf86psyC`=27, CUMMINS `Z5tKK1rN`=28, SEC
+> `fbXULu7a`=40). Sesiones EMQX de los 10 clientes `sim_*` continuas desde
+> `2026-07-01T17:34:13Z` (sin reconexión), 48h de logs de EMQX sin ACL deny
+> ni disconnects. `/proc/55328/fd/{1,2}` → `/tmp/simulator.log`, log limpio
+> sin errores ni excepciones. Además: `_runScenario` retorna por
+> `missing.length` ANTES de `_cancelActiveTimers()` (device.js:216-223) → un
+> scenario abortado NO deja al device sin timers; aunque lo hiciera, solo
+> afectaría al ATS, no al site entero. **A3.3 NO está bloqueado.** El ID
+> BUG-SIM-6 queda como línea-lápida (precedente TENANT-5, BACKLOG-SIM-1),
+> no se reutiliza. Siguen vigentes e independientes: la lección `set_sensor`
+> (arriba) y la actualización #39 de BACKLOG-SIM-3 (`genset_no_start` no
+> disparable sobre el ATS). **Lección de método**: un tap de silencio MQTT
+> debe durar ≥ 2-3× la cadencia máxima esperada (30-120s por variable en
+> este sim), con expectativa teórica de mensajes calculada al lado. Los taps
+> de 3-5s del cleanup A3.2 no cumplían ese piso — la conclusión "sim mudo"
+> era artefacto de medición.
+
 ### Honestidad de validación
 
 Lo que se validó E2E: **la mecánica del evaluador cross** (árbol AND/OR,
@@ -2695,3 +2715,33 @@ Branch `feature/telco-support`, 3 commits ahead de origin, SIN PUSH:
 - `77d34c5` docs DEC-REF-51.
 - `08a922c` feat evaluador cross-equipo + graceSec (A3.2).
 + este commit de cierre. 2 untracked de hardware arrastrados desde #37.
+
+### Push autorizado por Franco (sesión #39)
+
+Push explícitamente ordenado por Franco tras el cierre de A3.2. Rango
+subido: `00c905c..56d5656` (4 commits): `d0fd67f`, `77d34c5`, `08a922c`,
+`56d5656`. Rama sincronizada con origin. Convención "push solo con orden
+explícita de Franco" respetada.
+
+### Recon #39-R2 — retiro de BUG-SIM-6
+
+Ejecutado read-only tras el push, con escena intacta (sin restart de
+`run.js` PID 55328, sin comandos al sim, taps pasivos). Cinco gates de
+evidencia dura:
+
+| Gate | Evidencia | Veredicto |
+|---|---|---|
+| G1 — tap 150s | 321 msgs, 10/10 devices, CR00061 ATS 25 / GEN 27 / CUMMINS 28 / SEC 40 | Sim publica normalmente |
+| G2 — fd/1+fd/2 | Ambos → `/tmp/simulator.log`, sin errores/reconexiones/skip | Log real limpio |
+| G3a — EMQX clients | 10 sesiones `sim_*` continuas desde 2026-07-01T17:34:13Z | Sin reconexiones |
+| G3b — EMQX logs 48h | Cero ACL deny, disconnect, error, refused | Broker limpio |
+| G3c — `db.data` per dId | Última muestra CR00061 = 2026-06-01 (advertencia TENANT-9: persistencia rota) | NO prueba silencio MQTT |
+| G3d — mtime `devices_state.json` | 2026-06-01 (cache seed inicial) | No refleja runtime |
+| G4 — abort path `device.js` | Return por `missing.length` ANTES de `_cancelActiveTimers()` | Abort NO mata timers; hipótesis descartada |
+| G5 — comandos control | `trigger`, `set_sensor`, `scenario`, `reset` (sin dump/state RO) | Listado, sin ejecutar |
+
+**Causa raíz**: falso positivo del recon original. Los taps de 3-5s en el
+cleanup A3.2 fueron insuficientes frente a cadencias de 30-120s por
+variable. BUG-SIM-6 retirado con línea-lápida (precedente TENANT-5,
+BACKLOG-SIM-1). Bump WanomiRefactor.md 0.21 → 0.22. Lección de método
+registrada. A3.3 desbloqueado.
