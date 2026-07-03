@@ -1,7 +1,7 @@
 # Wanomi 3.0 — Refactorización
 
 **Documento maestro del refactor.**
-Versión 0.19 · 2026-07-02 · Actualizado: sesión #39
+Versión 0.20 · 2026-07-02 · Actualizado: sesión #39
 
 ---
 
@@ -206,6 +206,7 @@ Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y 
 | DEC-REF-48 | 2026-06-29 | **Temporizador de cascada reactivo, sin reloj propio.** El "no arrancó en N s" se evalúa con el patrón de DEC-REF-26: marca `:start` al cumplirse el evento gatillo (pérdida de AC); en el próximo mensaje entrante, si pasaron ≥ `graceSec` en tiempo-de-eventos Y la condición de falla persiste, dispara una vez (idempotente). Resolución por éxito: si la condición se satisface antes del plazo (gen arranca), se limpia `:start`. `graceSec` es dato de la regla (ajustable por sitio/grupo), no hardcoded. Preserva el modelo event-driven (sin `setInterval`). Limitación heredada: si el equipo que cierra la condición enmudece → heartbeat/staleness (BACKLOG-EDGE-4), otra alarma. |
 | DEC-REF-49 | 2026-06-29 | **Validación de cascada con el simulador como producto, no con scripts.** La cascada se valida con el simulador simulándola de verdad (DEC-REF-14, "producto no demo"). Requiere: (a) arreglar el `sharedState` del simulador (ver BUG-SIM-1); (b) un escenario de cascada real coordinado (corte AC en ATS → gen no arranca → consecuencias). Se descarta la orquestación por script externo por ser atajo de demo. |
 | DEC-REF-50 | 2026-06-29 | **`correlationParent` persistido + convención padre-hijo.** El evento raíz (pérdida de AC) se emite como alarma propia; cada consecuencia nombra a su padre vía `correlationParent` (DEC-REF-21). Se agrega `correlationParent` a `saveToMongo` (hoy solo va al evento NOC, no se persiste) para que la vista de cascada (DEC-REF-41) tenga el dato de agrupación. |
+| DEC-REF-51 | 2026-07-02 | **Despacho de reglas cross por bypass del gate.** Las reglas `type='cross'` se evalúan en cada mensaje entrante del site contra `siteState` completo (requisito de DEC-REF-48: el timer se resuelve con el próximo mensaje, venga del equipo que venga — cubre el caso "equipo gatillante enmudece, otro sigue hablando"). Gate `deviceType`+`variable` intacto para D/C/S. Costo medido en contexto Hub: ~1 msg/2-3s por site, evaluación sub-ms sobre `Map` en RAM. Descartado despacho por "variables participantes del árbol" = hardening especulativo (nota de escala futura). Anti-tormenta ya cubierto por `cooldownSec` + marca `:start` idempotente (DEC-REF-48). Decidido por Franco, sesión #39. Incluye dos aplicaciones de forma surgidas del recon #39: (a) threading explícito de `eventTs` (sellado único en el handler del mensaje, opción A elegida por Franco) como aplicación literal del tiempo-de-eventos de DEC-REF-48; (b) extensión del enum `NotificationRO.mode` con `'cross'` — misma clase de bug de persistencia silenciosa que `mode:'window'` (#37), esta vez cazado en recon previo. |
 
 > **Nota de implementación (sesión #37) — `window` en `rule_definition.js`:** al construir el evaluador tipo S, confirmar el campo `window` (el recon A–H lo rotuló "para typeC"; probable mislabel — es del tipo S). Verificar contra el código antes de usarlo.
 
