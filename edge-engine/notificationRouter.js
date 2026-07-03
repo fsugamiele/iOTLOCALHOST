@@ -20,7 +20,7 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     recommendation: String, siteId: String, reason: String,
     source: String,
     // ── tipo C: modo de disparo + umbral efectivo (DEC-REF-24, #22) ──
-    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window'], default: 'direct' },
+    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross'], default: 'direct' },
     thresholdUsed: { type: Number, default: null },
     unit:          { type: String, default: '' },
   }, { collection: 'notifications' })

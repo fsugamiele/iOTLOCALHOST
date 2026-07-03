@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 const RulePack = require('../app/api/models/rule_pack');
+const { validateCrossTree } = require('./evaluators/typeCross');
 
 // Schemas inline — los de app/api/models/ usan import (Babel), no son require-ables
 const SiteRO   = mongoose.models.SiteRO   || mongoose.model('SiteRO',
@@ -21,6 +22,24 @@ async function loadPacks(siteId, siteState) {
   const packs = await RulePack.find({ canary: false }).lean();
   if (packs.length === 0) {
     console.warn('[siteState] No hay RulePacks en producción — motor sin reglas.');
+  }
+
+  for (const pack of packs) {
+    const before = pack.rules.length;
+    pack.rules = pack.rules.filter(r => {
+      if (r.type !== 'cross') return true;
+      const v = validateCrossTree(r.crossExpr);
+      if (v.ok) return true;
+      if (v.reason === 'sum-pending') {
+        console.warn(`[siteState] pack ${pack.packId}: regla cross ${r.ruleId} descartada — hoja de suma pendiente de implementación (DEC-REF-47)`);
+      } else {
+        console.warn(`[siteState] pack ${pack.packId}: regla cross ${r.ruleId} descartada por forma inválida — ${v.reason}`);
+      }
+      return false;
+    });
+    if (pack.rules.length !== before) {
+      console.warn(`[siteState] pack ${pack.packId}: ${before - pack.rules.length} regla(s) cross descartada(s)`);
+    }
   }
 
   const site = await SiteRO.findOne({ siteCode: siteId }).lean();
@@ -57,6 +76,7 @@ async function loadPacks(siteId, siteState) {
       vars._deviceType = deviceInfoMap[dId]?.deviceType || '';
       vars._userId     = deviceInfoMap[dId]?.userId     || '';
       vars._deviceName = deviceInfoMap[dId]?.name       || '';
+      vars._siteCode   = siteId;
       siteState.set(dId, vars);
       hydrated++;
     }

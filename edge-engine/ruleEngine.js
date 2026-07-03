@@ -1,14 +1,31 @@
 const { evaluateD } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
 const { evaluateS } = require('./evaluators/typeS');
+const { evaluateCross } = require('./evaluators/typeCross');
 const { notify }    = require('./notificationRouter');
 
-function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState }) {
+function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, eventTs }) {
   const deviceState = siteState.get(dId) || {};
   const deviceType  = deviceState._deviceType || null;
+  const siteCode    = deviceState._siteCode   || null;
 
   for (const pack of packs) {
     for (const rule of pack.rules) {
+      if (rule.type === 'cross') {
+        if (!siteCode) continue;
+        const res = evaluateCross(rule, siteState, crossState, eventTs, siteCode);
+        if (res.fired) {
+          fireAlarm({
+            rule, value: null, deviceId: dId,
+            reason: 'cross-tree-fired',
+            mode: 'cross',
+            thresholdUsed: null,
+            cooldownState, siteState,
+          });
+        }
+        continue;
+      }
+
       if (rule.deviceType !== deviceType) continue;
       if (rule.variable   !== variable)   continue;
 
