@@ -2745,3 +2745,22 @@ cleanup A3.2 fueron insuficientes frente a cadencias de 30-120s por
 variable. BUG-SIM-6 retirado con línea-lápida (precedente TENANT-5,
 BACKLOG-SIM-1). Bump WanomiRefactor.md 0.21 → 0.22. Lección de método
 registrada. A3.3 desbloqueado.
+
+### Estado al cierre de #39
+
+- **A3.2 CERRADO** (validación de mecánica; E2E producto → A3.3).
+- Registro: WanomiRefactor.md v0.22 · DEC-REF-51 · BACKLOG-RULE-2 ·
+  BUG-SIM-6 retirado (falso positivo) · SIM-3 actualizado.
+- Git: commits de la sesión `d0fd67f`, `77d34c5`, `08a922c`, `56d5656`
+  (pusheados por orden de Franco en sesión) + `de62399` (+ este cierre).
+- Entorno: motor edge PID 78726 (solo `cummins-pcc-v1`) · simulador
+  `run.js` PID 55328 publicando sano (verificado R2: 321 msgs/150s,
+  10/10 devices) · docker node/emqx/mongo Up · Mongo limpio de fixtures.
+
+### Pendiente — próxima sesión (#40): A3.3
+
+- Escenario de cascada real coordinado (insumo: actualización #39 de
+  BACKLOG-SIM-3 — definir qué device recibe cada trigger).
+- `correlationParent` persistido en `saveToMongo` (DEC-REF-50).
+- E2E producto de DEC-REF-49 (banco confirmado sano por R2).
+- Después: A4 (RulePack cascada), A5-A8, Fase B, Carril 2.
