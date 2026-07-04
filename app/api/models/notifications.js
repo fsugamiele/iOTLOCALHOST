@@ -30,6 +30,7 @@ const notificationSchema = new Schema({
     mode:          { type: String },   // 'direct'|'calibrated'|'fallback'|'no-ref'|'window'
     thresholdUsed: { type: Number },
     unit:          { type: String },
+    correlationParent: { type: String, default: null },  // DEC-REF-50
 
 });
 

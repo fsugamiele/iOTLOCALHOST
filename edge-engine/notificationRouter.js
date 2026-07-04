@@ -19,6 +19,7 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     severity: { type: String, enum: ['info','warning','critical'] },
     recommendation: String, siteId: String, reason: String,
     source: String,
+    correlationParent: { type: String, default: null },  // DEC-REF-50
     // ── tipo C: modo de disparo + umbral efectivo (DEC-REF-24, #22) ──
     mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross'], default: 'direct' },
     thresholdUsed: { type: Number, default: null },
@@ -92,6 +93,7 @@ async function saveToMongo(alarm) {
       siteId:          _siteId,
       reason:          alarm.reason,
       source:          'edge-engine',
+      correlationParent: alarm.correlationParent,   // DEC-REF-50
       mode:             alarm.mode || 'direct',
       thresholdUsed:    (alarm.thresholdUsed !== undefined && alarm.thresholdUsed !== null)
                           ? alarm.thresholdUsed : null,
