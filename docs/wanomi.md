@@ -2764,3 +2764,139 @@ registrada. A3.3 desbloqueado.
 - `correlationParent` persistido en `saveToMongo` (DEC-REF-50).
 - E2E producto de DEC-REF-49 (banco confirmado sano por R2).
 - Después: A4 (RulePack cascada), A5-A8, Fase B, Carril 2.
+
+## Sesión #40 — 2026-07-03/04 · Área 2 · A3.3 (persistencia correlationParent + cascada coordinada)
+
+> Registro retroactivo: el push de `de62399`+`5e31117` fue ordenado por
+> Franco al final de #39, posterior al commit de cierre — por eso el cierre
+> los lista como "a espera". Sin anomalía de proceso.
+
+> Nota temporal: la sesión #40 arrancó el 2026-07-03 (R1-R2) y cerró el
+> 2026-07-04 (R3-R8). Cruce de fecha registrado; commits usan fecha del
+> autor local.
+
+### Naturaleza
+Sesión larga de ejecución dividida en 8 rondas dirigidas por Franco:
+apertura + recon (R1) → diff persistencia correlationParent (R2) →
+aplicación + restart edge + commit (R3) → freno en dominio
+`transfer_state` (R4) → diff escenario mínimo (R4bis) → aplicación +
+smoke test + commit (R5) → fixtures cascada (R6) → seed + E2E producto
+(R7) → cleanup + docs (R8, actual). Franco decisor. Voces de Área 2
+(Backend Senior, Ingeniero de Software) implícitas en las decisiones
+D1-D4.
+
+### Decisiones de sala
+- **D1 — Escenario coordinado**: **Camino A** (scenario nuevo en el
+  sim, `mains_failure_gen_no_start`), coherente con DEC-REF-49
+  ("validación con el simulador como producto, no con scripts").
+  Descartada la orquestación externa (dos triggers separados vs. un
+  scenario canónico); el sim reemplaza al sitio, no un script del
+  test.
+- **D2 — Alcance E2E**: **completo**. No solo persistencia estructural
+  del campo `correlationParent` sino cadena madre→hija seedeada con
+  correlationParent real, verificada en Mongo. La evidencia principal
+  es el documento de la hija con `correlationParent` no-nulo apuntando
+  al `ruleId` de la madre.
+- **D3 — Mismatch nomenclatura pack↔template**: **backlog aparte
+  (BACKLOG-RULE-3)**, NO scope de A3.3. Las reglas del E2E se
+  escriben con nombres del template (`mains_voltage`, `gen_status`);
+  la reconciliación del pack `cummins-pcc-v1` (`oil_pressure_psi` vs
+  `oil_pressure`, `fuel_level_pct` vs `fuel_level`) se decide al armar
+  A4 o en una sesión dedicada.
+- **D4 — `transfer_state`**: **Opción 1** — escenario mínimo sin
+  tocarlo. Introducir un valor intermedio es diseño semántico
+  (dominio real del InteliATS PWR), no implementación mecánica. El
+  modelado queda en **BACKLOG-SIM-4** con criterio de Área 3.
+
+### Decisiones de implementación (dentro de diffs aprobados)
+- **Restart selectivo del edge (R3):** motor edge se reinicia para
+  tomar el schema nuevo; contenedor `node` (app puerto 3001) se deja
+  para su próximo restart natural, ya que ningún consumer app rechaza
+  campos extra (verificado en el sanity check de R2, paso 4).
+- **Estilo de acceso directo en `saveToMongo`:** `alarm.correlationParent`
+  sin normalización adicional, mirroring de `alarm.recommendation` (no
+  ternario). El schema default `null` cubre el caso undefined.
+- **Parámetros E2E aprobados por Franco:** umbral `mains_voltage < 100`
+  (madre), `graceSec 90` (hija, ≥ cadencia máxima 60s), `cooldownSec
+  300` en ambas, `severity critical` en ambas.
+- **Pack único para fixtures:** `e2e-cascade-test-v1` con las 2 reglas
+  embebidas en un solo documento — un `insertOne` + un `deleteOne` para
+  todo el ciclo.
+
+### Parámetros del E2E
+- **Madre** `e2e-mains-loss-root`: D, `deviceType:'ATS'`,
+  `variable:'mains_voltage'`, `condition:{op:'lt',value:100}`,
+  `severity:'critical'`, `cooldownSec:300`, `correlationParent:null`.
+- **Hija** `e2e-gen-no-start-child`: cross,
+  `crossExpr = AND[ ATS.mains_voltage lt 100, ATS.gen_status neq
+  'RUNNING' ]`, `graceSec:90`, `severity:'critical'`,
+  `cooldownSec:300`, `correlationParent:'e2e-mains-loss-root'`.
+- **Trigger**: `mains_failure_gen_no_start` (scenario nuevo, 1 step,
+  60s `noCleanup`) sobre ATS `6z4LN2md`.
+- **Restore**: `mains_restore` (scenario existente).
+
+### Resultados E2E (R7 STOP GATE 8)
+- **T_RUN_START** = 1783191320692 ms (2026-07-04T18:55:20Z).
+- **T_RUN_END** = 1783191683174 ms (2026-07-04T19:01:23Z).
+- **Veredicto madre**: disparó UNA vez a T+530ms (tick immediate del
+  step at 0). `correlationParent:null` persistido en Mongo — DEC-REF-50
+  caso base validado.
+- **Veredicto hija**: disparó UNA vez a T+100.1s (grace 90s + próximo
+  tick ~10s). `correlationParent:"e2e-mains-loss-root"` persistido —
+  DEC-REF-50 evidencia principal, `mode:"cross"`,
+  `reason:"cross-tree-fired"`.
+- **Veredicto unicidad**: counts se mantuvieron 1 y 1 durante todo el
+  cooldown de 300s, incluso con árbol sostenido true.
+- **Veredicto no-regresión**: carga de packs sin descartes ni errores
+  de schema tras la extensión con `correlationParent`; regresión
+  funcional D/C/S no ejecutada (no requerida por A3.3).
+
+### Incidencia de credenciales + lección de método
+En R5 (`4a — capture env`), maté el sim PID 55328 tras un `grep`
+filtrante del env que excluyó `USER_EMAIL/USER_PASSWORD`. Al no poder
+relanzar, Franco me pasó las credenciales de autenticación del backend
+(`USER_EMAIL`/`USER_PASSWORD`) por chat. El valor NO se reproduce en
+este registro (evitar el vector RISK-SEC-1: secreto en git history);
+referencia: transcript sesión #40, R5. Registrado como **RISK-SEC-2**
+en `WanomiRefactor.md` v0.23 con rotación diferida al mismo trigger
+que RISK-SEC-1. **Lecciones de método** que quedan protocolizadas:
+- Antes de killear cualquier proceso, capturar
+  `/proc/PID/environ` ENTERO con `tr '\0' '\n' > /tmp/env-preX.txt` y
+  revisar el archivo completo — nunca grep filtrante.
+- El `cwd` del shell puede cambiar entre commands (mi `cd` para
+  relanzar el sim me hizo fallar el `git add` de R5 hasta re-anclar
+  con `cd /root/IotLocalhost &&`). Consecuencia: comandos git usan
+  path absoluto o re-cd explícito.
+
+### Cleanup del E2E (R8, verificado antes/después)
+
+| Ítem | Antes | Después |
+|---|---|---|
+| Pack `e2e-cascade-test-v1` | 1 doc | 0 (lista = `cummins-pcc-v1`) |
+| Notifs franja (T_RUN_START..T_RUN_END) | 2 docs (root + child) | 0 |
+| Motor edge | PID 11026 con pack de prueba | PID **12691** relanzado, `Packs cargados: cummins-pcc-v1` |
+| Simulador `run.js` | PID 9163 | PID 9163 (intocado) |
+
+### Estado git al cierre de A3.3 (antes de commits de cierre)
+Branch `feature/telco-support`, 2 commits ahead de origin, SIN PUSH:
+- `e25fefa` — feat: persist correlationParent in notifications (DEC-REF-50).
+- `621691c` — feat(simulator): add mains_failure_gen_no_start cascade scenario (DEC-REF-49).
++ este cierre docs (pendiente en R9). 2 untracked hardware arrastrados
+desde #37.
+
+### Estado del entorno al cierre
+- docker `node` / `emqx` / `mongo` — Up 4 días (healthy).
+- motor edge PID 12691 con solo `cummins-pcc-v1` cargado.
+- simulador `run.js` PID 9163 con 10/10 devices publicando sanos.
+- Mongo `rulepacks` = `[cummins-pcc-v1]`, sin residuos de fixtures.
+
+### Pendiente — próxima sesión (#41)
+Prioridad Franco (secuencia #32): BACKLOG-TENANT-4 primero. Después,
+retomar el carril A3→A4:
+- **A4** — RulePack cascada productivo: reconciliar BACKLOG-RULE-3
+  (mismatch nomenclatura pack ↔ template), formalizar `graceSec` en el
+  schema `rule_definition.js`, decidir alcance de reglas cross en el
+  RulePack productivo (cascada energética completa).
+- **BACKLOG-SIM-4**: modelado del dominio real de `transfer_state`
+  (criterio de Área 3).
+- Fase B (frontend) y Carril 2 (consola) siguen después según #37.
