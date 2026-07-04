@@ -308,6 +308,15 @@ const SCENARIOS = {
     ],
   },
 
+  mains_failure_gen_no_start: {
+    description: 'Corte de red — generador NO arranca (cascada)',
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0,     set: { mains_voltage: 0 } },
+    ],
+  },
+
   mains_restore: {
     description: 'Restauración de red — ATS vuelve a red, generador se apaga',
     duration_ms: 30000,
