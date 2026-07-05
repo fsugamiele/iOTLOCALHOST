@@ -2917,6 +2917,94 @@ retomar el carril A3→A4:
 > (3) DEC-REF-52 antes del código, (4) exclusiones: `data` histórico,
 > `notifications`, `templates` (consistente DEC-REF-36/37).
 
+### R4-R5 — Ejecución TENANT-9 + destrabe del self-heal
+
+**R4 (freno):** el script ejecutó limpio (10/10 saverrules SERVICE, backup
+`seeds/_dev/backup_tenant9_2026-07-05_15-33-08.json`), pero
+`docker restart node` NO gatilló `reconcileRules()`: waitForSaverResource
+timeout 120s (38 × 3s) porque los 3 resources EMQX (`rule/alarm/saver-webhook`)
+tienen `url=http://localhost:3001/...` (desde el contenedor `emqx`, localhost
+apunta al propio emqx, sin backend). Causa raíz: `app/.env` tiene
+`WEBHOOKS_HOST=localhost` mientras CLAUDE.md documenta `node` (deriva
+`.env` real ↔ documentación, ver BACKLOG-OPS-2). El bootstrap
+(`emqxapi.js:78-88`) es create-if-missing puro — no actualiza URL de
+resources existentes. **Freno en R4 y consulta a Franco.**
+
+**Decisión de Franco (opción 1 ampliada):** corregir `app/.env` +
+DELETE de los 3 resources muertos + `docker restart node`. Registrar la
+causa raíz refinada como adenda a DEC-REF-52 y a BACKLOG-OPS-1, y abrir
+BACKLOG-OPS-2 (auditoría de deriva `.env` ↔ CLAUDE.md). El tratamiento
+uniforme a los 3 resources (no solo saver-webhook) fue aprobado: es el
+mismo fix, mismo self-heal — corrige toda la deriva de una vez.
+
+**Nota de scope:** el cambio en `app/.env` es config fuera del repo
+(`.env` gitignored), pero se registra acá para prevenir drift entre
+sesiones (precedente: cambios fuera de prompt se anotan en bitácora).
+Valor viejo: `WEBHOOKS_HOST=localhost` · valor nuevo: `WEBHOOKS_HOST=node`.
+
+### R5 — Ejecución del fix + validación E2E
+
+**Fix aplicado:** `app/.env` línea 5 (`WEBHOOKS_HOST=localhost → node`);
+DELETE de los 3 resources muertos vía EMQX API v4 (`code:0` en los 3);
+`docker restart node`. Bootstrap creó los 3 resources con
+`url=http://node:3001/...` (ids nuevos `e2327e37`, `95b9d530`,
+`cd1dfc4e`); `reconcileSaverRules` ejecutó y creó **10 rules EMQX** con
+recreate + relink automático de los 10 `emqxRuleId` (ids nuevos, ninguno
+de los huérfanos originales).
+
+**Anatomía real** de la rule para `dId=a0qjh6dh` (recreada por el
+reconcile, `emqxRuleId=rule:59e6d435`): `SELECT topic, payload FROM
+"6a3992b435afd807a7f992fe/a0qjh6dh/+/sdata" WHERE payload.save = 1` —
+FROM y `payload_tmpl` con userId SERVICE en ambos lugares (evidencia
+directa del veredicto R3 A: el reconcile lee `rule.userId` del doc
+Mongo). `$resource=resource:e2327e37`, `enabled=True`.
+
+**E2E persistencia (tap 429s):**
+- Snapshot pre-tap: `data` total 737, SERVICE 272, PERSONAL 465 (viejos);
+  max(time) 2026-07-05T15:49:45Z (persistencia YA activa desde el
+  restart).
+- Teórico ajustado por 429s: ~974 msgs sobre 10 devices.
+- **Resultado**: 860 docs nuevos, **860/860 SERVICE, 0 PERSONAL**.
+  Distribución por dId coherente con templates (4 SEC × 106, CUMMINS 80,
+  4 GEN × 75, ATS 56). Dentro del rango razonable con jitter de arranque
+  de intervalos.
+- Persistencia RESTAURADA end-to-end.
+
+**Fila de oro DEC-REF-36 (validación positiva completada, pendiente
+desde #33):** `GET /api/get-last-data?dId=6z4LN2md&variable=mains_voltage&chartTimeAgo=10`
+
+| Actor | Response | Interpretación |
+|---|---|---|
+| `cellowner-nea` (grant claro/nea) | `{status:"success", data:[9 muestras SERVICE, ~226-230V]}` | 200 con valor por grant ✓ |
+| `fsugamielecinetiksrl` (grants:[]) | `{status:"success", data:[]}` | 200 vacío por DENY de scope ✓ |
+| `admin@wanomi.com` (super) | `{status:"success", data:[9 muestras SERVICE]}` | 200 con valor ✓ |
+
+Path histórico por `dId` vía `resolveScopedDIds` (DEC-REF-34) funciona
+sobre dato REAL, no solo sobre device efímero cross-tenant (#30.1).
+
+**TENANT-9 CERRADO** — self-heal del producto validado end-to-end: el
+mandato de Franco ("dejar la auto-reparación funcionando, no solo
+destrabada") queda cumplido.
+
+**Ruta del backup**: `seeds/_dev/backup_tenant9_2026-07-05_15-33-08.json`
+(10 entradas con `userId` PERSONAL y `emqxRuleId` huérfanos).
+
+**Rollback (contingencia NO ejecutada):**
+1. `node seeds/migrate_tenant9_saverrules.js --restore seeds/_dev/backup_tenant9_2026-07-05_15-33-08.json`
+   — repone `userId=PERSONAL` + `emqxRuleId` viejos.
+2. `DELETE /api/v4/rules/{id}` × 10 sobre los ids nuevos (los que el
+   reconcile creó).
+3. `docker restart node` — el reconcile encontrará los 10 emqxRuleId
+   viejos (huérfanos otra vez), recreará las 10 rules pero con SQL
+   PERSONAL → topic sin matcher → volvemos al estado pre-migración.
+
+**Estado del entorno al cierre**:
+- sim `run.js` PID 9163 (intocado), edge `edge-engine/index.js` PID 12691
+  (intocado), backend `docker node` reiniciado (bootstrap sano).
+- Mongo: `saverrules` 10/10 SERVICE con `emqxRuleId` relinkeados;
+  `data` creciendo activamente con `userId=SERVICE`.
+- EMQX: 3 resources sanos (`http://node:3001/...`); 10 rules enabled.
+
 ### R3 — Veredicto A + registro DEC-REF-52 y BACKLOG-OPS-1
 
 **Veredicto A (Variante B confirmada tal cual):** `reconcileSaverRules`
