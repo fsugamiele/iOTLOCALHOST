@@ -3039,6 +3039,39 @@ tal como quedó (R4-R5 antes de R3 por artefacto del edit posición) se
 mantiene — **append-only prima sobre cosmética**; no se reordena por
 prolijidad, solo por corrección de contenido.
 
+### Sesión #41 CERRADA
+
+- **TENANT-9 CERRADO** — self-heal del producto validado end-to-end
+  (mandato de Franco cumplido: auto-reparación funcionando, no solo
+  destrabada). Fila de oro DEC-REF-36 saldada (validación positiva
+  pendiente desde #33 completada sobre dato REAL).
+- **Registro**: WanomiRefactor.md v0.25 con DEC-REF-52 (Variante B) +
+  DEC-REF-52-A (adenda causa raíz refinada + fix self-heal);
+  BACKLOG-OPS-1 (enriquecido) y BACKLOG-OPS-2 (deriva `.env` ↔
+  CLAUDE.md) abiertos; adenda RISK-SEC de passwords dev al checklist
+  de rotación diferida.
+- **Rango pusheado**: `bf52b95..6845a93` (4 commits de #41): `582581e`
+  (DEC-REF-52 + OPS-1), `5d81bcf` (script migración), `b44d87a` (cierre
+  R3-R5 + BACKLOG-OPS-2 + bump v0.25), `6845a93` (fix DEC-REF-52 +
+  adenda RISK-SEC).
+- **Entorno al cierre**: sim `run.js` PID 9163 (intocado), edge
+  `edge-engine/index.js` PID 12691 (intocado), backend `docker node`
+  reiniciado y sano; Mongo `saverrules` 10/10 SERVICE con `emqxRuleId`
+  relinkeados, `data` creciendo activamente bajo `userId=SERVICE`;
+  EMQX 3 resources sanos + 10 rules enabled.
+
+### Pendiente — próxima sesión (#42)
+
+- **A4 del carril A3→A4**: RulePack cascada productivo. Arrastra la
+  decisión pendiente de **BACKLOG-RULE-3** (mismatch nomenclatura pack
+  `cummins-pcc-v1` ↔ template `WN-GEN-Cummins-PowerCommand` —
+  `oil_pressure_psi` vs `oil_pressure`, `fuel_level_pct` vs
+  `fuel_level`). Requiere sala con Área 1 (dominio semántico) y Área 3
+  (mapping driver Modbus futuro) para elegir entre las tres opciones
+  registradas (rename en el pack, mapping en el bridge, reglas duales
+  transicionales).
+- Fase B (frontend) y Carril 2 (consola) siguen después según #37.
+
 ### R3 — Veredicto A + registro DEC-REF-52 y BACKLOG-OPS-1
 
 **Veredicto A (Variante B confirmada tal cual):** `reconcileSaverRules`
