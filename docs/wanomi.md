@@ -2900,3 +2900,47 @@ retomar el carril A3→A4:
 - **BACKLOG-SIM-4**: modelado del dominio real de `transfer_state`
   (criterio de Área 3).
 - Fase B (frontend) y Carril 2 (consola) siguen después según #37.
+
+## Sesión #41 — 2026-07-05 · Área 2 · BACKLOG-TENANT-4 (migración userId Claro → service account)
+
+> Adenda RISK-SEC-2 (#40): verificación posterior al cierre de #40 halló
+> 3 ocurrencias históricas de la credencial en `wanomi.md` (líneas
+> 1750/1912/2488), previas a #40 y ya pusheadas a origin; cubiertas por
+> el mismo trigger de rotación. El registro de #40 queda preciso con
+> esta adenda.
+
+> **Re-encuadre (aprobado por Franco):** recon R1 detectó premisa
+> desalineada — TENANT-4 cerrado en #33 (DEC-REF-36). Sesión
+> re-encuadrada a **BACKLOG-TENANT-9** (saver rules PERSONAL→SERVICE).
+> Sala: (1) script dedicado idempotente con backup+`--restore`,
+> (2) EMQX in-place preferido con fallback recreate+relink,
+> (3) DEC-REF-52 antes del código, (4) exclusiones: `data` histórico,
+> `notifications`, `templates` (consistente DEC-REF-36/37).
+
+### R3 — Veredicto A + registro DEC-REF-52 y BACKLOG-OPS-1
+
+**Veredicto A (Variante B confirmada tal cual):** `reconcileSaverRules`
+(`emqxapi.js:257-320`) lee `rule.userId` del doc Mongo `saverrules` en
+los dos puntos que reproducen la geometría de la creación original:
+`:296` (FROM del SQL, `topic = rule.userId + "/" + rule.dId + "/+/sdata"`)
+y `:304` (`payload_tmpl`, `"userId":"' + rule.userId + '"'`). Migrar el
+doc primero ⇒ el recreate del reconcile deja EMQX con SERVICE en ambos
+lugares. Gatillo: `initEmqxResources()` top-level en el `require` del
+router (`emqxapi.js:534`) → espera saver resource (`:527-531`) → si
+ready dispara `reconcileRules()`. Proceso a reiniciar para gatillarlo:
+**contenedor `node`** (`docker restart node`), sin rebuild del bundle
+Nuxt (nada del bundle cambia). El corte de R2-B4 (EMQX Rule Engine en
+0) hace que la rama in-place se disuelva por falta de sujeto: el único
+path es create+relink (patrón ya existente en el propio reconcile,
+`emqxapi.js:308-313`).
+
+**Registrado en `WanomiRefactor.md` v0.24:**
+- **DEC-REF-52** — TENANT-9 vía self-heal del producto (Variante B),
+  con la causa raíz doble, el orden obligatorio (script → restart), el
+  backup+`--restore` Mongo-only, y las exclusiones sellosadas por R2-B5.
+- **BACKLOG-OPS-1** — durabilidad de reglas/config EMQX ante ciclo de
+  vida del contenedor (nueva sección `5f · Backlog de operaciones`).
+  No urgente: el self-heal cubre el gap operativo; el hardening
+  (persistencia real del volumen EMQX + auditoría de resources/ACLs/
+  reglas alarm/actuator) queda como checklist de deployment junto a
+  RISK-SEC-1/2.
