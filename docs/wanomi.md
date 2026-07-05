@@ -3005,6 +3005,40 @@ destrabada") queda cumplido.
   `data` creciendo activamente con `userId=SERVICE`.
 - EMQX: 3 resources sanos (`http://node:3001/...`); 10 rules enabled.
 
+### R6 — Fix de registro + adenda RISK-SEC
+
+**Fix DEC-REF-52:** el registro que R5 escribió violaba la convención
+"las DEC-REF-* NO se modifican retroactivamente" — reemplazó la fila
+original renombrándola `(adenda)`, antepuso el texto nuevo y dejó un `|`
+sin escapar en medio del texto que rompía la tabla markdown (columna
+fantasma). Restaurado: fila `DEC-REF-52` con su texto original R3
+exacto, y adenda R4/R5 movida a fila NUEVA `DEC-REF-52-A`. Verificación
+mecánica: ambas filas 4 pipes / 3 columnas. Ningún cambio semántico —
+todo el contenido preservado, solo redistribuido para respetar
+convención.
+
+**Adenda RISK-SEC (append al checklist de rotación diferida a
+producción)** — sumar al mismo trigger de RISK-SEC-1/2 las passwords de
+usuarios dev que aparecieron en bitácora o chat durante desarrollo:
+- `admin@wanomi.com` (contexto #41-R5 D5, provista por Franco por chat).
+- `cellowner-nea@wanomi.test` (documentada en `wanomi.md:1955` desde
+  commit `0425840`).
+- `fsugamielecinetiksrl@gmail.com` (contexto #40-R5 + #41-R5).
+- `telco-test@wanomi.test` (existencia registrada; password no
+  confirmada, sumar al checklist por precaución).
+
+Misma política que las otras entradas RISK-SEC: **rotación con
+disparador en deployment a producción, sin urgencia en dev** (entorno
+localhost, sin cliente externo). Lección de método ratificada de #33
+(`wanomi.md:2135`): "para E2E con credenciales, firmar JWT directo con
+JWT_SECRET (no pasar passwords por el shell)" — aplicable a futuras
+sesiones si el vector se puede evitar.
+
+**Decisión de Franco sobre orden de la bitácora:** el orden R3/R4-R5
+tal como quedó (R4-R5 antes de R3 por artefacto del edit posición) se
+mantiene — **append-only prima sobre cosmética**; no se reordena por
+prolijidad, solo por corrección de contenido.
+
 ### R3 — Veredicto A + registro DEC-REF-52 y BACKLOG-OPS-1
 
 **Veredicto A (Variante B confirmada tal cual):** `reconcileSaverRules`
