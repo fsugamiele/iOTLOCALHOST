@@ -1,7 +1,8 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
-const { buildReadFilter } = require("../middlewares/scope.js");
+const { buildReadFilter, buildWriteFilter, scopeFilterFor } = require("../middlewares/scope.js");
 
 import Site   from "../models/site.js";
 import Device from "../models/device.js";
@@ -196,6 +197,74 @@ router.get("/site/:siteCode/alarms", checkAuth, async (req, res) => {
   }
 });
 
+// ACK ALARM — DEC-REF-46 / DEC-REF-54
+// Registra atención humana con autoría auditable. Idempotente: si ya está
+// ACKeada, responde 200 con la autoría original SIN sobrescribir. No toca
+// `readed` (que sigue siendo vista pasiva del listado — DEC-REF-45).
+// Gate: buildWriteFilter('Notification') — el grant del actor debe alcanzar
+// el siteId de la notif (fail-closed sobre derivados, DEC-REF-37).
+router.put("/site/:siteCode/alarms/:notificationId/ack", checkAuth, async (req, res) => {
+  try {
+    const { siteCode, notificationId } = req.params;
+    const actorId = req.userData._id;
+
+    if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+      return res.status(400).json({ status: "error", error: "notificationId inválido" });
+    }
+
+    // Gate del site (DEC-REF-33 — evita ACK cross-site tosco).
+    const siteFilter = await buildReadFilter(req, 'Site');
+    const site = await Site.findOne({ ...siteFilter, siteCode }).lean();
+    if (!site) {
+      return res.status(404).json({ status: "error", error: "Site not found" });
+    }
+
+    // Gate de escritura sobre Notification.
+    const writeFilter = await buildWriteFilter(req, 'Notification');
+    const notif = await Notification.findOne({
+      ...writeFilter,
+      _id: notificationId,
+      siteId: siteCode
+    });
+    if (!notif) {
+      return res.status(403).json({ status: "error", error: "forbidden: grant does not cover this notification" });
+    }
+
+    // Idempotencia: primera ACK es la que vale.
+    if (notif.ackAt != null) {
+      return res.json({
+        status: "success",
+        data: {
+          _id: notif._id,
+          acknowledgedBy: notif.acknowledgedBy,
+          ackAt: notif.ackAt,
+          idempotent: true
+        }
+      });
+    }
+
+    const ackAt = Date.now();
+    await Notification.updateOne(
+      { _id: notif._id, ackAt: null },
+      { $set: { acknowledgedBy: actorId, ackAt } }
+    );
+
+    return res.json({
+      status: "success",
+      data: {
+        _id: notif._id,
+        acknowledgedBy: actorId,
+        ackAt,
+        idempotent: false
+      }
+    });
+  } catch (error) {
+    console.log("ERROR ACKING NOTIFICATION");
+    console.log(error);
+    return res.status(500).json({ status: "error", error });
+  }
+});
+
 //NEW SITE
 router.post("/site", checkAuth, async (req, res) => {
   try {
@@ -207,6 +276,30 @@ router.post("/site", checkAuth, async (req, res) => {
     }
     if (!TIPO_ENUM.includes(newSite.tipo)) {
       return res.status(400).json({ status: "error", error: "tipo must be one of: BTS, shelter, repeater" });
+    }
+
+    // Write-authorization (DEC-REF-46/54, cierra BACKLOG-TENANT-3). Espejo
+    // del gate de lectura: superadmin permite todo; grants con scope deben
+    // cubrir `operatorCode` (y `zoneCode` si el grant lo especifica);
+    // sin grants → 403 (no ownership fallback en CREATE de sites, coherente
+    // con la ausencia semántica de "site propio" fuera de un operador).
+    const grants = req.userData.grants || [];
+    const scope  = await scopeFilterFor(grants, 'Site');
+    if (scope === null) {
+      return res.status(403).json({ status: "error", error: "forbidden: no grants covering this operator/zone" });
+    }
+    if (Object.keys(scope).length > 0) {
+      const okOperator = grants.some(g => {
+        if (g.role === 'superadmin') return true;
+        if (!g.scope || !g.scope.operatorCode) return false;
+        if (g.scope.operatorCode !== newSite.operatorCode) return false;
+        if (g.scope.zoneCode && g.scope.zoneCode !== newSite.zoneCode) return false;
+        if (g.scope.siteCode && g.scope.siteCode !== newSite.siteCode) return false;
+        return true;
+      });
+      if (!okOperator) {
+        return res.status(403).json({ status: "error", error: "forbidden: grant does not cover this operator/zone" });
+      }
     }
 
     newSite.userId      = userId;
@@ -225,10 +318,11 @@ router.post("/site", checkAuth, async (req, res) => {
 //DELETE SITE
 router.delete("/site", checkAuth, async (req, res) => {
   try {
-    const userId              = req.userData._id;
     const { siteCode, force } = req.query;
 
-    const site = await Site.findOne({ userId, siteCode });
+    // Write-gate (DEC-REF-46/54) — espejo de buildReadFilter.
+    const writeFilter = await buildWriteFilter(req, 'Site');
+    const site = await Site.findOne({ ...writeFilter, siteCode });
     if (!site) {
       return res.status(404).json({ status: "error", error: "site not found" });
     }
@@ -244,7 +338,7 @@ router.delete("/site", checkAuth, async (req, res) => {
       await Device.updateMany({ dId: { $in: site.devices } }, { $unset: { siteId: "" } });
     }
 
-    await Site.deleteOne({ userId, siteCode });
+    await Site.deleteOne({ ...writeFilter, siteCode });
     return res.json({ status: "success" });
   } catch (error) {
     console.log("ERROR DELETING SITE");
@@ -256,7 +350,6 @@ router.delete("/site", checkAuth, async (req, res) => {
 //UPDATE SITE FIELDS
 router.put("/site", checkAuth, async (req, res) => {
   try {
-    const userId   = req.userData._id;
     const body     = req.body.site || {};
     const siteCode = body.siteCode;
 
@@ -274,7 +367,9 @@ router.put("/site", checkAuth, async (req, res) => {
       return res.status(400).json({ status: "error", error: "no updatable fields provided" });
     }
 
-    const result = await Site.updateOne({ userId, siteCode }, { $set: update });
+    // Write-gate (DEC-REF-46/54) — espejo de buildReadFilter.
+    const writeFilter = await buildWriteFilter(req, 'Site');
+    const result = await Site.updateOne({ ...writeFilter, siteCode }, { $set: update });
     return res.json({ status: "success", data: result });
   } catch (error) {
     console.log("ERROR UPDATING SITE");
@@ -291,16 +386,19 @@ router.put("/site", checkAuth, async (req, res) => {
 //BIND DEVICE TO SITE
 router.post("/site/devices", checkAuth, async (req, res) => {
   try {
-    const userId            = req.userData._id;
     const { siteCode, dId } = req.body;
 
     if (!siteCode || !dId) {
       return res.status(400).json({ status: "error", error: "siteCode and dId are required" });
     }
 
+    // Write-gate (DEC-REF-46/54) — mismo filtro sobre Site y Device.
+    const siteWrite   = await buildWriteFilter(req, 'Site');
+    const deviceWrite = await buildWriteFilter(req, 'Device');
+
     const [site, device] = await Promise.all([
-      Site.findOne({ userId, siteCode }),
-      Device.findOne({ userId, dId })
+      Site.findOne({ ...siteWrite, siteCode }),
+      Device.findOne({ ...deviceWrite, dId })
     ]);
 
     if (!site)   return res.status(404).json({ status: "error", error: "site not found" });
@@ -316,8 +414,8 @@ router.post("/site/devices", checkAuth, async (req, res) => {
     // idempotente: si el device ya está bindeado al mismo siteCode,
     // $addToSet en site.devices y $set en device.siteId son no-ops.
     await Promise.all([
-      Site.updateOne({ userId, siteCode }, { $addToSet: { devices: dId } }),
-      Device.updateOne({ userId, dId },   { $set: { siteId: siteCode } })
+      Site.updateOne({ ...siteWrite, siteCode }, { $addToSet: { devices: dId } }),
+      Device.updateOne({ ...deviceWrite, dId },   { $set: { siteId: siteCode } })
     ]);
 
     return res.json({ status: "success" });
@@ -331,16 +429,19 @@ router.post("/site/devices", checkAuth, async (req, res) => {
 //UNBIND DEVICE FROM SITE
 router.delete("/site/devices", checkAuth, async (req, res) => {
   try {
-    const userId            = req.userData._id;
     const { siteCode, dId } = req.query;
 
     if (!siteCode || !dId) {
       return res.status(400).json({ status: "error", error: "siteCode and dId are required" });
     }
 
+    // Write-gate (DEC-REF-46/54).
+    const siteWrite   = await buildWriteFilter(req, 'Site');
+    const deviceWrite = await buildWriteFilter(req, 'Device');
+
     await Promise.all([
-      Site.updateOne({ userId, siteCode }, { $pull:  { devices: dId } }),
-      Device.updateOne({ userId, dId },   { $unset: { siteId: ""  } })
+      Site.updateOne({ ...siteWrite, siteCode }, { $pull:  { devices: dId } }),
+      Device.updateOne({ ...deviceWrite, dId },   { $unset: { siteId: ""  } })
     ]);
 
     return res.json({ status: "success" });

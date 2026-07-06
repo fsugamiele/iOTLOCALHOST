@@ -24,6 +24,11 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross'], default: 'direct' },
     thresholdUsed: { type: Number, default: null },
     unit:          { type: String, default: '' },
+    // DEC-REF-46 / DEC-REF-54 — ACK auditable. El motor no los llena; los
+    // deja como default para paridad de schema (app + edge sobre la misma
+    // colección `notifications`). Set por endpoint app-side.
+    acknowledgedBy: { type: String, default: null },
+    ackAt:          { type: Number, default: null },
   }, { collection: 'notifications' })
 );
 

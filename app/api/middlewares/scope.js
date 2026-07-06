@@ -136,6 +136,24 @@ async function buildReadFilter(req, modelName) {
   return { $or: [ { userId }, scope ] };
 }
 
+// buildWriteFilter(req, modelName) — espejo exacto de buildReadFilter para
+// autorizar escrituras (DEC-REF-46, DEC-REF-54, cierra BACKLOG-TENANT-3).
+//
+// Mismas 4 ramas:
+//   scope === DENY  → DENY_FILTER            (derivado sin tenencia, sin grant alcance → fail-closed)
+//   scope === null  → { userId }             (sin alcance vía grant → solo escribe lo propio)
+//   scope === {}    → {}                     (superadmin escribe todo)
+//   scope positivo  → { $or:[{userId}, scope] } (propio OR alcanzado por grant)
+//
+// Punto único de autorización (DEC-REF-33) también para writes: los endpoints
+// pasan el filtro a `updateOne`/`deleteOne`/`findOne` como precondición del write.
+// El fail-closed sobre derivados (Notification) reemplaza la "falla silente"
+// del `{userId: req.userData._id}` heredado (que dejaba al cellowner sin
+// poder tocar notifs con userId de la cuenta de servicio post-DEC-REF-36).
+async function buildWriteFilter(req, modelName) {
+  return buildReadFilter(req, modelName);
+}
+
 // resolveScopedDIds(req) — devuelve array de dIds alcanzables por el usuario actual.
 // Resolución para colecciones que NO tienen siteId propio (Data): el alcance del
 // grant se materializa como un set de dIds, NO como un filtro directo sobre la
@@ -201,4 +219,4 @@ async function resolveScopedDIdsWithOwner(req) {
   return devices.map(d => ({ dId: d.dId, userId: d.userId }));
 }
 
-module.exports = { scopeFilterFor, buildReadFilter, resolveScopedDIds, resolveScopedDIdsWithOwner };
+module.exports = { scopeFilterFor, buildReadFilter, buildWriteFilter, resolveScopedDIds, resolveScopedDIdsWithOwner };

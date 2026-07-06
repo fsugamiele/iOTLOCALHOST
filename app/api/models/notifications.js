@@ -27,10 +27,17 @@ const notificationSchema = new Schema({
     siteId:          { type: String },
     reason:          { type: String },
     source:          { type: String },   // 'emqx' | 'edge-engine'
-    mode:          { type: String },   // 'direct'|'calibrated'|'fallback'|'no-ref'|'window'
+    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross'] },
     thresholdUsed: { type: Number },
     unit:          { type: String },
     correlationParent: { type: String, default: null },  // DEC-REF-50
+
+    // DEC-REF-46 / DEC-REF-54 — ACK auditable, separado de `readed`.
+    // `readed` es vista pasiva del listado; `acknowledgedBy` + `ackAt` registran
+    // atención humana. Idempotente: primera ACK persiste, no se sobrescribe.
+    // Notifs preexistentes quedan con ambos null (sin migración).
+    acknowledgedBy: { type: String, default: null },
+    ackAt:          { type: Number, default: null },
 
 });
 

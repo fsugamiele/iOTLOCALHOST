@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
-const { buildReadFilter } = require("../middlewares/scope.js");
+const { buildReadFilter, buildWriteFilter } = require("../middlewares/scope.js");
 const mongoose = require("mongoose");
 const axios = require("axios");
 const crypto = require("crypto");
@@ -165,6 +165,13 @@ router.delete("/device", checkAuth, async (req, res) => {
     const userId = req.userData._id;
     const dId = req.query.dId;
 
+    // Write-gate (DEC-REF-46/54, cierra BACKLOG-TENANT-3).
+    const writeFilter = await buildWriteFilter(req, 'Device');
+    const existing = await Device.findOne({ ...writeFilter, dId });
+    if (!existing) {
+      return res.status(404).json({ status: "error", error: "device not found" });
+    }
+
     //deleting saver rule.
     await deleteSaverRule(dId);
 
@@ -178,7 +185,7 @@ router.delete("/device", checkAuth, async (req, res) => {
     await deleteMqttDeviceCredentials(dId);
 
     //deleting device
-    const result = await Device.deleteOne({ userId: userId, dId: dId });
+    const result = await Device.deleteOne({ ...writeFilter, dId });
 
     //devices after deletion
     const devices = await Device.find({ userId: userId });

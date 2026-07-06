@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
-const { buildReadFilter } = require("../middlewares/scope.js");
+const { buildReadFilter, buildWriteFilter } = require("../middlewares/scope.js");
 var mqtt = require("mqtt");
 const axios = require("axios");
 const colors = require("colors");
@@ -215,16 +215,26 @@ router.get("/notifications", checkAuth, async (req, res) => {
 });
 
 //UPDATE NOTIFICATION (readed status)
+// DEC-REF-46/54: pasa a usar buildWriteFilter en lugar de `{userId}` — así el
+// cellowner puede marcar "readed" sobre notifs de la cuenta de servicio
+// (fix de la falla silente post-DEC-REF-36). `readed` sigue siendo vista
+// pasiva del listado; el ACK auditable vive en /site/:siteCode/alarms/:id/ack.
 router.put("/notifications", checkAuth, async (req, res) => {
   try {
-    const userId = req.userData._id;
-
     const notificationId = req.body.notifId;
 
-    await Notification.updateOne(
-      { userId: userId, _id: notificationId },
+    const writeFilter = await buildWriteFilter(req, 'Notification');
+    const result = await Notification.updateOne(
+      { ...writeFilter, _id: notificationId },
       { readed: true }
     );
+
+    // Mongoose 5: el resultado usa `n` (matched count), no `matchedCount`
+    // (Mongoose 6+). Sostiene fail-closed sobre derivados sin grant (DENY).
+    const matched = (result.matchedCount != null) ? result.matchedCount : result.n;
+    if (matched === 0) {
+      return res.status(403).json({ status: "error", error: "forbidden: grant does not cover this notification" });
+    }
 
     const response = {
       status: "success"
