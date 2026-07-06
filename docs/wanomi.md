@@ -3186,3 +3186,127 @@ Cuatro decisiones cerradas, registradas como **DEC-REF-53** en
 
 Verificación #42-R2 A: `grep -n "Sesión #42" docs/wanomi.md` = 1 sola
 ocurrencia (línea 3103). Sin duplicado del header; nada que sanear.
+
+### R3-R4 — Diff mostrado + refinamientos de sala
+
+**R3 (diff inicial):** propuse diff schema (`graceSec` en
+`rule_definition.js`, junto a crossExpr) + diff seed
+`cummins_pcc_v1.js` (rename A1/G2, retiro D1/D2, agregado C1 cross
+como única regla de cascada, `correlationParent:null` propuesto por no
+existir madre en el pack). Fila de puntos a aprobar: umbral A1 Bar,
+parámetros C1, secuencia R5.
+
+**R4 (refinamientos):** sala refinó dos puntos sobre el diff R3:
+- **A1 ganó una hermana warning A0** — `oil_pressure < 2.0 Bar`,
+  severity warning, cooldown 300 (propuesto). Reglas independientes:
+  cuando `oil_pressure < 1.0` disparan ambas (defensa en profundidad).
+  Verificado con `typeD.js` que no hay estado compartido — cada regla
+  evalúa contra su condition, cooldown propio por `ruleId`.
+- **C1 gana madre (opción b de D4)** — se agrega alarma D
+  `cummins-M1-mains-loss` sobre el ATS, con base en el fixture E2E
+  `e2e-mains-loss-root` de A3.3 (bitácora #40-R7). Comentario obligatorio
+  en el código: "migrar a pack ATS futuro con DEC propio" — abre
+  **BACKLOG-RULE-5**.
+- **`C1.correlationParent = 'cummins-M1-mains-loss'`** (reemplaza el null
+  propuesto en R3) — cadena madre→hija persistida, evidencia de la
+  vista de cascada (DEC-REF-41/50).
+
+**Verificación estática del gate motor** (recon #42-R4 B4):
+`ruleEngine.js:29-30` compara `rule.deviceType !== deviceType`
+(deviceState del mensaje) — usa la propiedad de la regla, NO
+`pack.deviceType`. Corolario: una regla con `deviceType:'ATS'` dentro
+de un pack con `pack.deviceType:'cummins-pcc'` funciona correctamente
+(el motor recorre todos los packs y todas las reglas por mensaje, sin
+filtrar packs por su deviceType). Geometría "M1 ATS en pack Cummins"
+válida por construcción.
+
+Pack final aprobado: **5 reglas** — A0 (warning oil), A1 (critical
+oil), G2 (fuel), M1 (madre mains-loss), C1 (cross hija con parentesco a
+M1). Version 2.
+
+### R5 — Ejecución (commits sin push)
+
+**Paso 1 — schema:** aplicado. `graceSec: { type: Number }` insertado
+después de `crossExpr`. Verificado con `git diff` (+1 línea).
+
+**Paso 2 — seed:** aplicado íntegro contra el diff R4. Verificado con
+`git diff --stat` (+77/-42, 5 ruleIds presentes, D1/D2 ausentes,
+`graceSec:90` y `correlationParent:'cummins-M1-mains-loss'` en su
+lugar).
+
+**Paso 3 — seed run:** `node seeds/cummins_pcc_v1.js` → `✅ Seed OK —
+packId: cummins-pcc-v1 · version: 2 · reglas: 5`. La primera regla
+cross seedeada por vía canónica `findOneAndUpdate + runValidators:true`
+— el momento que D3 destrababa.
+
+**Paso 4 — Mongo (checklist):** 5 reglas, version 2. `A0.condition
+{op:'lt',value:2}`, warning. `A1.unit:'Bar', condition {op:'lt',value:1}`,
+critical. `G2.variable:'fuel_level'`. `M1.deviceType:'ATS',
+variable:'mains_voltage', condition {op:'lt',value:100}`. **`C1.type:'cross',
+correlationParent:'cummins-M1-mains-loss', graceSec:90 PERSISTIDO (no
+silenciado por mongoose), crossExpr.op:'AND'`** ← evidencia de D3
+destrabado.
+
+**Paso 5 — restart edge:** env íntegro capturado en
+`/tmp/edge-env-preR5.txt` (40 líneas totales, 6 app-relevantes
+revisadas — lección #40). `kill 12691` directo. Relanzado con env
+replicado + NODE_PATH. **Nuevo PID: 32527**. Sim PID 9163 intocado.
+
+**Paso 6 — carga limpia:** log arranque muestra `Packs cargados:
+cummins-pcc-v1`, sin descartes ni warnings de `validateCrossTree`.
+
+**Paso 7 — E2E cascada M1→C1 (evidencia de oro):**
+
+- **T0 = 2026-07-06T12:36:54Z (1783341414135)**.
+- Baseline pre-trigger: M1=0, C1=0.
+- Trigger: `mains_failure_gen_no_start` sobre `6z4LN2md`.
+- **M1 disparó a T0+31ms** (¡velocidad excelente, tick immediate del
+  step at 0). `mode:'direct', reason:'threshold', severity:'critical',
+  correlationParent:null, thresholdUsed:100, value:0`. Doc completo
+  persistido en `db.notifications`.
+- **C1 disparó a T0+99.4s** (grace 90s + próximo tick ~10s, coherente
+  con A3.3). `mode:'cross', reason:'cross-tree-fired',
+  severity:'critical', correlationParent:'cummins-M1-mains-loss'` ←
+  **cadena madre→hija persistida, evidencia de la vista de cascada
+  DEC-REF-41/50**.
+- Unicidad a T0+217s: M1=1, C1=1 sostenidos (cooldown 300s conteniendo).
+- Restore `mains_restore` + 90s espera: M1=1, C1=1 sin re-emisiones
+  (árbol cross false por `mains_voltage` restaurado + cooldown).
+- Smoke TENANT-9: `data` SERVICE creció de 66,368 (baseline #42-R1) a
+  **154,182 docs** — self-heal sostenido, sim publicando bajo SERVICE
+  sin interrupciones.
+
+**Paso 8 — docs + commits:**
+- WanomiRefactor.md v0.26 → **v0.27**.
+- Adenda a DEC-REF-53 (dos refinamientos R4: A0 + opción (b) madre M1
+  + BACKLOG-RULE-5).
+- **BACKLOG-RULE-5** — migración futura de M1 a pack ATS propio.
+- Bitácora Sesión #42: R3/R4/R5 con evidencia numérica y timestamps.
+
+Commits (3, un concern c/u, sin push):
+1. `feat(edge-schema): formalize graceSec in rule_definition schema (DEC-REF-53 D3)`
+2. `feat(seeds): reconcile cummins-pcc-v1 pack — A0/A1/G2 renamed, D1/D2 retired, M1+C1 cascada (DEC-REF-53)`
+3. `docs(session-42): cierre A4 — pack reconciliado, cadena M1→C1 validada E2E, BACKLOG-RULE-5 (v0.27)`
+
+### Estado del entorno al cierre R5
+
+- Motor edge PID **32527** (relanzado en R5).
+- Sim `run.js` PID 9163 (intocado desde #40).
+- docker Up: mongo/emqx 7d, node 9h.
+- Mongo `rulepacks`: `[cummins-pcc-v1]` (5 reglas, version 2).
+- `data` SERVICE creciendo activamente (TENANT-9 sostenido).
+- Backup pre-migración: N/A (este seed es idempotente por
+  `findOneAndUpdate`; el pack anterior con 4 reglas D solo puede
+  recuperarse desde `git show` del archivo pre-R5).
+
+### Pendiente — próxima sesión (#43)
+
+- **A5-A8 del carril**: backend MVP (endpoints de sites, feed de
+  alarmas DEC-REF-43/44, ACK con auditoría DEC-REF-46, consola de
+  reglas superadmin DEC-REF-42).
+- **BACKLOG-RULE-5**: migración de M1 a pack ATS propio (no urgente).
+- **BACKLOG-RULE-4**: reglas de mantenimiento preventivo por horas
+  de uso (disparador BACKLOG-EDGE-1 driver Modbus).
+- **BACKLOG-SIM-4**: modelado real de `transfer_state` (criterio Área
+  3) para desbloquear cascada energética completa.
+- Fase B (frontend) y Carril 2 (consola) siguen después según #37.
