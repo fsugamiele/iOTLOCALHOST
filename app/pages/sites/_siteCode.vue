@@ -136,6 +136,12 @@ export default {
       status: 'ok',
       map: null,
       marker: null,
+      // Feed A5 (DEC-REF-43/54): alarms + mapa variable→severidad + cursor.
+      alarms: [],
+      variableSeverity: {},
+      alarmsCursor: null,
+      // Real-time-lite A7 (DEC-REF-44/54): handler bindeado a $nuxt bus.
+      _notifHandler: null,
     };
   },
 
@@ -154,9 +160,22 @@ export default {
   async mounted() {
     await this.$store.dispatch('getDevices');
     await this.loadDetail();
+    await this.loadAlarms();
+
+    // Real-time-lite (DEC-REF-44/54): re-fetch acotado del feed al recibir
+    // una notif por MQTT. Usa la ACL browser existente (DEC-REF-38); NO abre
+    // tópicos nuevos. El handler emite en default.vue ($nuxt.$emit).
+    this._notifHandler = () => {
+      this.loadAlarms().catch((e) => console.warn('[SiteDetail] loadAlarms on notif failed', e));
+    };
+    this.$nuxt.$on('wanomi:notif', this._notifHandler);
   },
 
   beforeDestroy() {
+    if (this._notifHandler) {
+      this.$nuxt.$off('wanomi:notif', this._notifHandler);
+      this._notifHandler = null;
+    }
     if (this.map) {
       this.map.remove();
       this.map = null;
@@ -210,6 +229,26 @@ export default {
             if (this.map) this.map.invalidateSize();
           });
         }
+      }
+    },
+
+    async loadAlarms() {
+      // Feed A5 (DEC-REF-43/54). Refresh acotado invocado en mounted + en
+      // cada `wanomi:notif` (DEC-REF-44). Silent on error — no rompe la
+      // vista del site aunque el feed falle transitoriamente.
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.get(
+          '/site/' + encodeURIComponent(this.siteCode) + '/alarms?limit=50',
+          headers,
+        );
+        if (res.data && res.data.status === 'success' && res.data.data) {
+          this.alarms = res.data.data.alarms || [];
+          this.variableSeverity = res.data.data.variableSeverity || {};
+          this.alarmsCursor = res.data.data.cursor || null;
+        }
+      } catch (err) {
+        console.warn('[SiteDetail] /alarms fetch error', err.message);
       }
     },
 

@@ -287,12 +287,17 @@ export default {
           const msgType = splittedTopic[3];
 
           if (msgType == "notif") {
+            const raw = message.toString();
             this.$notify({
               type: "danger",
               icon: "tim-icons icon-alert-circle-exc",
-              message: message.toString()
+              message: raw
             });
             this.$store.dispatch("getNotifications");
+            // Real-time-lite (DEC-REF-44 / DEC-REF-54): reemitir al bus de Nuxt
+            // para que la vista de detalle de site escuche y dispare re-fetch
+            // acotado. No abre tópicos MQTT nuevos (ACL browser DEC-REF-38).
+            this.$nuxt.$emit("wanomi:notif", raw);
             return;
           } else if (msgType == "sdata") {
             this.$nuxt.$emit(topic, JSON.parse(message.toString()));
