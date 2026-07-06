@@ -3436,3 +3436,198 @@ a producción, sin cambio). Backlog absorbidos NO se editan; anotados con
 
 Este prompt ejecuta **A5+A6+A7** con gates internos (STOP si falla la
 validación de cualquier fase). A8 y A9 se retoman en prompts posteriores.
+
+### R3 — A5 ejecutado (feed alarmas del detalle de site)
+
+Handler nuevo `GET /site/:siteCode/alarms` en
+`app/api/routes/sites.js:130-197`. Reglas de gate:
+
+- `Site.findOne({...buildReadFilter('Site'), siteCode})` → 404 si el
+  gate niega (mismo comportamiento que `/site/:siteCode/full`).
+- Feed: `Notification.find({...buildReadFilter('Notification'), siteId,
+  ...(before?time:{$lt:before}:{})}).sort({time:-1}).limit(limit).lean()`.
+  Sin projection — `correlationParent` y `mode` viajan crudos.
+- Mapa `variableSeverity`: aggregate con la MISMA ventana `SEVERITY_WINDOW_MS
+  = 15*60*1000` (constante nueva a nivel de módulo, reusada también por
+  `/sites/status` — antes era una constante local de handler).
+- `limit` default 50, cap 200; `before` cursor por `time` numérico.
+- Respuesta: `{status, data: {siteCode, alarms, variableSeverity, cursor}}`.
+
+E2E `curl` con JWT firmado en runtime (5 checks):
+- **a**: cellowner `GET /site/CR00061/alarms` → 200, 50 alarms + cursor
+  `1783360112505` + `variableSeverity:{oil_pressure:'critical'}`. Sin
+  paginar hay 50 A0/A1 recientes (variables de aceite disparando).
+- **a-bis**: paginación al pasado (`before=1783341600000`) trae la cadena
+  M1→C1: `M1 _id=6a4ba166... time=1783341414166 mode=direct`; `C1
+  _id=6a4ba1c9... time=1783341513487 mode=cross
+  correlationParent=cummins-M1-mains-loss`. La cadena persistida en #42
+  llega **cruda al feed** sin proyección que la mate.
+- **b**: `?limit=2` + `?limit=2&before=<cursor>` avanza sin duplicados
+  (page1 IDs `...7629, ...7627` · page2 IDs `...7624, ...7623`).
+- **c**: personal-user → 404 "Site not found" (gate del Site niega antes de
+  llegar al feed — más estricto que 403 y semánticamente coherente con
+  `/site/:siteCode/full`).
+- **d**: admin → 200 con data.
+- **e**: siteCode inexistente → 404 limpio (`{status:"error",error:"Site
+  not found"}`), sin stack trace en el response.
+
+Commit: **`130c4da`** — `feat(api): GET /site/:siteCode/alarms — feed
+gateado + mapa variable→severidad (DEC-REF-43, DEC-REF-54)`.
+
+### R4 — A6 ejecutado (buildWriteFilter + ACK auditable + writes gateados)
+
+**buildWriteFilter** (`app/api/middlewares/scope.js:139-160`): espejo
+exacto de `buildReadFilter` — mismas 4 ramas (DENY / null / {} / positivo),
+misma composición. JSDoc registra la elección semántica.
+
+**Schema `notifications`** (ambos lados):
+- `app/api/models/notifications.js`: `acknowledgedBy` (String, default
+  null) + `ackAt` (Number, default null). Enum de `mode` alineado con edge
+  (`['direct','calibrated','fallback','no-ref','window','cross']`).
+- `edge-engine/notificationRouter.js` NotificationRO: mismos dos campos.
+  Motor no los llena (default null) — set exclusivo desde app.
+
+**Endpoint ACK** (`sites.js:206-262`): `PUT
+/site/:siteCode/alarms/:notificationId/ack`. Doble gate: `buildReadFilter('Site')`
+sobre el siteCode + `buildWriteFilter('Notification')` sobre el notif.
+Idempotente: si `ackAt != null`, responde 200 con la autoría original y
+`idempotent:true`; nunca sobrescribe.
+
+**Writes gateados**:
+- `sites.js`: POST /site rechaza con 403 explícito si `scope===null` o si
+  el grant no cubre operatorCode/zoneCode del payload; DELETE/PUT y
+  bind/unbind pasan por `buildWriteFilter('Site')`/`buildWriteFilter('Device')`.
+- `devices.js`: DELETE /device gateado con `buildWriteFilter('Device')` +
+  findOne guard (404 si no matchea).
+- `webhooks.js` PUT /notifications: reemplaza `{userId:req.userData._id}`
+  por `{...buildWriteFilter('Notification'), _id}` — fin de la falla
+  silente sobre notifs de la cuenta de servicio. Respuesta 403 si
+  `matchedCount===0` (Mongoose 5 usa `result.n`; guardado defensivo por
+  compat futura con Mongoose 6+).
+
+**Restart de node** (código nuevo) y **restart del edge**: PID viejo
+32527 killeado tras capturar `/proc/32527/environ` (`SITE_ID=CR00061`,
+`MONGODB_URI=mongodb://iotixmongo:...@localhost:27017/iotix`,
+`MQTT_HOST=mqtt://localhost:1883`, `MQTT_USER=superiotix`,
+`NODE_PATH=/root/IotLocalhost/app/node_modules`) y cwd
+`/root/IotLocalhost`. Relanzado con `nohup node edge-engine/index.js`
+bajo el mismo entorno — **PID nuevo 40054**.
+
+E2E `curl` (6 checks):
+- **a**: cellowner ACK notif `6a4bf6f0...` → 200, Mongo
+  `acknowledgedBy=6a3458629b940316ccafa60b, ackAt=1783363405319,
+  readed=false` (intacto).
+- **b**: admin re-ACK → 200 `idempotent:true`, autoría original
+  preservada (cellowner sigue como `acknowledgedBy`, `ackAt` intacto).
+- **c**: personal ACK sobre CR00061 → 404 "Site not found" (site gate
+  fail-closed antes del notif gate; explícito, no silencioso).
+- **d**: personal PUT /notifications sobre notif de Claro → 403 explícito
+  ("forbidden: grant does not cover..."); cellowner sobre la misma →
+  200 y `readed:true` en Mongo (fix confirmado de la falla silente).
+- **e**: personal POST /site → 403; admin POST /site (con cleanup
+  posterior) → 200 `TEST-A6-01`.
+- **f**: edge post-restart escribe notifs con campos nuevos en null
+  (schema parity sin romper el flujo): 3 notifs post-restart con
+  `acknowledgedBy=null, ackAt=null`. Sim + edge PIDs vivos (9163,
+  40054); `data.count = 199,519` (+39,660 respecto al arranque R1),
+  ingesta viva.
+
+Commit: **`b4b9b0a`** — `feat(auth+api): buildWriteFilter + ACK
+auditable + write-gates Site/Device/Notification (DEC-REF-46, cierra
+BACKLOG-TENANT-3)`.
+
+### R5 — A7 ejecutado (Zone CRUD + real-time-lite)
+
+**Zone en el árbol de tenancy**: `hasDenyFallback('Zone')` = true
+(entidad jerárquica sin `userId` en schema — sin ownership fallback,
+fail-closed sin grant, análogo a Notification/Template). Nueva rama
+en `scopeFilterFor` que filtra Zone por `operatorCode` (+ `zoneCode`
+si el grant lo especifica).
+
+**Ruta nueva** `app/api/routes/zones.js`:
+- GET /zone → gateado por `buildReadFilter('Zone')`.
+- POST /zone → checa manualmente si el actor es superadmin O tiene un
+  grant que cubra `operatorCode` (+ zoneCode del grant si aplica);
+  403 explícito si no.
+- PUT /zone → `updateOne({...buildWriteFilter('Zone'), zoneCode,
+  operatorCode}, {$set: {displayName}})`; 403 si `matched===0`.
+- DELETE /zone → findOne gateado + `Site.countDocuments` para bloquear
+  409 si hay sites vivos colgados de la zone (integridad referencial),
+  y `deleteOne` bajo el mismo write filter.
+- Registrada en `app/api/index.js:29`.
+
+**Real-time-lite (frontend)**:
+- `app/layouts/default.vue`: en el handler de mensaje MQTT tipo `notif`,
+  se agregó `this.$nuxt.$emit('wanomi:notif', raw)` DESPUÉS del toast +
+  badge existentes (sin quitar nada). Sin tópicos MQTT nuevos.
+- `app/pages/sites/_siteCode.vue`: `data()` gana `alarms:[]`,
+  `variableSeverity:{}`, `alarmsCursor:null`, `_notifHandler:null`.
+  `mounted` corre `loadAlarms()` una vez + subscribe al bus
+  `wanomi:notif` que dispara re-fetch acotado. `beforeDestroy`
+  desregistra el handler (sin leaks) además del map cleanup existente.
+  `loadAlarms()` pega a `/site/:siteCode/alarms?limit=50` con el token
+  del store y guarda el response; falla transitoria del feed no rompe
+  la vista.
+
+**Rebuild frontend**: `docker-compose -f docker_nuxt_build.yml up`
+completó (`dist/` regenerado con las 12 rutas — /sites incluida) y
+`docker restart node` levantó la nueva build. Node sirve, sim y edge
+siguen vivos.
+
+E2E:
+- **a — Zone CRUD** (todos con curl+JWT):
+  - Admin GET → NEA (1 zona) · Cellowner GET → NEA (en scope) ·
+    Personal GET → [] (DENY sin grants).
+  - Admin POST `test-a7` → 200 `{status:"success",zoneCode:"test-a7",
+    operatorCode:"claro"}`.
+  - Personal POST → 403 `forbidden: grant does not cover this
+    operator/zone`.
+  - Admin DELETE `test-a7` → 200. Mongo residuo: solo NEA (1) — cleanup
+    limpio.
+- **b — backend RTL**: `GET /site/CR00061/alarms?limit=3` post-rebuild
+  → 200, 3 alarms, `variableSeverity:{oil_pressure:critical}`, cursor
+  `1783364111915`, campos `ackAt/acknowledgedBy` presentes (null) por
+  paridad de schema.
+- **c — validación visual (PENDIENTE DE FRANCO)**: abrir vista del
+  site `CR00061` en el browser (`/sites/CR00061`), disparar en el sim
+  el escenario `mains_failure_ats_transfer` (comando del sim console o
+  MQTT directo al topic de control del ATS), observar que la vista:
+  1. Recibe la notif (toast rojo y badge de navbar suben — DEC-REF-44
+     comportamiento existente).
+  2. Re-fetchea `/site/CR00061/alarms` sin refrescar la página (nueva
+     llamada visible en Network tab del devtools; `alarms` y
+     `variableSeverity` se actualizan reactivamente en `data()`).
+  3. Ejecutar luego `mains_restore` y volver a observar el ciclo.
+  La UI/UX del feed y del coloreo por variable son sub-pasos UI-1/UI-2
+  posteriores; en este prompt el data-flow queda correcto pero el
+  render visual del feed no está agregado al template.
+
+Commits: **`25921ae`** — `feat(api): Zone CRUD gateado (DEC-REF-54)`; y
+**`e4adeae`** — `feat(front): real-time-lite feed de site via bus $emit
+(DEC-REF-44)`.
+
+### Estado del entorno al cierre R5
+
+- Motor edge PID **40054** (relanzado en R4 con env íntegro).
+- Sim `run.js` PID **9163** (intocado desde #40).
+- Docker: `node` Up post-rebuild, `emqx` Up 7d (healthy), `mongo` Up 7d
+  (healthy).
+- Mongo `rulepacks`: `[cummins-pcc-v1]` (5 reglas, version 2).
+- Mongo `notifications`: 354+ notifs, 1 con `correlationParent`, 1 con
+  `mode:cross`, y desde R4 los nuevos ACK (una notif con
+  `acknowledgedBy=6a3458629b940316ccafa60b`).
+- Mongo `data` ingesta viva (159,859 → 199,519 durante la sesión).
+
+### Pendiente — STOP GATE 2
+
+- **Validación visual R5.c** (Franco): browser + disparo de escenario en
+  el sim + observación del re-fetch acotado.
+- **A8** (consola superadmin, DEC-REF-42 absorbiendo BACKLOG-RULE-2,
+  BACKLOG-EDGE-2, DEC-REF-47) — prompt posterior.
+- **A9** (BACKLOG-OPS-1 + BACKLOG-OPS-2 + BACKLOG-API-1) — prompt
+  posterior.
+
+Range de commits de este prompt (6 commits, incluido este de cierre):
+`ad1cc93` registro DEC-REF-54 + bitácora (v0.29), `130c4da` A5 feed,
+`b4b9b0a` A6 write-gates+ACK, `25921ae` A7 Zone CRUD, `e4adeae` A7 RTL
+frontend, `[hash R5-cierre]` este cierre de bitácora. **SIN PUSH**.
