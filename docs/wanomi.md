@@ -3072,6 +3072,58 @@ prolijidad, solo por corrección de contenido.
   transicionales).
 - Fase B (frontend) y Carril 2 (consola) siguen después según #37.
 
+### R6 — Fix convención + cierre formal
+
+**Violación detectada:** en R5 (paso 8) modifiqué retroactivamente la
+fila `DEC-REF-53` de la tabla del registro para agregar los
+refinamientos R4 (A0 + opción (b) madre M1). El texto de la fila 53
+había sido commiteado como parte de `72228c0` (R2) y toda modificación
+posterior debe ir como fila propia — precedente `DEC-REF-52-A` (R6
+sesión #41). Regla ratificada por Franco al cierre de A4.
+
+**Fix aplicado:** (a) `DEC-REF-53` restaurada al texto de `72228c0`
+recuperado con `git show`; (b) creada fila nueva `DEC-REF-53-A` con los
+refinamientos R4 (A0 warning + M1 madre + verificación estática del
+gate `ruleEngine.js:29-30` + `C1.correlationParent` + referencia
+BACKLOG-RULE-5 + resumen del pack final 5 reglas version 2 +
+verificación E2E); (c) reorden de la tabla §5e `BACKLOG-RULE-4` antes
+que `RULE-5` (convención append-only aplica a la bitácora, no a las
+tablas del registro numérico); (d) bump v0.27 → **v0.28**.
+
+### Sesión #42 CERRADA
+
+- **A4 CERRADO** — pack productivo `cummins-pcc-v1` reconciliado (5
+  reglas, version 2), BACKLOG-RULE-3 resuelto, `graceSec` formalizado
+  en `rule_definition.js` (D3), cadena M1→C1 validada E2E sobre datos
+  reales del sim (correlationParent persistido en Mongo — vista de
+  cascada DEC-REF-41/50 con insumo real).
+- **Registro:** WanomiRefactor.md **v0.28** con `DEC-REF-53` + `53-A`,
+  `BACKLOG-RULE-4` y `RULE-5` (reordenadas en §5e); `BACKLOG-RULE-3`
+  cerrado con referencia (entrada preservada).
+- **Commits de #42** (5 commits, incluido este de cierre): `72228c0`
+  registro DEC-REF-53 (v0.26), `6d1dc02` schema graceSec, `d95c653`
+  seed reconciliado, `735271a` cierre A4 (v0.27), `[hash R6]` este fix
+  convención (v0.28). Rango final pusheado se completa post-push.
+- **Entorno al cierre**:
+  - Motor edge PID **32527** (relanzado en R5 con env íntegro).
+  - Simulador `run.js` PID **9163** (intocado desde #40, publicando
+    sano bajo SERVICE).
+  - Docker: `node` Up 21h, `emqx` Up 7d (healthy), `mongo` Up 7d (healthy).
+  - Mongo `rulepacks`: `[cummins-pcc-v1]` (5 reglas, version 2).
+  - `data` SERVICE: **155,948 docs** (last `2026-07-06T12:56:40Z`) —
+    self-heal TENANT-9 sostenido, sim publicando activamente.
+
+### Pendiente — próxima sesión (#43)
+
+- **A5 del carril** (backend MVP) — decidido por Franco al cierre de
+  #42. Endpoints de sites, feed de alarmas DEC-REF-43/44, ACK con
+  auditoría DEC-REF-46, consola de reglas superadmin DEC-REF-42.
+- **Backlog vigente**: BACKLOG-RULE-4 (mantenimiento por horas),
+  BACKLOG-RULE-5 (migración M1 a pack ATS), BACKLOG-SIM-4 (dominio
+  real `transfer_state`), BACKLOG-OPS-1 (durabilidad EMQX),
+  BACKLOG-OPS-2 (deriva `.env` ↔ CLAUDE.md), BACKLOG-API-1 (hardening
+  enrichments `GET /device`).
+
 ### R3 — Veredicto A + registro DEC-REF-52 y BACKLOG-OPS-1
 
 **Veredicto A (Variante B confirmada tal cual):** `reconcileSaverRules`
