@@ -40,6 +40,7 @@ const RuleDefinitionSchema = new Schema({
   },
 
   crossExpr: { type: Schema.Types.Mixed, default: null },
+  graceSec:  { type: Number },  // DEC-REF-53 D3 — grace del temporizador reactivo (cross), consumido por typeCross.js:96
 
   source_filter:  { type: String, enum: ['physical', 'inferred', 'connect', null], default: null },
   on_missing_ref: { type: String, enum: ['ignore', 'alarm'], default: 'ignore' },
