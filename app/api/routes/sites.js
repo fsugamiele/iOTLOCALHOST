@@ -12,6 +12,13 @@ const TIPO_ENUM             = ['BTS', 'shelter', 'repeater'];
 const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
                                'localidad', 'tipo', 'operatorCode', 'zoneCode', 'notes'];
 
+// Ventana windowed reusada por /sites/status y /site/:siteCode/alarms
+// (DEC-REF-27, DEC-REF-43/54). 2× cooldownSec default (300s) + margen.
+const SEVERITY_WINDOW_MS = 15 * 60 * 1000;
+
+const ALARM_LIMIT_DEFAULT = 50;
+const ALARM_LIMIT_MAX     = 200;
+
 
 //GET SITES
 router.get("/site", checkAuth, async (req, res) => {
@@ -80,8 +87,7 @@ router.get("/site/:siteCode/full", checkAuth, async (req, res) => {
 //GET SITES STATUS
 router.get("/sites/status", checkAuth, async (req, res) => {
   try {
-    const WINDOW_MS = 15 * 60 * 1000; // 2x cooldownSec default (300s) + margen; calibrable (DEC-REF-27)
-    const since = Date.now() - WINDOW_MS;
+    const since = Date.now() - SEVERITY_WINDOW_MS;
 
     const siteFilter  = await buildReadFilter(req, 'Site');
     const notifFilter = await buildReadFilter(req, 'Notification');
@@ -111,6 +117,80 @@ router.get("/sites/status", checkAuth, async (req, res) => {
     return res.json({ status: "success", data });
   } catch (error) {
     console.log("ERROR GETTING SITES STATUS");
+    console.log(error);
+    return res.status(500).json({ status: "error", error });
+  }
+});
+
+// GET SITE ALARMS FEED (DEC-REF-43, DEC-REF-54)
+// Feed de alarmas del detalle de site: notifs gateadas, cursor por time,
+// y mapa {variable → peor severidad vigente} en la misma ventana que
+// /sites/status (SEVERITY_WINDOW_MS) pero agrupado por variable en vez
+// de por siteId. correlationParent/mode viajan crudos — la agrupación
+// visual madre→hija (DEC-REF-50) la resuelve el frontend.
+router.get("/site/:siteCode/alarms", checkAuth, async (req, res) => {
+  try {
+    const siteCode = req.params.siteCode;
+
+    // Gate del site (DEC-REF-33) — si no matchea, 404 igual que /full
+    const siteFilter = await buildReadFilter(req, 'Site');
+    const site = await Site.findOne({ ...siteFilter, siteCode }).lean();
+    if (!site) {
+      return res.status(404).json({ status: "error", error: "Site not found" });
+    }
+
+    // Parseo de cursor y limit
+    let limit = parseInt(req.query.limit, 10);
+    if (!Number.isFinite(limit) || limit <= 0) limit = ALARM_LIMIT_DEFAULT;
+    if (limit > ALARM_LIMIT_MAX) limit = ALARM_LIMIT_MAX;
+
+    const beforeRaw = req.query.before;
+    const before = beforeRaw !== undefined ? parseInt(beforeRaw, 10) : null;
+    const cursorClause = Number.isFinite(before) ? { time: { $lt: before } } : {};
+
+    // Feed: notifs del site + cursor. Sin projection para preservar
+    // correlationParent y mode (DEC-REF-50, DEC-REF-53-A).
+    const notifFilter = await buildReadFilter(req, 'Notification');
+    const alarms = await Notification.find({
+      ...notifFilter,
+      siteId: siteCode,
+      ...cursorClause
+    }).sort({ time: -1 }).limit(limit).lean();
+
+    // Mapa variable → peor severidad vigente (ventana idéntica a /sites/status).
+    const since = Date.now() - SEVERITY_WINDOW_MS;
+    const agg = await Notification.aggregate([
+      { $match: {
+          ...notifFilter,
+          siteId: siteCode,
+          time: { $gte: since },
+          severity: { $in: ["warning", "critical"] }
+        } },
+      { $group: {
+          _id: "$variable",
+          hasCritical: { $max: { $cond: [ { $eq: ["$severity","critical"] }, 1, 0 ] } },
+          hasWarning:  { $max: { $cond: [ { $eq: ["$severity","warning"]  }, 1, 0 ] } }
+        } }
+    ]);
+    const variableSeverity = {};
+    agg.forEach(a => {
+      if (a._id == null) return;
+      variableSeverity[a._id] = a.hasCritical ? "critical" : "warning";
+    });
+
+    const cursor = alarms.length ? alarms[alarms.length - 1].time : null;
+
+    return res.json({
+      status: "success",
+      data: {
+        siteCode,
+        alarms,
+        variableSeverity,
+        cursor
+      }
+    });
+  } catch (error) {
+    console.log("ERROR GETTING SITE ALARMS FEED");
     console.log(error);
     return res.status(500).json({ status: "error", error });
   }
