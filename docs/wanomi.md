@@ -3367,3 +3367,72 @@ tablas del registro numérico); (d) bump v0.27 → **v0.28**.
 > la sección de Sesión #41 por artefacto de posición del edit (pusheado
 > en 0fdfe56) y reubicado aquí. Corrección de contenido, no cosmética —
 > salvedad del precedente #41. Decidido por Franco.
+
+## Sesión #43 — 2026-07-06 · Área 2 · A5 (backend MVP: recon de alcance)
+
+> Nota: los hashes pendientes del cierre #42 (`[hash R6]` en línea 3344 y
+> commit R7 de reubicación) son **`0fdfe56`** (R6 — fix convención +
+> v0.28) y **`98082e6`** (R7 — reubicación R6/cierre a sección #42). Se
+> resuelve el placeholder por append sin editar el bloque cerrado de #42
+> (convención append-only ratificada en #42/R6).
+
+### R1 — Recon dirigido (STOP GATE 1)
+
+Recon read-only del alcance A5 (endpoints sites, feed de alarmas
+DEC-REF-43/44, ACK DEC-REF-46, consola DEC-REF-42). Hallazgos:
+- Feed de alarmas hoy: `GET /notifications` (`webhooks.js:188`) gateado con
+  `buildReadFilter('Notification')`; con `?siteId=X` retorna hasta 50 docs
+  sort time desc, sin filtro `readed`. `correlationParent`/`mode` viajan
+  crudos (sin projection).
+- `/sites/status` (`sites.js:81`) agrupa por siteId (site-level) con
+  ventana 15 min windowed (DEC-REF-27). Falta la variante por variable
+  que pide DEC-REF-43.
+- ACK actual: `PUT /notifications` (`webhooks.js:218`) solo setea
+  `readed:true`, sin `acknowledgedBy`/`ackAt` (ambos ausentes del schema
+  en `app/api/models/notifications.js` y en `edge-engine/notificationRouter.js`).
+  Match query `{userId, _id}` sin `buildReadFilter`/`buildWriteFilter` —
+  falla silente para cellowner sobre notifs de la cuenta de servicio.
+- Consola de reglas: **no hay endpoint HTTP** para RulePack (0 rutas), **no
+  hay página frontend**. Único acceso: seeds directos a Mongo + boot del
+  motor edge en `siteState.js:22` (`RulePack.find({canary:false})`). Motor
+  **sin hot-reload** — un pack nuevo requiere reiniciar el proceso PID 32527.
+  `crossExpr` sí existe en `rule_definition` schema (línea 42).
+- Endpoints sites/zones/devices: reads gateados (`buildReadFilter`),
+  writes SIN gate (BACKLOG-TENANT-3). Zone: sin ruta HTTP dedicada.
+
+Estado entorno al cierre R1: sim PID **9163**, edge PID **32527**, docker
+Up (node 22h, emqx/mongo 7d). Mongo: `data.count = 159,859` (+3,911 desde
+#42), notifs 354 (+276), sites 4, devices 10, rulepack 1 (`cummins-pcc-v1`
+v2, 5 reglas). Cadena M1→C1 persistida (1 notif con
+`correlationParent != null` + 1 con `mode:'cross'`).
+
+### R2 — Decisión de sala: bloque A5-A9 sin backlog residual
+
+Franco resuelve: los cuatro frentes candidatos se ejecutan junto con los
+backlog vigentes relacionados como bloque cerrado — **A5-A9 esta sesión,
+sin diferimientos**. Registrado como **DEC-REF-54** en
+`docsRefactor/WanomiRefactor.md` (v0.28 → **v0.29**).
+
+Plan A5-A9:
+- **A5** — Feed alarmas site (DEC-REF-43): handler dedicado
+  `GET /site/:siteCode/alarms` en `sites.js`, cursor por `time`, mapa
+  `{variable → peor severidad 15 min}` reusando la ventana de
+  `/sites/status`, response con `correlationParent`/`mode` crudos.
+  Agrupación madre→hija (DEC-REF-50) en frontend.
+- **A6** — `buildWriteFilter` + ACK auditable + cierre BACKLOG-TENANT-3:
+  `buildWriteFilter` genérico espejo de `buildReadFilter`, `acknowledgedBy`
+  + `ackAt` separados de `readed` (DEC-REF-45/46), notifs preexistentes
+  `ackAt:null` sin migración, writes de Site/Device/Notification gateados.
+- **A7** — Zone CRUD gateado + real-time-lite DEC-REF-44: ruta `zones.js`
+  nueva; `layouts/default.vue` reemite `wanomi:notif` al bus; vista de
+  detalle de site escucha y re-fetchea acotado.
+- **A8** — Consola superadmin (DEC-REF-42) absorbiendo BACKLOG-RULE-2,
+  BACKLOG-EDGE-2 y DEC-REF-47 (hoja de suma del constructor cross).
+- **A9** — OPS-1 + OPS-2 + API-1 como pull operacional único.
+
+RISK-SEC-1/2 mantiene trigger registrado (rotación diferida al despliegue
+a producción, sin cambio). Backlog absorbidos NO se editan; anotados con
+`>` blockquote debajo de la tabla respectiva (patrón §5a).
+
+Este prompt ejecuta **A5+A6+A7** con gates internos (STOP si falla la
+validación de cualquier fase). A8 y A9 se retoman en prompts posteriores.
