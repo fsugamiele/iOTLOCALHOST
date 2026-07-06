@@ -34,7 +34,10 @@ const DENY_FILTER = { $expr: false };
 function hasDenyFallback(modelName) {
   return modelName === 'Notification'
       || modelName === 'Template'
-      || modelName === 'ForensicEvent';
+      || modelName === 'ForensicEvent'
+      || modelName === 'Zone';  // DEC-REF-54: Zone es entidad jerárquica sin userId
+                                 // (schema en app/api/models/zone.js), no admite
+                                 // ownership fallback — fail-closed sin grant.
 }
 
 // scopeFilterFor(grants, modelName) — pura en parámetros (no recibe req),
@@ -59,6 +62,18 @@ async function scopeFilterFor(grants, modelName) {
 
   if (modelName === 'Site') {
     return buildSiteScopeFilter(scoped);
+  }
+
+  // Zone (DEC-REF-28, DEC-REF-54): entidad jerárquica, filtro directo por
+  // grant.scope.operatorCode/zoneCode. Sin userId → sin ownership fallback
+  // (hasDenyFallback).
+  if (modelName === 'Zone') {
+    const ors = scoped.map(g => {
+      const f = { operatorCode: g.scope.operatorCode };
+      if (g.scope.zoneCode) f.zoneCode = g.scope.zoneCode;
+      return f;
+    });
+    return ors.length === 1 ? ors[0] : { $or: ors };
   }
 
   // Notification, ForensicEvent: derivados sin tenencia propia. Misma resolución
