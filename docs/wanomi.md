@@ -3099,3 +3099,90 @@ path es create+relink (patrón ya existente en el propio reconcile,
   (persistencia real del volumen EMQX + auditoría de resources/ACLs/
   reglas alarm/actuator) queda como checklist de deployment junto a
   RISK-SEC-1/2.
+
+## Sesión #42 — 2026-07-06 · Área 2 · A4 (RulePack cascada productivo: RULE-3 + graceSec + reglas cross)
+
+### R1 — Recon dirigido (read-only)
+
+Entorno heredado sano: TENANT-9 sigue cerrado (last SERVICE
+2026-07-06T00:46:23Z, `data` SERVICE creció a 66,368 docs desde 272 en
+el fix de #41-R5 — self-heal sostenido). Sim PID 9163 y edge PID 12691
+intocados desde #40; docker Up 7d (mongo/emqx) / 9h (node).
+
+**Hallazgos B1 (mismatch pack↔template)** — el problema de RULE-3 es
+más amplio que el registro original de 2 mismatches: son **4 reglas
+del pack, en 2 clases**:
+
+| Regla | Var pack | Var template | `source_filter` | Clase |
+|---|---|---|---|---|
+| A1 oil-pressure | `oil_pressure_psi` (unit `kPa`, incoherencia) | `oil_pressure` | connect | rename + fix unit |
+| G2 fuel-critical | `fuel_level_pct` | `fuel_level` | connect | rename |
+| D1 service-due-soon | `hours_to_next_service_250` | (no existe) | inferred | variable derivada |
+| D2 service-overdue | `hours_to_next_service_250` | (no existe) | inferred | variable derivada |
+
+Radio de impacto acotado: los nombres del pack (`_psi`, `_pct`,
+`hours_to_next_service_250`) viven SOLO en `seeds/cummins_pcc_v1.js`
++ 1 archivo dev (`seeds/_dev/test_typeC_no_setpoint.js`). Cero uso en
+frontend, motor edge, sim de runtime. Los nombres del template
+(`oil_pressure`, `fuel_level`, `mains_voltage`) viven solo en el
+simulador. El pack productivo es la única fuente a tocar.
+
+**Hallazgos B2 (graceSec y window en schema)**:
+- **`graceSec` NO está en `rule_definition.js`**. Persistió en A3.2/A3.3
+  vía `insertOne` directo (bypass mongoose). Latente clase-#37: si
+  `seeds/cummins_pcc_v1.js` (que usa `RulePack.findOneAndUpdate`
+  mongoose) intenta sumar una regla cross con `graceSec`, mongoose lo
+  filtraría por `strict:true` — bug silencioso.
+- **`window` SÍ está** (líneas 36-40: `durationSec, countThreshold,
+  matchCondition`); `typeS.js:11` lo consume — nota #37 resuelta como
+  mislabel del recon original A-H, no del código.
+- **Cross fixtures vivos en Mongo hoy: 0**. Solo pack productivo con 4
+  reglas D. Los fixtures A3.2/A3.3 fueron limpiados en sus cierres.
+
+**Hallazgos B3 (ciclo de vida)**:
+- Seed canónico: `seeds/cummins_pcc_v1.js:91` `RulePack.findOneAndUpdate({packId},...,{upsert:true})` idempotente. No hay endpoint HTTP.
+- Motor edge lee packs UNA vez al arranque (`siteState.js:22` +
+  `edge-engine/index.js:29`). **Sin hot-reload**: cambios en pack
+  requieren `kill $EDGE_PID; relaunch`.
+- Validación al load: solo `validateCrossTree` sobre reglas cross
+  (DEC-REF-47). Reglas D/C/S entran sin validación al load; los
+  guards viven en cada evaluator.
+
+### R2 — Sala de A4 (Franco decisor, voces Área 2)
+
+Cuatro decisiones cerradas, registradas como **DEC-REF-53** en
+`WanomiRefactor.md v0.26`:
+
+- **D1 (RULE-3 clase connect)** — rename en el pack: `oil_pressure_psi
+  → oil_pressure`, `fuel_level_pct → fuel_level`. Opción (a) de RULE-3.
+  Fix unit A1 a Bar canónico (warning <2.0 Bar, crítico <1.0 Bar) según
+  biblioteca de campo. Opciones (b) mapping en bridge Modbus y (c)
+  reglas duales transicionales descartadas: infraestructura especulativa
+  y doble mantenimiento, respectivamente.
+- **D2 (RULE-3 clase inferred)** — retiro de D1/D2 del pack productivo.
+  Diseño preservado en **BACKLOG-RULE-4** (250 h aceite / 500 h filtro,
+  derivable de Run Hours ComAp/Cummins). Alternativa de sala
+  (publicar `run_hours` en sim para valor demo) descartada por scope,
+  recuperable vía RULE-4.
+- **D3 (graceSec)** — formalizar `graceSec` en el schema
+  `rule_definition.js` **ANTES** de sumar reglas cross por vía canónica
+  del seed. Sin migración: todas las reglas actuales lo tienen
+  undefined; solo se abre el path futuro.
+- **D4 (alcance cross)** — pack productivo suma UNA regla cross:
+  `mains-loss → gen-no-start` (única cadena validada E2E en A3.3 con
+  escenario `mains_failure_gen_no_start` existente). Cascada
+  energética completa DIFERIDA — bloqueada por BACKLOG-SIM-4
+  (transfer_state).
+
+### Registro documental
+
+- WanomiRefactor.md v0.25 → **v0.26**.
+- **DEC-REF-53** — cuatro decisiones D1-D4.
+- **BACKLOG-RULE-4** — diseño preservado de D1/D2 retiradas.
+- **BACKLOG-RULE-3** cerrado con referencia a DEC-REF-53 (entrada
+  conservada por precedente).
+
+### Saneo
+
+Verificación #42-R2 A: `grep -n "Sesión #42" docs/wanomi.md` = 1 sola
+ocurrencia (línea 3103). Sin duplicado del header; nada que sanear.
