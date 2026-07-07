@@ -3895,3 +3895,134 @@ Sala decide (Franco), previo a implementar:
 
 Bump WanomiRefactor v0.29 → **v0.30**. Este prompt ejecuta
 A7.1+A7.2 con gates internos.
+
+### R7-exec — A7.1 y A7.2 ejecutados
+
+**Commits R7 (5 commits, sin push)**:
+- `6fce95f` docs registro DEC-REF-55/56 (v0.30).
+- `4ac7667` fix backend (3 publishers → tópico `${owner}/${dId}/alarm/notif`
+  + payload JSON con 8 campos).
+- `838c5be` feat frontend (parse JSON con try/catch fallback; filtro
+  por siteId antes del re-fetch).
+- `73bcce1` fix pack v3 (A0/A1 pasan a type:`cross`, crossExpr
+  `AND(rpm > 300, oil_pressure < umbral)`; DEC-REF-56-A registrada).
+- `[hash R7-cierre]` este cierre.
+
+**A7.1 — GATE 1 verde** (validación E2E ACL real del cellowner):
+- Sub como cellowner (credenciales frescas via `POST /api/getmqttcredentials`
+  con JWT del cell, `username=7Kh1998ZPX`) a los 4 topics ACL-autorizados
+  del cellowner sobre owner service = `6a3992b435afd807a7f992fe/{6z4LN2md|
+  Yf86psyC|Z5tKK1rN|fbXULu7a}/+/notif`. En 90s se capturaron 3 mensajes:
+  ```
+  6a3992b435afd807a7f992fe/Z5tKK1rN/alarm/notif
+  {"siteId":"CR00061","severity":"critical",
+   "ruleId":"cummins-A1-oil-pressure","variable":"oil_pressure",
+   "message":"[CRITICAL] Presión de aceite baja | CR00061 | 0 Bar
+   | umbral: 1 Bar","time":1783388522829,
+   "correlationParent":null,"mode":"direct"}
+  ```
+  El cellowner que ANTES estaba bloqueado (R6 confirmó "All subscription
+  requests were denied" sobre wildcards con `dummy-did`) ahora RECIBE el
+  mensaje. Payload JSON válido, los 8 campos presentes, `siteId="CR00061"`,
+  `message` legible.
+- Legacy publishers (`webhooks.js:369, 431`): mismo formato de tópico y
+  payload aplicado; no se ejercitaron end-to-end porque el path EMQX
+  alarm/actuator rules no está activo (BACKLOG-OPS-1 histórico —
+  `reconcile: 10 ok, 0 fixed, 0 err | alarm: 0 recreated | actuator:
+  0 recreated`). Paridad de shape validada por diff estático.
+- Grep residual `dummy-did` / `dummy-var` en `edge-engine/` + `app/api/`:
+  **0 matches**. Limpieza completa.
+- Frontend: parseo con try/catch (fallback texto plano → `{siteId:null,
+  message:raw}` para robustez ante mensajes viejos en tránsito), toast
+  usa `payload.message`, `$emit` emite el OBJETO. `_siteCode.vue`
+  `_notifHandler` gana `if (!payload || payload.siteId !== this.siteCode)
+  return;` — fin del re-fetch ciego.
+
+**A7.2 — GATE 2 verde** (recon + seed v3 + 4 checks):
+- Recon micro: `typeD.js:10-26` una sola condición op+value → NO expresa
+  compound. `typeCross.js:16-119` (DEC-REF-47) AST AND/OR con hojas
+  `{deviceType, variable, condition}` — SÍ expresa compound sin código
+  nuevo. `ruleEngine.js:14-27` cross bypasea `rule.deviceType !==
+  deviceType` (línea 29). Ambas hojas apuntan al mismo device
+  (`cummins-pcc`); `findDeviceByType` resuelve al único CUMMINS del
+  sitio, mismo devState para las dos leaves — funciona por
+  construcción. Sim `sensor-engine.js:123-128` `rpm` target 1500
+  cuando `gen_running=true`, target 0 en reposo, ramp ±100/tick.
+  Umbral `rpm > 300` elegido. Registrado como **DEC-REF-56-A**.
+- Seed aplicado con `MONGODB_URI` explícito + `NODE_PATH`:
+  `✅ Seed OK — packId: cummins-pcc-v1 · version: 3 · reglas: 5`.
+- Shape persistido verificado (lección D3 #42, strict:true silencioso):
+  A0 y A1 con `type:'cross'`, `graceSec:0`, `condition:null`,
+  `crossExpr` completo con las 2 hojas. G2/M1/C1 intactos.
+- Edge relanzado con env íntegro (`SITE_ID=CR00061`, `MONGODB_URI`,
+  `MQTT_HOST/USER/PASS`, `NODE_PATH`) — PID 47878 → **PID 48609**,
+  packs cargados: `cummins-pcc-v1`, 4/4 devices hidratados.
+- **Check b (silencio motor parado)**: baseline `1783388889827` (CUMMINS
+  rpm=0, oil=0). **Ventana 762s (>2× A0 cooldown 300s)**: **0 fires de
+  A0/A1**. rpm sostenido en 0, oil_pressure sostenido en 0 → compound
+  nunca activa. Inhibición efectiva.
+- **Check c (no-regresión cascada)**: `mains_failure_gen_no_start`
+  trigger a `1783390406695`. Cascada:
+  - **T+0.0s** M1 `cummins-M1-mains-loss` (mode:direct, raíz).
+  - **T+100.5s** C1 `cummins-C1-mains-loss-gen-no-start` (mode:cross,
+    `correlationParent=cummins-M1-mains-loss`).
+  - **NINGUNA fire de A0/A1** durante la cascada pese a oil=0 sostenido
+    — inhibición se mantiene.
+  - Delta M1→C1 = 100.5s ≈ graceSec 90s + ~10s de tick → consistente
+    con la validación original de #40/R7 y #42/R5.
+- **Check d (feed + variableSeverity)**: `variableSeverity: {mains_voltage:
+  critical, n/a: critical}` — SOLO M1/C1 vigentes. `oil_pressure` ya
+  salió de la ventana de 15 min (último A1 pre-fix a `1783388856212`,
+  fuera del `since = now - 15min`). Notif counts post-seed: A1=1
+  (residuo pre-restart), M1=1, C1=1. **Cero A0/A1 espurios**.
+
+### Estado del entorno al cierre R7
+
+- Motor edge PID **48609** (relanzado en R7-Fase 2 con pack v3 cargado).
+- Sim `run.js` PID **9163** (intocado desde #40).
+- Docker: `node` Up post-rebuild, `emqx` Up 7d (healthy), `mongo` Up
+  7d (healthy).
+- Mongo `rulepacks`: `[cummins-pcc-v1]` version 3, 5 reglas (A0/A1
+  cross-single-device inhibidas, G2/M1/C1 intactas).
+- Mongo `notifications`: contador post-fix se mantiene sin A0/A1
+  espurios; correlationParent≠null pasa a **2** (los dos C1 acumulados
+  de #43 R6+R7), mode:'cross' a **3** (2 C1 + eventual futuro A0/A1
+  cuando gen arranque).
+
+### GATE 3.c — re-test visual pendiente de Franco
+
+Pasos para observar el ciclo completo en el browser:
+
+1. Abrir `/sites/CR00061` con **devtools abiertos** (Network + Console).
+2. En la pestaña **Network** filtrar por WS (WebSocket): debe verse la
+   conexión viva a EMQX (`ws://...:8083/mqtt`). Filtrar por XHR/Fetch
+   para observar las llamadas a `/api/site/CR00061/alarms`.
+3. Verificar que **M1 puede fire** — cooldown 300s desde el último
+   disparo. La última M1 quedó a `1783390406741` (durante R7-check c).
+   Consultar Mongo para el timestamp actual del último M1 y esperar
+   si es necesario (`docker exec mongo mongo ... 'const m1 = db.notifications.find({ruleId:"cummins-M1-mains-loss", siteId:"CR00061"}).sort({time:-1}).limit(1); print("last:" + m1.toArray()[0].time)'`).
+4. Cuando esté fuera de cooldown, disparar en el sim:
+   `mosquitto_pub -h localhost -p 1883 -u superiotix -P <MQTT_PASS>
+   -t 'simulator/6z4LN2md/control'
+   -m '{"command":"scenario","value":"mains_failure_gen_no_start"}' -q 1`.
+5. **Observar** (en el navegador, sin reload de página):
+   - **Toast rojo con `payload.message`** aparece en la esquina
+     (comportamiento preexistente + fix DEC-REF-55).
+   - En **Network → XHR**, una nueva llamada `GET /api/site/CR00061/alarms?limit=50`
+     dispara sin recargar la página. Es el re-fetch DEC-REF-44.
+   - En **Console**, ver `Message from topic 6a3992b435afd807a7f992fe/
+     6z4LN2md/alarm/notif ->` con el JSON del payload.
+6. Espera ~90-100s: segundo toast con C1 (`Corte de AC sostenido...`) +
+   segundo re-fetch de `/alarms`.
+7. **Prueba de filtro por siteId** (opcional, no bloquea): abrir un
+   segundo tab con `/sites/OTHER-SITE` (si existe otro site accesible
+   por el cellowner). El toast dispara en AMBOS tabs (comportamiento
+   preexistente del layout), pero el re-fetch de `/alarms` SOLO
+   ocurre en el tab que matchea `payload.siteId === this.siteCode`.
+   Verificable en Network del tab OTHER-SITE: cero request de `/alarms`
+   durante los toasts de CR00061.
+8. Cerrar el ciclo con `mains_restore`.
+
+Si algo falla en 5-7, capturar `console.log` de la consola y screenshot
+de Network — la causa raíz puede requerir R8. Si todo pasa, GATE 3.c
+verde y bloque #43 A5-A7 queda cerrado.
