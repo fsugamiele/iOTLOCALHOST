@@ -288,16 +288,27 @@ export default {
 
           if (msgType == "notif") {
             const raw = message.toString();
+            // DEC-REF-55 — payload JSON con shape {siteId, severity, ruleId,
+            // variable, message, time, correlationParent, mode}. Fallback:
+            // mensajes en tránsito en formato viejo (texto plano) durante
+            // rollout — el string se preserva como `message` con siteId null.
+            let payload;
+            try {
+              payload = JSON.parse(raw);
+              if (typeof payload !== 'object' || payload === null) throw new Error('not object');
+            } catch (e) {
+              payload = { siteId: null, severity: 'critical', message: raw };
+            }
             this.$notify({
               type: "danger",
               icon: "tim-icons icon-alert-circle-exc",
-              message: raw
+              message: payload.message || raw
             });
             this.$store.dispatch("getNotifications");
-            // Real-time-lite (DEC-REF-44 / DEC-REF-54): reemitir al bus de Nuxt
-            // para que la vista de detalle de site escuche y dispare re-fetch
-            // acotado. No abre tópicos MQTT nuevos (ACL browser DEC-REF-38).
-            this.$nuxt.$emit("wanomi:notif", raw);
+            // Real-time-lite (DEC-REF-44 / DEC-REF-54 / DEC-REF-55): reemitir
+            // objeto al bus; la vista de detalle filtra por siteId antes de
+            // re-fetchear (fin del re-fetch ciego).
+            this.$nuxt.$emit("wanomi:notif", payload);
             return;
           } else if (msgType == "sdata") {
             this.$nuxt.$emit(topic, JSON.parse(message.toString()));

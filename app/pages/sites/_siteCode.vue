@@ -162,10 +162,13 @@ export default {
     await this.loadDetail();
     await this.loadAlarms();
 
-    // Real-time-lite (DEC-REF-44/54): re-fetch acotado del feed al recibir
+    // Real-time-lite (DEC-REF-44/54/55): re-fetch acotado del feed al recibir
     // una notif por MQTT. Usa la ACL browser existente (DEC-REF-38); NO abre
-    // tópicos nuevos. El handler emite en default.vue ($nuxt.$emit).
-    this._notifHandler = () => {
+    // tópicos nuevos. Filtro por siteId (DEC-REF-55): evita re-fetch cuando
+    // la notif es de otro site del scope. Legacy path (payload.siteId=null)
+    // no dispara re-fetch por diseño.
+    this._notifHandler = (payload) => {
+      if (!payload || payload.siteId !== this.siteCode) return;
       this.loadAlarms().catch((e) => console.warn('[SiteDetail] loadAlarms on notif failed', e));
     };
     this.$nuxt.$on('wanomi:notif', this._notifHandler);
