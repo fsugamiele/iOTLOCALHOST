@@ -3631,3 +3631,239 @@ Range de commits de este prompt (6 commits, incluido este de cierre):
 `ad1cc93` registro DEC-REF-54 + bitácora (v0.29), `130c4da` A5 feed,
 `b4b9b0a` A6 write-gates+ACK, `25921ae` A7 Zone CRUD, `e4adeae` A7 RTL
 frontend, `[hash R5-cierre]` este cierre de bitácora. **SIN PUSH**.
+
+### R6 — Registro pendiente + diagnóstico RTL fallado
+
+Resolución del placeholder `[hash R5-cierre]` de R5 (por append, patrón
+#42/R6): commit de cierre de R5 = **`0815953`**.
+
+**Segunda cascada M1→C1 validada (backend end-to-end reproducible)**:
+- Trigger `mains_failure_gen_no_start` sobre ATS `6z4LN2md` a
+  `1783366180033`.
+- **T+68.6s** `cummins-M1-mains-loss` (`mode:direct`, raíz — el delay vs
+  T+0 vino del cooldown residual 300s del disparo previo del scenario
+  `mains_failure_ats_transfer`, no del motor).
+- **T+94.7s** `cummins-C1-mains-loss-gen-no-start` (`mode:cross`,
+  `correlationParent:cummins-M1-mains-loss`). Delta M1→C1 = 26.1s
+  (comprimido por lo mismo — la condición evento-gatillo estuvo activa
+  desde T+0 pero M1 recién emitió a T+68.6s; C1 midió su `graceSec`
+  contra el evento, no contra M1). Semántica correcta.
+- Contadores Mongo: `correlationParent != null` pasó de **1 → 2**;
+  `mode:cross` pasó de **1 → 2**. La cascada validada en #42/R5 se
+  reproduce sobre el pack productivo `cummins-pcc-v1` v2 sin
+  intervención humana en la geometría.
+- Ciclo cerrado con `mains_restore`: estado ATS final `mains_voltage=220,
+  mains_freq=50, gen_status=STOPPED, gen_voltage=0, transfer_state=AUTO`.
+  Coherente con el modelo del sim; las limitaciones de escenografía
+  quedan en BACKLOG-SIM-3/-4 sin bloqueo.
+
+**Pin rojo post-restore — DECISIÓN DE FRANCO (registrada)**: el pin de
+CR00061 quedó rojo tras restaurar la AC. Comportamiento **correcto**
+del handler actual (`sites.js:88-100` — aggregate en ventana
+`SEVERITY_WINDOW_MS = 15 min` sobre notifs con severidad `warning`/
+`critical`); el motor NO emite eventos de "resolve", el color decae
+sólo cuando las notifs caen fuera de la ventana. Vs letra de
+DEC-REF-45 ("color = condición activa; se apaga por silencio/
+resolución"), la implementación es una PROXY con lag.
+
+Decisión de sala:
+- **NO** calibrar la ventana (5-10 min) por riesgo de titileo cuando
+  la ventana ≈ cooldown de una regla (una regla que refire cada
+  cooldown mantendría el pin encendido por ventanas seguidas con
+  gaps intermitentes de color OK — peor UX que el lag actual).
+- **SÍ** cerrar el gap con **resolve events en el motor edge**:
+  cuando una regla D detecta que su `condition` dejó de cumplirse
+  (evento entrante que no matchea), emite un evento de resolución
+  (variante ya existente en el patrón reactivo DEC-REF-26/-48).
+  `/sites/status` pasa de "hay notifs recientes" a "hay
+  reglas-condición actualmente activas" — estado real, no proxy.
+  Diseño y ejecución en **A8** (junto con el resto del rework del
+  motor por consola). Sin efecto en A5-A7 ya ejecutados.
+
+**GATE 3.c EN ROJO — validación visual falló**. Durante la cascada
+recién validada, el browser en `/sites/CR00061`:
+- NO mostró toast rojo (comportamiento PREEXISTENTE al bloque #43,
+  vía DEC-REF-38 pieza 3).
+- NO ejecutó re-fetch de `/site/:siteCode/alarms` (comportamiento
+  A7 nuevo — imposible, depende del toast que también falló).
+
+Como el `$emit('wanomi:notif')` que agregué en A7 se ejecuta en la
+MISMA rama del handler que el toast y AGUAS ABAJO del toast
+(`layouts/default.vue:289-303` cambio de A7), la falla es aguas
+arriba: **el mensaje MQTT `notif` no está llegando al browser**.
+
+Causa raíz (confirmada en R6, ver detalle abajo): **desalineación
+entre topic del publisher y ACL/subscribe del browser**. El
+publisher (motor edge + legacy webhooks) publica a
+`${userId}/dummy-did/dummy-var/notif` (formato legacy de la era
+mono-tenancy); el browser suscribe a `${owner}/${realDid}/+/notif`
+(formato B-narrow DEC-REF-38) — el segmento 2 (`dummy-did`
+literal) no matchea ningún dId real, y el `+` está en pos 3, no
+en pos 2. Regresión de compatibilidad entre DEC-REF-38 (B-narrow
+por dId) y el path legacy de publish notif (nunca actualizado).
+No es bug de A7. Diseño de fix en parte D de este R6.
+
+**Flag oil_pressure crítico sostenido** (feed inundado): el sim
+publica `oil_pressure=0` de forma permanente porque `gen_running`
+del sharedState del site nunca fue verdadero en dev
+(`sensor-engine.js:130` — `if (!sharedState.gen_running) return
+0`). Umbrales del pack v2 A0/A1 (`<2.0` / `<1.0`) sin conversión
+de unidades vs. el rango operativo real del sim (35-55 **psi**
+cuando el gen corre — `sensor-engine.js:131`). No es regresión de
+#43; es un desalineamiento de unidad y de condición de arranque
+que sobrevive de DEC-REF-53/BACKLOG-RULE-3. Diagnóstico limpio en
+parte C; sin fix (fuera del alcance de A5-A7).
+
+Commits post-R5-cierre en este R6 (solo docs, sin push):
+`[hash R6]` — este append. **SIN PUSH**.
+
+---
+
+## Diagnóstico técnico R6 — detalle
+
+### B1 — ¿El motor edge publica MQTT `notif`?  **SÍ, confirmado**
+
+Publisher edge: `edge-engine/notificationRouter.js:51`
+```
+const topic = `${alarm.userId}/dummy-did/dummy-var/notif`;
+_mqttClient.publish(topic, msg, { qos: 0 }, ...)
+```
+
+Publisher legacy (path EMQX alarm rules, no motor): existe también
+en `app/api/routes/webhooks.js:369` y `:431` con exactamente el
+mismo formato `${notif.userId}/dummy-did/dummy-var/notif`.
+
+Ambos publican al MISMO tópico. La adenda DEC-REF-38 nunca tocó
+esta rama; solo reescribió las suscripciones del browser.
+
+### B2 — Subscribe del browser + ACL del cellowner  **MISMATCH TOTAL**
+
+Frontend suscribe (`app/layouts/default.vue:216-218`):
+```
+const base = d.userId + "/" + d.dId + "/+/";
+["sdata", "notif", "actdata"].forEach((t) => {
+  this.client.subscribe(base + t, ...);
+});
+```
+Patrón resultante: `${ownerUserId}/${realDid}/+/notif` — donde
+`realDid` es el dId real del device.
+
+ACL del cellowner (Mongo `emqxauthrules.subscribe` para
+`userId=6a3458629b940316ccafa60b`, 31 tópicos):
+- `6a3458629b940316ccafa60b/#` (namespace propio, no tiene datos
+  post-TENANT-4).
+- Diez tríos `6a3992b435afd807a7f992fe/<realDid>/+/{sdata|notif|
+  actdata}` para los 10 devices SERVICE (patrón B-narrow
+  DEC-REF-38).
+
+Publisher: `6a3992b435afd807a7f992fe/dummy-did/dummy-var/notif`.
+- Primer segmento: matchea el owner (`6a3992b435afd807a7f992fe`).
+- Segundo segmento: `dummy-did` — no matchea ningún dId real
+  autorizado en la ACL (no hay `/dummy-did/` allowlisted).
+- Tercer segmento: `dummy-var` — matchearía el `+` **si** el
+  segundo hubiera matcheado.
+
+Resultado: **EMQX bloquea la entrega** al cellowner. El browser no
+la recibe. Toast + `$emit` no se disparan. Regresión histórica de
+DEC-REF-38 vs. path legacy de publish.
+
+### B3 — Prueba de humo (observación viva)  **CONFIRMADA**
+
+`mosquitto_sub` con superuser (bypass ACL) al patrón
+`+/dummy-did/dummy-var/notif` durante 45 s:
+```
+6a3992b435afd807a7f992fe/dummy-did/dummy-var/notif
+[CRITICAL] Presión de aceite baja | CR00061 | 0 Bar | umbral: 1 Bar
+```
+1 mensaje capturado durante la ventana (A1 natural del pack,
+disparó según cooldown). El publisher funciona. Solo la ACL/
+subscribe del browser no lo alcanza.
+
+### B4 — Checks devtools (para Franco, contraste posterior)
+
+Si tras el fix propuesto en D todavía no llega el toast, correr
+en el browser en `/sites/CR00061` con devtools abiertos:
+1. **Network → WS** (filtro WebSocket): debe verse una conexión
+   viva a EMQX (`ws://<host>:8083/mqtt`) con packets fluyendo
+   ("MQTT" opcode).
+2. **Console**: buscar `MQTT subscribe error` (logueado en
+   `layouts/default.vue:220`). Los errores enumeran el tópico
+   rechazado por ACL — si aparece
+   `6a3992b435afd807a7f992fe/6z4LN2md/+/notif` con error, la ACL
+   no fue rehidratada tras el último login (rehidratación fresca
+   descrita en `users.js:192-205`).
+3. **Console**, tras un fire del sim: buscar `Message from topic
+   ...` (logueado en `layouts/default.vue:282`). Si no aparece,
+   el tópico llega bloqueado; si aparece con `dummy-did` en el
+   texto, el fix del publisher no está en producción.
+
+### C — Diagnóstico oil_pressure  **UNIDAD + CONDICIÓN DE ARRANQUE**
+
+Sim `sensor-engine.js:54-68` `initialCumminsState()`:
+`oil_pressure: 0.0` (base).
+
+Evolve `sensor-engine.js:130-132`:
+```
+case 'oil_pressure':
+  if (!sharedState.gen_running) return 0;
+  return clamp(currentValue + jitter(1), 35, 55);
+```
+
+Interpretación:
+- Cuando `gen_running=false` en el sharedState del site (99% del
+  tiempo en dev — no hay demanda que arranque el gen), `oil_pressure`
+  se **fija en 0** en cada tick.
+- Cuando `gen_running=true`, rango operativo **35-55 psi** (no Bar
+  — es rango típico Cummins en psi; en Bar sería ~2.4-3.8).
+
+Pack v2 (`cummins-pcc-v1`, DEC-REF-53): A0 warning `<2.0 Bar`, A1
+critical `<1.0 Bar`. Umbrales redactados en Bar (BACKLOG-RULE-3
+resuelto para el rename de variable, no para la conversión de
+unidad — la resolución fue "opción (a) rename simple"). El motor
+compara `oil_pressure < 1.0` numéricamente, sin unidad; cualquier
+psi del rango real cruzaría igual, pero como el sim publica `0`
+permanente, la comparación cruza cada cooldown.
+
+Notif texto (`notificationRouter.js:47-51`): "0 Bar | umbral: 1
+Bar" — el mensaje asume Bar; el sim entrega psi (o 0 permanente).
+Confusión de unidad no resuelta.
+
+**Este NO es alcance de A5-A7**. Es un backlog independiente entre
+sim y pack. Registrar como observación limpia; DEC-REF-14 y plan
+#32 diferían la adaptación del sim, y BACKLOG-SIM-3 documenta el
+espacio del disparo de escenarios (no cubre unidad de oil).
+
+### D — Causa raíz RTL + insumo de diseño (fix NO aplicado)
+
+**Causa raíz**: legacy pattern `${userId}/dummy-did/dummy-var/notif`
+predata DEC-REF-30/38 (namespace por userId + B-narrow por dId).
+Post-DEC-REF-38 el subscribe del browser es por (owner, realDid),
+con la ACL espejo — el publisher nunca migró.
+
+**Dimensión del fix** (insumo para la sala, NO aplicado):
+
+| Componente | Cambio conceptual | Detalle |
+|---|---|---|
+| Publisher edge | Cambiar tópico | `notificationRouter.js:51` — de `${alarm.userId}/dummy-did/dummy-var/notif` a un formato que matchee las suscripciones B-narrow. Candidatos: `${owner}/${dId}/${variable}/notif` (matchea con `+` en pos 3 de la ACL actual), o topic dedicado por-site `${owner}/${dId}/notif` (formato de 3 segmentos — requeriría un rediseño más profundo del handler frontend y otra ACL). |
+| Publisher legacy | Mismo cambio | `webhooks.js:369` y `:431`. Mantener paridad para no dejar un canal en formato viejo. |
+| Payload | Considerar migrar a JSON | Hoy es texto plano legible; para que `$emit('wanomi:notif', payload)` traiga siteId/severity/ruleId estructurado (no solo el string), habría que emitir JSON. `sendMqttNotif` ya lo hace en el path NOC edge (`notificationRouter.js:83`, qos:1); podría reusarse el mismo helper con topic distinto para dashboard. |
+| ACL browser | Sin cambio | La ACL ya autoriza `${owner}/${realDid}/+/notif`; cualquier topic que respete la forma `${realOwner}/${realDid}/*/notif` cae dentro. |
+| Frontend handler | Micro-ajuste | Si el payload pasa a JSON, cambiar `layouts/default.vue:290-295` para parsear + mostrar. `$emit` gana un payload rico para que el re-fetch del site pueda filtrar `if (payload.siteId === this.siteCode) loadAlarms()` en vez de re-fetch ciego. |
+| Frontend re-fetch | Optimización opcional | Con siteId en el payload, se evita re-fetch cuando la notif es de otro site. Hoy `_siteCode.vue:_notifHandler` re-fetchea sin filtrar — funcional pero derrochador si el cellowner tuviera muchos sites abiertos. |
+
+**Puntos de decisión de sala**:
+1. **Tópico**: reusar `+` de pos 3 (`${owner}/${dId}/${variable}/notif`,
+   invasión mínima), o rediseñar por site (`${owner}/${dId}/notif` de
+   3 segmentos, obliga a nueva ACL y ajuste del handler split de
+   4 segmentos en `layouts/default.vue:286-287`).
+2. **Payload**: texto vs. JSON.
+3. **Convive con el `data.userId` real** de la notif (owner), no con
+   el cellowner id — la ACL B-narrow ya cubre eso.
+
+Sin resolve events (decisión de sala para A8), la limitación del
+pin sigue vigente en el interim. El fix del RTL es separable y
+más chico — se puede incorporar como sub-paso al inicio de A8, o
+como A7.1 aparte si Franco quiere cerrarlo antes.
+
+**STOP GATE 3-bis: hasta acá el diagnóstico. Franco + sala
+deciden qué opción de fix se lleva antes de la próxima escritura.**
