@@ -7,46 +7,74 @@ const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/wanomi';
 const pack = {
   packId:      'cummins-pcc-v1',
   deviceType:  'cummins-pcc',
-  version:     2,
-  description: 'Salud Cummins PowerCommand + cascada mains-loss → gen-no-start (A0, A1, G2, M1→C1) — CR00061 seed',
+  version:     3,
+  description: 'Salud Cummins PowerCommand + cascada mains-loss → gen-no-start (A0, A1, G2, M1→C1) — CR00061 seed · v3: A0/A1 inhibidas con motor parado (DEC-REF-56)',
   canary:      false,
   rules: [
     {
-      // DEC-REF-53 D1 (R4) — warning previo a A1. Reglas A0 y A1 son
-      // independientes: cuando oil_pressure < 1.0 disparan ambas
-      // (defensa en profundidad; typeD evalúa cada regla contra su
-      // propia condition, sin estado compartido).
+      // DEC-REF-56 — A0 pasa a condición compuesta `rpm > 300 AND oil_pressure
+      // < 2.0`. Fundamento: genset detenido reporta oil_pressure=0 por
+      // física (la bomba de aceite depende del cigüeñal); la alarma real
+      // solo arma con motor en marcha. Umbral rpm=300: el sim publica 0
+      // en reposo y target 1500 con gen_running=true (rango real Cummins
+      // ~1500 nominal); 300 separa "coasting/off" de "arrancado" sin
+      // ambigüedad. Motor cross-expr reusado tal cual (DEC-REF-47/-53):
+      // ambas hojas sobre el mismo device (`cummins-pcc`) — la búsqueda
+      // por deviceType+siteCode (typeCross.js:53) resuelve al único
+      // CUMMINS del sitio. graceSec:0 (compound activa dispara inmediato,
+      // el cooldown gestiona los transitorios). Mantiene severity warning,
+      // cooldownSec 300 y correlationParent:null.
       ruleId:      'cummins-A0-oil-pressure-low',
       label:       'Presión de aceite baja (advertencia)',
       variableLabel: 'Presión de aceite',
       unit:          'Bar',
       inferenceId: 'A0',
-      type:        'D',
+      type:        'cross',
       severity:    'warning',
       recommendation: 'Presión de aceite en descenso. Programar verificación de nivel y estado del sensor.',
       correlationParent: null,
       cooldownSec: 300,
+      graceSec:    0,
       deviceType:  'cummins-pcc',
       variable:    'oil_pressure',
-      condition:   { op: 'lt', value: 2.0 },
+      condition:   null,
+      crossExpr: {
+        op: 'AND',
+        children: [
+          { deviceType: 'cummins-pcc', variable: 'rpm',          condition: { op: 'gt', value: 300 } },
+          { deviceType: 'cummins-pcc', variable: 'oil_pressure', condition: { op: 'lt', value: 2.0 } },
+        ],
+      },
       source_filter:  'connect',
       on_missing_ref: 'alarm',
       reset_behavior: 'auto',
     },
     {
+      // DEC-REF-56 — A1 espeja A0 con umbral crítico 1.0 Bar y cooldown 60s.
+      // Misma inhibición de motor parado (rpm > 300). Mantiene severity
+      // critical y correlationParent:null. Ver A0 arriba para el detalle
+      // del fundamento y de la geometría cross-single-device.
       ruleId:      'cummins-A1-oil-pressure',
       label:       'Presión de aceite baja',
       variableLabel: 'Presión de aceite',
       unit:          'Bar',
       inferenceId: 'A1',
-      type:        'D',
+      type:        'cross',
       severity:    'critical',
       recommendation: 'Detener el grupo urgente. Verificar nivel de aceite y sensor de presión. No operar hasta diagnóstico.',
       correlationParent: null,
       cooldownSec: 60,
+      graceSec:    0,
       deviceType:  'cummins-pcc',
       variable:    'oil_pressure',
-      condition:   { op: 'lt', value: 1.0 },
+      condition:   null,
+      crossExpr: {
+        op: 'AND',
+        children: [
+          { deviceType: 'cummins-pcc', variable: 'rpm',          condition: { op: 'gt', value: 300 } },
+          { deviceType: 'cummins-pcc', variable: 'oil_pressure', condition: { op: 'lt', value: 1.0 } },
+        ],
+      },
       source_filter:  'connect',
       on_missing_ref: 'alarm',
       reset_behavior: 'auto',
