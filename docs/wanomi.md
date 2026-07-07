@@ -4026,3 +4026,92 @@ Pasos para observar el ciclo completo en el browser:
 Si algo falla en 5-7, capturar `console.log` de la consola y screenshot
 de Network — la causa raíz puede requerir R8. Si todo pasa, GATE 3.c
 verde y bloque #43 A5-A7 queda cerrado.
+
+### R7 — cierre formal (append post-validación de Franco, 2026-07-07)
+
+Placeholder resuelto: **`[hash R7-cierre] = 01f9326`** (commit
+`docs: bitácora #43 R7 — A7.1/A7.2 ejecutados, GATE 3.c a re-test de
+Franco`, HEAD del branch `feature/telco-support`, 12 commits ahead de
+origin sin push).
+
+**GATE 3.c — VERDE.** Validación visual reportada por Franco:
+
+- Toast rojo con `payload.message` legible en la esquina tras `mains_failure_gen_no_start`.
+  Notado: primer intento requirió hard-refresh por caché de browser
+  (SPA con bundle Nuxt viejo tras el `docker rebuild` — incidente de
+  entorno, sin acción sobre el código). Post hard-refresh: comportamiento
+  esperado.
+- `GET /api/site/CR00061/alarms?limit=50` confirmado en pestaña Network
+  **sin reload de página**, disparado por el re-fetch DEC-REF-44
+  (real-time-lite).
+- Segundo toast + segundo re-fetch a T+~100s con `cummins-C1-mains-loss-gen-no-start`
+  (cascada M1→C1 intacta).
+- **Cero toasts de aceite** (A0/A1) durante toda la prueba — inhibición
+  compound (DEC-REF-56) sostenida en el escenario real.
+
+**Bloque A5-A7 CERRADO.** Alcance efectivamente entregado en #43:
+
+- **A5** — feed de alarmas del site (`GET /api/site/:code/alarms`)
+  con `variableSeverity` derivada (DEC-REF-43).
+- **A6** — `buildWriteFilter` centralizado + ACK auditable con
+  `TENANT-3` cerrado (`ackBy`, `ackAt` requeridos + fallback owner)
+  (DEC-REF-46).
+- **A7** — Zone CRUD (RBAC completa cellowner scoped) + Real-Time-Lite
+  (DEC-REF-44) con re-fetch WS-triggered.
+- **A7.1** — fix tópico/payload notif `${owner}/${dId}/alarm/notif` + JSON
+  (DEC-REF-55) — corrige mismatch pre-existente.
+- **A7.2** — Inhibición A0/A1 con motor parado vía condición compuesta
+  (DEC-REF-56) — pack `cummins-pcc-v1` v3 seed aplicado.
+
+Pack v3 en Mongo: 5 reglas, A0/A1 con `type:'cross'` `graceSec:0`
+`crossExpr` bilateral, G2/M1/C1 intactas.
+
+### Estado heredado al abrir #44 (2026-07-07)
+
+- HEAD `01f9326`, branch `feature/telco-support`, 12 commits ahead sin push.
+- Working tree limpio salvo untracked conocidos:
+  `.claude/`, `docs/hardware/~$nomi_guia_layout_WN-SITE-CORE.docx`,
+  `docsRefactor/Hardware/conectividad_recomendada_hub.pdf`.
+- Docker: `node`, `emqx`, `mongo` UP.
+- Sim `run.js` PID **9163** (intocado desde #40).
+- Edge PID **48609** (pack v3 cargado desde R7).
+- Mongo `data.count` = **336.207** (subió de 199.519 al cierre #43 →
+  ingesta viva ~135k mensajes en las últimas ~48 h, consistente con
+  las 4 devices activas).
+- Mongo `notifications.count` = **985** (sin espurios de aceite tras
+  seed v3).
+- Mongo `rulepacks`: `[cummins-pcc-v1]` version 3, 5 reglas.
+
+---
+
+## Sesión #44 — 2026-07-07 · Área 2 · A8 (consola superadmin: recon de apertura)
+
+### Alcance del bloque
+
+**A8 — Consola de reglas superadmin.** Absorbe:
+
+- **DEC-REF-42** (contrato de A8, ver más abajo la reproducción textual).
+- **BACKLOG-RULE-2** (tenancy de RulePack — grants/scope por
+  `operatorId`/`zoneCode`).
+- **BACKLOG-EDGE-2** (hot-reload de packs en edge sin restart —
+  referencia DEC-REF-26).
+- **DEC-REF-47** (deuda de RBAC de escritura sobre RulePack).
+- **Resolve events** (evento inverso a `fire` cuando la condición sale
+  de estado activo, decidido en #43/R6 según registro de bitácora).
+
+Estimación: 2-3 sesiones. Esta apertura es **RECON de superficie**;
+el diseño lo decide la sala con Franco DESPUÉS del recon.
+
+### R1 — apertura + registro + recon dirigido (READ-ONLY salvo Fase A)
+
+- **Fase A (esta escritura):** cierre formal de #43 en su bloque, apertura
+  #44 con este header, smoke del entorno, commit `docs: cierre #43 (GATE
+  3.c verde, bloque A5-A7) + apertura #44`.
+- **Fase B (READ-ONLY):** micro-verificaciones colgadas de #43 (B0),
+  contratos textuales de las DECs y backlogs absorbidos (B1), modelo
+  RulePack y superficie de CRUD HTTP (B2), ciclo de vida de packs
+  en el edge e implicaciones del hot-reload (B3), inventario de
+  resolve events (B4), estructura de frontend para la consola (B5),
+  mapa de dependencias y propuesta de orden para la sala (B6).
+
+**STOP GATE 1** al terminar Fase B: reportar evidencia cruda y frenar.
