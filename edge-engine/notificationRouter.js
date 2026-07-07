@@ -45,14 +45,27 @@ function init({ mqttClient, siteId }) {
   console.log(`[notifRouter] Inicializado — siteId: ${siteId} · Telegram: ${TELEGRAM_TOKEN ? 'ON' : 'OFF'}`);
 }
 
-// ── Canal 1: MQTT dashboard (topic legacy, texto plano) ─────────────────────
+// ── Canal 1: MQTT dashboard (DEC-REF-55 — tópico B-narrow + JSON) ───────────
+// Tópico: ${owner}/${dId}/alarm/notif — segmento 3 FIJO literal (la variable
+// viaja en el payload, esquiva `n/a` de cross). Payload JSON con shape fija
+// (paridad con los publishers legacy webhooks.js).
 function sendMqttNotif(alarm) {
-  if (!_mqttClient || !alarm.userId) return;
-  const topic = `${alarm.userId}/dummy-did/dummy-var/notif`;
+  if (!_mqttClient || !alarm.userId || !alarm.deviceId) return;
+  const topic = `${alarm.userId}/${alarm.deviceId}/alarm/notif`;
   const unit = alarm.unit ? ` ${alarm.unit}` : '';
   const thr  = alarm.thresholdUsed != null ? ` | umbral: ${alarm.thresholdUsed}${unit}` : '';
-  const msg  = `[${alarm.severity.toUpperCase()}] ${alarm.label} | ${_siteId} | ${alarm.value}${unit}${thr}`;
-  _mqttClient.publish(topic, msg, { qos: 0 }, err => {
+  const message = `[${alarm.severity.toUpperCase()}] ${alarm.label} | ${_siteId} | ${alarm.value}${unit}${thr}`;
+  const payload = JSON.stringify({
+    siteId:            _siteId,
+    severity:          alarm.severity,
+    ruleId:            alarm.ruleId,
+    variable:          alarm.variable,
+    message,
+    time:              Date.now(),
+    correlationParent: alarm.correlationParent || null,
+    mode:              alarm.mode || 'direct',
+  });
+  _mqttClient.publish(topic, payload, { qos: 0 }, err => {
     if (err) console.error('[notifRouter] MQTT notif error:', err.message);
   });
 }

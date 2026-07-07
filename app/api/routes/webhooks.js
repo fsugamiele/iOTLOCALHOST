@@ -365,16 +365,32 @@ function startMqttClient() {
   });
 }
 
+// DEC-REF-55 — tópico B-narrow ${owner}/${dId}/alarm/notif + payload JSON.
+// Paridad con edge notificationRouter. Legacy EMQX alarm path: siteId no está
+// en el webhook payload, va null (el frontend filtra por siteId; para legacy
+// el toast dispara igual pero la vista de detalle no re-fetchea — correcto,
+// el path EMQX legacy no genera notifs por site en el modelo actual).
 function sendMqttNotif(notif) {
-  const topic = notif.userId + "/dummy-did/dummy-var/notif";
-  const msg =
+  if (!notif.userId || !notif.dId) return;
+  const topic = notif.userId + "/" + notif.dId + "/alarm/notif";
+  const message =
     "The rule: when the " +
     notif.variableFullName +
     " is " +
     notif.condition +
     " than " +
     notif.value;
-  client.publish(topic, msg);
+  const payload = JSON.stringify({
+    siteId:            null,
+    severity:          "critical",   // convención del alarm-webhook legacy
+    ruleId:            notif.emqxRuleId || null,
+    variable:          notif.variable || null,
+    message,
+    time:              Date.now(),
+    correlationParent: null,
+    mode:              "direct",
+  });
+  client.publish(topic, payload);
 }
 
 //GET ALL NOT READED NOTIFICATIONS
@@ -427,16 +443,29 @@ function sendActuatorCommand(rule) {
   }
 }
 
+// DEC-REF-55 — tópico B-narrow + payload JSON (paridad con edge).
+// Path de rule fire (actuator) legacy EMQX; severity `info` (no es alarma).
 function sendMqttRuleNotif(rule) {
-  const topic = rule.userId + "/dummy-did/dummy-var/notif";
-  const msg =
+  if (!rule.userId || !rule.dId) return;
+  const topic = rule.userId + "/" + rule.dId + "/alarm/notif";
+  const message =
     "Regla activada: " +
     rule.variableFullName +
     " " + rule.condition +
     " " + rule.value +
     " → " + rule.actuatorVariableFullName +
     " = " + (rule.actuatorValue == 1 ? "Activado" : "Desactivado");
-  client.publish(topic, msg);
+  const payload = JSON.stringify({
+    siteId:            null,
+    severity:          "info",
+    ruleId:            rule.emqxRuleId || null,
+    variable:          rule.variable || null,
+    message,
+    time:              Date.now(),
+    correlationParent: null,
+    mode:              "direct",
+  });
+  client.publish(topic, payload);
 }
 
 function saveRuleNotifToMongo(rule) {
