@@ -3867,3 +3867,31 @@ como A7.1 aparte si Franco quiere cerrarlo antes.
 
 **STOP GATE 3-bis: hasta acá el diagnóstico. Franco + sala
 deciden qué opción de fix se lleva antes de la próxima escritura.**
+
+### R7 — Decisiones aprobadas (previo a ejecución A7.1/A7.2)
+
+Sala decide (Franco), previo a implementar:
+
+- **DEC-REF-55 (A7.1 — fix RTL)**: tópico `${owner}/${dId}/alarm/notif`
+  (segmento 3 FIJO literal `alarm` — la variable viaja en el payload,
+  no en el tópico; esquiva variables con `/` como el `n/a` de C1).
+  Payload JSON `{siteId, severity, ruleId, variable, message, time,
+  correlationParent, mode}`. Paridad obligatoria en los tres
+  publishers (edge `notificationRouter.js:51` + legacy
+  `webhooks.js:369` + `webhooks.js:431`). ACL B-narrow sin cambios
+  (ya autoriza `${owner}/${realDid}/+/notif`, el `+` matchea
+  `alarm`). Frontend: parsea JSON con try/catch, `$emit` con objeto,
+  vista de detalle filtra `payload.siteId === this.siteCode` antes
+  del re-fetch (fin del re-fetch ciego).
+
+- **DEC-REF-56 (A7.2 — inhibición aceite)**: A0/A1 pasan a
+  condición compuesta `<motor corriendo> AND <oil_pressure <
+  umbral>`. Fundamento de campo: genset detenido reporta 0 por
+  física, la alarma real requiere motor en marcha. El sim inundó
+  el feed en R6 pero el bug es de producto, no del sim. Variable
+  exacta de "motor corriendo" se decide en el recon micro de
+  Fase 2 y se registra como DEC-REF-56-A. Pack bump a v3
+  canónico. M1/C1 sin tocar.
+
+Bump WanomiRefactor v0.29 → **v0.30**. Este prompt ejecuta
+A7.1+A7.2 con gates internos.
