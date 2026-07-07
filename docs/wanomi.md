@@ -4115,3 +4115,63 @@ el diseño lo decide la sala con Franco DESPUÉS del recon.
   mapa de dependencias y propuesta de orden para la sala (B6).
 
 **STOP GATE 1** al terminar Fase B: reportar evidencia cruda y frenar.
+
+### R2 — sala de diseño A8: decisiones D1-D6 + registro
+
+R1 cerró con recon completo en STOP GATE 1 (commit `c672988`). La sala
+de diseño con Franco tomó las siguientes decisiones sobre el reporte
+del recon; se registran en el corpus canónico
+(`docsRefactor/WanomiRefactor.md` §5, DEC-REF-57..60 + BACKLOG-RULE-6)
+y se resumen acá para navegar la bitácora.
+
+- **D1 — orden de sub-frentes** (→ DEC-REF-57):
+  SF-1 CRUD HTTP RulePack → SF-3 hot-reload edge → SF-5 consola +
+  constructor visual (en paralelo con SF-3) → SF-4 resolve events →
+  SF-2 mínimo. SF-2 mínimo queda absorbido en SF-1 vía la rama
+  `'RulePack'` de `scope.js` (DEC-REF-60), no como frente separado.
+  Tombstone terminológico: BACKLOG-EDGE-2 en A8 y en adelante = hot-reload.
+
+- **D2 — canal de hot-reload** (→ DEC-REF-58):
+  MQTT `wanomi/edge/${SITE_ID}/reload` (segundo subscribe del edge).
+  Criterio producto-real (DEC-STRAT-2) — en topología Hub remoto detrás
+  de NAT, MQTT es el único canal de control que sobrevive; HTTP en edge
+  y polling delta descartados. Requiere línea de ACL en EMQX
+  (paraguas BACKLOG-OPS-1).
+
+- **D3 — política de estado en reload** (→ DEC-REF-58):
+  regla eliminada → limpiar sus keys en `cooldownState`/`windowState`/
+  `crossState`; regla editada (contenido distinto) → limpiar sus keys,
+  la definición nueva rige desde cero; regla intacta → preservar todo,
+  el reload no perturba lo que no cambió.
+
+- **D4 — resolve como campo separado** (→ DEC-REF-59):
+  campo nuevo `kind: 'fire' | 'resolve'` en `notifications`, default
+  `'fire'`. Las 985 notifs históricas se leen como `fire` sin migración.
+  `mode` conserva su semántica de método de evaluación (no se contamina).
+  Payload MQTT de DEC-REF-55 extendido con el mismo campo (aditivo).
+
+- **D5 — UX del toast de resolución** (→ DEC-REF-59):
+  visible y visualmente inconfundible respecto del de falla (paleta
+  verde/azul, texto tipo "Resuelto: …"). Decisión reversible con
+  criterio explícito: si en uso real resulta ruido, se suprime el toast
+  y queda solo el re-fetch silencioso.
+
+- **D6 — RBAC mínimo fail-close** (→ DEC-REF-60 + BACKLOG-RULE-6):
+  `scopeFilterFor` gana rama `'RulePack'`: superadmin `{}` (match all);
+  cualquier otro rol → DENY fail-close en lectura y escritura. Tenancy
+  completa (`operatorId` + overrides por Zone) diferida hasta el 2º
+  operador — no-hardening especulativo, coherente con DEC-REF-33/-37.
+  Deuda diferida en BACKLOG-RULE-6.
+
+Registro en corpus canónico: WanomiRefactor.md bump `v0.30 → v0.31`
+(DEC-REF-57..60 + BACKLOG-RULE-6).
+
+**Nota de corrección de proceso**: durante el registro se detectó
+colisión de ID — el borrador aprobado nombraba el nuevo backlog como
+`BACKLOG-RULE-4`, pero ese ID ya estaba ocupado por RULE-4 preexistente
+(reglas de mantenimiento preventivo, DEC-REF-53 D2). Franco confirmó
+opción 1: el nuevo se registra como **BACKLOG-RULE-6** y la referencia
+final de DEC-REF-60 se ajustó al momento del append (única sustitución
+textual autorizada por la sala; resto de textos idéntico al borrador).
+
+### R3 — SF-1: CRUD HTTP RulePack (candado superadmin fail-close)
