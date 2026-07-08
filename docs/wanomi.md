@@ -4369,3 +4369,129 @@ R5-bis reanuda con reconciliación en Fase 0 (verificar estado en
 disco, no asumir), registro DEC-REF-61-A, commits del trabajo aplicado
 + auto-publish + reinicios + E2E. El motor edge y el simulador no
 fueron tocados en el intervalo del corte.
+
+### R5-bis — reanudación post-timeout + cierre SF-3
+
+**Fase 0 (reconciliación)**: HEAD `ec7defe`, 20 ahead, working tree con
+las modificaciones de R5 intactas (`edge-engine/siteState.js` +
+`edge-engine/index.js` modificados, `edge-engine/reloadState.js`
+untracked). Los 3 archivos releídos coinciden con lo reportado en R5;
+`node --check` sintáctico OK en los tres; `require` de `reloadState`
+expone las 4 funciones esperadas. Sim PID **9163** vivo (Jul05),
+edge PID **48609** vivo con código viejo (Jul07, 24h up), docker
+`node`/`emqx`/`mongo` up. Mongo baseline: `data.count=430,012`,
+`notifications.count=1,123`, `rulepacks=[cummins-pcc-v1 v3, 5 reglas]`
+intacto. GATE 0 verde — sin desvíos.
+
+**Fase A-bis**: fila DEC-REF-61-A insertada en el corpus (WanomiRefactor.md
+bump v0.33 → v0.34) DESPUÉS de DEC-REF-61 (patrón `-52-A`, `-53-A`,
+`-60-A`). Detectado y corregido un error de orden previo en el mismo
+gate. Commit `b0dca85`.
+
+**Fase B-bis — commits del trabajo aplicado**: los cambios en disco
+mezclaban 3 concerns en `index.js` (split + reloadState + subscribe).
+Para producir 3 commits con árboles buildables (regla de bisect), se
+hizo backup del estado final validado, `git checkout HEAD --` para
+resetear los archivos modificados, y re-aplicación por capas con Edit
++ smoke syntáctico + commit por capa. Al terminar los 3 commits, `diff`
+contra el backup confirmó identidad byte-a-byte con el estado validado
+en R5.
+
+Los 3 commits del trabajo aplicado + auto-publish + docs:
+
+- `bf41537 refactor(edge): split loadPacks/hydrateSiteState (DEC-REF-61.e)`
+- `de9c785 feat(edge): reloadState — snapshot SHA-256 + diff + limpieza D3 (DEC-REF-61.d)`
+- `9a64f05 feat(edge): subscribe + handler reload, tópicos site y broadcast (DEC-REF-58, DEC-REF-61, DEC-REF-61-A)`
+- `5522389 feat(api): auto-publish reload post-write (DEC-REF-61.b, 61-A)` —
+  `global.mqttClient.publish(RELOAD_TOPIC_BROADCAST, '{}', {qos:1}, cb)`
+  fire-and-forget con log de error; publish fallido NO revierte el
+  write (pack ya en Mongo, próxima escritura o reload manual lo
+  captura).
+
+**Reinicios planificados**:
+
+- `docker restart node` para cargar `rulepacks.js` con auto-publish.
+  Smoke: `GET /api/rulepacks` → 401 sin token (checkAuth OK).
+- Edge PID 48609 → captura previa de `/proc/48609/cmdline`
+  (`node edge-engine/index.js`), `/proc/48609/cwd`
+  (`/root/IotLocalhost`), y environ crítico (SITE_ID=CR00061,
+  MQTT_HOST=mqtt://localhost:1883, MQTT_USER=superiotix, MQTT_PASS,
+  MONGODB_URI, NODE_PATH=/root/IotLocalhost/app/node_modules).
+  `kill 48609` → confirmado dead → relanzamiento con env idéntico
+  vía `nohup`. Edge nuevo PID **57290**. Logs de arranque verifican
+  todos los checkpoints:
+
+    ```
+    [edge-engine] Mongo conectado — mongodb://iotixmongo:...
+    [siteState] Reconstruct: 4/4 devices hidratados (siteId: CR00061)
+    [edge-engine] Packs cargados: cummins-pcc-v1
+    [edge-engine] Dispositivos en estado: 4
+    [notifRouter] Inicializado — siteId: CR00061 · Telegram: OFF
+    [edge-engine] Suscrito a +/+/+/sdata
+    [edge-engine] Suscrito a wanomi/edge/CR00061/reload +
+                  wanomi/edge/all/reload (canal de reload SF-3)
+    ```
+
+  Import compartido de `validateCrossTree` (SF-1 swap, commit
+  `b26fb35`) sin error — el pack v3 tiene 2 reglas cross que se
+  cargaron sin discard silencioso.
+
+**E2E** contra `_test-sf3-reload` (`canary:false` — motor SÍ lo carga;
+regla typeD sobre variable `_sf3_test_var` que NINGÚN device publica
+→ typeD nunca evalúa → cero notifs, cero toasts; inocuidad viene del
+dominio de la regla, no de un mock: producto-no-demo). Tokens JWT
+firmados directos con `JWT_SECRET` — sin passwords por shell.
+
+| Paso | HTTP | Log del edge | cummins | Verificación |
+|---|---|---|---|---|
+| A. PUT create | 200 v=1 | `Reload OK — nuevas: 1 [_sf3_test_rule] · editadas: 0 · eliminadas: 0 · intactas: 5 · keys: 0` | **INTACTO** | reload publicado desde backend, edge lo detectó, snapshot amplió |
+| B. PUT edit (cooldownSec 300→600) | 200 v=2 | `nuevas: 0 · editadas: 1 [_sf3_test_rule] · eliminadas: 0 · intactas: 5 · keys: 0` | **INTACTO** | hash SHA-256 cambió → clasificada como editada. `keys: 0` porque `_sf3_test_rule` no había disparado nunca (no había estado que limpiar) — mecanismo llama delete pero devuelve 0. Correcto por diseño. |
+| C. PUT idéntico (mismo body) | 200 v=2 | `nuevas: 0 · editadas: 0 · eliminadas: 0 · intactas: 6 · keys: 0` | **INTACTO** (5 de las 6) | Idempotencia SHA-256: pack re-guardado sin cambios semánticos no invalida ninguna regla. |
+| D. DELETE | 200 | `packs: cummins-pcc-v1 · nuevas: 0 · editadas: 0 · eliminadas: 1 [_sf3_test_rule] · intactas: 5 · keys: 0` | **INTACTO** | tópico del edge post-D lista solo `cummins-pcc-v1` — el motor operacionalmente volvió al estado pre-A. |
+
+**Verificaciones finales**:
+
+- `_test-sf3-reload exists = false` en Mongo.
+- `rulepacks.count = 1` (solo cummins).
+- `cummins-pcc-v1 v=3, rules=5`, descripción intacta.
+- `notifs {ruleId:'_sf3_test_rule'} = 0` (regla inocua, jamás disparó).
+- `data.count`: baseline 430.012 → pre-E2E 430.871 → post-E2E 431.009
+  (ingesta viva creciendo durante toda la prueba, sim intocado).
+
+**Coherencia con D3**: en los 4 reloads las 5 reglas de `cummins-pcc-v1`
+figuraron INTACTAS. Los cooldowns/estado de cummins nunca fueron
+tocados por el reload — política D3 cumplida al 100%.
+
+**Detalle sobre `keys: 0` en todas las filas**: el pack de test no
+disparó ni una vez (regla typeD sobre variable no publicada). El
+mecanismo de limpieza corrió su ciclo (llamó `.delete()` por cada
+key candidata) pero encontró los 3 Maps sin entradas de
+`_sf3_test_rule` — retornó 0. La validación de que la limpieza SÍ
+opera sobre keys reales queda pendiente para: (i) una regla que
+dispare en producción y luego se edite/elimine, o (ii) un test más
+riguroso con inyección directa al broker (que #39 clasificó como
+no-E2E-producto — evitable si el test productivo llega naturalmente).
+
+**Estado al cierre R5-bis**:
+
+- Rama `feature/telco-support`, **26 commits ahead sin push**.
+- Working tree limpio salvo untracked conocidos.
+- Docker `node`, `emqx`, `mongo` UP.
+- Sim PID **9163** intocado. Edge PID **57290** (relanzado en B-bis
+  con código SF-3 nuevo, subscribe a ambos tópicos de reload activo).
+- Pack `cummins-pcc-v1` v3, 5 reglas, verificado intacto post-E2E.
+- Auto-publish confirmado end-to-end: PUT/DELETE en `rulepacks.js`
+  → publish a `wanomi/edge/all/reload` → edge recibe → reload +
+  diff + limpieza + log detallado.
+
+**Deudas explícitas hacia adelante**:
+
+- SF-4 (resolve events, DEC-REF-59) y SF-5 (consola + constructor
+  visual) arrancan solo con orden explícita de Franco. SF-5 podría
+  incorporar el "botón manual reload por-edge" que la reserva del
+  tópico `wanomi/edge/${SITE_ID}/reload` ya deja habilitada.
+- Usuario dedicado `edge-control` con ACL acotada al canal de reload
+  queda diferido al checklist de deployment producción junto a
+  RISK-SEC-1/2 (DEC-REF-61.a).
+
+**STOP GATE 4.** SF-4/SF-5 solo con orden.
