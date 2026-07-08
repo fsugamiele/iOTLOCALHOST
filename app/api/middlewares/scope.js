@@ -51,6 +51,15 @@ function hasDenyFallback(modelName) {
 async function scopeFilterFor(grants, modelName) {
   if (grants.some(g => g.role === 'superadmin')) return {};
 
+  // DEC-REF-60 — SF-2 mínimo. RulePack sin tenancy: no-superadmin DENY
+  // fail-close en lectura y escritura. Tenancy completa (operatorId +
+  // overrides por Zone) diferida a BACKLOG-RULE-6, disparada por el 2º
+  // operador. Fail-close explícito por Symbol, no por coincidencia de
+  // schema (RulePack no tiene userId — un null caería en la rama
+  // ownership de buildReadFilter y sería 0-match por accidente, no por
+  // diseño; DENY blinda contra la aparición futura de userId).
+  if (modelName === 'RulePack') return DENY;
+
   // Grants con scope útil (operatorCode mínimo). Superadmin omite scope (lección 28.3).
   const scoped = grants.filter(g =>
     g.role !== 'superadmin' && g.scope && g.scope.operatorCode
