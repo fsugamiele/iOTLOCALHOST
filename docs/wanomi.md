@@ -4908,3 +4908,50 @@ Tercera y última capa del plan SF-5. Alcance:
 C y S (se detallará en el reporte según lo que exija el schema — si
 la edición completa exige campos que no encajan en el alcance
 razonable, se documenta como decisión tomada, sin silenciar).
+
+#### R9-bis — reanudación post-corte + DEC-REF-62-B + SF-7
+
+**Nota del corte por error 500 de API** (2026-07-08): R9 se cortó
+DESPUÉS de commitear Fase A (`edce432`), `CrossExprNode` (`4cb6d1a`)
+y el editor de reglas en el detalle (`c00b9ad`), y ANTES del build.
+Contraste con el corte de R5 (que dejó trabajo en disco sin
+commitear): aquí no hay trabajo huérfano — el trabajo se hizo por
+capas commit-por-commit, y cada commit es un árbol coherente en sí
+mismo. La reconciliación de Fase 0 verificó: (a) working tree limpio
+salvo untracked conocidos; (b) `CrossExprNode.vue` (313 líneas) cierra
+`</script>` + `<style scoped>...</style>` correctamente, exports
+`default` en línea 183 y `stripEditorKeys` named en 292; (c)
+`_packId.vue` (560 líneas) cierra objeto default + `</script>`; el
+import matchea; (d) sim PID 9163 y edge PID 57290 vivos, docker up,
+`cummins-pcc-v1` v3/5 reglas en Mongo, `data.count` creciendo (~565k,
+ingesta viva). **El frontend servido sigue siendo el de Capa 2** — el
+build+restart de Capa 3 se hará en R9-bis Fase B.
+
+**DEC-REF-62-B — corrección de Franco sobre el punto (i)**: la
+decisión del agente en R9 dejó a los tipos C y S en "roadmap futuro
+difuso". Franco la ratificó pero con una precisión importante: eso
+tensiona el criterio de "mínimo backlog salvo dependencia de equipo
+físico" y contradice el objetivo de A8 de eliminar el workflow de
+seeds — una consola que edita solo 2 de los 4 tipos que el motor
+evalúa obliga a volver a seeds cuando aparece una regla C o S nueva.
+La corrección de Franco: la edición completa de C/S **se incorpora
+como sub-frente SF-7 de A8**, con lugar en el orden. **C/S read-only
+en Capa 3 NO viola DEC-STRAT-2** (el límite se muestra
+explícitamente al usuario con un banner "edición en roadmap futuro",
+no hay comportamiento fingido), pero SF-7 lo convierte de
+diferimiento sin fecha en compromiso agendado.
+
+Puntos (ii) y (iii) ratificados sin corrección:
+- **Version auto-incremental client-side** (ii): no interfiere con
+  SF-3 porque el diff del motor compara hash POR REGLA
+  (`reloadState.js:27-35`) y `version` es campo del pack, no de la
+  regla. Una regla intacta con hash idéntico sigue reconociéndose
+  intacta aunque el pack haya bumpeado versión.
+- **Fricción proporcional al daño** (iii): pack completo → tipeo
+  exacto del packId (Capa 2); regla individual → confirmación simple
+  (recuperable re-agregando desde el mismo editor). El costo de
+  recuperación es distinto y la fricción lo refleja.
+
+**Orden actualizado de A8**:
+`SF-1 ✓ → SF-3 ✓ → SF-5 (Capa 3 en cierre) → SF-4 → SF-6 → SF-7`.
+
