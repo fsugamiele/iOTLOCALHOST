@@ -4320,3 +4320,38 @@ evidencia dura, no impresiones.
 
 **STOP GATE 3** al terminar: reportar A + B y frenar. R5 arranca solo
 después de la resolución de sala.
+
+### R5 — SF-3: implementación hot-reload (DEC-REF-61)
+
+Franco firmó las cinco decisiones abiertas del recon R4. **DEC-REF-61**
+cierra el diseño fino sobre el marco de DEC-REF-58. Resumen para
+navegar la bitácora — el texto canónico vive en WanomiRefactor.md
+(bump v0.32 → v0.33):
+
+- **(a) ACL del canal de control**: statu quo. `wanomi/edge/+/reload`
+  cubierto por `superiotix#` (única credencial con publish wildcard).
+  Usuario dedicado `edge-control` diferido al checklist de deployment
+  producción junto a RISK-SEC-1/2 — con la nota explícita de que un
+  Hub físico comprometido con `superiotix` cede el broker entero, y
+  la llave acotada se fabrica ANTES de esa mudanza.
+- **(b) Trigger**: automático post-write. PUT/DELETE de `rulepacks.js`
+  publican `reload` al confirmar escritura. Guardar = aplicar.
+- **(c) Payload**: señal vacía (contenido ignorado). Costo de recargar
+  el catálogo entero despreciable en volumen actual y proyectado.
+- **(d) Detección de "editada" (materializa D3)**: SHA-256 de
+  `JSON.stringify(rule)`, snapshot `Map<ruleId, hash>` en el closure
+  del motor. Descartados `version`/`updatedAt` del pack como proxy
+  por violar D3.
+- **(e) Estructura**: `loadPacks()` se parte en dos —
+  `loadPacks(siteId)` + `hydrateSiteState(siteId, siteState)`. Reload
+  llama solo la primera. Sin ramas "si es reload, saltear".
+
+**Reinicio único planificado del edge**: SF-3 cambia código consumido
+por el proceso runtime (const→let, subscribe, handler, imports).
+`docker restart node` cubre el backend; el edge requiere `kill` +
+relaunch. Se ejecuta UNA VEZ en el punto B4, capturando cmdline y
+environ del PID 48609 vigente ANTES de matarlo para reproducir el
+lanzamiento exacto — misma env, mismo cwd, mismo comando. PID nuevo
+queda registrado en la bitácora. El swap de `typeCross.js` de SF-1
+(commit `b26fb35`, hasta ahora sin efecto) empieza a regir en esta
+misma ronda.
