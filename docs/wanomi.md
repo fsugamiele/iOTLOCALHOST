@@ -4955,3 +4955,157 @@ Puntos (ii) y (iii) ratificados sin corrección:
 **Orden actualizado de A8**:
 `SF-1 ✓ → SF-3 ✓ → SF-5 (Capa 3 en cierre) → SF-4 → SF-6 → SF-7`.
 
+#### R9-bis Fase B — Capa 3 build + checklist
+
+**Commits desde R9 en disco (verificados en Fase 0)**:
+
+- `4cb6d1a feat(front): CrossExprNode recursivo — editor AND/OR + hoja
+  equipo (DEC-REF-62.e, SF-5 Capa 3)` — 313 líneas. Componente
+  recursivo con `name: 'cross-expr-node'` (auto-referencia).
+  `__editorKey` local para `key` estable en `v-for` de children;
+  `stripEditorKeys` recursivo antes de guardar. Botón "Agregar grupo"
+  disabled con tooltip al llegar a depth ≥ maxDepth (8). Hoja de suma
+  renderiza read-only con banner SF-6; NO se puede crear desde la UI.
+  Ops del select del leaf equipo = enum EXACTO de `typeD.js`
+  (`lt/lte/gt/gte/eq/neq`).
+- `c00b9ad feat(front): editor de reglas en detalle (D+cross editables,
+  C/S read-only) + revalidación /me (DEC-REF-62-A, SF-5 Capa 3)` —
+  560 líneas totales en `_packId.vue`. Revalidación `GET /me` al mount
+  (DEC-REF-62-A: la página gana superficie de escritura). Version
+  auto-incremental client-side en cada save (`nextVersion = pack.version + 1`).
+  Type D → editor de condition simple; type cross → monta
+  `<CrossExprNode>`; types C/S → banner "edición en roadmap futuro
+  (SF-7)" bloqueando el submit para reglas nuevas de esos tipos pero
+  permitiendo bump de campos comunes en reglas existentes. Modal de
+  regla con `<el-dialog>` (720px) para form completo; modal de delete
+  de regla con confirmación simple (recuperable — DEC-REF-62-B.iii).
+  Errores 400 mostrados con `$notify` con la razón textual del backend
+  (`e.response?.data?.error`).
+
+**Build**:
+- Procedimiento vigente. Duración: **2m49s** (comparable a R7/R8;
+  ligeramente mayor por el componente nuevo).
+- Rutas generadas incluyen `/rulepacks` — la route dinámica
+  `_packId.vue` se resuelve al vuelo por Nuxt SPA.
+- Warning Nuxt2 benigno (exit code 0).
+- `docker restart node` OK; API up.
+
+**Smoke técnico post-build**:
+
+| Endpoint | Resultado |
+|---|---|
+| `GET :3000/login` | HTTP 200 ✓ |
+| `GET :3000/rulepacks` | HTTP 200 ✓ |
+| `GET :3000/rulepacks/cummins-pcc-v1` | HTTP 200 ✓ |
+| `GET :3001/api/rulepacks` sin token | HTTP 401 ✓ |
+| Edge PID **57290** | vivo, intocado ✓ |
+| Sim PID **9163** | vivo, intocado ✓ |
+| `cummins-pcc-v1` en Mongo | v3, rules=5, intacto pre-E2E ✓ |
+
+#### Checklist E2E para Franco (Capa 3)
+
+Ejecutar en el browser contra `http://<host>:3000` con el **log del
+edge abierto en terminal aparte**:
+
+```
+tail -f /tmp/edge_r5bis.log | grep --line-buffered -E "Reload"
+```
+
+**Bloque 1 — Superadmin (`admin@wanomi.com`)**:
+
+- [ ] Crear pack `_test-capa3` desde el listado (deviceType
+      `cummins-pcc`, canary NO tildado). Log edge:
+      `Reload solicitado ... wanomi/edge/all/reload` +
+      `Reload OK — packs: cummins-pcc-v1, _test-capa3 · intactas: 5 ·
+      keys: 0`.
+- [ ] Entrar al detalle `_test-capa3` → verificar Network:
+      **`GET /api/me` PRECEDE al `GET /api/rulepacks/_test-capa3`**
+      (DEC-REF-62-A: revalidación fresca al mount de la página de
+      escritura). Página abre con "Reglas (0)".
+- [ ] "Nueva regla" → modal 720px. **typeD** por defecto. Completar:
+      ruleId `_capa3_d1`, label libre, inferenceId `T1`, severity
+      warning, variable `_capa3_var`, cooldownSec 300, condition
+      op=`gt` value=999999. **Guardar** → `$notify` verde con
+      "Regla agregada (v2). El motor edge recargó (SF-3).". Log:
+      `Reload OK — nuevas: 1 [_capa3_d1] · intactas: 5`.
+- [ ] Verificar que la tabla ahora muestra `_capa3_d1` con badges
+      correctos. `version` del pack es 2 en el header.
+- [ ] Editar `_capa3_d1` (botón pencil) → modal precargado con
+      valores → cambiar cooldownSec 300→600 → Guardar → notify OK
+      (v3). Log: `editadas: 1 [_capa3_d1] · intactas: 5`.
+- [ ] "Nueva regla" → cambiar type a **cross** → aparece la sección
+      "Árbol crossExpr" con un grupo AND vacío. Botón "Agregar
+      condición" añade una hoja equipo con inputs para deviceType,
+      variable, op, value. Botón "Agregar grupo" anida un AND
+      nuevo (habilitado hasta depth 8).
+- [ ] Armar árbol AND(hoja1, hoja2):
+      - Hoja 1: deviceType `cummins-pcc`, variable `_capa3_var`,
+        op `gt`, value `999999`.
+      - Hoja 2 (botón "Agregar condición" de nuevo): deviceType
+        `cummins-pcc`, variable `_capa3_var`, op `lt`, value `-999999`.
+      Metadata: ruleId `_capa3_x1`, label libre, inferenceId `X1`,
+      severity critical, variable `_capa3_var`, cooldownSec 300,
+      graceSec 0. **Guardar** → notify OK (v4). Log:
+      `nuevas: 1 [_capa3_x1] · intactas: 5` (o intactas incluye
+      `_capa3_d1` — verificar el `intactas: N` real en el log).
+- [ ] **Límite de profundidad**: "Nueva regla" cross → en el grupo
+      raíz, agregar grupo → agregar grupo dentro del anterior →
+      seguir anidando hasta que "Agregar grupo" quede disabled (aprox
+      al llegar a depth 8). Verificar el tooltip: "Profundidad
+      máxima 8 alcanzada (validateCrossTree en el backend rechaza
+      más)". **Cancelar sin guardar** (no queremos regla huérfana).
+- [ ] **Forzar un 400 controlado**: editar `_capa3_x1` → dentro del
+      árbol AND raíz, agregar un grupo AND vacío (sin hijos) →
+      Guardar → **$notify rojo** con la razón exacta del backend:
+      `crossExpr inválido en regla _capa3_x1: AND sin children`.
+      Verificar en la tabla que `version` del pack NO cambió
+      (sigue en 4). Verificar en Mongo:
+      `db.rulepacks.findOne({packId:"_test-capa3"}).version` = 4.
+      **Atomicidad OK** — el 400 impide el write.
+- [ ] Quitar el grupo AND vacío (botón de X en el nodo) → Guardar
+      → notify OK (v5). Log: `editadas: 1 [_capa3_x1]`.
+- [ ] Borrar `_capa3_d1` (botón X trash) → modal simple "Borrar
+      regla `_capa3_d1` del pack `_test-capa3`?" → Confirmar → notify
+      OK (v6). Log: `eliminadas: 1 [_capa3_d1]`.
+- [ ] **F5 sobre el detalle** → verificar en Network: **primero
+      `GET /api/me`, después `GET /api/rulepacks/_test-capa3`**
+      (DEC-REF-62-A operando en el reload). Editor operativo.
+- [ ] Volver al listado → borrar `_test-capa3` completo (fricción
+      de tipeo exacto del packId de Capa 2) → notify OK. Log:
+      `Reload OK — packs: cummins-pcc-v1 · eliminadas: 1 [_capa3_x1] ·
+      intactas: 5 · keys: 0` (o `eliminadas: 0` según cuántas reglas
+      tenía el pack al momento; verificar el número real en el log
+      y confirmar que las 5 de cummins figuran como intactas).
+- [ ] Entrar al detalle de **`cummins-pcc-v1`** → 5 reglas visibles.
+      Editar `cummins-A0-oil-pressure-low` (regla cross) → modal
+      abre → el árbol crossExpr real de DEC-REF-56-A aparece
+      renderizado por el editor (AND con 2 hojas equipo: cummins-pcc/
+      rpm gt 300 + cummins-pcc/oil_pressure lt 2). **Cancelar SIN
+      guardar** (prohibición explícita sobre el pack productivo).
+- [ ] Verificar en Mongo que `cummins-pcc-v1.version` sigue = 3
+      (no cambió — el Cancelar no dispara PUT).
+
+**Bloque 2 — Cellowner (`cellowner-nea@wanomi.test`) — no-regresión**:
+
+- [ ] Login → sin ítem "Reglas de monitoreo" en sidebar.
+- [ ] URL manual `/rulepacks` → redirect a `/dashboard`.
+- [ ] URL manual `/rulepacks/cummins-pcc-v1` → redirect a `/dashboard`.
+- [ ] Spot-check `/sites`, `/alarms` sin regresión.
+
+**Verificaciones finales**:
+
+- [ ] `db.rulepacks.count() === 1`, único `cummins-pcc-v1 v=3 rules=5`.
+- [ ] `_test-capa3` ausente de Mongo.
+- [ ] Edge PID **57290** vivo; el pack productivo NO fue tocado
+      (verificar en el log del edge: cummins-A0/A1/G2/M1/C1 aparecen
+      como `intactas` en TODOS los reloads visibles).
+- [ ] Sim PID **9163** vivo, `data.count` creció durante toda la
+      prueba (ingesta continua no interrumpida).
+
+Si algún ítem falla, capturar consola del navegador + Network + log
+del edge y adjuntar en el reporte.
+
+**GATE 8** queda en manos de Franco. Con GATE 8 verde: **SF-5 CIERRA**
+completo y arranca SF-4 según el orden actualizado de DEC-REF-63/62-B
+(SF-5 → SF-4 → SF-6 → SF-7).
+
