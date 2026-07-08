@@ -6,48 +6,13 @@
 // Hoja de suma es SHAPE VÁLIDO en el árbol pero se descarta al CARGAR el pack
 // (siteState.js) con log claro "pendiente de implementación (DEC-REF-47)".
 // Nunca llega al evaluator en runtime → evaluateNode es boolean puro.
+//
+// `validateCrossTree` vive en app/api/services/ruleValidation.js (SF-1,
+// DEC-REF-57). Se re-exporta desde este módulo para preservar el consumo
+// existente (`siteState.js:4`).
 
 const { evaluateD } = require('./typeD');
-
-// ── Validación de forma del árbol (usada al cargar el pack) ─────────────────
-// Retorna { ok, reason }. Categorías de `reason`:
-//   'sum-pending'   → hoja de suma detectada, shape válido, pendiente (DEC-REF-47).
-//   <cualquier otro> → forma inválida (patrón DEC-REF-20).
-function validateCrossTree(node, depth = 0) {
-  if (depth > 8) return { ok: false, reason: `profundidad > 8` };
-  if (node == null || typeof node !== 'object') {
-    return { ok: false, reason: 'nodo no-objeto o null' };
-  }
-  if (node.op === 'AND' || node.op === 'OR') {
-    if (!Array.isArray(node.children) || node.children.length === 0) {
-      return { ok: false, reason: `${node.op} sin children` };
-    }
-    for (const child of node.children) {
-      const r = validateCrossTree(child, depth + 1);
-      if (!r.ok) return r;
-    }
-    return { ok: true };
-  }
-  if (Array.isArray(node.sum)) {
-    if (node.sum.length === 0) return { ok: false, reason: 'sum vacío' };
-    for (const term of node.sum) {
-      if (!term || !term.deviceType || !term.variable) {
-        return { ok: false, reason: 'hoja sum: término sin deviceType/variable' };
-      }
-    }
-    if (!node.condition || !node.condition.op) {
-      return { ok: false, reason: 'hoja sum sin condition' };
-    }
-    return { ok: false, reason: 'sum-pending' };
-  }
-  if (node.deviceType && node.variable) {
-    if (!node.condition || !node.condition.op) {
-      return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable} sin condition` };
-    }
-    return { ok: true };
-  }
-  return { ok: false, reason: 'nodo desconocido (ni AND/OR ni hoja equipo/sum)' };
-}
+const { validateCrossTree } = require('../../app/api/services/ruleValidation');
 
 // ── Búsqueda por _deviceType + _siteCode (scoping por site, DEC-REF-51 C2) ─
 function findDeviceByType(siteState, deviceType, siteCode) {
