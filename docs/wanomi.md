@@ -4682,3 +4682,39 @@ adjuntar en el reporte de vuelta a la sala.
 
 **GATE 6** queda en manos de Franco. Capa 2 (listado real + `GET /me`
 al mount) arranca solo con GATE 6 verde.
+
+**GATE 6 — VERDE**, validado por Franco en browser (2026-07-08):
+Bloque 1 cellowner completo (sin ítem "Reglas de monitoreo" en el
+sidebar, redirect a `/dashboard` al navegar a `/rulepacks` a mano,
+sin regresión en `/sites` ni `/alarms`) y Bloque 2 superadmin
+completo (ítem visible con icono book-bookmark, placeholder renderiza
+Card "en construcción, Capa 2", F5 sobre `/rulepacks` sostiene la
+sesión — la rehidratación de `readToken` seguida del array
+`['authenticated', 'superadmin']` valida en el orden correcto).
+**Capa 1 CERRADA**.
+
+#### R8 — SF-5 Capa 2 (listado + form + revalidación)
+
+Segunda capa del plan registrado en R7. Alcance en esta ronda:
+
+- Listado real en `/rulepacks` con BaseTable + acciones "Ver/Editar"
+  y "Borrar" por fila.
+- Revalidación de rol al mount con `GET /me` — defensa contra grant
+  revocado post-login (DEC-REF-62.a).
+- Botón "Nuevo pack" con form de metadata (sin editor de reglas —
+  ese es Capa 3).
+- Modal de confirmación con fricción para DELETE.
+- Detalle read-only del pack en `/rulepacks/:packId` con listado
+  de reglas (sin edición — Capa 3).
+
+**No entra en esta ronda**: editor `<CrossExprNode>` recursivo, edición
+de reglas individuales, alta de reglas al pack. Un pack se crea con
+`rules: []` y se completa desde Capa 3.
+
+**Verificación schema/endpoint** (antes de escribir código): `rule_pack.js`
+declara `rules: { type: [RuleDefinitionSchema], default: [] }` — el
+default `[]` hace que un pack sin reglas sea válido a nivel schema.
+`rulepacks.js` PUT solo exige `deviceType` (línea 88); no hay chequeo
+de `rules.length > 0`. `validatePackCrossRules(doc)` (rulepacks.js) itera
+`rules` — con array vacío el for no ejecuta y retorna `{ok: true}`.
+**Pack con `rules: []` es aceptado sin ajuste de backend**.
