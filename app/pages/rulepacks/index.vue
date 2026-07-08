@@ -15,7 +15,7 @@
           <base-table
             v-else
             :data="packs"
-            :columns="['packId', 'deviceType', 'version', 'reglas', 'canary', 'actualizado']"
+            :columns="['packId', 'deviceType', 'version', 'reglas', 'canary', 'actualizado', 'acciones']"
             thead-classes="text-primary"
           >
             <template slot-scope="{ row }">
@@ -32,6 +32,24 @@
                 </span>
               </td>
               <td>{{ formatDate(row.updatedAt) }}</td>
+              <td>
+                <base-button
+                  type="info"
+                  size="sm"
+                  @click="viewPack(row.packId)"
+                  title="Ver / Editar"
+                >
+                  <i class="tim-icons icon-notes"></i>
+                </base-button>
+                <base-button
+                  type="danger"
+                  size="sm"
+                  @click="openDeleteModal(row.packId)"
+                  title="Borrar"
+                >
+                  <i class="tim-icons icon-trash-simple"></i>
+                </base-button>
+              </td>
             </template>
           </base-table>
 
@@ -89,6 +107,42 @@
         </base-button>
       </div>
     </el-dialog>
+
+    <!-- BORRAR — fricción explícita. El usuario escribe el packId a
+         mano; el botón "Borrar definitivo" queda disabled hasta que
+         el texto matchee exacto. Evita clicks accidentales; el
+         hot-reload SF-3 hace efectivo el DELETE al instante. -->
+    <el-dialog
+      title="Confirmar borrado"
+      :visible.sync="deleteModal"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <p>
+        Estás por borrar el pack
+        <code>{{ deleteTarget }}</code>. El motor edge lo recargará al
+        instante (SF-3) — el pack deja de aplicarse en producción.
+      </p>
+      <p class="text-muted">
+        Para confirmar, escribí el packId exacto abajo:
+      </p>
+      <base-input
+        v-model="deleteConfirmInput"
+        :placeholder="deleteTarget"
+      />
+      <div slot="footer">
+        <base-button type="secondary" @click="closeDeleteModal">
+          Cancelar
+        </base-button>
+        <base-button
+          type="danger"
+          @click="submitDelete"
+          :disabled="deleting || deleteConfirmInput !== deleteTarget"
+        >
+          {{ deleting ? 'Borrando...' : 'Borrar definitivo' }}
+        </base-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -102,7 +156,11 @@ export default {
       packs: [],
       createModal: false,
       creating: false,
-      newPack: this.emptyPack()
+      newPack: this.emptyPack(),
+      deleteModal: false,
+      deleteTarget: '',
+      deleteConfirmInput: '',
+      deleting: false
     };
   },
   async mounted() {
@@ -205,6 +263,45 @@ export default {
         });
       } finally {
         this.creating = false;
+      }
+    },
+    viewPack(packId) {
+      this.$router.push(`/rulepacks/${encodeURIComponent(packId)}`);
+    },
+    openDeleteModal(packId) {
+      this.deleteTarget = packId;
+      this.deleteConfirmInput = '';
+      this.deleteModal = true;
+    },
+    closeDeleteModal() {
+      this.deleteModal = false;
+      this.deleteTarget = '';
+      this.deleteConfirmInput = '';
+    },
+    async submitDelete() {
+      if (this.deleteConfirmInput !== this.deleteTarget) return;
+      this.deleting = true;
+      const packId = this.deleteTarget;
+      try {
+        await this.$axios.delete(
+          `/rulepacks/${encodeURIComponent(packId)}`,
+          { headers: { token: this.$store.state.auth.token } }
+        );
+        this.$notify({
+          type: 'success',
+          icon: 'tim-icons icon-check-2',
+          message: `Pack ${packId} borrado. El motor edge recargó (SF-3).`
+        });
+        this.closeDeleteModal();
+        await this.loadPacks();
+      } catch (e) {
+        this.$notify({
+          type: 'danger',
+          icon: 'tim-icons icon-alert-circle-exc',
+          message: e.response?.data?.error || 'Error borrando pack'
+        });
+      } finally {
+        this.deleting = false;
       }
     }
   }
