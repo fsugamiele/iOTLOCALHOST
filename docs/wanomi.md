@@ -4275,3 +4275,48 @@ de escritura/borrado — verificado post-test.
 
 **STOP GATE 2.** SF-3 (hot-reload) arranca solo con orden explícita
 de Franco.
+
+### R4 — ratificaciones GATE 2 (DEC-REF-60-A) + recon SF-3
+
+Franco dio la orden en GATE 2. La sala también ratificó las dos
+desviaciones defensivas que el agente aplicó en SF-1 (evitar el hueco
+del `upsert + DENY_FILTER` y devolver `DENY` por Symbol en vez de
+`null` en la rama `'RulePack'`), y decidió que SF-3 arranque solo
+—sin SF-5 en paralelo esta ronda— porque SF-3 toca dos territorios
+delicados (estado en memoria del motor edge y ACLs del broker) que
+merecen una sesión propia sin ruido concurrente.
+
+**Registro canónico:**
+
+- **DEC-REF-60-A** (WanomiRefactor.md §5): adenda a DEC-REF-60 con la
+  regla general "RBAC de escritura sobre endpoints con upsert va por
+  chequeo explícito de rol ANTES del write, nunca por filtro" y la
+  ratificación de la elección `DENY` por Symbol para la rama
+  `'RulePack'`. Aplica a toda ruta futura que combine upsert +
+  gate por rol.
+- **Bump** WanomiRefactor.md v0.31 → **v0.32**.
+
+**Nota de deuda arquitectónica** (Backend Senior, no requiere backlog
+propio por ahora): el cross-import `edge-engine → app/api/services/
+ruleValidation.js` introducido en SF-1 (commit `b26fb35`) es patrón
+vigente y aceptado del proyecto (mismo shape que
+`edge-engine/siteState.js:3` requiriendo `app/api/models/rule_pack`).
+Es defendible mientras edge y app viven en el mismo repo y el mismo
+host. Cuando el Hub sea físico (Orange Pi Zero 3 remoto detrás de
+NAT — pipeline definido, no especulación), el edge NO tendrá `app/`
+al lado: el shared `ruleValidation.js` debe ir en la estrategia de
+empaquetado del Hub como paquete standalone (submódulo, npm privado,
+o carpeta `shared/` en la imagen del Hub). No se crea backlog nuevo
+porque el ancla es concreta —la sesión de diseño del Hub ya prevista—
+y crear backlog especulativo contradice DEC-STRAT-2. Marca dejada acá
+para no perderla en esa sesión.
+
+### R4 — recon micro SF-3 (READ-ONLY)
+
+Alcance READ-ONLY: inventario de EMQX/ACLs, cliente MQTT app-side,
+estructura del edge para reload reentrante, y semántica del mensaje.
+El objetivo es que la sala decida las 5 decisiones abiertas (B5) con
+evidencia dura, no impresiones.
+
+**STOP GATE 3** al terminar: reportar A + B y frenar. R5 arranca solo
+después de la resolución de sala.
