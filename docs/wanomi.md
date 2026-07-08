@@ -4718,3 +4718,155 @@ default `[]` hace que un pack sin reglas sea válido a nivel schema.
 de `rules.length > 0`. `validatePackCrossRules(doc)` (rulepacks.js) itera
 `rules` — con array vacío el for no ejecuta y retorna `{ok: true}`.
 **Pack con `rules: []` es aceptado sin ajuste de backend**.
+
+#### R8 Fase B — Capa 2 aplicada
+
+**Commits** (uno por concern, locales):
+
+- `4a2673f feat(front): rulepacks listado con BaseTable + revalidación /me al mount (DEC-REF-62.a, SF-5 Capa 2)`
+- `99326a4 feat(front): form nuevo pack (rulepacks) — crea con rules:[] + notice de reload SF-3`
+- `a83e671 feat(front): borrar pack con fricción (escribir packId) + acción Ver/Editar en fila`
+- `c14f301 feat(front): rulepacks detalle read-only (metadata + reglas) — SF-5 Capa 2 (DEC-REF-62.d)`
+
+**Detalles de diseño**:
+
+- **Listado** (`pages/rulepacks/index.vue`): BaseTable con columnas
+  packId, deviceType, version, nº reglas, canary (badge prod/canary),
+  actualizado (updatedAt), acciones. Loader con `loading` mientras
+  llega el GET. Vacío guiado con hint "Usá 'Nuevo pack' para crear
+  el primero".
+- **Revalidación al mount** (DEC-REF-62.a): en `mounted()` se hace
+  `GET /me` — si el rol superadmin no aparece en la respuesta fresca
+  se dispara `$notify` "Rol superadmin revocado. Redirigiendo al
+  dashboard." + `$router.push('/dashboard')`. El `loadPacks()` no
+  se ejecuta si la revalidación falla. Comentario en el código
+  explica el motivo (grant revocado post-login).
+- **Form "Nuevo pack"** (`<el-dialog>`, patrón vigente en
+  `devices.vue`): campos packId, deviceType, description, canary
+  (BaseCheckbox). Botón "Crear" disabled hasta que ambos requeridos
+  estén completos. PUT con `rules: []`. Success: `$notify` menciona
+  explícitamente "El motor edge recargó automáticamente (SF-3)" —
+  primera visualización usuaria del auto-publish DEC-REF-61-A.
+- **Borrar con fricción** (`<el-dialog>` separado): el modal muestra
+  el packId a borrar y exige que el usuario lo escriba a mano. Botón
+  "Borrar definitivo" (color danger) disabled hasta que
+  `deleteConfirmInput === deleteTarget` (comparación exacta,
+  case-sensitive). Cancelar limpia el input y cierra. Success:
+  `$notify` menciona que el motor recargó.
+- **Detalle read-only** (`pages/rulepacks/_packId.vue`): header con
+  packId, description, botón Volver. Metadata en fila (deviceType,
+  version, canary badge, actualizado). Tabla de reglas (ruleId,
+  label, type, severity con badge coloreado, variable, cooldownSec).
+  Banner visible con nota "Edición de reglas: Capa 3" para dejar
+  claro el alcance. 404 del pack → `$notify` warning + redirect al
+  listado. **No repite `GET /me`**: comentario en el código explica
+  que la revalidación fresca vive en el índice como gate de la
+  superficie de escritura, coherente con DEC-REF-62.a "doble chequeo
+  solo en consola" — el detalle read-only no paga ese costo.
+
+**Build**:
+
+- Duración: **2m39s** (comparable a R7: 2m31s).
+- Rutas generadas: `/rulepacks` y `/rulepacks/*` (route dinámica
+  para `_packId.vue`).
+- Warning Nuxt2 benigno idéntico a R7 (exit code 0).
+- Restart node OK; API up.
+
+**Smoke técnico**:
+
+| Endpoint | Resultado |
+|---|---|
+| `GET :3000/login` | HTTP 200 ✓ |
+| `GET :3000/rulepacks` | HTTP 200 ✓ |
+| `GET :3000/rulepacks/cummins-pcc-v1` | HTTP 200 ✓ (route dinámica sirve) |
+| `GET :3001/api/rulepacks` sin token | HTTP 401 ✓ |
+| Edge PID **57290** | vivo, intocado ✓ |
+| Sim PID **9163** | vivo, intocado ✓ |
+| `cummins-pcc-v1` en Mongo | v=3, rules=5, intacto pre-E2E ✓ |
+
+#### Checklist E2E para Franco (Capa 2)
+
+Ejecutar en el browser contra `http://<host>:3000` con el **log del
+edge (PID 57290) abierto en una terminal aparte** — cada create/delete
+debería generar líneas `[edge-engine] Reload solicitado por
+wanomi/edge/all/reload` seguidas de `Reload OK — ...`.
+
+**Bloque 1 — Superadmin (`admin@wanomi.com`)**:
+
+- [ ] Login OK → sidebar con "Reglas de monitoreo" → click.
+- [ ] Página `/rulepacks` lista exactamente **1 pack**:
+      `cummins-pcc-v1` (v3, 5 reglas, badge prod, updatedAt visible).
+- [ ] Botón "Nuevo pack" → modal aparece con 4 campos (packId,
+      deviceType, description, canary). Botón "Crear" disabled hasta
+      que packId y deviceType tengan contenido.
+- [ ] Crear `_test-capa2` con `deviceType: cummins-pcc`, description
+      libre, canary NO tildado → `$notify` verde con nota "El motor
+      edge recargó automáticamente (SF-3)".
+- [ ] **En el log del edge**: aparece `Reload solicitado por
+      wanomi/edge/all/reload` + `Reload OK — packs: cummins-pcc-v1,
+      _test-capa2 · reglas nuevas: 0 · editadas: 0 · eliminadas: 0
+      · intactas: 5 · keys estado borradas: 0`. Es la primera vez
+      que un flujo UI dispara el auto-publish end-to-end.
+- [ ] Listado se refresca solo: ahora hay 2 packs.
+- [ ] Click en `_test-capa2` (botón "Ver/Editar", icono notes) → carga
+      la página de detalle. Metadata correcta (deviceType, version,
+      canary badge prod). "Reglas (0)" con nota "sin reglas todavía".
+      Banner "Edición de reglas: Capa 3" visible.
+- [ ] Botón "Volver" → regresa al listado.
+- [ ] Click en `cummins-pcc-v1` → detalle carga con 5 reglas
+      visibles read-only (ruleId, label, type, severity con badges
+      coloreados warning/critical/info, variable, cooldownSec).
+      Banner "Capa 3" visible.
+- [ ] Volver al listado.
+- [ ] Botón "Borrar" (icono trash rojo) sobre `_test-capa2` → modal
+      "Confirmar borrado" aparece con el packId destacado.
+      **Verificar**: botón "Borrar definitivo" DISABLED antes de
+      escribir. Escribir `_test-capa` (falta la 2) → sigue disabled.
+      Escribir `_test-capa2` exacto → se habilita.
+- [ ] Cancelar → modal se cierra, el pack sigue en el listado. Nada
+      pasó.
+- [ ] Borrar de nuevo → modal → escribir el packId exacto → "Borrar
+      definitivo" → `$notify` verde con nota SF-3.
+- [ ] **En el log del edge**: `Reload solicitado por
+      wanomi/edge/all/reload` + `Reload OK — packs: cummins-pcc-v1
+      · eliminadas: 1 [] · intactas: 5 · keys estado borradas: 0`
+      (`_test-capa2` no tenía reglas, por eso `eliminadas` es 1 a
+      nivel pack pero 0 a nivel regla en el diff).
+
+      **Nota importante**: el diff del edge trabaja a nivel REGLA, no
+      pack. Como `_test-capa2` tenía `rules: []`, `buildSnapshot`
+      no aportó ningún ruleId, y al borrarlo `diffSnapshots` no
+      reporta `removed`. Esto es CORRECTO por diseño — la política
+      D3 opera sobre reglas, y no hay reglas huérfanas que limpiar.
+      El pack SÍ se borra del `packs` array del motor (verificable
+      en `packs: cummins-pcc-v1` sin `_test-capa2`).
+- [ ] Listado se refresca solo: vuelve a 1 pack (`cummins-pcc-v1`).
+- [ ] F5 sobre `/rulepacks` → revalidación con `/me` corre, listado
+      recarga, sesión sostenida. Verificar Network: se ve un `GET
+      /api/me` seguido de `GET /api/rulepacks`.
+- [ ] F5 sobre `/rulepacks/cummins-pcc-v1` → detalle carga sin
+      pasar por listado — sostiene sesión con el middleware +
+      grants del store (no re-hace `/me`).
+
+**Bloque 2 — Cellowner (`cellowner-nea@wanomi.test`) — no-regresión Capa 1**:
+
+- [ ] Logout + login con cellowner → sidebar sin "Reglas de
+      monitoreo".
+- [ ] URL manual `/rulepacks` → redirect a `/dashboard`.
+- [ ] URL manual `/rulepacks/cummins-pcc-v1` → redirect a
+      `/dashboard` (mismo middleware).
+- [ ] `/sites`, `/alarms`, `/dashboard` sin regresión.
+
+**Verificaciones finales de estado** (post-E2E, antes de firmar GATE):
+
+- [ ] Mongo: `db.rulepacks.count() === 1` y el único pack es
+      `cummins-pcc-v1 v3 rules=5` (`_test-capa2` ausente).
+- [ ] Edge PID **57290** sigue vivo; el pack productivo NO fue
+      tocado (intactas: 5 en todos los reloads visibles en el log).
+- [ ] Sim PID **9163** sigue vivo.
+
+Si algún ítem falla, capturar consola del navegador + Network +
+log del edge y adjuntar en el reporte de vuelta a la sala.
+
+**GATE 7** queda en manos de Franco. Capa 3 (editor `<CrossExprNode>`
+recursivo, AND/OR + hoja equipo) arranca solo con GATE 7 verde.
