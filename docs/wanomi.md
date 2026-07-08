@@ -4531,3 +4531,80 @@ los 6 puntos abiertos (B5.a-f) después del recon.
 
 **STOP GATE 5** al terminar Fase B: reportar A + B con evidencia y
 frenar.
+
+### R7 — diseño SF-5 registrado (DEC-REF-62/63) + Capa 1
+
+Franco firmó las seis decisiones abiertas del recon R6 e incorporó la
+hoja de suma como sub-frente propio. Registro canónico:
+WanomiRefactor.md bump v0.34 → v0.35, filas **DEC-REF-62** (SF-5
+consola superadmin) y **DEC-REF-63** (SF-6 hoja de suma).
+
+**Seis decisiones cerradas de SF-5** (DEC-REF-62):
+
+- **(a)** Grants en el frontend: `state.auth.userData.grants` ya viaja
+  en el response de login y sobrevive F5 vía localStorage — se consume
+  desde el store sin cambio backend. `GET /me` con grants frescos se
+  invoca solo al montar la consola (defensa contra grant revocado
+  post-login). El doble chequeo NO se propaga a menú ni navegación —
+  ruido de red innecesario.
+- **(b)** Middleware de rol: array `middleware: ['authenticated',
+  'superadmin']`. **Primer uso del patrón array en el codebase**
+  (Nuxt 2.14.7 lo soporta). `superadmin.js` no toca la red — lee del
+  store post-rehidratación que `authenticated` ya garantizó.
+- **(c)** Sidebar: item nuevo condicionado por computed `isSuperadmin`.
+  Primer patrón de visibilidad-por-rol en el layout, mínimamente
+  invasivo.
+- **(d)** Arquitectura: `pages/rulepacks/index.vue` (listado con
+  BaseTable) + `pages/rulepacks/_packId.vue` (editor). Espeja
+  `pages/sites/*`. Editor **no en modal** — es demasiado grande.
+- **(e)** Editor `crossExpr`: componente recursivo `<CrossExprNode>`
+  (primer patrón recursivo del codebase). v1 = AND/OR + hoja equipo.
+  **La hoja de suma no queda en backlog** — el componente se diseña
+  desde v1 contemplando el tipo adicional que SF-6 activará. Límite
+  de profundidad (8) avisado client-side. Errores 400 mostrados con
+  `$notify` vigente (razón textual del backend).
+- **(f)** Blindaje cuenta demo Claro: **checklist E2E manual con
+  ambas cuentas ejecutada por Franco al cierre de cada capa que toque
+  navegación**. Sin infraestructura de testing en el proyecto — si se
+  incorpora, será decisión propia. Nota operativa: frontend en
+  producción, cada capa requiere `nuxt build` completo (no restart).
+
+**Incorporación SF-6** (DEC-REF-63): Franco activó la hoja de suma
+cross-equipo (`{sum:[...], condition}`, capa 2 de DEC-REF-47) como
+sub-frente propio de A8 bajo el criterio "mínimo backlog salvo
+dependencia estricta de equipo físico". Es puro software: (i)
+evaluador cross resuelve sum, (ii) se retira el 400 `sum-pending` del
+CRUD, (iii) se activa el botón en `<CrossExprNode>`. Prerequisito
+**a auditar** en el recon de SF-6: que el sim publique las variables
+a sumar (cargas Eltek); si no, adaptación del sim es parte de SF-6
+(sim es producto).
+
+**Orden actualizado de A8**: SF-1 ✓ → SF-3 ✓ → **SF-5** (esta ronda,
+Capa 1) → SF-5 Capa 2 (listado) → SF-5 Capa 3 (editor) → **SF-4**
+(resolve events, incluye la validación D3 heredada de R5-bis) →
+**SF-6** (hoja de suma).
+
+**Auditoría de diferimientos bajo el criterio de Franco** (mínimo
+backlog salvo dependencia de equipo físico):
+
+| Ítem | Estado | Fundamento del diferimiento |
+|---|---|---|
+| Tenancy full RulePack (BACKLOG-RULE-6) | **Sigue diferida** | Falta un 2º operador real. Es dato de negocio, no software. |
+| Llave dedicada `edge-control` para canal de reload (DEC-REF-61.a) | **Sigue en checklist de producción** | Ata al despliegue físico del Hub — la llave acotada se fabrica antes de esa mudanza. |
+| BACKLOG-RULE-4 (mantenimiento por horas de uso) | **Re-auditar al adaptar sim** | Alternativa `sim-publica-run_hours` era descartada por scope; bajo el criterio nuevo pasa a "recuperable si el sim se adapta". Auditar cuando toque tocar el sim para SF-6 u otro sub-frente. |
+
+**Plan de capas SF-5** (con GATE visual de Franco entre capas):
+
+- **Capa 1** (esta ronda): middleware `superadmin.js`, sidebar
+  condicional, página placeholder mínima. Objetivo único: validar
+  E2E que el candado funciona (cellowner no ve item ni entra; F5
+  sobre `/rulepacks` como superadmin no patea afuera).
+- **Capa 2**: listado real con BaseTable + acciones fila + form nuevo
+  pack, más `GET /me` al mount para revalidar rol. Arranca solo tras
+  GATE 6 verde.
+- **Capa 3**: `<CrossExprNode>` recursivo con AND/OR + hoja equipo.
+  Arranca solo tras GATE de Capa 2.
+
+**STOP GATE 6** al terminar Fase B de R7: reportar diffs, evidencia
+del build, y **checklist E2E lista para que Franco la ejecute en el
+browser**. Capa 2 solo arranca con GATE 6 verde firmado por Franco.
