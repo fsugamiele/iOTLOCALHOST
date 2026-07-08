@@ -52,6 +52,18 @@
           }"
         >
         </sidebar-item>
+
+        <!-- SF-5 Capa 1 (DEC-REF-62.c) — primer patrón de visibilidad
+             por rol en el layout. Solo superadmin ve este item. -->
+        <sidebar-item
+          v-if="isSuperadmin"
+          :link="{
+            name: 'Reglas de monitoreo',
+            icon: 'tim-icons icon-book-bookmark',
+            path: '/rulepacks'
+          }"
+        >
+        </sidebar-item>
       </template>
     </side-bar>
 
@@ -135,6 +147,13 @@ export default {
   computed: {
     isFullScreenRoute() {
       return this.$route.path === "/maps/full-screen";
+    },
+    // SF-5 Capa 1 · DEC-REF-62.a/c — visibilidad del item "Reglas de
+    // monitoreo". Optional chaining defensivo por si `auth` no está
+    // hidratado todavía (edge case en el ciclo de vida del layout).
+    isSuperadmin() {
+      const grants = this.$store.state.auth?.userData?.grants || [];
+      return grants.some(g => g.role === 'superadmin');
     }
   },
   watch: {
