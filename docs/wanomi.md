@@ -4495,3 +4495,39 @@ no-E2E-producto — evitable si el test productivo llega naturalmente).
   RISK-SEC-1/2 (DEC-REF-61.a).
 
 **STOP GATE 4.** SF-4/SF-5 solo con orden.
+
+### R6 — push #44 + ítem D3 heredado a SF-4 + recon SF-5
+
+**Push por orden explícita de Franco en GATE 4** (2026-07-08).
+Rango publicado: `98082e6..a5d7e1a` — 26 commits que cubren la
+apertura #44, todo el bloque A8 SF-1 (CRUD HTTP RulePack), R2/R3
+ratificaciones (DEC-REF-60-A), R4 recon SF-3, R5+R5-bis SF-3
+completo (split loadPacks, reloadState, subscribe+handler,
+auto-publish, DEC-REF-61 + DEC-REF-61-A, v0.32-v0.34), y cierres
+documentales. `git status` post-push: up-to-date con
+`origin/feature/telco-support`. Rango completo verificable con
+`git log --oneline 98082e6..a5d7e1a`.
+
+**Ítem heredado a SF-4** (registrado literal como pediste la sala):
+
+> **Validación pendiente heredada de SF-3 (R5-bis)**: la limpieza
+> de estado D3 (DEC-REF-58/61.d) tiene validación de mecanismo
+> pero no E2E contra estado real — en los 4 tests de R5-bis la
+> regla de prueba jamás disparó y `keys borradas = 0`. El plan de
+> prueba de SF-4 DEBE incluir: regla que dispara → estado real en
+> los Maps → editarla → verificar log con `keys borradas > 0` y
+> keys enumeradas.
+
+**Apertura recon SF-5** (Consola superadmin + constructor visual
+`crossExpr`). SF-5 toca el flujo de login de la cuenta demo de Claro
+— zona sensible que el prompt R6 marca como riesgo explícito. El
+recon es READ-ONLY (patrón R4): mapear el viaje de los grants
+(backend → response → store → middleware), inventariar la superficie
+de páginas/componentes que consumen el shape actual del auth, revisar
+sidebar/layout y patrones de middleware por rol, y catalogar la
+materia prima (paleta de componentes, shape real de `crossExpr` en
+Mongo, patrón de manejo de errores 400). La sala decide con Franco
+los 6 puntos abiertos (B5.a-f) después del recon.
+
+**STOP GATE 5** al terminar Fase B: reportar A + B con evidencia y
+frenar.
