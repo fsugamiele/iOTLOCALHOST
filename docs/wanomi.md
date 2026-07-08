@@ -4355,3 +4355,17 @@ lanzamiento exacto — misma env, mismo cwd, mismo comando. PID nuevo
 queda registrado en la bitácora. El swap de `typeCross.js` de SF-1
 (commit `b26fb35`, hasta ahora sin efecto) empieza a regir en esta
 misma ronda.
+
+**Nota de proceso — corte por timeout de API en R5**: R5 aplicó en
+disco B1 (split loadPacks), B2 (reloadState con snapshot+D3) y B3
+(subscribe+handler+swap) SIN COMMITEAR, más la resolución del punto
+B4.7 (broadcast broadcast `wanomi/edge/all/reload` + segundo subscribe
+en el edge). El corte de sesión pausó todo antes de auto-publish,
+reinicios y E2E. La ratificación de sala del broadcast (contexto:
+la resolución era obvia con la evidencia, no abría decisión de diseño
+real — el writer no conoce qué sites usan cada pack, iterar sites
+acoplaría el CRUD al modelo Site) se registra como **DEC-REF-61-A**.
+R5-bis reanuda con reconciliación en Fase 0 (verificar estado en
+disco, no asumir), registro DEC-REF-61-A, commits del trabajo aplicado
++ auto-publish + reinicios + E2E. El motor edge y el simulador no
+fueron tocados en el intervalo del corte.
