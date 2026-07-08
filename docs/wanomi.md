@@ -4175,3 +4175,103 @@ final de DEC-REF-60 se ajustó al momento del append (única sustitución
 textual autorizada por la sala; resto de textos idéntico al borrador).
 
 ### R3 — SF-1: CRUD HTTP RulePack (candado superadmin fail-close)
+
+Ejecuta el primer sub-frente de A8. Cierra la brecha "el catálogo de
+packs solo se escribe con seeds one-shot": ahora la escritura vive
+detrás de HTTP + JWT + RBAC, respetando el mismo camino canónico
+(`findOneAndUpdate` upsert + `runValidators`) que los seeds usan hoy.
+
+**Alcance implementado.**
+
+- **`app/api/services/ruleValidation.js`** (nuevo, 40 líneas). Extrae
+  `validateCrossTree` de `edge-engine/evaluators/typeCross.js:16-50`
+  a módulo compartido. Semántica preservada — `'sum-pending'` sigue
+  siendo `{ok:false, reason:'sum-pending'}` (misma decisión que en
+  edge, donde `siteState.js:29-43` descarta la regla con warning).
+  App-side lo trata igual: 400 con razón explícita.
+- **`edge-engine/evaluators/typeCross.js`** — la función local se
+  reemplaza por `require('../../app/api/services/ruleValidation')`
+  y se re-exporta al final. Backwards-compat con `siteState.js:4`
+  que ya consume desde este path — cero cambio en `siteState.js`.
+  Cross-import edge→app ya es patrón del proyecto
+  (`edge-engine/siteState.js:3` require de `app/api/models/rule_pack`).
+- **`app/api/middlewares/scope.js`** — rama nueva `'RulePack'` en
+  `scopeFilterFor` (DEC-REF-60). Ubicada arriba, después del check
+  superadmin y antes de la filtración de grants: fail-fast, sin I/O,
+  sin cómputo innecesario. Retorna `DENY` explícito por Symbol —
+  no `null` — para blindarse contra la aparición futura de `userId`
+  en el schema RulePack (que caería en la rama ownership de
+  `buildReadFilter:149` y sería 0-match por coincidencia, no por
+  diseño).
+- **`app/api/routes/rulepacks.js`** (nuevo, 4 endpoints).
+  - `GET /rulepacks` · `GET /rulepacks/:packId` — gate por
+    `buildReadFilter('RulePack')`. Superadmin ve todo; resto DENY
+    (data=[] en lista, 404 en detalle — 404 evita filtrar
+    información sobre existencia).
+  - `PUT /rulepacks/:packId` — upsert canónico
+    `findOneAndUpdate({packId}, doc, {upsert:true, new:true,
+    runValidators:true, setDefaultsOnInsert:true})`. RBAC directo por
+    rol (`isSuperadmin` explícito): un upsert con `DENY_FILTER` como
+    filter crearía un doc nuevo con los campos del update (Mongo no
+    aplica el filter al doc creado por upsert), abriendo un hueco.
+    RBAC por rol lo cierra sin depender de coincidencias de shape.
+    Antes del write se corre `validateCrossTree` sobre toda regla
+    `type:'cross'`; primer fallo → 400 con `ruleId` y razón. Pack
+    persistido "todo o nada".
+  - `DELETE /rulepacks/:packId` — RBAC directo, `deleteOne`. 404 si
+    no existe (idempotencia visible).
+- **`app/api/index.js`** — `app.use("/api", require("./routes/rulepacks.js"))`
+  espejando el patrón de `zones.js`.
+
+**Validación E2E** contra Nuxt vivo (post-`docker restart node`),
+tokens JWT firmados directo contra `JWT_SECRET` (lección #33 —
+sin passwords por shell). Pack de test descartable `_test-sf1-crud`
+con `canary:true` (no lo carga el motor edge — invisible al
+runtime productivo). `cummins-pcc-v1` NO tocado en ningún test
+de escritura/borrado — verificado post-test.
+
+- **Cellowner** (`cellowner-nea@wanomi.test`, scope claro/nea) — 4/4 verbos DENY:
+  - `GET /rulepacks` → `success · data:[]` (DENY_FILTER 0-match).
+  - `GET /rulepacks/cummins-pcc-v1` → 404 (mismo filter, invisible).
+  - `PUT /rulepacks/_test-cell-attempt` → 403 `superadmin required`.
+  - `DELETE /rulepacks/cummins-pcc-v1` → 403 `superadmin required`.
+- **Superadmin** (`admin@wanomi.com`) — 8/8 casos:
+  - `PUT` create `_test-sf1-crud` v=1 con crossExpr `AND(rpm>300,
+    oil<2)` → 200.
+  - `GET` lista → 2 packs (`cummins-pcc-v1`, `_test-sf1-crud`).
+  - `GET` detalle → v=1, rules=1, crossExpr.op=`AND`.
+  - `PUT` edit v=1→2, crossExpr `OR(rpm>500, oil<1)` → 200.
+  - `PUT` crossExpr `AND(children:[])` → 400
+    `'crossExpr inválido en regla _test-bad: AND sin children'`.
+  - `PUT` hoja sin condition → 400
+    `'hoja equipo cummins-pcc/rpm sin condition'`.
+  - `PUT` `{sum:[...], condition:{...}}` → 400 `'sum-pending'`
+    (DEC-REF-47 hoja de suma no implementada).
+  - Verificación atomicidad post-3-invalidos: pack sigue en v=2
+    con `severity:'critical'` intacto — validación fail-fast, sin
+    escritura parcial.
+  - `DELETE` → 200. `DELETE` de nuevo → 404. Mongo: `_test-sf1-crud`
+    ausente, `cummins-pcc-v1` v3/5 reglas, descripción intacta.
+
+**Cambios diferidos** (SF-1 no los aborda):
+
+- **Hot-reload** — los cambios via HTTP se persisten en Mongo pero el
+  motor edge (PID 48609) los ignora hasta próximo start. Cierra en
+  SF-3 (DEC-REF-58, arranque bajo orden explícita de Franco
+  post-STOP GATE 2).
+- **Tenancy full** — la rama `'RulePack'` es SF-2 mínimo (superadmin
+  vs DENY). Con 2º operador se despliega `operatorId` + overrides
+  por Zone según BACKLOG-RULE-6.
+
+**Estado al cierre R3.**
+
+- Commits: 5 en total (fase A + los 4 de SF-1). Sin push.
+- Edge PID **48609** intocado (el swap de `typeCross.js` rige al
+  próximo start del edge, no ahora).
+- Pack `cummins-pcc-v1` v3, 5 reglas — intacto.
+- Sim PID **9163** intacto.
+- Docker `node` reiniciado 1 vez (para cargar `scope.js` +
+  `rulepacks.js`).
+
+**STOP GATE 2.** SF-3 (hot-reload) arranca solo con orden explícita
+de Franco.
