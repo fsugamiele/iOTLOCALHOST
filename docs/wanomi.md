@@ -4608,3 +4608,77 @@ backlog salvo dependencia de equipo físico):
 **STOP GATE 6** al terminar Fase B de R7: reportar diffs, evidencia
 del build, y **checklist E2E lista para que Franco la ejecute en el
 browser**. Capa 2 solo arranca con GATE 6 verde firmado por Franco.
+
+#### R7 Fase B — SF-5 Capa 1 aplicada
+
+**Commits** (uno por concern, todos locales):
+
+- `565e40d feat(front): superadmin middleware + rulepacks placeholder (DEC-REF-62.b/d, SF-5 Capa 1)`
+  — `app/middleware/superadmin.js` (nuevo, 28 líneas) + `app/pages/rulepacks/index.vue` (placeholder mínimo con Card, `middleware: ['authenticated', 'superadmin']`).
+- `e712e21 feat(front): sidebar item 'Reglas de monitoreo' condicional isSuperadmin (DEC-REF-62.c, SF-5 Capa 1)`
+  — `app/layouts/default.vue`: computed `isSuperadmin` (lee `state.auth?.userData?.grants` con optional chaining) + sidebar-item nuevo con `v-if="isSuperadmin"` e icono `tim-icons icon-book-bookmark`.
+
+**Nota sobre el orden de ejecución del array de middleware** (verificado por lectura de `authenticated.js:5-7` y `store/index.js:35-44`): Nuxt 2 ejecuta el array en orden. `authenticated` corre primero, hace `store.dispatch("readToken")` (sincrónico: `JSON.parse(localStorage) + commit`) y redirige a `/login` si no hay auth. Al momento de ejecutarse `superadmin`, `state.auth` está garantizado poblado — sin embargo, se conserva optional chaining defensivo por si el schema del user cambia en el futuro.
+
+**Build**:
+
+- Procedimiento vigente: `docker-compose -f docker_nuxt_build.yml up --abort-on-container-exit` (contenedor efímero `node_build` con node:14, monta `./app/`, corre `npm run build`).
+- Duración: **2m31s**.
+- Rutas generadas incluyen `/rulepacks` (nueva, junto a las 13 anteriores).
+- Warning benigno de Nuxt 2 al final ("did not exit after 5s → force exit", exit code 0).
+- Restart: `docker restart node`. API up en ~10s.
+
+**Smoke técnico post-build**:
+
+| Endpoint | Comportamiento esperado | Resultado |
+|---|---|---|
+| `GET :3000/login` | SPA sirve shell HTML | HTTP 200 ✓ |
+| `GET :3000/rulepacks` | SPA sirve shell HTML (middleware corre client-side) | HTTP 200 ✓ |
+| `GET :3001/api/rulepacks` sin token | Backend rechaza | HTTP 401 ✓ |
+| Edge PID 57290 vivo | Intocado (Capa 1 no toca motor) | ✓ |
+| Sim PID 9163 vivo | Intocado | ✓ |
+
+**Cuentas para la checklist** (verificadas en Mongo, `db.users`):
+
+| Rol | Email | Grants |
+|---|---|---|
+| superadmin | `admin@wanomi.com` | `[{role:'superadmin'}]` |
+| cellowner | `cellowner-nea@wanomi.test` | `[{role:'cellowner', scope:{operatorCode:'claro', zoneCode:'nea'}}]` |
+
+#### Checklist E2E para Franco (DEC-REF-62.f)
+
+Ejecutar en el browser contra `http://<host>:3000`.
+
+**Bloque 1 — Cellowner NEA (rol NO-superadmin)**:
+
+- [ ] `/login` carga sin errores en consola del navegador.
+- [ ] Login con `cellowner-nea@wanomi.test` → toast de éxito → redirige a `/dashboard`.
+- [ ] Dashboard carga; sidebar muestra los 5 items originales
+      (Dashboard, Devices, Reglas, Alarmas, Templates).
+- [ ] **Sidebar NO muestra "Reglas de monitoreo"** (item nuevo condicional).
+- [ ] Escribir manualmente `/rulepacks` en la barra de URL → **el middleware
+      `superadmin` redirige a `/dashboard`** (no debería quedar
+      en la página placeholder). Verificar en DevTools/Network: no
+      hay request a `/api/rulepacks` (el corte es client-side).
+- [ ] Sitios, alarmas y demás páginas siguen funcionando sin regresión
+      (spot-check rápido de `/sites`, `/alarms`).
+
+**Bloque 2 — Superadmin (rol autorizado)**:
+
+- [ ] Logout del cellowner y login con `admin@wanomi.com`.
+- [ ] Dashboard carga; sidebar muestra **6 items** con "Reglas de
+      monitoreo" al final (icono book-bookmark).
+- [ ] Click en "Reglas de monitoreo" → página placeholder carga con
+      Card "Consola de reglas — en construcción, Capa 2".
+- [ ] **F5 sobre `/rulepacks`** (el punto crítico del recon R6):
+      la página sigue adentro — el store se rehidrata de localStorage,
+      `authenticated` valida sesión, `superadmin` valida grant, y
+      queda en la placeholder. **No debe patear a `/login` ni a
+      `/dashboard`**.
+- [ ] Navegar a otros items del sidebar y volver — sin regresión.
+
+Si algún ítem falla, capturar consola del navegador + Network y
+adjuntar en el reporte de vuelta a la sala.
+
+**GATE 6** queda en manos de Franco. Capa 2 (listado real + `GET /me`
+al mount) arranca solo con GATE 6 verde.
