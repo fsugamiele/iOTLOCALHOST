@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState } = require('./siteState');
 const { processMessage }      = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
+const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -27,6 +28,7 @@ async function start() {
   console.log(`[edge-engine] Mongo conectado — ${MONGO_URI}`);
 
   let packs = await loadPacks(SITE_ID);
+  let ruleSnapshot = buildSnapshot(packs);
   await hydrateSiteState(SITE_ID, siteState);
   console.log(`[edge-engine] Packs cargados: ${packs.map(p => p.packId).join(', ') || '(ninguno)'}`);
   console.log(`[edge-engine] Dispositivos en estado: ${siteState.size}`);
