@@ -1,0 +1,144 @@
+// CRUD HTTP de RulePack — SF-1 de A8 (DEC-REF-42, DEC-REF-57).
+// Escribe al mismo Mongo que lee el motor edge (siteState.js:22). El
+// hot-reload de packs vive en SF-3 (DEC-REF-58); esta ruta es solo la
+// superficie de escritura.
+//
+// RBAC (DEC-REF-60): superadmin puede todo; cualquier otro rol → DENY
+// fail-close. La rama 'RulePack' vive en scope.js. Para GET esto
+// resuelve por buildReadFilter (DENY_FILTER = {$expr:false} → 0-match).
+// Para PUT/DELETE se chequea el rol explícito ANTES del write: un
+// upsert con DENY_FILTER como filter crearía un doc nuevo con los
+// campos del update (Mongo upsert no aplica el filter al doc creado),
+// abriendo un hueco. RBAC directo por rol lo cierra sin depender de
+// coincidencias de shape.
+//
+// Validación de crossExpr (DEC-REF-47 + DEC-REF-57): para toda regla
+// con type:'cross' se corre validateCrossTree ANTES del write. Cierra
+// el riesgo de regla-fantasma (siteState.js:29-43 descartaría la regla
+// silenciosamente al cargar el pack). El pack se persiste como todo o
+// nada — el usuario ve el 400 con la razón exacta.
+
+const express = require("express");
+const router = express.Router();
+const { checkAuth } = require("../middlewares/authentication.js");
+const { buildReadFilter } = require("../middlewares/scope.js");
+const { validateCrossTree } = require("../services/ruleValidation.js");
+
+const RulePack = require("../models/rule_pack.js");
+
+function isSuperadmin(req) {
+  const grants = req.userData?.grants || [];
+  return grants.some(g => g.role === 'superadmin');
+}
+
+// Valida crossExpr de cada regla type:'cross' del pack. Retorna
+// { ok:true } o { ok:false, ruleId, reason } con el primer error.
+function validatePackCrossRules(pack) {
+  const rules = Array.isArray(pack?.rules) ? pack.rules : [];
+  for (const r of rules) {
+    if (r.type !== 'cross') continue;
+    const v = validateCrossTree(r.crossExpr);
+    if (!v.ok) return { ok: false, ruleId: r.ruleId, reason: v.reason };
+  }
+  return { ok: true };
+}
+
+// GET /rulepacks — lista. Superadmin ve todo; resto DENY (0 packs).
+router.get("/rulepacks", checkAuth, async (req, res) => {
+  try {
+    const filter = await buildReadFilter(req, 'RulePack');
+    const packs = await RulePack.find(filter).lean();
+    return res.json({ status: "success", data: packs });
+  } catch (error) {
+    console.log("ERROR GETTING RULEPACKS");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+// GET /rulepacks/:packId — uno. Mismo gate. 404 si no existe (o si el
+// gate lo oculta — indistinguible por diseño, no filtra información
+// sobre existencia).
+router.get("/rulepacks/:packId", checkAuth, async (req, res) => {
+  try {
+    const filter = await buildReadFilter(req, 'RulePack');
+    const pack = await RulePack.findOne({ ...filter, packId: req.params.packId }).lean();
+    if (!pack) return res.status(404).json({ status: "error", error: "rulepack not found" });
+    return res.json({ status: "success", data: pack });
+  } catch (error) {
+    console.log("ERROR GETTING RULEPACK");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+// PUT /rulepacks/:packId — upsert canónico (findOneAndUpdate) espejando
+// seeds/cummins_pcc_v1.js:154-158. runValidators:true corre las
+// validaciones del schema (enums, requireds); validatePackCrossRules
+// corre las de forma del árbol antes del write.
+router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadmin(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin required" });
+    }
+
+    const packId = req.params.packId;
+    const body = req.body.rulepack || {};
+
+    if (!body.deviceType) {
+      return res.status(400).json({ status: "error", error: "deviceType is required" });
+    }
+    if (body.packId && body.packId !== packId) {
+      return res.status(400).json({ status: "error", error: "packId in body must match URL" });
+    }
+
+    // Fuerza consistencia: el packId autoritativo es el de la URL.
+    const doc = { ...body, packId };
+
+    const cross = validatePackCrossRules(doc);
+    if (!cross.ok) {
+      return res.status(400).json({
+        status: "error",
+        error: `crossExpr inválido en regla ${cross.ruleId}: ${cross.reason}`,
+      });
+    }
+
+    const result = await RulePack.findOneAndUpdate(
+      { packId },
+      doc,
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    return res.json({
+      status: "success",
+      packId: result.packId,
+      version: result.version,
+      rules: result.rules.length,
+    });
+  } catch (error) {
+    console.log("ERROR PUTTING RULEPACK");
+    console.log(error);
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    return res.status(status).json({ status: "error", error: error.message || error });
+  }
+});
+
+// DELETE /rulepacks/:packId — remove. Superadmin only.
+router.delete("/rulepacks/:packId", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadmin(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin required" });
+    }
+
+    const result = await RulePack.deleteOne({ packId: req.params.packId });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ status: "error", error: "rulepack not found" });
+    }
+    return res.json({ status: "success" });
+  } catch (error) {
+    console.log("ERROR DELETING RULEPACK");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+module.exports = router;

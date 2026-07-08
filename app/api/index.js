@@ -35,6 +35,7 @@ app.use("/api", require("./routes/webhooks.js"));
 app.use("/api", require("./routes/emqxapi.js"));
 app.use("/api", require("./routes/alarms.js"));
 app.use("/api", require("./routes/rules.js"));
+app.use("/api", require("./routes/rulepacks.js"));
 app.use("/api", require("./routes/dataprovider.js"));
  
 module.exports = app;
