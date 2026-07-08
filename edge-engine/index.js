@@ -1,7 +1,7 @@
 require('dotenv').config();
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
-const { loadPacks }      = require('./siteState');
+const { loadPacks, hydrateSiteState } = require('./siteState');
 const { processMessage }      = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 
@@ -26,7 +26,8 @@ async function start() {
   });
   console.log(`[edge-engine] Mongo conectado — ${MONGO_URI}`);
 
-  const { packs } = await loadPacks(SITE_ID, siteState);
+  let packs = await loadPacks(SITE_ID);
+  await hydrateSiteState(SITE_ID, siteState);
   console.log(`[edge-engine] Packs cargados: ${packs.map(p => p.packId).join(', ') || '(ninguno)'}`);
   console.log(`[edge-engine] Dispositivos en estado: ${siteState.size}`);
 
