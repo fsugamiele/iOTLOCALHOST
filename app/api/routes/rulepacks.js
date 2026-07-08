@@ -26,6 +26,32 @@ const { validateCrossTree } = require("../services/ruleValidation.js");
 
 const RulePack = require("../models/rule_pack.js");
 
+// SF-3 (DEC-REF-58, DEC-REF-61.b, DEC-REF-61-A). Auto-publish al canal
+// de reload tras escritura exitosa. Broadcast: writer NO sabe qué sites
+// usan cada pack — DEC-REF-61-A. Cliente compartido `global.mqttClient`
+// (webhooks.js:349, credencial `superiotix` con publish `#`).
+// Fire-and-forget: un publish fallido NO revierte la escritura — el
+// pack quedó en Mongo, el siguiente reload eventual (nuevo write, u
+// orden manual desde SF-5) lo tomará. El log claro habilita el
+// diagnóstico.
+const RELOAD_TOPIC_BROADCAST = 'wanomi/edge/all/reload';
+
+function publishReload(context) {
+  if (!global.mqttClient || !global.mqttClient.connected) {
+    console.warn(`[rulepacks] Reload NO publicado (${context}) — global.mqttClient no conectado`);
+    return;
+  }
+  // QoS 1: broker garantiza al menos una entrega al edge suscrito.
+  // Payload arbitrario (edge ignora el contenido, DEC-REF-61.c).
+  global.mqttClient.publish(RELOAD_TOPIC_BROADCAST, '{}', { qos: 1 }, err => {
+    if (err) {
+      console.error(`[rulepacks] Reload publish FALLÓ (${context}): ${err.message}`);
+    } else {
+      console.log(`[rulepacks] Reload publicado (${context}) → ${RELOAD_TOPIC_BROADCAST}`);
+    }
+  });
+}
+
 function isSuperadmin(req) {
   const grants = req.userData?.grants || [];
   return grants.some(g => g.role === 'superadmin');
@@ -108,6 +134,7 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
       doc,
       { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
     );
+    publishReload(`PUT ${packId}`);
     return res.json({
       status: "success",
       packId: result.packId,
@@ -133,6 +160,7 @@ router.delete("/rulepacks/:packId", checkAuth, async (req, res) => {
     if (result.deletedCount === 0) {
       return res.status(404).json({ status: "error", error: "rulepack not found" });
     }
+    publishReload(`DELETE ${req.params.packId}`);
     return res.json({ status: "success" });
   } catch (error) {
     console.log("ERROR DELETING RULEPACK");
