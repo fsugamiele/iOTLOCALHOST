@@ -4870,3 +4870,41 @@ log del edge y adjuntar en el reporte de vuelta a la sala.
 
 **GATE 7** queda en manos de Franco. Capa 3 (editor `<CrossExprNode>`
 recursivo, AND/OR + hoja equipo) arranca solo con GATE 7 verde.
+
+**GATE 7 — VERDE**, validado por Franco en browser (2026-07-08):
+ambos bloques ejecutados sin regresión. CRUD completo desde UI con
+reloads visibles en el log del edge (dos ciclos "Reload solicitado"
+→ "Reload OK", `intactas: 5` en ambos, delete con `eliminadas: 0` y
+`packs: cummins-pcc-v1` sin `_test-capa2`). Fricción de borrado
+correcta (input case-sensitive, botón disabled hasta match exacto).
+F5 sobre `/rulepacks` dispara `GET /api/me` como esperado
+(DEC-REF-62.a). Cellowner sin regresión: sin ítem, redirect en URLs
+manuales, `/sites`/`/alarms` intactas. **Capa 2 CERRADA**.
+
+**Corrección por append** (el corpus es append-only, no editamos lo
+escrito): un ítem de la checklist R8 preveía `eliminadas: 1` en el
+diff del delete de `_test-capa2`. La expectativa correcta es
+**`eliminadas: 0`** — el diff opera a nivel REGLA, y `_test-capa2`
+se creó con `rules: []`. El pack SÍ desaparece de la lista `packs:`
+del motor (efecto operacional correcto); a nivel diff no hay reglas
+huérfanas que limpiar. El comentario de contexto que acompaña la
+línea de la checklist ya lo aclaraba, pero la marca ✓ del checkbox
+"eliminadas: 1" queda tachada por esta corrección.
+
+#### R9 — SF-5 Capa 3 (editor de reglas + CrossExprNode)
+
+Tercera y última capa del plan SF-5. Alcance:
+
+- Componente recursivo `<CrossExprNode>` (primer patrón recursivo del
+  codebase) que renderiza y edita nodos AND/OR + hoja equipo. Hoja de
+  suma modelada pero no creable desde la UI (activada en SF-6).
+- Editor de reglas en `/rulepacks/:packId` con acciones por fila
+  (editar / borrar regla) + botón "Nueva regla".
+- Revalidación `GET /me` al mount del detalle (DEC-REF-62-A).
+- Errores 400 del backend (validateCrossTree) mostrados con la razón
+  textual usando `$notify` vigente.
+
+**No entra**: hoja de suma editable (SF-6), edición completa de tipos
+C y S (se detallará en el reporte según lo que exija el schema — si
+la edición completa exige campos que no encajan en el alcance
+razonable, se documenta como decisión tomada, sin silenciar).
