@@ -28,6 +28,11 @@ const siteState    = new Map();
 const cooldownState = new Map();
 const windowState   = new Map();
 const crossState    = new Map();
+// SF-4 · DEC-REF-64.a — activeState: Map<ruleId, timestamp del fire vigente>.
+// Se popula en fireAlarm y se limpia en fireResolve o al detectar la
+// transición activa→inactiva. Vive en el mismo closure que los otros Maps;
+// viaja como argumento a processMessage.
+const activeState  = new Map();
 
 async function start() {
   await mongoose.connect(MONGO_URI, {
@@ -129,7 +134,7 @@ async function start() {
     const deviceState = siteState.get(dId);
     deviceState[variable] = value;
 
-    processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, eventTs });
+    processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, eventTs });
   });
 
   client.on('error', err => {

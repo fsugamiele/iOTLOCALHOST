@@ -4,7 +4,7 @@ const { evaluateS } = require('./evaluators/typeS');
 const { evaluateCross } = require('./evaluators/typeCross');
 const { notify }    = require('./notificationRouter');
 
-function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, eventTs }) {
+function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, eventTs }) {
   const deviceState = siteState.get(dId) || {};
   const deviceType  = deviceState._deviceType || null;
   const siteCode    = deviceState._siteCode   || null;
@@ -20,8 +20,21 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
             reason: 'cross-tree-fired',
             mode: 'cross',
             thresholdUsed: null,
-            cooldownState, siteState,
+            cooldownState, siteState, activeState,
           });
+        } else if (res.resolved) {
+          // SF-4 · DEC-REF-64 — el evaluador cross reportó que la regla ACTIVA
+          // dejó de cumplirse (transición firedKey true→delete). Sólo emite
+          // resolve si estaba en activeState (defensa vs delete de una regla
+          // que nunca fired en esta sesión, p.ej. tras un reload).
+          if (activeState.has(rule.ruleId)) {
+            fireResolve({
+              rule, deviceId: dId,
+              reason: 'cross-tree-cleared',
+              mode: 'resolve-by-condition',
+              cooldownState, siteState, activeState,
+            });
+          }
         }
         continue;
       }
@@ -143,7 +156,7 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
   }
 }
 
-function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldownState, siteState }) {
+function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldownState, siteState, activeState }) {
   const now       = Date.now();
   const lastFired = cooldownState.get(rule.ruleId) || 0;
   const cooldownMs = (rule.cooldownSec || 0) * 1000;
@@ -151,6 +164,10 @@ function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldow
   if (now - lastFired < cooldownMs) return;
 
   cooldownState.set(rule.ruleId, now);
+  // SF-4 · DEC-REF-64.a — marca la regla como ACTIVA. La transición
+  // activa→inactiva (typeD/S post-!triggered, typeCross delete(firedKey),
+  // o cleanup por reload D3) emitirá resolve al ver este flag y borrarlo.
+  if (activeState) activeState.set(rule.ruleId, now);
 
   const devState = siteState ? siteState.get(deviceId) || {} : {};
 
@@ -171,10 +188,50 @@ function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldow
     reason,
     mode:              mode || 'direct',
     thresholdUsed:     thresholdUsed !== undefined ? thresholdUsed : null,
+    kind:              'fire',
     ts:                new Date().toISOString(),
   };
 
   notify(alarm);
 }
 
-module.exports = { processMessage };
+// SF-4 · DEC-REF-64 — fireResolve: emisión de evento resolve.
+// Simétrico a fireAlarm pero SIN cooldown propio (el activeState.has
+// garantiza que solo se emita cuando había fire vigente — el spam se
+// controla ahí). Borra el flag activo antes de notify() por el mismo
+// motivo: si notify tarda y otro path evalúa la regla en el intertanto,
+// no re-emite resolve por la misma transición.
+function fireResolve({ rule, deviceId, reason, mode, cooldownState, siteState, activeState }) {
+  if (!activeState || !activeState.has(rule.ruleId)) return;
+  activeState.delete(rule.ruleId);
+  // No borramos cooldownState — protege contra fire re-inmediato tras
+  // resolve (patrón "clear then re-raise" con flapping alto). El
+  // cooldownSec de la regla vuelve a proteger el próximo fire.
+
+  const devState = siteState ? siteState.get(deviceId) || {} : {};
+
+  const alarm = {
+    ruleId:            rule.ruleId,
+    userId:            devState._userId     || '',
+    deviceName:        devState._deviceName || '',
+    inferenceId:       rule.inferenceId,
+    label:             rule.label,
+    variableLabel:     rule.variableLabel || '',
+    severity:          rule.severity,
+    recommendation:    'Alarma resuelta: ' + (rule.label || rule.ruleId),
+    unit:              rule.unit || '',
+    correlationParent: rule.correlationParent,
+    deviceId,
+    variable:          rule.variable,
+    value:             null,
+    reason,
+    mode:              mode || 'resolve-by-condition',
+    thresholdUsed:     null,
+    kind:              'resolve',
+    ts:                new Date().toISOString(),
+  };
+
+  notify(alarm);
+}
+
+module.exports = { processMessage, fireResolve };
