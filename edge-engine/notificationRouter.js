@@ -139,26 +139,40 @@ async function saveToMongo(alarm) {
 }
 
 // ── Canal 4: Telegram (feature flag por env) ─────────────────────────────────
+// SF-4 · DEC-REF-64.b — rama separada para resolves (emoji verde + prefijo
+// "Resuelto:"). Criterio Franco (D5): reversible — si en uso real resulta
+// ruido, filtrar por severity (p.ej. solo critical).
 function sendTelegram(alarm) {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
 
-  const emoji = alarm.severity === 'critical' ? '🔴' :
-                alarm.severity === 'warning'  ? '⚠️' : 'ℹ️';
-  const unit  = alarm.unit ? ` ${alarm.unit}` : '';
+  const isResolve = alarm.kind === 'resolve';
+  const emoji = isResolve
+    ? '✅'
+    : (alarm.severity === 'critical' ? '🔴' :
+       alarm.severity === 'warning'  ? '⚠️' : 'ℹ️');
+  const prefix = isResolve ? 'Resuelto: ' : '';
+  const unit   = alarm.unit ? ` ${alarm.unit}` : '';
 
   const lines = [
-    `${emoji} ${alarm.label} — ${_siteId}`,
-    `Dispositivo: ${alarm.deviceName || alarm.deviceId} | Variable: ${alarm.variableLabel || alarm.variable} = ${alarm.value}${unit}`,
+    `${emoji} ${prefix}${alarm.label} — ${_siteId}`,
+    `Dispositivo: ${alarm.deviceName || alarm.deviceId || '(sin device)'} | Variable: ${alarm.variableLabel || alarm.variable}` +
+      (isResolve ? '' : ` = ${alarm.value}${unit}`),
   ];
 
-  if (alarm.mode === 'direct') {
-    lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (fijo)`);
-  } else if (alarm.mode === 'calibrated') {
-    lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (calibrado)`);
-  } else if (alarm.mode === 'fallback') {
-    lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (respaldo — setpoint no disponible)`);
+  if (!isResolve) {
+    if (alarm.mode === 'direct') {
+      lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (fijo)`);
+    } else if (alarm.mode === 'calibrated') {
+      lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (calibrado)`);
+    } else if (alarm.mode === 'fallback') {
+      lines.push(`Umbral: ${alarm.thresholdUsed}${unit} (respaldo — setpoint no disponible)`);
+    }
+    // mode='no-ref': omitir línea de umbral
+  } else {
+    // Resolves: registrar modo (resolve-by-edit vs resolve-by-condition)
+    // para trazabilidad — útil cuando lleguen muchos en producción.
+    lines.push(`Motivo: ${alarm.mode || 'resolve-by-condition'}`);
   }
-  // mode='no-ref': omitir línea de umbral
 
   lines.push(`→ ${alarm.recommendation}`);
 
