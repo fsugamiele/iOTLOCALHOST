@@ -21,7 +21,8 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     source: String,
     correlationParent: { type: String, default: null },  // DEC-REF-50
     // ── tipo C: modo de disparo + umbral efectivo (DEC-REF-24, #22) ──
-    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross'], default: 'direct' },
+    // DEC-REF-64 amplía el enum con 'resolve-by-edit' y 'resolve-by-condition'.
+    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross', 'resolve-by-edit', 'resolve-by-condition'], default: 'direct' },
     thresholdUsed: { type: Number, default: null },
     unit:          { type: String, default: '' },
     // DEC-REF-46 / DEC-REF-54 — ACK auditable. El motor no los llena; los
@@ -29,6 +30,11 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     // colección `notifications`). Set por endpoint app-side.
     acknowledgedBy: { type: String, default: null },
     ackAt:          { type: Number, default: null },
+    // DEC-REF-59 + DEC-REF-64 — kind del evento: 'fire' (raise) o 'resolve' (clear).
+    // default 'fire' preserva la lectura de las notifs preexistentes como fire.
+    // Paridad total con app/api/models/notifications.js — este schema inline y el
+    // ES-module de app/ escriben la MISMA colección notifications.
+    kind:          { type: String, enum: ['fire', 'resolve'], default: 'fire' },
   }, { collection: 'notifications' })
 );
 

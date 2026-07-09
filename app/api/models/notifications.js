@@ -27,10 +27,15 @@ const notificationSchema = new Schema({
     siteId:          { type: String },
     reason:          { type: String },
     source:          { type: String },   // 'emqx' | 'edge-engine'
-    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross'] },
+    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross', 'resolve-by-edit', 'resolve-by-condition'] },
     thresholdUsed: { type: Number },
     unit:          { type: String },
     correlationParent: { type: String, default: null },  // DEC-REF-50
+    // DEC-REF-59 + DEC-REF-64 — kind del evento: 'fire' (raise) o 'resolve' (clear).
+    // default 'fire' → las 1.100+ notifs preexistentes leen como fire sin migración
+    // (mongoose aplica default en lectura si el campo está ausente en el doc).
+    // El motor edge y notificationRouter.js debe llenar este campo en cada emisión.
+    kind:          { type: String, enum: ['fire', 'resolve'], default: 'fire' },
 
     // DEC-REF-46 / DEC-REF-54 — ACK auditable, separado de `readed`.
     // `readed` es vista pasiva del listado; `acknowledgedBy` + `ackAt` registran
