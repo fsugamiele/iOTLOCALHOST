@@ -5109,3 +5109,50 @@ del edge y adjuntar en el reporte.
 completo y arranca SF-4 según el orden actualizado de DEC-REF-63/62-B
 (SF-5 → SF-4 → SF-6 → SF-7).
 
+**GATE 8 — VERDE**, validado por Franco en browser (2026-07-09).
+Evidencia clave pegada por Franco: la secuencia de log del edge
+mostró los diffs POR REGLA de forma nítida — `nuevas: 1 [_capa3_d1]`
+al agregar la primera regla del pack test, luego `editadas: 1
+[_capa3_d1] · intactas: 5` (las 5 de cummins intactas), luego
+`nuevas: 1 [_capa3_x1] · intactas: 6` al agregar la segunda regla
+del pack test (5 cummins + 1 test ya presente = 6 intactas). El
+`hash SHA-256` por regla (DEC-REF-61.d) distinguió con precisión
+qué reglas cambiaron y cuáles no, incluso dentro del mismo pack
+recién editado. Editor visual renderizó el árbol productivo real
+de A0 (AND(rpm>300, oil_pressure<2)) con Cancelar; 400 con
+atomicidad verificada (version del pack sin cambiar tras el rechazo
+de `AND sin children`); cellowner sin regresión en manual URLs ni
+navegación. **SF-5 CERRADO COMPLETO** (3 capas validadas: candado,
+listado+CRUD, editor de reglas con CrossExprNode).
+
+Balance A8: **SF-1 ✓ · SF-3 ✓ · SF-5 ✓** · pendientes SF-4 (esta
+apertura) · SF-6 · SF-7.
+
+#### R10 — recon micro SF-4 (resolve events)
+
+SF-4 implementa resolve events sobre el marco DEC-REF-59 (campo
+`kind: 'fire'|'resolve'` default `'fire'` en notifications; payload
+MQTT DEC-REF-55 extendido con el mismo campo; toast de resolución
+visible y diferenciado). El recon es READ-ONLY y verifica los
+ganchos inventariados en R1/B4 CONTRA el estado actual del motor
+(SF-3 modificó `edge-engine/index.js`, `siteState.js`, agregó
+`reloadState.js` y `ruleSnapshot`; el inventario de R1 puede haber
+quedado desactualizado).
+
+**Deudas heredadas que SF-4 debe cubrir**:
+
+1. **Validación D3 con estado real** (bitácora #44/R5-bis y #44/R6):
+   los 4 tests de R5-bis y los 4 de R9 validaron el mecanismo de
+   limpieza D3, pero SIEMPRE con `keys borradas: 0` porque las
+   reglas de test nunca dispararon (variables no publicadas por
+   ningún device). El plan de prueba de SF-4 DEBE incluir: **regla
+   que dispara → estado real en los Maps → editarla → verificar log
+   con `keys borradas > 0` y keys enumeradas**.
+2. **Migración del log del edge** (DEC-REF-62-A nota operativa):
+   el edge escribe a `/tmp/edge_r5bis.log` — ubicación volátil
+   heredada del comando de relanzamiento de R5-bis. SF-4 requiere
+   relanzar el edge (para cargar el código de resolve events) y es
+   la ventana natural para migrar el log a ubicación estable.
+
+El diseño lo hace la sala con Franco después del recon.
+
