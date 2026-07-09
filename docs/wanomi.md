@@ -5375,3 +5375,79 @@ cerrada + log migrado). Quedan **SF-6** (hoja de suma cross-equipo)
 y **SF-7** (edición C/S en consola) según el orden actualizado por
 DEC-REF-62-B/63/64.
 
+**GATE 10 — VERDE SOBRE EL MOTOR, con pulido pendiente**. Franco
+validó el pipeline SF-4 en la checklist visual (fire real →
+resolve-by-edit → coloreo híbrido cediendo correctamente; deuda D3
+cerrada con evidencia real en logs). El motor CIERRA correcto. Al
+mismo tiempo relevó tres ítems de pulido que integran el cierre
+completo de SF-4:
+
+- **(i) Toast por severidad**: el toast de fire hoy es rojo fijo por
+  el mapa binario `isResolve ? success : danger` que quedó del
+  R11. Fires warning e info se ven como danger — lectura visual
+  incorrecta.
+- **(ii) Pin de /sites en tiempo real**: `pages/sites/index.vue`
+  hace `loadSites()` una vez en `mounted()` y nunca escucha
+  `wanomi:notif`. El pin no cede ante fires/resolves hasta que el
+  usuario recarga. Contrasta con `_siteCode.vue` (DEC-REF-44) que sí
+  tiene el listener.
+- **(iii) Telegram activo**: el log del edge al arrancar reporta
+  `Telegram: OFF`. Investigación pre-GATE 10 asumió que "el token no
+  está en el env" — pero las credenciales SÍ existen en `app/.env`;
+  el drift es del entorno de proceso del edge, que nunca las incluyó
+  en el comando de relanzamiento. Primo del incidente EMQX de #41
+  (deriva `.env` vs entorno real).
+
+**Corrección de honestidad al reporte R11**: el reporte del cierre
+SF-4 afirmó que la rama Telegram "quedó verificada por tests
+unitarios internos" — **formulación inexacta**. El proyecto NO tiene
+infraestructura de tests automatizados (DEC-REF-62.f). La rama
+estaba verificada solo por **lectura de código**. R12 la valida de
+verdad contra la API real de Telegram.
+
+**SF-4 NO cierra** hasta que los tres pulidos estén validados por
+Franco (GATE 10-bis). DEC-REF-64-A registra el alcance en el corpus
+(v0.38 → v0.39).
+
+#### R12 — pulido SF-4 (DEC-REF-64-A)
+
+Alcance:
+
+- **Fase A** — registro DEC-REF-64-A + corrección R11.
+- **Fase B** (READ-ONLY) — recon micro de los 3 fixes.
+- **Fase C** — fixes: toast por severidad (C1), pin real-time (C2),
+  build + restart (C3), edge relanzado con Telegram (C4), E2E
+  técnico Telegram (C5).
+- **Fase D** — checklist visual GATE 10-bis para Franco: colores por
+  severidad + Telegram real + pin cambiando solo.
+
+**Diagnósticos de Fase B (READ-ONLY)** — los tres coinciden con la
+descripción de Franco, ninguno abre una decisión de re-diseño:
+
+- **B1 pin**: `sites/index.vue:79-82` `mounted()` llama `loadSites()`
+  una vez; grep confirmó cero listeners de `wanomi:notif`.
+  `sites/index.vue:102-135` `loadSites` es idempotente y cheap (4
+  sitios en el dominio actual, aggregate híbrido de DEC-REF-64.c).
+  Re-fetch total al recibir notif del bus es coherente con la
+  economía del endpoint y el patrón de `_siteCode.vue:170-174`.
+- **B2 toast**: `NotificationPlugin/Notification.vue:74-78` valida
+  `type ∈ {info, danger, warning, success}` — los 4 tipos existen.
+  Handler actual (`default.vue`) hace `isResolve ? success : danger`
+  binario. Fix: mapa por `payload.severity` para fires + resolve
+  override.
+- **B3 Telegram**: `notificationRouter.js:45-46` espera
+  `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID_DEFAULT`. `app/.env` los
+  tiene con los mismos nombres. `edge-engine/index.js:1` hace
+  `require('dotenv').config()` sin path → busca `.env` en `cwd`
+  (`/root/IotLocalhost/.env`, el de servicios Docker, no
+  `app/.env`). Verificación: `cat /proc/68464/environ | grep
+  TELEGRAM` → cero hits. Vía correcta: pasar las 2 variables
+  INLINE en el comando de relanzamiento (mismo patrón que las
+  demás — SITE_ID, MQTT_*, MONGODB_URI, NODE_PATH), sin loguear
+  valores. Alternativa "apuntar dotenv a app/.env" descartada por
+  riesgo de shadowing de otras variables (MONGO_HOST, WEBHOOKS_HOST,
+  EMQX_API_HOST tienen valores destinados al contenedor, no al
+  edge en localhost).
+
+**GATE B verde** — sigo a Fase C.
+
