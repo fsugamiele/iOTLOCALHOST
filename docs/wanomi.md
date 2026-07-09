@@ -5156,3 +5156,42 @@ quedado desactualizado).
 
 El diseño lo hace la sala con Franco después del recon.
 
+#### R11 — SF-4: implementación resolve events (DEC-REF-64)
+
+Franco firmó los cinco puntos abiertos del recon R10. **DEC-REF-64**
+consolida el diseño fino sobre el marco de DEC-REF-59. Registro
+canónico: WanomiRefactor.md v0.37 → **v0.38**. Resumen para navegar
+la bitácora:
+
+- **(a) Resolve por edición** (activeState × reload): una regla ACTIVA
+  que un reload D3 detecta como editada/eliminada emite resolve al
+  limpiarse, con `mode: 'resolve-by-edit'`. Principio: **ninguna
+  alarma abierta muere en silencio**. `cleanupStateForRules` se
+  extiende para cubrir `activeState`.
+- **(b) Telegram**: los resolves viajan por `notify()` a los cuatro
+  canales; rama de formato en `sendTelegram` (emoji verde, prefijo
+  "Resuelto:"). Medir en uso real antes de suprimir — reversible.
+- **(c) Coloreo híbrido**: `kind:'fire'` en el $match del aggregate
+  + un resolve más reciente que el último fire de esa ruleId dentro
+  de la ventana apaga el color al instante. La ventana de 15 min
+  queda como **red de seguridad para silencios sin resolve**.
+- **(d) Escenario E2E**: pack `_test-sf4` con `_sf4_d1` typeD
+  (`battery_voltage lt 20`, fire controlado) y `_sf4_x1` cross
+  (`AND(mains>100, battery>5)`, resolve natural vía `mains_failure`
+  + `mains_restore`). Cubre fire real → estado en Maps → edición con
+  `keys borradas > 0` enumeradas (**cierra deuda D3 de R5-bis**) →
+  resolve-by-edit → resolve-by-condition → toast verde (validación
+  visual de Franco) → `kind` persistido en Mongo.
+- **(e) Log estable**: `/tmp/edge_r5bis.log` → `logs/edge-${SITE_ID}.log`
+  bajo el repo con `logs/` en `.gitignore`. Migración en el
+  relanzamiento planificado de esta ronda.
+
+**Piezas de implementación** (orden de commits): schemas kind →
+activeState + fire kind → fireResolve + ganchos → cleanup +
+resolve-by-edit → limpieza case cross muerto → Telegram → coloreo →
+toast → gitignore/logs + relanzamiento → E2E + docs.
+
+**Reinicio único planificado del edge** (esta ronda): kill de PID
+57290 con captura previa de cmdline/environ/cwd; relanzamiento con
+`> logs/edge-${SITE_ID}.log 2>&1`. PID nuevo registrado.
+
