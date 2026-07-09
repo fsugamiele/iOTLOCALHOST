@@ -79,9 +79,28 @@ export default {
   async mounted() {
     this.initMap();
     await this.loadSites();
+
+    // SF-4 · DEC-REF-64-A (ii) — real-time-lite del pin.
+    // Espeja el patrón DEC-REF-44 de _siteCode.vue:170-174. Cualquier notif
+    // (fire o resolve) del bus dispara re-fetch total de /sites/status —
+    // el aggregate híbrido (DEC-REF-64.c) ya devuelve el color correcto
+    // considerando el último evento por ruleId, así el pin cede ante
+    // resolves sin refrescar la página. No filtro por siteId porque el
+    // status del mapa cubre a TODOS los sitios visibles (una notif de un
+    // site cualquiera del scope puede haber cambiado su color).
+    this._notifHandler = () => {
+      this.loadSites().catch((e) => console.warn('[SitesMap] loadSites on notif failed', e));
+    };
+    this.$nuxt.$on('wanomi:notif', this._notifHandler);
   },
 
   beforeDestroy() {
+    // Limpieza listener wanomi:notif — evita fugas si el usuario navega
+    // fuera de /sites y vuelve.
+    if (this._notifHandler) {
+      this.$nuxt.$off('wanomi:notif', this._notifHandler);
+      this._notifHandler = null;
+    }
     // Teardown del mapa (DEC-STACK-1: ciclo de vida explícito, migrable)
     if (this.map) {
       this.map.remove();
