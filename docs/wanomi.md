@@ -5451,3 +5451,150 @@ descripción de Franco, ninguno abre una decisión de re-diseño:
 
 **GATE B verde** — sigo a Fase C.
 
+#### R12 Fase C — fixes aplicados
+
+**Commits**:
+
+- `9973492 feat(front): toast por severidad (critical/warning/info) + resolve success (DEC-REF-64-A i, SF-4 pulido)`
+- `65e4d7b feat(front): pin real-time en /sites — listener wanomi:notif + re-fetch status (DEC-REF-64-A ii, SF-4 pulido)`
+- `1c8d2fd fix(edge): sendTelegram drena body con res.resume() — evita socket hangup en keepAlive pool (DEC-REF-64-A iii, SF-4 pulido)`
+
+**C1 toast por severidad** (`app/layouts/default.vue`): mapa completo
+`sevMap = {critical: danger, warning: warning, info: info}` + resolve
+override a `success`. Fallback conservador a `danger` si falta
+severity y kind. Iconos: `alert-circle-exc` para fire, `bell-55` para
+info, `check-2` para resolve.
+
+**C2 pin real-time** (`app/pages/sites/index.vue`): listener
+`wanomi:notif` en `mounted()` que dispara `loadSites()` completo
+(re-fetch del status con el aggregate híbrido de DEC-REF-64.c). Sin
+filtro por siteId — el status del mapa cubre a todos los sitios
+visibles del scope; una notif de cualquier site del scope puede haber
+cambiado su color. `beforeDestroy()` extendido para hacer
+`$nuxt.$off('wanomi:notif', ...)` — evita fugas si el usuario navega
+fuera de `/sites` y vuelve.
+
+**Build**: `nuxt build` **3m20s** + `docker restart node` → API up.
+Smoke: `SPA /login → 200`, `SPA /sites → 200`, `API /rulepacks sin
+token → 401`, PIDs edge/sim vivos.
+
+**C4 relanzamiento edge con Telegram**:
+
+- Captura pre-kill PID 68464: cmdline `node edge-engine/index.js`,
+  cwd `/root/IotLocalhost`, env sin TELEGRAM.
+- Vía elegida: **variables inline en el comando de relanzamiento**
+  (leídas de `app/.env` sin loguear valores; `unset` inmediato después
+  del spawn). Coherente con el patrón vigente (SITE_ID, MQTT_*,
+  MONGODB_URI, NODE_PATH).
+- Kill 68464 → confirmed dead → relanzamiento con TELEGRAM_BOT_TOKEN
+  + TELEGRAM_CHAT_ID_DEFAULT inline.
+- **Edge PID 71060** — log de arranque: `[notifRouter] Inicializado —
+  siteId: CR00061 · Telegram: ON` ✓.
+
+**C5 E2E técnico Telegram** — pack `_test-sf4-tg` typeD warning:
+
+Primera pasada (PID 71060): fires y resolves emitidos correctamente
+en el pipeline motor, **pero el log del edge acumuló 5 `[notifRouter]
+Telegram request error:` con `err.message` vacío**. Diagnóstico:
+
+- Conectividad a `api.telegram.org` OK (curl 302, connect 0.5s).
+- Bot válido: `curl getMe` → HTTP 200 `ok:true` `username:Wanomi_bot`.
+- `sendMessage` vía curl con texto igual al del edge (emoji + guion
+  largo) → HTTP 200 ok:true, mensaje llega.
+- Repro con Node local, mismo env que PID 71060, misma librería
+  `https`, mismo URLSearchParams → HTTP 200 ok:true (message_id
+  visible en la response).
+
+Diferencia: **el código de `sendTelegram` NO drenaba `res.body`**.
+Node http con keepAlive acumula sockets sin drenar en el pool
+(anti-pattern documentado); Telegram cierra idle connections; los
+siguientes requests reusan sockets zombies y fallan con hangup
+silencioso (`err.message = ''`).
+
+**Fix `1c8d2fd`**: `res.resume()` en el callback de `https.get` —
+consume el body sin acumularlo en memoria. Mejora el diagnóstico del
+error handler con `err.code` como fallback cuando `err.message` está
+vacío.
+
+Segunda pasada (post-fix, edge relanzado PID **71737**):
+
+- Pack `_test-sf4-tg2` con misma regla → fire de `_sf4tg2_d1` a
+  23:32:55 → resolve-by-edit a 23:33:19 → DELETE.
+- **Log: 0 `Telegram request error`** (contado desde la línea de
+  arranque del PID 71737 = línea 1144 del log; anterior a esa
+  línea son los 5 errores del PID 71060 pre-fix).
+- `sendTelegram` se ejecutó en fire y resolve sin errores. La
+  llegada real de los mensajes al Telegram de Franco la confirma
+  él en la checklist visual — el agente no puede sustituir eso.
+
+**Estado post-fix**:
+
+- Edge PID **71737** con Telegram: ON, código con `res.resume()`.
+- `_test-sf4-tg` y `_test-sf4-tg2` borrados; `_test-sf4-visual`
+  (Franco) intacto; `cummins-pcc-v1 v3 rules=5` intacto.
+- 2 notifs de `_sf4tg2_d1` preservadas en Mongo (evidencia post-fix).
+- Sim PID **9163** intocado en toda la ronda.
+
+#### Checklist visual GATE 10-bis para Franco (DEC-REF-64-A)
+
+**Setup**:
+- Terminal 1: `tail -f logs/edge-CR00061.log | grep --line-buffered -E "Reload|ALARM|Telegram"`.
+- Browser: login como superadmin (`admin@wanomi.com`). Abrir DOS
+  pestañas: `/sites` (para el pin) y `/sites/CR00061` (para toasts
+  y feed).
+- Telegram: abrir la conversación con Wanomi_bot para ver los
+  mensajes llegar.
+
+**Bloque 1 — Toast por severidad + Telegram real**:
+
+- [ ] Crear pack `_test-sf4-final` (canary NO) desde `/rulepacks`.
+- [ ] Nueva regla: ruleId `_sf4f_d1`, label libre, inferenceId `SF4F`,
+      severity **warning**, deviceType `cummins-pcc`, variable
+      `battery_voltage`, cooldownSec `30`, condition `lt 20`.
+      Guardar.
+- [ ] En 60s → **toast AMARILLO (warning)** con icono alert-circle
+      + **mensaje ⚠️ en el Telegram del bot**. Log del edge:
+      `[ALARM] WARNING rule:_sf4f_d1` sin errores de Telegram.
+- [ ] Editar la regla a severity **info** (dejar condition en lt 20
+      así vuelve a disparar tras el edit) → Guardar.
+- [ ] **Toast VERDE "Resuelto: ..." (por resolve-by-edit)** + **✅
+      Resuelto: en Telegram**. Log: `keys borradas: 1 · resolve-by-edit:
+      1 [_sf4f_d1]`.
+- [ ] En 60s → **toast CELESTE (info)** con icono bell +
+      **ℹ️ en Telegram** (fire de la regla editada, severity info).
+- [ ] Editar la regla a condition `gt 20` (nunca dispara) → Guardar.
+- [ ] **Toast VERDE "Resuelto: ..." + ✅ Resuelto: en Telegram**.
+- [ ] **Toast CELESTE + ℹ️ Telegram** para info fire (si aplica);
+      ausencia de toast rojo/amarillo confirma que el mapa de
+      severity está funcionando.
+
+**Bloque 2 — Pin real-time**:
+
+- [ ] Con la pestaña `/sites` abierta **SIN refrescar la página**,
+      volver a `/rulepacks/_test-sf4-final`.
+- [ ] Editar la regla a severity **critical**, condition `lt 20` →
+      Guardar (fire crítico al próximo tick).
+- [ ] En 60s: cambiar a la pestaña `/sites` (aún sin refrescar) →
+      **el pin de CR00061 pasa de verde/ok a ROJO/critical automáticamente**.
+      Log: `[ALARM] CRITICAL rule:_sf4f_d1`.
+- [ ] Editar la regla a `gt 20` → Guardar → resolve-by-edit.
+- [ ] En 5-10s: **el pin de CR00061 vuelve a verde/ok
+      automáticamente** (sin refrescar). Log: `resolve-by-edit: 1
+      [_sf4f_d1]` + coloreo híbrido excluye la regla del aggregate.
+
+**Bloque 3 — Cleanup + no-regresión**:
+
+- [ ] Volver a `/rulepacks` → borrar `_test-sf4-final` (fricción
+      packId).
+- [ ] `_test-sf4-visual` (tuyo previo) sigue si querés; si no,
+      borralo también.
+- [ ] `cummins-pcc-v1` intacto (v3 rules=5).
+- [ ] Verificar que el bot Telegram no recibió mensajes espurios.
+
+Si algún ítem falla, capturar consola browser + Network + log del
+edge + screenshot Telegram y adjuntar.
+
+**GATE 10-bis** queda en manos de Franco. Con GATE 10-bis verde:
+**SF-4 CERRADO de verdad** (motor + toast por severidad + pin
+real-time + Telegram real). Quedan **SF-6** y **SF-7**.
+
