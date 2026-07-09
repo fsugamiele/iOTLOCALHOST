@@ -63,8 +63,8 @@ function diffSnapshots(oldSnap, newSnap) {
 }
 
 // cleanupStateForRules(ruleIds, ...) — borra TODAS las keys asociadas a esas
-// reglas de los tres Maps de estado del motor. Enumera aquí los formatos
-// cubiertos (fuente de verdad debe quedar visible en el fix, no diseminada):
+// reglas de los Maps de estado del motor. Enumera aquí los formatos cubiertos
+// (fuente de verdad debe quedar visible en el fix, no diseminada):
 //
 //   cooldownState:
 //     `${ruleId}`                            → fireAlarm    (ruleEngine.js:148)
@@ -76,11 +76,21 @@ function diffSnapshots(oldSnap, newSnap) {
 //   crossState:
 //     `${siteCode}:${ruleId}:start`          → typeCross    (typeCross.js:90)
 //     `${siteCode}:${ruleId}:fired`          → typeCross    (typeCross.js:91)
+//   activeState (SF-4 · DEC-REF-64.a):
+//     `${ruleId}`                            → fire vigente (ruleEngine.js:148/fireAlarm)
 //
-// Nuevos formatos de key en el futuro (p.ej. resolve events SF-4) deben
-// agregarse acá también o el reload los dejaría zombies.
-function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState, siteCode }) {
+// **Nota arquitectónica SF-4**: para preservar `reloadState.js` como módulo
+// puro (sin dep de notify/fireResolve), NO borramos `activeState` acá.
+// Retornamos `resolvedRuleIds` con las reglas que estaban ACTIVAS al momento
+// del reload; el caller (index.js/reloadPacks) emite `fireResolve` por cada
+// una — que borra el flag al finalizar. Efecto: mismo resultado, cero
+// acoplamiento del módulo puro con los canales de notificación.
+//
+// Nuevos formatos de key en el futuro deben agregarse acá o el reload los
+// dejaría zombies.
+function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState, activeState, siteCode }) {
   let deletedCount = 0;
+  const resolvedRuleIds = [];
   for (const ruleId of ruleIds) {
     if (cooldownState.delete(ruleId)) deletedCount++;
     if (cooldownState.delete(`${ruleId}:no-setpoint`)) deletedCount++;
@@ -91,8 +101,13 @@ function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState,
       if (crossState.delete(`${siteCode}:${ruleId}:start`)) deletedCount++;
       if (crossState.delete(`${siteCode}:${ruleId}:fired`)) deletedCount++;
     }
+    // SF-4 · DEC-REF-64.a — señaliza al caller. NO borra el flag: el
+    // fireResolve del caller lo hará como efecto del emit.
+    if (activeState && activeState.has(ruleId)) {
+      resolvedRuleIds.push(ruleId);
+    }
   }
-  return deletedCount;
+  return { deletedCount, resolvedRuleIds };
 }
 
 module.exports = { hashRule, buildSnapshot, diffSnapshots, cleanupStateForRules };

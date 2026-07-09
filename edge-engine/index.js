@@ -2,7 +2,7 @@ require('dotenv').config();
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState } = require('./siteState');
-const { processMessage }      = require('./ruleEngine');
+const { processMessage, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
 
@@ -61,9 +61,42 @@ async function start() {
       const nextSnap  = buildSnapshot(nextPacks);
       const diff      = diffSnapshots(ruleSnapshot, nextSnap);
       const toClean   = [...diff.removed, ...diff.changed];
-      const deletedKeys = cleanupStateForRules(toClean, {
-        cooldownState, windowState, crossState, siteCode: SITE_ID,
+
+      // SF-4 · DEC-REF-64.a — capturar defs VIEJAS de reglas que van a ser
+      // limpiadas Y que están ACTIVAS. Las necesitamos para construir
+      // fireResolve antes del swap; después del swap, `packs` cambió y ya
+      // no tenemos la definición vieja de una regla eliminada.
+      const oldRuleDefs = new Map();
+      if (toClean.length > 0) {
+        for (const pack of packs) {
+          for (const rule of (pack.rules || [])) {
+            if (toClean.includes(rule.ruleId) && activeState.has(rule.ruleId)) {
+              oldRuleDefs.set(rule.ruleId, rule);
+            }
+          }
+        }
+      }
+
+      const { deletedCount, resolvedRuleIds } = cleanupStateForRules(toClean, {
+        cooldownState, windowState, crossState, activeState, siteCode: SITE_ID,
       });
+
+      // SF-4 · DEC-REF-64.a — emitir resolve-by-edit por cada regla que
+      // estaba ACTIVA cuando el reload la editó o eliminó.
+      // "Ninguna alarma abierta muere en silencio" (principio del punto a).
+      // Emitir SI/O antes del swap: activeState y `packs` vigentes.
+      for (const ruleId of resolvedRuleIds) {
+        const oldRule = oldRuleDefs.get(ruleId);
+        if (!oldRule) continue;
+        const deviceId = findDeviceIdByType(siteState, oldRule.deviceType, SITE_ID) || '';
+        fireResolve({
+          rule: oldRule,
+          deviceId,
+          reason: 'rule-edited-or-removed',
+          mode: 'resolve-by-edit',
+          cooldownState, siteState, activeState,
+        });
+      }
 
       // Swap sincrónico post-await — no hay await entre estas dos líneas.
       packs = nextPacks;
@@ -74,13 +107,26 @@ async function start() {
         `reglas nuevas: ${diff.added.length} [${diff.added.join(', ')}] · ` +
         `editadas: ${diff.changed.length} [${diff.changed.join(', ')}] · ` +
         `eliminadas: ${diff.removed.length} [${diff.removed.join(', ')}] · ` +
-        `intactas: ${diff.unchanged.length} · keys estado borradas: ${deletedKeys}`
+        `intactas: ${diff.unchanged.length} · keys estado borradas: ${deletedCount}` +
+        (resolvedRuleIds.length ? ` · resolve-by-edit: ${resolvedRuleIds.length} [${resolvedRuleIds.join(', ')}]` : '')
       );
     } catch (err) {
       console.error(
         `[edge-engine] Reload FAILED — motor conserva packs vigentes (${packs.length} pack(s), ${ruleSnapshot.size} regla(s)): ${err.message}`
       );
     }
+  }
+
+  // SF-4 · DEC-REF-64.a helper — busca el primer dId cuyo device state tenga
+  // el deviceType requerido en el siteCode del edge. Usado por resolve-by-edit
+  // para poner un deviceId semánticamente correcto en el alarm object (necesario
+  // para que sendMqttNotif publique al canal ${owner}/${dId}/alarm/notif del
+  // browser — DEC-REF-55).
+  function findDeviceIdByType(state, deviceType, siteCode) {
+    for (const [dId, devState] of state) {
+      if (devState && devState._deviceType === deviceType && devState._siteCode === siteCode) return dId;
+    }
+    return null;
   }
 
   const client = mqtt.connect(MQTT_HOST, { username: MQTT_USER, password: MQTT_PASS });
