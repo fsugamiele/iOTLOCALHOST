@@ -43,9 +43,11 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
       if (rule.variable   !== variable)   continue;
 
       let triggered = false;
+      let evaluated = false;  // marca los cases que llegaron a evaluar
       switch (rule.type) {
         case 'D':
           triggered = evaluateD(rule, value);
+          evaluated = true;
           break;
         case 'C': {
           const res = evaluateC(rule, value, deviceState);
@@ -136,21 +138,39 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
               reason: 'window',
               thresholdUsed: rule.window?.countThreshold,
               mode: 'window',
-              cooldownState, siteState,
+              cooldownState, siteState, activeState,
+            });
+          } else if (activeState.has(rule.ruleId)) {
+            // SF-4 · DEC-REF-64 — transición activa→inactiva en typeS: la
+            // ventana ya no acumula suficientes events. Cierra el evento.
+            fireResolve({
+              rule, deviceId: dId,
+              reason: 'window-cleared',
+              mode: 'resolve-by-condition',
+              cooldownState, siteState, activeState,
             });
           }
           continue;
         }
-        case 'cross':
-          console.log(`[ruleEngine] Tipo ${rule.type} pendiente — regla ${rule.ruleId} omitida`);
-          continue;
         default:
           console.warn(`[ruleEngine] Tipo desconocido '${rule.type}' en regla ${rule.ruleId}`);
           continue;
       }
-      if (triggered) {
+      if (evaluated && triggered) {
         fireAlarm({ rule, value, deviceId: dId, reason: 'threshold',
-                    thresholdUsed: rule.condition?.value, cooldownState, siteState });
+                    thresholdUsed: rule.condition?.value, cooldownState, siteState, activeState });
+      } else if (evaluated && !triggered && rule.type === 'D' && activeState.has(rule.ruleId)) {
+        // SF-4 · DEC-REF-64 — transición activa→inactiva en typeD: el mensaje
+        // recibido para esta variable no cumple la condition. Cierra el evento.
+        // Restricción a type 'D': para type 'C' la semántica no-ref/fallback
+        // no equivale a "condición resuelta" — queda como pendiente (ver
+        // DEC-REF-64.c: la ventana temporal cubre C hasta que se aclare).
+        fireResolve({
+          rule, deviceId: dId,
+          reason: 'threshold-cleared',
+          mode: 'resolve-by-condition',
+          cooldownState, siteState, activeState,
+        });
       }
     }
   }

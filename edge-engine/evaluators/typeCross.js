@@ -57,8 +57,12 @@ function evaluateCross(rule, siteState, crossState, eventTs, siteCode) {
 
   if (!treeVal) {
     crossState.delete(startKey);
-    crossState.delete(firedKey);
-    return { fired: false };
+    // SF-4 · DEC-REF-64 — `resolved:true` señaliza al caller (ruleEngine)
+    // que la regla ACTIVA dejó de cumplirse en esta transición. Delete
+    // retorna true si la clave estaba presente. El caller decide si emite
+    // fireResolve consultando activeState.has(ruleId).
+    const resolved = crossState.delete(firedKey);
+    return { fired: false, resolved };
   }
 
   const graceMs = (rule.graceSec || 0) * 1000;
