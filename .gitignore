@@ -20,6 +20,9 @@ ESP8266/include/config.h
 # Logs
 *.log
 npm-debug.log*
+# SF-4 · DEC-REF-64.e — logs del edge migran a esta ubicación estable
+# desde /tmp/edge_r5bis.log. Nombre por SITE_ID para multi-site futuro.
+logs/
 
 # OS
 .DS_Store
