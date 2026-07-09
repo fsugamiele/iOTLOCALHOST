@@ -80,16 +80,15 @@ export default {
     this.initMap();
     await this.loadSites();
 
-    // SF-4 · DEC-REF-64-A (ii) — real-time-lite del pin.
-    // Espeja el patrón DEC-REF-44 de _siteCode.vue:170-174. Cualquier notif
-    // (fire o resolve) del bus dispara re-fetch total de /sites/status —
-    // el aggregate híbrido (DEC-REF-64.c) ya devuelve el color correcto
-    // considerando el último evento por ruleId, así el pin cede ante
-    // resolves sin refrescar la página. No filtro por siteId porque el
-    // status del mapa cubre a TODOS los sitios visibles (una notif de un
-    // site cualquiera del scope puede haber cambiado su color).
+    // SF-4 · DEC-REF-64-A (ii) + R13 — real-time-lite del pin, SILENCIOSO.
+    // Al llegar una notif del bus, refrescamos SOLO los pins que cambiaron
+    // status via `refreshSitesSilently()` — sin tocar `loading` (no aparece
+    // el spinner) y sin desmontar/remontar el mapa (no parpadea). Cambio
+    // acotado por marker: `setIcon(newIcon)` solo si el status del site
+    // cambió. Espeja el patrón DEC-REF-44 con el pulido de calidad de
+    // R13 (deuda declarada al cerrar R12/GATE 10-bis).
     this._notifHandler = () => {
-      this.loadSites().catch((e) => console.warn('[SitesMap] loadSites on notif failed', e));
+      this.refreshSitesSilently().catch((e) => console.warn('[SitesMap] silent refresh failed', e));
     };
     this.$nuxt.$on('wanomi:notif', this._notifHandler);
   },
@@ -164,16 +163,7 @@ export default {
     },
 
     addPin(site) {
-      const color = STATUS_COLOR[site.status] || STATUS_COLOR.ok;
-      // divIcon: pin de CSS puro, sin imagen → esquiva el bug de iconos en Webpack 4
-      const icon = L.divIcon({
-        className: 'site-pin-wrapper',
-        html: `<span class="site-pin" style="background:${color}"></span>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-      });
-
-      const marker = L.marker([site.lat, site.lng], { icon })
+      const marker = L.marker([site.lat, site.lng], { icon: this.iconForStatus(site.status) })
         .addTo(this.map)
         .bindTooltip(`${site.nombre || site.siteCode} (${site.siteCode})`);
 
@@ -181,7 +171,73 @@ export default {
         this.$router.push('/sites/' + site.siteCode);
       });
 
+      // R13 — anotar el siteCode en el marker para lookup en el refresh
+      // silencioso. Prefijo `_` como convención de campo interno.
+      marker._siteCode = site.siteCode;
+
       this.markers.push(marker);
+    },
+
+    iconForStatus(status) {
+      const color = STATUS_COLOR[status] || STATUS_COLOR.ok;
+      // divIcon: pin de CSS puro, sin imagen → esquiva el bug de iconos en Webpack 4
+      return L.divIcon({
+        className: 'site-pin-wrapper',
+        html: `<span class="site-pin" style="background:${color}"></span>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+    },
+
+    // R13 — refresco silencioso. No prende `loading` (no aparece el
+    // spinner), no desmonta el mapa (no parpadea), y actualiza SOLO los
+    // markers cuyo status cambió (via setIcon). Sites nuevos: se agregan;
+    // sites removidos: se quitan. Silent-on-error — el próximo evento
+    // del bus reintenta naturalmente.
+    async refreshSitesSilently() {
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      let nextSites;
+      try {
+        const res = await this.$axios.get('/sites/status', headers);
+        if (res.data.status !== 'success') return;
+        nextSites = res.data.data || [];
+      } catch (err) {
+        console.warn('[SitesMap] silent /sites/status fetch failed:', err.message || err);
+        return;
+      }
+
+      // Lookup por siteCode
+      const nextBySite = new Map(nextSites.map((s) => [s.siteCode, s]));
+      const prevBySite = new Map(this.sites.map((s) => [s.siteCode, s]));
+
+      // 1) Update: cambiar icon SOLO si el status del site cambió.
+      this.markers.forEach((marker) => {
+        const next = nextBySite.get(marker._siteCode);
+        if (!next) return;  // sitio removido, se maneja en (3)
+        const prev = prevBySite.get(marker._siteCode);
+        if (!prev || prev.status !== next.status) {
+          marker.setIcon(this.iconForStatus(next.status));
+        }
+      });
+
+      // 2) Add: sitios nuevos (raro pero contemplado — p.ej. otro operador
+      // dio grant recién). Solo si tienen coords.
+      const existingCodes = new Set(this.markers.map((m) => m._siteCode));
+      nextSites
+        .filter((s) => !existingCodes.has(s.siteCode) && s.lat != null && s.lng != null)
+        .forEach((s) => this.addPin(s));
+
+      // 3) Remove: sitios que ya no están (grant revocado, borrado). Filtra
+      // this.markers in-place, quitando del mapa los sin match.
+      this.markers = this.markers.filter((marker) => {
+        if (nextBySite.has(marker._siteCode)) return true;
+        this.map.removeLayer(marker);
+        return false;
+      });
+
+      // Actualizar el array reactivo — se conserva por si algún consumer
+      // futuro depende de él (leyenda, contadores).
+      this.sites = nextSites;
     },
   },
 };
