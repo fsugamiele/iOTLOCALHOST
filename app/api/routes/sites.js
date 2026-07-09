@@ -95,15 +95,26 @@ router.get("/sites/status", checkAuth, async (req, res) => {
 
     const sites = await Site.find(siteFilter).lean();
 
-    // Spread del filtro de tenancy en el $match: combina con time/severity vía AND
-    // implícito. Si notifFilter es {$or:[...]}, queda {$or, time, severity} = AND OK.
+    // SF-4 · DEC-REF-64.c — coloreo híbrido: por cada ruleId dentro de la
+    // ventana, tomar el EVENTO MÁS RECIENTE ($sort desc + $first). Si su
+    // kind es 'resolve' → NO cuenta (la regla cerró). Si es 'fire' o falta
+    // (legacy sin el campo, tratada como fire vía $ifNull) → cuenta.
+    // La ventana temporal de 15 min queda como red de seguridad para silencios
+    // sin resolve. Spread del filtro de tenancy en el $match: combina con
+    // time/severity vía AND implícito.
     const agg = await Notification.aggregate([
       { $match: { ...notifFilter,
                   time: { $gte: since },
                   severity: { $in: ["warning", "critical"] } } },
+      { $sort: { time: -1 } },
+      { $group: { _id: "$ruleId",
+                  lastKind:     { $first: "$kind" },
+                  lastSeverity: { $first: "$severity" },
+                  siteId:       { $first: "$siteId" } } },
+      { $match: { $expr: { $ne: [ { $ifNull: [ "$lastKind", "fire" ] }, "resolve" ] } } },
       { $group: { _id: "$siteId",
-                  hasCritical: { $max: { $cond: [ { $eq: ["$severity","critical"] }, 1, 0 ] } },
-                  hasWarning:  { $max: { $cond: [ { $eq: ["$severity","warning"]  }, 1, 0 ] } } } }
+                  hasCritical: { $max: { $cond: [ { $eq: ["$lastSeverity","critical"] }, 1, 0 ] } },
+                  hasWarning:  { $max: { $cond: [ { $eq: ["$lastSeverity","warning"]  }, 1, 0 ] } } } }
     ]);
     const statusBySite = {};
     agg.forEach(a => {
@@ -158,7 +169,10 @@ router.get("/site/:siteCode/alarms", checkAuth, async (req, res) => {
       ...cursorClause
     }).sort({ time: -1 }).limit(limit).lean();
 
-    // Mapa variable → peor severidad vigente (ventana idéntica a /sites/status).
+    // Mapa variable → peor severidad vigente (SF-4 · DEC-REF-64.c coloreo
+    // híbrido idéntico al de /sites/status pero agrupado por variable en
+    // vez de por siteId). Sort desc + first por ruleId → excluir si el
+    // último evento de esa regla es resolve → group por variable.
     const since = Date.now() - SEVERITY_WINDOW_MS;
     const agg = await Notification.aggregate([
       { $match: {
@@ -167,10 +181,18 @@ router.get("/site/:siteCode/alarms", checkAuth, async (req, res) => {
           time: { $gte: since },
           severity: { $in: ["warning", "critical"] }
         } },
+      { $sort: { time: -1 } },
+      { $group: {
+          _id: "$ruleId",
+          lastKind:     { $first: "$kind" },
+          lastSeverity: { $first: "$severity" },
+          variable:     { $first: "$variable" }
+        } },
+      { $match: { $expr: { $ne: [ { $ifNull: [ "$lastKind", "fire" ] }, "resolve" ] } } },
       { $group: {
           _id: "$variable",
-          hasCritical: { $max: { $cond: [ { $eq: ["$severity","critical"] }, 1, 0 ] } },
-          hasWarning:  { $max: { $cond: [ { $eq: ["$severity","warning"]  }, 1, 0 ] } }
+          hasCritical: { $max: { $cond: [ { $eq: ["$lastSeverity","critical"] }, 1, 0 ] } },
+          hasWarning:  { $max: { $cond: [ { $eq: ["$lastSeverity","warning"]  }, 1, 0 ] } }
         } }
     ]);
     const variableSeverity = {};
