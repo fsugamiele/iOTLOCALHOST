@@ -5598,3 +5598,39 @@ edge + screenshot Telegram y adjuntar.
 **SF-4 CERRADO de verdad** (motor + toast por severidad + pin
 real-time + Telegram real). Quedan **SF-6** y **SF-7**.
 
+**GATE 10-bis — VERDE COMPLETO**, validado por Franco (2026-07-09):
+los 4 colores del toast por severidad OK (danger/warning/info/success),
+pin CR00061 cambió de color sin refrescar la página, mensajes reales
+llegaron al Telegram del bot con emojis correctos (⚠️ para warning,
+ℹ️ para info, ✅ Resuelto: para resolve).
+
+**Observación de calidad de Franco al cerrar**: al llegar una notif
+con `/sites` abierta, se ve el **slider de carga y el mapa se recarga
+visiblemente** antes de mostrar el pin actualizado. Comportamiento
+funcional (el pin termina en el color correcto), pero UX pobre —
+parpadeo visible sobre un mapa que debería ser estable. Causa raíz:
+el fix R12/C2 hizo que el oyente del bus reuse `loadSites()`, el
+método de la carga inicial que incluye `loading = true`, teardown del
+mapa/pins y remount. **La sala declara esto deuda de calidad del fix
+R12/C2**. **SF-4 no CIERRA de verdad** hasta que esté pulido.
+
+#### R13 — refresco silencioso (cierre fino SF-4)
+
+Alcance: separar la carga inicial (con feedback visual explícito, que
+está bien) del refresco por notif (que debe ser silencioso — solo
+actualizar el color del pin, sin tocar el mapa ni mostrar loading).
+Solo frontend en esta ronda — motor, API, Mongo, EMQX y PIDs
+(edge **71737** — el prompt R13 mencionó "71205" pero el PID edge
+vigente desde R12/C4 post-fix es 71737; sim **9163**) intocables.
+
+**Plan**:
+- Fase B (READ-ONLY) — recon del método de refresco actual y cómo se
+  bindean los pins de Leaflet (reactivo vs imperativo). El shape del
+  fix depende de esto.
+- Fase C — método nuevo silencioso: fetch sin `loading` flag,
+  actualización acotada de los pins (sin desmontar el mapa). El
+  oyente del bus llama al silencioso. Carga inicial preserva su
+  loading. Si el detalle tiene el mismo patrón, mismo tratamiento.
+- Fase D — checklist visual para Franco: pin cambia de color sin
+  slider ni parpadeo.
+
