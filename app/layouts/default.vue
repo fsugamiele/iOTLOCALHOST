@@ -318,14 +318,26 @@ export default {
             } catch (e) {
               payload = { siteId: null, severity: 'critical', message: raw };
             }
-            // SF-4 · DEC-REF-64 — condicionar toast por payload.kind.
-            // resolve → verde 'success' + icon check + prefijo "Resuelto: ".
-            // fire (o sin kind, legacy pre-SF-4) → danger rojo (comportamiento
-            // vigente).
+            // SF-4 · DEC-REF-64 + DEC-REF-64-A (i) — toast condicionado
+            // por payload.kind Y payload.severity.
+            //   resolve  → 'success' (verde) + icon check + prefijo "Resuelto: "
+            //   fire critical → 'danger'  (rojo)     + icon alert-circle
+            //   fire warning  → 'warning' (amarillo) + icon alert-circle
+            //   fire info     → 'info'    (celeste)  + icon bell
+            // Los 4 types están validados por NotificationPlugin/Notification.vue:74-78.
+            // Fallback: sin severity ni kind (legacy raro) → danger conservador.
             const isResolve = payload.kind === 'resolve';
+            const sevMap = {
+              critical: { type: 'danger',  icon: 'tim-icons icon-alert-circle-exc' },
+              warning:  { type: 'warning', icon: 'tim-icons icon-alert-circle-exc' },
+              info:     { type: 'info',    icon: 'tim-icons icon-bell-55' }
+            };
+            const conf = isResolve
+              ? { type: 'success', icon: 'tim-icons icon-check-2' }
+              : (sevMap[payload.severity] || { type: 'danger', icon: 'tim-icons icon-alert-circle-exc' });
             this.$notify({
-              type: isResolve ? 'success' : 'danger',
-              icon: isResolve ? 'tim-icons icon-check-2' : 'tim-icons icon-alert-circle-exc',
+              type: conf.type,
+              icon: conf.icon,
               message: (isResolve ? 'Resuelto: ' : '') + (payload.message || raw)
             });
             this.$store.dispatch("getNotifications");
