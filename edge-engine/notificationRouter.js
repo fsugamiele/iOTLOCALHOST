@@ -59,8 +59,11 @@ function sendMqttNotif(alarm) {
   if (!_mqttClient || !alarm.userId || !alarm.deviceId) return;
   const topic = `${alarm.userId}/${alarm.deviceId}/alarm/notif`;
   const unit = alarm.unit ? ` ${alarm.unit}` : '';
+  const isResolve = alarm.kind === 'resolve';
   const thr  = alarm.thresholdUsed != null ? ` | umbral: ${alarm.thresholdUsed}${unit}` : '';
-  const message = `[${alarm.severity.toUpperCase()}] ${alarm.label} | ${_siteId} | ${alarm.value}${unit}${thr}`;
+  const message = isResolve
+    ? `[RESUELTO] ${alarm.label} | ${_siteId}`
+    : `[${alarm.severity.toUpperCase()}] ${alarm.label} | ${_siteId} | ${alarm.value}${unit}${thr}`;
   const payload = JSON.stringify({
     siteId:            _siteId,
     severity:          alarm.severity,
@@ -70,6 +73,9 @@ function sendMqttNotif(alarm) {
     time:              Date.now(),
     correlationParent: alarm.correlationParent || null,
     mode:              alarm.mode || 'direct',
+    // SF-4 · DEC-REF-59/64 — kind extiende DEC-REF-55. El frontend
+    // condiciona el color del toast por este campo.
+    kind:              alarm.kind || 'fire',
   });
   _mqttClient.publish(topic, payload, { qos: 0 }, err => {
     if (err) console.error('[notifRouter] MQTT notif error:', err.message);
@@ -98,6 +104,8 @@ function sendNocEvent(alarm) {
     reason:            alarm.reason,
     siteId:            _siteId,
     ts:                alarm.ts,
+    // SF-4 · DEC-REF-64 — kind también viaja al NOC.
+    kind:              alarm.kind || 'fire',
   });
   _mqttClient.publish(topic, payload, { qos: 1 }, err => {
     if (err) console.error('[notifRouter] MQTT NOC error:', err.message);
@@ -132,6 +140,10 @@ async function saveToMongo(alarm) {
       payload:         { severity: alarm.severity, recommendation: alarm.recommendation, value: alarm.value },
       readed:          false,
       time:            Date.now(),
+      // SF-4 · DEC-REF-59/64 — persistir kind explícito. Sin esto, el
+      // default del schema ('fire') se aplicaría a los resolves y quedarían
+      // indistinguibles en Mongo.
+      kind:            alarm.kind || 'fire',
     });
   } catch (err) {
     console.error('[notifRouter] Mongo save error:', err.message);
