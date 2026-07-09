@@ -318,10 +318,15 @@ export default {
             } catch (e) {
               payload = { siteId: null, severity: 'critical', message: raw };
             }
+            // SF-4 · DEC-REF-64 — condicionar toast por payload.kind.
+            // resolve → verde 'success' + icon check + prefijo "Resuelto: ".
+            // fire (o sin kind, legacy pre-SF-4) → danger rojo (comportamiento
+            // vigente).
+            const isResolve = payload.kind === 'resolve';
             this.$notify({
-              type: "danger",
-              icon: "tim-icons icon-alert-circle-exc",
-              message: payload.message || raw
+              type: isResolve ? 'success' : 'danger',
+              icon: isResolve ? 'tim-icons icon-check-2' : 'tim-icons icon-alert-circle-exc',
+              message: (isResolve ? 'Resuelto: ' : '') + (payload.message || raw)
             });
             this.$store.dispatch("getNotifications");
             // Real-time-lite (DEC-REF-44 / DEC-REF-54 / DEC-REF-55): reemitir
