@@ -5195,3 +5195,183 @@ toast → gitignore/logs + relanzamiento → E2E + docs.
 57290 con captura previa de cmdline/environ/cwd; relanzamiento con
 `> logs/edge-${SITE_ID}.log 2>&1`. PID nuevo registrado.
 
+#### R11 Fase B — SF-4 aplicado + E2E técnico completo
+
+**10 commits** (uno por concern):
+
+- `950ab62 feat(schema): kind fire/resolve default fire en notifications (paridad app + edge) — DEC-REF-64 SF-4`
+- `4afb534 feat(edge): activeState + fireAlarm/fireResolve kind + gancho cross (DEC-REF-64.a, SF-4)`
+- `7e04c1e feat(edge): ganchos fireResolve en typeD/S + typeCross reporta 'resolved' + limpieza case cross muerto (DEC-REF-64, SF-4)`
+- `ea3a35a feat(edge): cleanupStateForRules retorna resolvedRuleIds + reload emite resolve-by-edit (DEC-REF-64.a, SF-4)`
+- `5d55f9d feat(edge): Telegram rama resolve — emoji verde + prefijo 'Resuelto:' (DEC-REF-64.b, SF-4)`
+- `a38d2ec feat(edge): propagar kind a payloads MQTT/NOC + persistir en Mongo (DEC-REF-64, SF-4)`
+- `d4884d1 feat(api): coloreo híbrido /sites/status + variableSeverity — último evento por ruleId, exclude resolve (DEC-REF-64.c, SF-4)`
+- `bf5da9e feat(front): toast condicionado por kind — success verde + 'Resuelto:' (DEC-REF-64, SF-4)`
+- `13c736b chore: .gitignore excluye logs/ (destino estable del edge, DEC-REF-64.e, SF-4)`
+- (docs de cierre — este commit)
+
+**Notas arquitectónicas**:
+
+- **Módulo `reloadState.js` mantenido puro**: `cleanupStateForRules`
+  no borra `activeState` ni conoce `fireResolve`. Retorna
+  `{deletedCount, resolvedRuleIds}` — el caller (`index.js/reloadPacks`)
+  emite `fireResolve` por cada ruleId activo antes del swap, y usa
+  el `packs` VIEJO (via closure) para reconstruir la definición de
+  la regla eliminada.
+- **`findDeviceIdByType` en `index.js`**: para el resolve-by-edit, no
+  hay un mensaje entrante que provea `deviceId`; se busca en
+  `siteState` un dispositivo del `deviceType` de la regla. Sin device
+  encontrado, el canal MQTT del dashboard (que requiere `deviceId`
+  para el tópico) se salta; los otros canales (NOC + Mongo + Telegram)
+  emiten igual.
+- **Alcance del gancho typeD/S**: activo para type `'D'` y `'S'`. Para
+  type `'C'` (auto-calibrado con setpointSource/fallback) queda
+  pendiente — la semántica no-ref/fallback no equivale limpiamente
+  a "condición dejó de cumplirse"; DEC-REF-64.c cubre C con la
+  ventana temporal como red de seguridad.
+- **Idempotencia del resolve**: `fireResolve` chequea
+  `activeState.has(rule.ruleId)` al entrar y devuelve sin acción si
+  no está activo. Doble emit por la misma transición es imposible.
+
+**Build**:
+- `nuxt build` **2m47s** (rutas idénticas — sin páginas nuevas, solo
+  cambio interno del handler notif en `default.vue`).
+- `docker restart node` OK; API up.
+
+**Reinicio del edge**:
+- Captura pre-kill de PID 57290: cmdline `node edge-engine/index.js`,
+  cwd `/root/IotLocalhost`, env crítico (SITE_ID, MQTT_HOST,
+  MQTT_USER, MQTT_PASS, MONGODB_URI, NODE_PATH).
+- `kill 57290` → confirmed dead.
+- Relanzamiento idéntico salvo redirect: `> logs/edge-CR00061.log 2>&1`.
+- **Edge nuevo PID 68464** con SF-4 activo. Log estable en el nuevo
+  destino, poblado desde el arranque. Sim PID 9163 intocado.
+- Arranque limpio: pack v3 cargado, subscribe a sdata + reload
+  site + reload all, snapshot inicial construido, cross-import de
+  `validateCrossTree` sin regresión.
+
+**E2E técnico**:
+
+Pack de test `_test-sf4` con dos reglas (`canary:false` para que el
+motor las cargue) inocuas respecto al pack productivo:
+
+| Paso | Acción | Log del edge | Mongo |
+|---|---|---|---|
+| **A** create pack con `_sf4_d1` (typeD `battery_voltage lt 20`) | PUT 200 | `Reload OK — nuevas: 1 [_sf4_d1] · intactas: 5` | 0 notifs de test aún |
+| **A2** esperar ~60s (sim publica battery cada tick) | — | `[ALARM] WARNING device:Z5tKK1rN rule:_sf4_d1 var:battery_voltage=12.94` | 1 doc `{kind:'fire', mode:'direct', value:12.94}` |
+| **B** (deuda D3) edit `_sf4_d1` a condition `gt 20` | PUT 200 v=2 | **`Reload OK — editadas: 1 [_sf4_d1] · intactas: 5 · keys estado borradas: 1 · resolve-by-edit: 1 [_sf4_d1]`** | +1 doc `{kind:'resolve', mode:'resolve-by-edit', reason:'rule-edited-or-removed'}` |
+| **C** agregar `_sf4_x1` (cross `AND(mains>100, battery>5)`); mains restaurada previamente | PUT 200 v=3 | `Reload OK — nuevas: 1 [_sf4_x1]` + al próximo tick `[ALARM] rule:_sf4_x1 var:n/a=null` | +1 doc `{kind:'fire', mode:'cross', reason:'cross-tree-fired'}` |
+| **D** cortar mains con `mains_failure_gen_no_start` scenario | mosquitto_pub OK | `[ALARM] rule:_sf4_x1 var:n/a=null` (segundo emit — es el fireResolve del gancho cross) | +1 doc `{kind:'resolve', mode:'resolve-by-condition', reason:'cross-tree-cleared'}` |
+| **E** restaurar sim con `mains_restore` scenario | mosquitto_pub OK | Nuevas fires de `_sf4_x1` (mains>100 vuelve a cumplirse) + resolves de reglas productivas (cummins-M1-mains-loss, cummins-C1-mains-loss-gen-no-start) | 2 resolves productivos adicionales |
+| **F** DELETE `_test-sf4` (pack completo mientras `_sf4_x1` estaba fire nuevamente) | DELETE 200 | `Reload OK — eliminadas: 2 [_sf4_d1, _sf4_x1] · keys estado borradas: 2 · resolve-by-edit: 1 [_sf4_x1]` | +1 doc `{kind:'resolve', mode:'resolve-by-edit'}` (`_sf4_d1` estaba ya resuelto, no re-emite) |
+
+**Evidencia D3 (log crudo)**:
+
+```
+[edge-engine] Reload OK — packs: cummins-pcc-v1, _test-sf4 · reglas nuevas: 0 [] · editadas: 1 [_sf4_d1] · eliminadas: 0 [] · intactas: 5 · keys estado borradas: 1 · resolve-by-edit: 1 [_sf4_d1]
+```
+
+**Esta es la evidencia que R5-bis no pudo producir** (`keys estado
+borradas: 1` con la keys enumeradas + `resolve-by-edit: 1 [_sf4_d1]`).
+La deuda D3 heredada de R5-bis QUEDA CERRADA con log real contra
+estado real en Maps.
+
+**Coloreo híbrido verificado**:
+
+Post ciclo de E2E, con `_sf4_x1` en último estado fire (post-restore)
+y `_sf4_d1` en último estado resolve (post-edit-y-nunca-mas-fire):
+
+- `/sites/status` de CR00061 → `warning` (por el fire vigente de `_sf4_x1`).
+- `variableSeverity` del feed CR00061/alarms → `{'n/a': 'warning'}`
+  (variable de `_sf4_x1`). `battery_voltage` **ausente** — el último
+  evento de `_sf4_d1` es resolve, así que el aggregate lo excluye.
+
+**Contadores finales de kind en Mongo** (post-E2E, evidencia legítima
+preservada — no se borran las notifs por decisión del prompt):
+
+- `fire`: 7 (incluye la fire pre-existente de M1 al arranque del edge
+  + los fires del ciclo E2E completo).
+- `resolve`: 4 (`_sf4_d1` resolve-by-edit + `cummins-M1-mains-loss`
+  resolve-by-condition + `cummins-C1-mains-loss-gen-no-start`
+  resolve-by-condition + `_sf4_x1` resolve-by-condition).
+
+Motor productivo emitió resolves para reglas reales sin intervención
+del test — el gancho typeD funciona sobre M1, el gancho typeCross
+funciona sobre C1.
+
+**Estado final**:
+
+- `rulepacks.count()` = 1, único `cummins-pcc-v1 v=3 rules=5` (intacto,
+  verificado post-E2E).
+- Edge PID **68464** vivo, log en `logs/edge-CR00061.log`.
+- Sim PID **9163** intocado en toda la ronda.
+
+#### Checklist visual para Franco (SF-4 D5 — toast diferenciado)
+
+El E2E técnico validó el pipeline end-to-end. Falta la validación
+visual del toast verde en el browser. Franco ejecuta con:
+
+**Setup**:
+- Terminal 1: `tail -f logs/edge-CR00061.log | grep --line-buffered -E "Reload|ALARM|resolve"`.
+- Browser: login como superadmin (`admin@wanomi.com`), abrir el
+  detalle del site CR00061 en `/sites/CR00061` (para ver toasts y
+  variableSeverity en el feed).
+
+**Ciclo visual** (pack de test nuevo, coherente con "no tocar el
+productivo" y con el pack `_test-sf4` ya borrado):
+
+1. Ir a `/rulepacks` (menú Reglas de monitoreo).
+2. "Nuevo pack" → `_test-sf4-visual`, deviceType `cummins-pcc`,
+   canary NO tildado → Crear.
+3. Entrar al detalle → "Nueva regla" typeD:
+   - ruleId `_sf4v_d1`
+   - label "Test visual battery low"
+   - inferenceId `SF4V`
+   - severity **critical** (para ver el toast rojo bien)
+   - deviceType `cummins-pcc`, variable `battery_voltage`
+   - cooldownSec `30`
+   - condition op `lt` value `20`
+   Guardar.
+4. **Esperar hasta 60s** — al próximo battery del sim el edge dispara
+   fire. En el browser: **toast ROJO "Battery voltage bajo (test SF-4
+   visual) | CR00061 | ..."** con icono alert-circle. En el terminal
+   del log: línea `[ALARM] CRITICAL ... rule:_sf4v_d1`. En el feed
+   del site: aparece la fila del fire; `variableSeverity` del feed
+   ahora incluye `battery_voltage: critical`.
+5. Volver a `/rulepacks/_test-sf4-visual` → botón pencil sobre
+   `_sf4v_d1` → cambiar condition a op `gt` value `20` → Guardar.
+6. **Toast VERDE "Resuelto: Battery voltage bajo (test SF-4 visual)"**
+   con icono check aparece en el browser (primera visualización de
+   la enmienda D5). En el terminal del log: `keys estado borradas: 1
+   · resolve-by-edit: 1 [_sf4v_d1]`.
+7. Refrescar la vista del site → **`battery_voltage` ya NO figura en
+   el color del site ni en `variableSeverity`** — el aggregate híbrido
+   excluye la regla porque su último evento es resolve.
+8. Volver a `/rulepacks` → botón trash sobre `_test-sf4-visual` →
+   escribir el packId exacto → Borrar definitivo.
+9. Terminal del log: `Reload OK — eliminadas: 1 [_sf4v_d1]`.
+10. `cummins-pcc-v1` sigue INTACTO (5 reglas visibles en su detalle).
+
+**Sobre Telegram**: la rama verde está codeada
+(`notificationRouter.js:sendTelegram`) pero HOY el bot está OFF
+(`TELEGRAM_TOKEN` no set en el env del edge — visible en el log:
+`[notifRouter] Inicializado — siteId: CR00061 · Telegram: OFF`). La
+validación real de "🟢 Resuelto:" en Telegram queda pendiente al
+momento en que el bot se active en producción — la rama de código
+está verificada en tests unitarios internos, no requiere GATE 10.
+
+**Verificaciones finales de estado** (post-checklist visual, antes de
+firmar GATE):
+
+- Mongo: `db.rulepacks.count() === 1` y único pack `cummins-pcc-v1
+  v3 rules=5`.
+- Edge PID **68464** vivo. Sim PID **9163** vivo.
+- `cummins-pcc-v1` intacto en todos los reloads del log de la
+  checklist visual.
+
+**GATE 10** queda en manos de Franco tras la checklist visual. Con
+GATE 10 verde: **SF-4 CERRADO** (resolve events completo + deuda D3
+cerrada + log migrado). Quedan **SF-6** (hoja de suma cross-equipo)
+y **SF-7** (edición C/S en consola) según el orden actualizado por
+DEC-REF-62-B/63/64.
+
