@@ -192,10 +192,18 @@ function sendTelegram(alarm) {
   const params = new URLSearchParams({ chat_id: TELEGRAM_CHAT_ID, text });
   const url    = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?${params}`;
   https.get(url, res => {
+    // DEC-REF-64-A (iii) — Drenar el body es OBLIGATORIO con Node http
+    // keepAlive: sockets sin drenar quedan zombies en el pool y el server
+    // (Telegram) cierra idle connections → los siguientes requests fallan
+    // con `err.message = ''` (patrón observado en R12/C5 antes del fix).
+    // res.resume() consume el body sin acumularlo en memoria.
+    res.resume();
     if (res.statusCode !== 200)
       console.error(`[notifRouter] Telegram error: HTTP ${res.statusCode}`);
   }).on('error', err => {
-    console.error('[notifRouter] Telegram request error:', err.message);
+    // Mejor diagnóstico: message puede venir vacío en socket hangups;
+    // .code aporta ECONNRESET/ENOTFOUND/ETIMEDOUT.
+    console.error('[notifRouter] Telegram request error:', err.message || err.code || 'unknown');
   });
 }
 
