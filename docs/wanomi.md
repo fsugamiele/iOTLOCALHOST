@@ -5734,3 +5734,42 @@ spinner + consola browser + Network + log del edge.
 **SF-4 CERRADO** de verdad-de-verdad. Quedan **SF-6** (hoja de suma
 cross-equipo) y **SF-7** (edición C/S en consola).
 
+**GATE 10-ter — VERDE, SF-4 CERRADO COMPLETO** (Franco, 2026-07-10).
+Refresco silencioso confirmado en `/sites`: el pin CR00061 cambia
+de color in-place sin slider "Cargando sitios..." y sin parpadeo del
+mapa (tiles Leaflet estables). Detalle `_siteCode.vue` sigue sin
+skeleton visible al recibir notifs (comportamiento vigente de
+`loadAlarms` desde antes, no requería fix). Los 4 pins del mapa
+NO parpadean cuando solo uno cambia. **SF-4 cerrado**.
+
+**Balance A8** al abrir SF-6:
+`SF-1 ✓ · SF-3 ✓ · SF-5 ✓ · SF-4 ✓ → SF-6 (esta ronda: recon) → SF-7`.
+
+#### R14 — recon micro SF-6 (hoja de suma, DEC-REF-63)
+
+**Anotaciones honestas** del arranque de R14:
+- El prompt esperaba "38 ahead"; el conteo real es **36** (desfase
+  de 2, mismo patrón menor que R13 con "34 ahead" real 33).
+- El prompt indicó "edge PID 71205"; el PID edge vigente desde
+  R12/C4 y confirmado en R13 es **71737** (aparente arrastre del
+  typo desde R13; sim 9163 sí es correcto). No se toca al edge en
+  esta ronda igual (READ-ONLY salvo Fase A).
+
+**Alcance** de SF-6 (DEC-REF-63): la hoja de suma
+`{sum:[{deviceType,variable}...], condition}` (capa 2 de DEC-REF-47)
+entra al producto. Tres piezas:
+
+- (i) El evaluador cross la resuelve (hoy `siteState.js:33` la
+  descarta con `sum-pending`).
+- (ii) Se retira el 400 `sum-pending` del CRUD app-side
+  (`ruleValidation.js`).
+- (iii) Se activa el botón en `<CrossExprNode>` — el modelo del
+  componente ya la contempla (DEC-REF-62.e), el render read-only ya
+  existe.
+
+Prerequisito registrado a verificar: que el sim publique las
+variables a sumar (cargas Eltek). Si no, el ajuste del sim ES parte
+de SF-6.
+
+Recon READ-ONLY — el diseño lo hace la sala con Franco después.
+
