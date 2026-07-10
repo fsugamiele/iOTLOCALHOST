@@ -86,17 +86,23 @@ async function hydrateSiteState(siteId, siteState) {
       if (seen.size >= 100) break;
     }
 
-    if (Object.keys(vars).length > 0) {
-      vars._deviceType = deviceInfoMap[dId]?.deviceType || '';
-      vars._userId     = deviceInfoMap[dId]?.userId     || '';
-      vars._deviceName = deviceInfoMap[dId]?.name       || '';
-      vars._siteCode   = siteId;
-      siteState.set(dId, vars);
+    // SF-6 · DEC-REF-65.a — registrar el device al siteState AUNQUE no tenga
+    // data histórica en `db.data`. Antes, el gate `if (Object.keys(vars).length > 0)`
+    // dejaba fuera a devices nuevos → mensajes MQTT descartados por index.js:167
+    // `if (!siteState.has(dId)) return;` → nunca guardaban data → círculo vicioso.
+    // Ahora la metadata (_deviceType, _siteCode, etc.) siempre entra; las variables
+    // llegan por mensajes MQTT vivos.
+    vars._deviceType = deviceInfoMap[dId]?.deviceType || '';
+    vars._userId     = deviceInfoMap[dId]?.userId     || '';
+    vars._deviceName = deviceInfoMap[dId]?.name       || '';
+    vars._siteCode   = siteId;
+    siteState.set(dId, vars);
+    if (Object.keys(records).length > 0 && Object.keys(vars).filter(k => !k.startsWith('_')).length > 0) {
       hydrated++;
     }
   }
 
-  console.log(`[siteState] Reconstruct: ${hydrated}/${dIds.length} devices hidratados (siteId: ${siteId})`);
+  console.log(`[siteState] Reconstruct: ${hydrated}/${dIds.length} devices con data histórica (todos los ${dIds.length} registrados en siteState)`);
 }
 
 module.exports = { loadPacks, hydrateSiteState };
