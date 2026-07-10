@@ -7,12 +7,12 @@
 // desaparece sin log visible en la UI. Con validación app-side el 400
 // llega al frontend con razón explícita.
 //
-// Semántica de `reason`:
-//   'sum-pending'    → hoja de suma detectada, shape VÁLIDO en el árbol,
-//                      pendiente de implementación (DEC-REF-47). El edge la
-//                      descarta en loadPacks; la app la trata como forma
-//                      todavía-no-soportada (misma decisión: 400 con razón).
-//   <cualquier otro> → forma inválida (patrón DEC-REF-20).
+// Semántica de `reason`: forma inválida (patrón DEC-REF-20).
+// SF-6 · DEC-REF-65.d — la hoja de suma pasa a ACEPTADA (`{ok:true}`) con
+// validación de forma completa: array sum no vacío, cada renglón con
+// deviceType y variable presentes, condition con op y value. El evaluador
+// resuelve la suma con expansión por deviceType + frescura obligatoria
+// (typeCross.js:evaluateSum).
 
 function validateCrossTree(node, depth = 0) {
   if (depth > 8) return { ok: false, reason: `profundidad > 8` };
@@ -39,7 +39,12 @@ function validateCrossTree(node, depth = 0) {
     if (!node.condition || !node.condition.op) {
       return { ok: false, reason: 'hoja sum sin condition' };
     }
-    return { ok: false, reason: 'sum-pending' };
+    // SF-6 · DEC-REF-65.d — condition debe tener value numérico (evaluateD
+    // aplica ops aritméticos: lt/lte/gt/gte/eq/neq contra el total sumado).
+    if (typeof node.condition.value !== 'number') {
+      return { ok: false, reason: 'hoja sum: condition.value debe ser numérico' };
+    }
+    return { ok: true };
   }
   if (node.deviceType && node.variable) {
     if (!node.condition || !node.condition.op) {
