@@ -6010,3 +6010,25 @@ falseadas por congelación silenciosa.
 "Agregar hoja de suma" + mini-form + E2E visual de Franco) arranca
 solo con orden. Con GATE 13 verde: **SF-6 CIERRA**.
 
+**GATE 12 — VERDE** (Franco, 2026-07-10). E2E técnico completo
+validado. Evidencia reina que la sala destacó: la **frescura**
+rechazando la evaluación con `sumando viejo` enumerando `deviceId`,
+`variable` y `antigüedad` en el log, y la reanudación automática al
+volver los mensajes frescos — sin código dedicado al reset, es el
+mismo path que sale del gate cuando la ventana se cumple. **SF-4 y
+D3 operando sobre reglas con hoja sum sin excepciones** (resolve-by-edit,
+keys estado borradas, hash SHA-256 por regla). SF-6 parte 1 CERRADA;
+falta solo el editor visual para cerrar el bloque.
+
+#### R16 — SF-6 parte 2: editor (DEC-REF-65.e)
+
+Alcance: activar la creación/edición de la hoja de suma en
+`<CrossExprNode>` — el modelo ya la contempla desde DEC-REF-62.e y
+el render read-only existe. Solo frontend. Motor, sim, API, Mongo,
+EMQX y PIDs (edge **49423**, sim **72807**) intocables. Un
+`nuxt build` + restart al cierre. Pack productivo intocable.
+
+Nota del cierre A8: con GATE 13 verde y SF-6 CIERRA, **queda solo
+SF-7** (edición C/S en consola, DEC-REF-62-B) para completar el
+bloque A8.
+
