@@ -6032,3 +6032,145 @@ Nota del cierre A8: con GATE 13 verde y SF-6 CIERRA, **queda solo
 SF-7** (edición C/S en consola, DEC-REF-62-B) para completar el
 bloque A8.
 
+#### R16 Fase B — editor aplicado
+
+**Commit** `eb32b8d` — `feat(front): editor hoja de suma en
+CrossExprNode — botón + mini-form + convertir (DEC-REF-65.e SF-6)`.
+
+**Cambios en `app/components/CrossExprNode.vue`**:
+
+- **Selector del tipo de nodo** — la opción "Hoja suma" pierde el
+  `v-if="isSumLeaf"` (línea 15 pre-R16 la mostraba solo si el nodo
+  YA era sum). Ahora se ofrece siempre → permite **convertir** una
+  hoja equipo (o AND/OR vacío) en hoja suma sin borrar y recrear.
+- **Botón "Agregar suma"** en la sección `cross-actions` del nodo
+  lógico, hermano de "Agregar condición" y "Agregar grupo". Es una
+  hoja terminal (no anida) — no consume depth adicional.
+- **Bloque `isSumLeaf`** deja de ser `<pre>` read-only y pasa a
+  mini-form editable con:
+  - Lista dinámica de renglones `{deviceType, variable}`
+    (`<base-input>`s). Botón "Agregar renglón" al pie. Botón "-" por
+    renglón, **disabled si `sumTerms.length <= 1`** (ruleValidation
+    exige array no vacío — se defiende antes de golpear el backend).
+  - Condition del total: `op` (select con los 6 ops del set vigente:
+    lt/lte/gt/gte/eq/neq) + `value` (input numérico).
+- **Métodos nuevos**: `addLeafSum`, `addSumTerm`, `removeSumTerm`,
+  `updateSumTerm`. Todos immutable-style (emit del nodo completo).
+- **Computed `localSumTerms`**: enriquece cada renglón con
+  `__editorKey` estable para el `:key` del v-for (mismo patrón que
+  `localChildren` para AND/OR).
+- **`onTypeChange('leafSum')`**: pasa a producir el shape mínimo
+  aceptado por ruleValidation.js:32-45 —
+  `{sum:[{deviceType:'',variable:''}], condition:{op:'gt',value:0}}`.
+  Antes era `next = this.value` (defensivo pero inútil).
+
+**Contrato con la validación app-side** (fuente única en
+`app/api/services/ruleValidation.js:32-45`, verificada en R15/D1):
+`sum` array no vacío, cada renglón con `deviceType` y `variable`
+presentes, `condition.op` del set y `condition.value` numérico.
+El editor lo respeta desde la creación; el "sub-check de shape"
+recae en el backend por diseño (validación es una sola fuente).
+
+**Round-trip**: `stripEditorKeys` (línea 392 del componente)
+recorre arrays con `v.map(stripEditorKeys)` — cubre el `sum`
+recursivamente. Al guardar, todos los `__editorKey` de renglones y
+del nodo se limpian; al abrir un pack guardado, el editor
+re-agrega keys frescas al montar. Verificable en el ítem
+"round-trip" del checklist visual.
+
+**Mensajería de error 400** — patrón `e.response?.data?.error`
+usado en `_packId.vue` líneas 380, 486, 509 y en `index.vue` 212,
+262, 301 (6 hits, consistente). El 400 de `hoja sum: término sin
+deviceType/variable` o `hoja sum: condition.value debe ser
+numérico` llega al usuario con la razón textual íntegra —
+**sin trabajo nuevo en R16**.
+
+**Build**: `nuxt build` **3m5s** (comparable a rondas anteriores).
+Warning benigno Nuxt2 (exit code 0). `docker restart node` OK.
+
+**Smoke técnico post-build**:
+
+| Endpoint | Resultado |
+|---|---|
+| `GET :3000/login` | HTTP 200 ✓ |
+| `GET :3000/rulepacks` | HTTP 200 ✓ |
+| `GET :3001/api/rulepacks` sin token | HTTP 401 ✓ |
+| Edge PID **49423** | vivo, intocado ✓ |
+| Sim PID **72807** | vivo, intocado ✓ |
+| `cummins-pcc-v1 v3 rules=5` | intacto ✓ |
+
+#### Checklist visual GATE 13 para Franco (DEC-REF-65.e)
+
+**Setup**:
+- Terminal: `tail -f logs/edge-CR00061.log | grep --line-buffered -E "Reload|ALARM|Suma _sf6"`.
+- Browser: dos pestañas — `/rulepacks` (para el editor) y `/sites`
+  (para el pin). Podés dejar `/sites` visible mientras editás.
+- Telegram: abrir la conversación con Wanomi_bot.
+
+**Ciclo**:
+
+- [ ] `/rulepacks` → **Nuevo pack** → `_test-sf6-visual`,
+      deviceType `ELTEK`, canary NO tildado → Crear.
+- [ ] Entrar al detalle → **Nueva regla**:
+  - ruleId `_sf6v_x1`, label libre, inferenceId `SF6V`, severity
+    **warning**, deviceType `ELTEK`, variable `n/a`, cooldownSec
+    `30`, graceSec `0`.
+  - Type **cross** → aparece "Árbol crossExpr" con un grupo AND
+    vacío en la raíz.
+  - **NUEVO EN R16**: el selector del tipo de nodo raíz permite
+    "Hoja suma". Cambiarlo → aparece el mini-form.
+  - Renglón 1: deviceType `ELTEK`, variable `dc_load_current`.
+    (Un solo renglón alcanza para el caso Eltek — la suma se
+    expande a los 3 devices del site, DEC-REF-65.a.)
+  - Condición del total: op `gt`, value `200`.
+- [ ] Guardar → `$notify` verde. Log del edge: `Reload OK — nuevas:
+      1 [_sf6v_x1]`.
+- [ ] Con el sim en estado normal (cada Eltek ~30 A, total ~90 A):
+      **sin fire** — verificar ≥2 ciclos (60s de silencio en el
+      log para la regla `_sf6v_x1`).
+- [ ] Activar carga alta vía `mosquitto_pub`:
+      ```
+      mosquitto_pub -h localhost -p 1883 -u superiotix -P iotixsuperuser \
+        -t 'simulator/wrFwUpMt/control' \
+        -m '{"command":"scenario","value":"eltek_load_high"}' -q 1
+      ```
+- [ ] En 60s: **toast AMARILLO** con severity warning en el
+      browser + ⚠️ en Telegram. **Nota honesta al reporte**: el
+      mensaje del toast NO incluye HOY el total sumado (el motor
+      pasa `value:null` para cross a `fireAlarm` — heredado de
+      SF-4/DEC-REF-56-A). La regla dispara correctamente y el toast
+      es visible, pero el número exacto del total no aparece en el
+      texto. Si Franco quiere el total en el toast, se agrega como
+      commit adicional post-GATE 13 (touch motor: `evaluateSum`
+      retornar total → propagar por `res.total` → mostrar en
+      `sendMqttNotif`/`sendTelegram`).
+- [ ] Pin de CR00061 en `/sites` (sin refrescar la pestaña) → cede
+      al warning solo (patrón R13 del refresco silencioso vigente).
+- [ ] Restore: `mosquitto_pub -m '{"command":"scenario","value":"eltek_load_restore"}'`.
+- [ ] En 60s: **toast VERDE "Resuelto: ..."** + ✅ Resuelto: en
+      Telegram. Pin vuelve solo.
+- [ ] Volver al editor de `_sf6v_x1` → **round-trip**: el árbol
+      sum se re-renderiza fiel (deviceType `ELTEK`, variable
+      `dc_load_current`, op `gt`, value `200`). Los `__editorKey`
+      quedaron limpiados al guardar y se re-agregan al abrir.
+- [ ] **Forzar 400 de sum**: editar la regla, **vaciar el campo
+      `variable` del único renglón** (dejarlo en blanco) → Guardar.
+      Ojo: si la sala esperaba "quitar todos los renglones" — el
+      editor NO lo permite (el botón "-" queda `disabled` cuando
+      solo queda 1). La vía real para provocar el 400 es dejar un
+      campo obligatorio vacío. Backend responde:
+      `hoja sum: término sin deviceType/variable`. `$notify` ROJO
+      con esa razón textual. Verificar: la versión del pack NO
+      cambió (atomicidad).
+- [ ] Restaurar el renglón (variable `dc_load_current` de nuevo)
+      → Guardar → OK.
+- [ ] Borrar `_test-sf6-visual` (fricción tipeo). `cummins-pcc-v1`
+      intacto (5 reglas). Bot Telegram sin mensajes espurios.
+
+Si algún ítem falla, capturar consola browser + Network + log del
+edge + screenshot Telegram y adjuntar.
+
+**GATE 13** queda en manos de Franco. Con GATE 13 verde: **SF-6
+CERRADO** (motor + sim + API + editor + Telegram real). Queda solo
+**SF-7** (edición C/S en consola) para completar A8.
+
