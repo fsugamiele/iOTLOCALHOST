@@ -44,13 +44,14 @@ class SimulatedDevice {
   }
 
   _initialState(role) {
-    switch (role) {
-      case 'SEC':     return engine.initialSecState();
-      case 'ATS':     return engine.initialAtsState();
-      case 'CUMMINS': return engine.initialCumminsState();
-      case 'ELTEK':   return engine.initialEltekState();  // SF-6 · DEC-REF-65.c
-      default:        return engine.initialGenState();  // GEN y legacy
-    }
+    // Prefix match para roles con suffix numérico (ELTEK-01, ELTEK-02, ...).
+    // El role viene del key de devices_state.json → puede ser 'ELTEK-01', no 'ELTEK'.
+    // Verificación de prefix cubre ambos casos: rol exacto o rol-N.
+    if (role === 'SEC')                    return engine.initialSecState();
+    if (role === 'ATS')                    return engine.initialAtsState();
+    if (role === 'CUMMINS')                return engine.initialCumminsState();
+    if (role === 'ELTEK' || role.startsWith('ELTEK-')) return engine.initialEltekState();  // SF-6 · DEC-REF-65.c
+    return engine.initialGenState();  // GEN y legacy
   }
 
   get tag() {
