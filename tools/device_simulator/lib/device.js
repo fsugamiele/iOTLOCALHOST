@@ -48,6 +48,7 @@ class SimulatedDevice {
       case 'SEC':     return engine.initialSecState();
       case 'ATS':     return engine.initialAtsState();
       case 'CUMMINS': return engine.initialCumminsState();
+      case 'ELTEK':   return engine.initialEltekState();  // SF-6 · DEC-REF-65.c
       default:        return engine.initialGenState();  // GEN y legacy
     }
   }
@@ -215,10 +216,15 @@ class SimulatedDevice {
       return;
     }
 
-    // Validar que TODAS las variables del scenario existen en el device
+    // Validar que TODAS las variables del scenario existen en el device.
+    // SF-6 · DEC-REF-65.c — `step.sharedSet` (opcional) toca sharedState del
+    // site en lugar de _state del device; no requiere que las claves estén
+    // en el device (por diseño: el sharedState existe justamente para
+    // coordinar múltiples devices del site — mains_failure, eltek_load_high,
+    // etc.).
     const allVars = new Set();
     for (const step of scenario.steps) {
-      for (const v of Object.keys(step.set)) allVars.add(v);
+      if (step.set) for (const v of Object.keys(step.set)) allVars.add(v);
     }
     const missing = [...allVars].filter(v => this._state[v] === undefined);
     if (missing.length > 0) {
@@ -236,11 +242,22 @@ class SimulatedDevice {
 
     console.log(`${this.tag} running scenario "${name}" (${scenario.steps.length} steps, ${scenario.duration_ms}ms)${flagsStr}`);
 
-    // Programar cada step
+    // Programar cada step. SF-6 · DEC-REF-65.c — soporte para `step.sharedSet`
+    // (aditivo): setea claves en sharedState del site (todos los devices del
+    // site las verán en su próximo evolve()). Coherente con el patrón de
+    // `sharedState.gen_running` que device.js:140 ya mantiene.
     for (const step of scenario.steps) {
       const t = setTimeout(() => {
-        for (const [varName, val] of Object.entries(step.set)) {
-          this._set(varName, val);
+        if (step.set) {
+          for (const [varName, val] of Object.entries(step.set)) {
+            this._set(varName, val);
+          }
+        }
+        if (step.sharedSet) {
+          for (const [k, v] of Object.entries(step.sharedSet)) {
+            this._sharedState[k] = v;
+          }
+          console.log(`${this.tag} sharedSet: ${JSON.stringify(step.sharedSet)}`);
         }
       }, step.at);
       this._timers.push(t);

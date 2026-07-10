@@ -68,6 +68,28 @@ function initialCumminsState() {
   };
 }
 
+// SF-6 · DEC-REF-65.c — Eltek Smartpack S (rectificación telco -48 VDC).
+// Variables según informe `docsRefactor/_biblioteca_campo/mapeo_modbus_drivers.md`
+// (Driver 1 · Eltek Smartpack S ★ MVP): dc_bus_voltage (sense global),
+// dc_load_current (via shunt — carga TOTAL de su banco), temperature.
+// El caso "sumar cargas" en producción real es multi-controlador Smartpack S
+// coexistiendo en un site grande (cada controlador ya agrega N rectificadores
+// por CAN internamente y expone su dc_load_current como TOTAL). La suma
+// SF-6 es entre controladores, no entre rectificadores.
+//
+// Valores iniciales realistas para el escenario E2E: cada módulo publica
+// ~30 A en estado normal (3 módulos → total ~90 A); con eltek_load_high
+// suben a ~90 A cada uno (total ~270 A). Regla test cruza en un umbral
+// entre esos dos valores (p.ej. 200 A).
+function initialEltekState() {
+  return {
+    deviceType:      'ELTEK',        // metadata interna — no publicada
+    dc_bus_voltage:  -48.0,          // -48 VDC nominal telco
+    dc_load_current: 30.0,           // A — carga TOTAL del banco del controlador
+    temperature:     28.0,           // °C ambiente shelter
+  };
+}
+
 function jitter(magnitude) {
   return (Math.random() - 0.5) * 2 * magnitude;
 }
@@ -175,6 +197,23 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 
     case 'crank_current':
       return 0;  // siempre 0 fuera de eventos de arranque
+
+    // ── Eltek Smartpack S (SF-6 · DEC-REF-65.c) ──────────────────────
+    case 'dc_bus_voltage':
+      // -48 VDC nominal con jitter menor. En scenario eltek_bus_alarm
+      // (futuro) puede bajar a -46 (undervoltage) — no en R15.
+      return clamp(currentValue + jitter(0.15), -49.5, -46.5);
+
+    case 'dc_load_current': {
+      // Estado compartido del site controla carga alta/normal
+      // (espejo del patrón mains_failure/mains_restore).
+      const target = sharedState.eltek_load_high ? 90 : 30;
+      // Drift lento hacia el target ± jitter (∼2 A/tick)
+      if (Math.abs(currentValue - target) > 5) {
+        return currentValue + Math.sign(target - currentValue) * 5 + jitter(1);
+      }
+      return clamp(currentValue + jitter(1), target - 3, target + 3);
+    }
 
     default:
       return currentValue;
@@ -324,6 +363,32 @@ const SCENARIOS = {
     steps: [
       { at: 0,    set: { mains_voltage: 220.0, mains_freq: 50.0 } },
       { at: 5000, set: { gen_status: 'STOPPED', gen_voltage: 0, gen_freq: 0 } },
+    ],
+  },
+
+  // SF-6 · DEC-REF-65.c — Eltek: cruce de carga provocable.
+  // El scenario setea `eltek_load_high` en el sharedState del site; la
+  // función `evolve` de `dc_load_current` lo lee y mueve el target a 90 A
+  // (normalmente 30 A). Aplicado a los 3 módulos Eltek del site, el total
+  // sube de ~90 A a ~270 A → cruza cualquier umbral entre esos dos valores.
+  // MUY IMPORTANTE: el sharedState es POR SITE, no por device. Basta con
+  // enviar el scenario a UN Eltek del site — los otros 2 lo verán via
+  // sharedState al próximo tick (patrón espejo de mains_failure).
+  eltek_load_high: {
+    description: 'Carga rectificadores alta — total del site cruza umbral',
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { eltek_load_high: true } },
+    ],
+  },
+
+  eltek_load_restore: {
+    description: 'Carga rectificadores vuelve a normal',
+    duration_ms: 30000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { eltek_load_high: false } },
     ],
   },
 
