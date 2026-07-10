@@ -190,6 +190,17 @@ class SimulatedDevice {
         this._publish(v.variable);
       }
       this.startPublishing();
+    } else if (command === 'stop_publishing') {
+      // SF-6 · E2E frescura — apagar publicaciones de ESTE device sin
+      // resetear estado ni desconectar del broker. Simula un device
+      // "dead" para probar la ventana de frescura de la hoja sum.
+      // Reactivar con `resume_publishing` o `reset`.
+      this._cancelActiveTimers();
+      console.log(`${this.tag} publishing STOPPED (frescura test)`);
+    } else if (command === 'resume_publishing') {
+      this._cancelActiveTimers();
+      this.startPublishing();
+      console.log(`${this.tag} publishing RESUMED`);
     } else {
       console.warn(`${this.tag} unknown command: ${command}`);
     }
