@@ -5826,3 +5826,187 @@ canónico: WanomiRefactor.md v0.39 → **v0.40**.
   mensaje observado por variable, con fallback 30s** — mínima
   configuración, sin schema nuevo, autoajustable.
 
+#### R15 Fase B-E — implementación aplicada + E2E técnico completo
+
+**Commits** (uno por concern):
+
+- `9e67073 feat(edge): timestamp por variable en siteState._lastUpdate (aditivo, sin romper hojas equipo) — DEC-REF-65.b SF-6`
+- `3589b49 feat(edge): evaluador de hoja suma con frescura + tri-state null en AND/OR (DEC-REF-65.a/b, SF-6)`
+- `abce441 feat(sim): Eltek Smartpack S — initialEltekState + evolve + scenarios + sharedSet (DEC-REF-65.c SF-6)`
+- `0d0cf9a feat(api): retirar 400 sum-pending — hoja sum aceptada con validación de forma (DEC-REF-65.d SF-6)`
+- `84c87c0 fix(edge): registrar devices sin data histórica en siteState — evita descarte de mensajes MQTT de devices nuevos (DEC-REF-65.a SF-6)`
+- `dba954b fix(sim): role prefix match ELTEK-* → initialEltekState (fix NaN silent publish) — SF-6`
+- `c9893de fix(sim): exportar initialEltekState en module.exports — SF-6`
+- `2876d09 feat(sim): comandos stop_publishing/resume_publishing per-device (E2E frescura SF-6)`
+
+**Motor (Fase B)**:
+
+- `edge-engine/index.js:181` gana `deviceState._lastUpdate[variable] = eventTs`
+  (aditivo — hojas equipo existentes leen `deviceState[variable]`
+  como escalar sin cambio).
+- `edge-engine/evaluators/typeCross.js`: constante
+  `SUM_STALENESS_MS = 90 * 1000` (3× cadencia default 30s del sim,
+  criterio DEC-REF-65.b). Funciones nuevas:
+  - `findAllDevicesByType()` (expansión por deviceType).
+  - `evaluateSum(node, siteState, siteCode, eventTs, ruleId)` con
+    verificación de frescura por sumando; si algún sumando falta,
+    no es numérico, o `eventTs - _lastUpdate > SUM_STALENESS_MS` →
+    retorna `null` con log estructurado.
+  - `evaluateNode` pasa a **tri-state**: `true` / `false` / `null`
+    (no evaluable). AND/OR propagan null: AND con hijo `false` gana;
+    si no hay `false` y hay `null` → `null`. Simétrico OR.
+  - `evaluateCross` reconoce `treeVal === null` → retorna
+    `{fired: false, resolved: false}` **sin tocar crossState** (ni
+    dispara ni resuelve). El estado del ciclo previo se preserva.
+
+**Sim Eltek (Fase C)**:
+
+- `initialEltekState()` en `sensor-engine.js`: variables del
+  informe `docsRefactor/_biblioteca_campo/mapeo_modbus_drivers.md`
+  (Driver 1 · Eltek Smartpack S ★ MVP): `dc_bus_voltage` (-48 VDC
+  telco), `dc_load_current` (carga TOTAL del banco), `temperature`.
+  Rangos: normal ~30 A, alto ~90 A (`sharedState.eltek_load_high`).
+- `evolve()` para `dc_bus_voltage`, `dc_load_current` (drift ±5
+  A/tick hacia target según sharedState), `temperature` (default).
+- `SCENARIOS`: `eltek_load_high` y `eltek_load_restore` que setean
+  `sharedState.eltek_load_high` via nuevo campo `sharedSet` en step
+  (aditivo, coherente con patrón `sharedState.gen_running`).
+- `device.js`:
+  - `_initialState(role)` con **prefix match** `ELTEK-*` para
+    aceptar `ELTEK-01`, `ELTEK-02`, `ELTEK-03` como roles.
+  - Runner de scenarios reconoce `step.sharedSet` además de `step.set`.
+  - Comandos nuevos `stop_publishing` / `resume_publishing`
+    per-device (necesarios para E2E frescura — sin ellos, apagar
+    un solo Eltek exigía kill del sim entero).
+
+**Backend Eltek**:
+
+- Template `WN-ELTEK-SmartpackS` creado vía `POST /api/template`
+  (3 variables, cadencia 30s).
+- 3 devices `CR00061-ELTEK-01/02/03` creados y bindeados a CR00061
+  (dIds: `wrFwUpMt`, `4lkbkJtW`, `ftG9Msrp`). CR00061 pasa de 4 a
+  7 devices. `devices_state.json` actualizado con las 3 nuevas
+  entries (gitignored).
+
+**Fix estructural descubierto en Fase E** (`fix(edge) 84c87c0`):
+
+`hydrateSiteState` (`siteState.js:89` original) solo registraba
+devices al siteState si tenían al menos 1 registro histórico en
+`db.data`. Los 3 Eltek nuevos (sin data histórica) NO entraban →
+`if (!siteState.has(dId)) return;` en `index.js:167` descartaba
+todos sus mensajes MQTT → nunca guardaban data → círculo vicioso.
+**Fix**: registrar el device en siteState CON metadata (`_deviceType`,
+`_siteCode`, `_userId`, `_deviceName`) siempre, sin exigir data
+histórica. Los valores llegan por mensajes MQTT vivos. Además de
+SF-6, esto arregla un bug latente para cualquier device nuevo en
+sites productivos.
+
+**Fixes del sim descubiertos durante E2E** (transparencia):
+
+1. `role` viene con sufijo (`"ELTEK-01"` de `devices_state.json`),
+   no `"ELTEK"`. El switch caía en `default → initialGenState()` →
+   `this._state.dc_load_current === undefined` → `evolve` retornaba
+   NaN → JSON serializaba como `null` → sim publicaba silenciosamente
+   payloads inválidos. Fix con prefix match.
+2. `initialEltekState` no estaba en `module.exports`. Sin ese
+   export, `engine.initialEltekState is not a function` **explota
+   con throw** al bootstrap del Eltek — pero el log del sim solo
+   mostraba `Failed to bootstrap CR00061/ELTEK-01: ...` sin abortar
+   el proceso (los demás devices siguieron), y los Eltek quedaban
+   sin `SimulatedDevice` instanciado (invisible a mi diagnóstico
+   inicial). Detectado al mirar el log completo desde arriba.
+
+**Fase D — API**:
+
+- `ruleValidation.js:42` cambió de `return { ok:false, reason:'sum-pending' }`
+  a `return { ok:true }`. Validación de shape ampliada con chequeo
+  de `condition.value` numérico. Docblock actualizado (retira
+  categoría `sum-pending`).
+- `docker restart node` + smoke: `API /api/rulepacks sin token → 401` ✓.
+
+**Reinicios planificados**:
+
+- **Sim** — Captura pre-kill de PID **9163**: cmdline `node run.js`,
+  cwd `/root/IotLocalhost/tools/device_simulator`, env con
+  `SIMULATOR_MODE=true` + `USER_EMAIL=fsugamielecinetiksrl@gmail.com`.
+  Relanzamiento con log a `logs/sim-CR00061.log` (primer sim-log
+  migrado desde `/tmp/`, coherente con DEC-REF-64.e — consistente
+  también con el patrón del log del edge).
+  - **Sim PID final: 72807** (múltiples relanzamientos durante la
+    depuración del switch/export/frescura; el último es el que
+    corre en producción).
+- **Edge** — Captura pre-kill de PID **71737**: cmdline
+  `node edge-engine/index.js`, cwd `/root/IotLocalhost`, env con
+  SITE_ID, MQTT_*, MONGODB_URI, NODE_PATH, TELEGRAM_*.
+  Relanzamiento con log a `logs/edge-CR00061.log` (ya migrado en
+  R11) + fix aditivo del siteState (84c87c0).
+  - **Edge PID final: 49423**.
+
+**E2E técnico (Fase E)**:
+
+Baseline post-sim-fix: 3 Eltek publicando `dc_load_current` ~30 A
+cada uno (total ~90 A). Pack `_test-sf6` con **hoja sum única**:
+`{sum:[{deviceType:'ELTEK', variable:'dc_load_current'}], condition:{op:'gt', value:200}}`.
+
+| Paso | Acción | Log del edge (evidencia) | Mongo |
+|---|---|---|---|
+| **1** PUT create pack | `nuevas: 1 [_sf6_x1] · intactas: 6` | 0 notifs test |
+| **2** Estado normal ~90 A | (silencio esperado; regla evalua false) | 0 fires |
+| **3** `eltek_load_high` scenario | sharedState propagado, 3 Eltek suben target a 90 A. Al cruzar 200 A: `[ALARM] WARNING rule:_sf6_x1 var:n/a=null` | 1 fire `{kind:'fire', mode:'cross', reason:'cross-tree-fired'}` |
+| **4** `eltek_load_restore` scenario | Al caer < 200 A: 2do [ALARM] (fireResolve) | 1 resolve `{kind:'resolve', mode:'resolve-by-condition', reason:'cross-tree-cleared'}` |
+| **5** stop_publishing en Eltek-01 | Tras 90s: `[typeCross] Suma _sf6_x1: sumando viejo — deviceId=wrFwUpMt variable=dc_load_current antigüedad=93187ms > ventana=90000ms — hoja no evaluada` (repite cada ciclo mientras stale) | 0 notifs nuevos durante staleness (hoja no evaluable → ni fire ni resolve) |
+| **6** resume_publishing | wrFwUpMt vuelve age <10s → hoja evalúa normal | (regla vuelve a ciclo fire/resolve según carga) |
+| **7** provocar fire otra vez + edit umbral 200 → 500 | `Reload OK — editadas: 1 [_sf6_x1] · keys estado borradas: 2 · resolve-by-edit: 1 [_sf6_x1]` | +1 resolve `{kind:'resolve', mode:'resolve-by-edit'}` |
+| **8** DELETE `_test-sf6` | `Reload OK — eliminadas: 1 [_sf6_x1]` | pack removido |
+
+**Evidencia D3 sobre hoja sum**:
+
+```
+[edge-engine] Reload OK — packs: cummins-pcc-v1, _test-sf4-visual, _test-sf6
+· reglas nuevas: 0 [] · editadas: 1 [_sf6_x1] · eliminadas: 0 []
+· intactas: 6 · keys estado borradas: 2 · resolve-by-edit: 1 [_sf6_x1]
+```
+
+D3 opera sobre reglas con hoja sum sin cambios adicionales — el hash
+SHA-256 de la regla y el resolve-by-edit vía activeState siguen la
+misma lógica que para reglas D/cross-tree.
+
+**Evidencia de frescura**:
+
+```
+[typeCross] Suma _sf6_x1: sumando viejo — deviceId=wrFwUpMt
+variable=dc_load_current antigüedad=93187ms > ventana=90000ms
+— hoja no evaluada
+```
+
+Con 1 de 3 Eltek stale (>90s sin reportar), la hoja no se evalúa
+mientras los otros 2 siguen frescos — protege contra sumas
+falseadas por congelación silenciosa.
+
+**Verificaciones finales**:
+
+- `_test-sf6` ausente de Mongo (`rulepacks.count() === 3` durante
+  el ciclo — 2 previos de Franco + test; post-delete queda en 2).
+- `cummins-pcc-v1 v=3 rules=5` intacto.
+- 4 notifs de `_sf6_x1` preservadas (2 fire + 2 resolve) como
+  evidencia del ciclo real — criterio R11.
+- Sim PID **72807** vivo, publicando 13 devices (los 3 Eltek en
+  estado normal ~30 A cada uno, sharedState reseteado por el
+  restore final).
+- Edge PID **49423** vivo, Telegram: ON, subscribes a sdata + ambos
+  reload activos.
+
+**Estado al cierre R15**:
+
+- Branch `feature/telco-support`, **+8 commits** desde el commit
+  docs de la Fase A (`ecdf91c`).
+- Working tree limpio salvo untracked conocidos +
+  `devices_state.json` (gitignored, con las 3 entries Eltek nuevas).
+- Docker up. Motor SF-6 activo, sim con módulos Eltek publicando,
+  API con hoja sum aceptada.
+- Pack `cummins-pcc-v1 v3 rules=5` intacto.
+
+**Frenado — STOP GATE 12**. R16 (editor `<CrossExprNode>` con botón
+"Agregar hoja de suma" + mini-form + E2E visual de Franco) arranca
+solo con orden. Con GATE 13 verde: **SF-6 CIERRA**.
+
