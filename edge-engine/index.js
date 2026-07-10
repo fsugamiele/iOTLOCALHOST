@@ -179,6 +179,13 @@ async function start() {
 
     const deviceState = siteState.get(dId);
     deviceState[variable] = value;
+    // SF-6 · DEC-REF-65.b — timestamp por variable, aditivo al shape actual.
+    // Las hojas equipo existentes siguen leyendo `deviceState[variable]` como
+    // escalar (sin cambio). La hoja de suma (SF-6) consulta
+    // `deviceState._lastUpdate[variable]` para verificar frescura antes de
+    // sumar. Ventana calculada en typeCross.js:evaluateSum.
+    if (!deviceState._lastUpdate) deviceState._lastUpdate = {};
+    deviceState._lastUpdate[variable] = eventTs;
 
     processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, eventTs });
   });
