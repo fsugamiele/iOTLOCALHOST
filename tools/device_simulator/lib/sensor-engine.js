@@ -399,6 +399,7 @@ module.exports = {
   initialGenState,
   initialAtsState,
   initialCumminsState,
+  initialEltekState,   // SF-6 · DEC-REF-65.c
   evolve,
   SCENARIOS,
 };
