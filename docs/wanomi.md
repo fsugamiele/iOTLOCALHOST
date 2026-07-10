@@ -5773,3 +5773,56 @@ de SF-6.
 
 Recon READ-ONLY — el diseño lo hace la sala con Franco después.
 
+#### R15 — SF-6 parte 1: evaluador de suma + sim Eltek + API (DEC-REF-65)
+
+Franco firmó los cinco puntos abiertos del recon R14. **DEC-REF-65**
+consolida el diseño fino sobre el marco de DEC-REF-63/47. Registro
+canónico: WanomiRefactor.md v0.39 → **v0.40**.
+
+**Cinco decisiones** (todas del texto DEC-REF-65):
+
+- **(a) Semántica de la suma — por deviceType**: cada renglón
+  `{deviceType, variable}` se expande a TODOS los devices de ese
+  deviceType en siteState al evaluar. Un módulo nuevo entra solo —
+  elimina la "regla-fantasma inversa" (inventario desactualizado que
+  falsea el total). Exclusión puntual no se soporta en v1.
+- **(b) Frescura obligatoria**: cada valor en siteState lleva
+  timestamp de última lectura; si algún sumando expandido es más
+  viejo que la ventana de frescura (**proporcional a la cadencia de
+  publicación del deviceType, ≥2-3× cadencia — lección BUG-SIM-6**),
+  la hoja NO se evalúa ese ciclo (log con sumando, deviceId,
+  antigüedad). Nunca totales con congelados; nunca ausente-como-cero.
+  El "device que no reporta" es problema de M1, no de la suma.
+- **(c) Simulador — ajuste dentro de SF-6**: familia Eltek pasa a
+  modelar N módulos rectificadores del mismo deviceType con carga
+  individual + mecanismo de control (cruce de umbral provocable).
+  Variables del protocolo real Eltek según informe de equipamiento
+  Claro del proyecto.
+- **(d) Validación API**: retirar el 400 `sum-pending` de
+  `ruleValidation.js`. La hoja sum se acepta con array no vacío,
+  renglones con deviceType+variable, condition con op del set
+  vigente + value numérico. Mismo camino de 400-con-razón-legible
+  validado en Capa 3.
+- **(e) Editor**: activar botón "hoja de suma" en `<CrossExprNode>`
+  con mini-form. Va en **R16** con validación visual de Franco.
+
+**Plan de ejecución en dos rondas**:
+
+- **R15** (esta ronda): (a)+(b) motor, (c) sim, (d) API, E2E técnico
+  con toda la evidencia. Reinicios planificados: sim (primero de la
+  sesión, primer sim-log-migrado a `logs/sim-CR00061.log`) y edge
+  (relanzamiento con log ya migrado en R11). STOP GATE 12.
+- **R16**: (e) editor + E2E visual de Franco. GATE 13 cierra SF-6.
+
+**Correcciones honestas al momento de arrancar**:
+- El prompt R15 sigue mencionando "edge PID 71205" — el PID real
+  desde R12/C4 y confirmado en R13/R14 es **71737**. Sim PID **9163**
+  sí correcto.
+- Punto abierto en la ejecución (no re-decisión): DEC-REF-65.b dice
+  "constante proporcional a la cadencia, ≥2-3× cadencia" pero no
+  fija DÓNDE vive esa constante en el código. Se propondrá en el
+  diff de B2 (opción técnica que la sala puede rechazar): **factor
+  de frescura hardcoded = 3, aplicado sobre la cadencia del último
+  mensaje observado por variable, con fallback 30s** — mínima
+  configuración, sin schema nuevo, autoajustable.
+
