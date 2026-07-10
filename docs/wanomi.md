@@ -5634,3 +5634,103 @@ vigente desde R12/C4 post-fix es 71737; sim **9163**) intocables.
 - Fase D — checklist visual para Franco: pin cambia de color sin
   slider ni parpadeo.
 
+#### R13 Fase B — diagnósticos (READ-ONLY)
+
+**B1 — `pages/sites/index.vue`**:
+
+- Oyente actual invoca `loadSites()` (línea 91-93 del oyente → 121
+  del método).
+- `loadSites()` prende `this.loading = true` en 122 y lo apaga en el
+  finally (148). Template: `<div v-if="loading">spinner</div>` (17)
+  y `<div v-show="!loading && !loadError">mapa</div>` (38). `v-show`
+  alterna `display:none/block` sobre el contenedor del mapa →
+  parpadeo visible aunque no se destruya el DOM. Además el finally
+  llama `this.map.invalidateSize()` (151) — recálculo Leaflet
+  visible.
+- **Pins imperativos**: `renderPins()` (156-164) hace
+  `this.markers.forEach(m => this.map.removeLayer(m))` (borra TODOS)
+  y reconstruye con `addPin()`. Consecuencia: todos los pins
+  desaparecen y reaparecen aunque solo uno cambió.
+
+**B2 — `_siteCode.vue`**:
+
+- Oyente (170-173) llama `loadAlarms()` (238+).
+- `loadAlarms()` **NO toca `this.loading`**; reemplaza
+  `this.alarms` reactivamente (`v-for` sobre el array). El `loading`
+  del componente pertenece a `loadDetail` (carga inicial), no al
+  refresh.
+- **Diagnóstico**: el detalle NO tiene el problema. C2 NO se aplica.
+
+#### R13 Fase C — refresco silencioso aplicado
+
+Commit `722069a` — `feat(front): refresco silencioso del pin
+(setIcon in-place, sin loading ni parpadeo) — R13 SF-4 cierre fino`.
+
+**Cambios en `pages/sites/index.vue`**:
+
+- **`addPin`** refactorizado: extrae el creación del icon a método
+  aparte `iconForStatus(status)` (dedupe entre carga inicial y
+  refresh). Anota `marker._siteCode = site.siteCode` para lookup
+  rápido en el refresh silencioso.
+- **`refreshSitesSilently()`** nuevo. NO toca `loading`. Fetch
+  silencioso; error → `console.warn` sin pisar `loadError` visible
+  (el próximo evento del bus reintenta naturalmente). Compara
+  `nextSites` vs `this.sites` por siteCode:
+  1. **Update**: `marker.setIcon(iconForStatus(next.status))` SOLO
+     si el status cambió — Leaflet reemplaza el divIcon in-place, la
+     posición y tooltip se preservan.
+  2. **Add**: sites nuevos con coords → `addPin()`.
+  3. **Remove**: sites que ya no aparecen → `removeLayer` + filter
+     out del array `this.markers`.
+- **`this._notifHandler`** ahora invoca `refreshSitesSilently()` en
+  lugar de `loadSites()`. `loadSites` se conserva intacto para la
+  carga inicial (con feedback visual correcto).
+
+**Build**: `nuxt build` 2m37s + `docker restart node` → API up.
+Smoke: `SPA /login/sites/sites/CR00061 → 200`, `API rulepacks sin
+token → 401`, PIDs edge/sim vivos e intocados.
+
+#### Checklist visual GATE 10-ter para Franco
+
+**Setup**:
+- Terminal: `tail -f logs/edge-CR00061.log | grep --line-buffered -E "Reload|ALARM"`.
+- Browser: dos pestañas — `/sites` (para observar el pin) y
+  `/rulepacks` (para crear/editar el pack de test). Podés dejar
+  `/sites` visible mientras editás en la otra.
+
+**Ciclo visual**:
+
+- [ ] En `/rulepacks`: crear pack `_test-sf4-silencioso` (canary
+      NO). Regla: ruleId `_sf4s_d1`, severity **critical**, deviceType
+      `cummins-pcc`, variable `battery_voltage`, cooldownSec 30,
+      condition `lt 20`. Guardar.
+- [ ] Cambiar a la pestaña `/sites` **sin refrescar la página**.
+      En 60s (próximo tick del sim con battery < 20 → fire critical)
+      → **el pin de CR00061 pasa de verde a ROJO in-place**. Verificar:
+      * SIN spinner "Cargando sitios..." visible.
+      * SIN parpadeo del mapa (el fondo tile no re-render).
+      * SÓLO el color del pin cambia. Los otros 3 pins (CR00015,
+        CR00073, CR00203) NO parpadean tampoco.
+- [ ] Volver a `/rulepacks` sin refrescar `/sites`. Editar la regla
+      a condition `gt 20` (nunca dispara) → Guardar. Resolve-by-edit
+      en log.
+- [ ] Cambiar a `/sites` — **en 5-10s el pin CR00061 vuelve a verde
+      in-place**, misma suavidad. Sin spinner, sin parpadeo.
+- [ ] Repetir con severity **warning** (cambiar la regla a warning +
+      lt 20 → guardar → esperar → editar a gt 20 → guardar) y verificar
+      que el pin pasa a AMARILLO in-place y vuelve.
+- [ ] Detalle del site abierto: (no aplica fix en `_siteCode.vue`
+      porque `loadAlarms` ya era silencioso — pero verificar que
+      sigue sin skeleton al recibir notifs; comportamiento igual
+      que en R12).
+- [ ] Cleanup: borrar `_test-sf4-silencioso` (fricción tipeo).
+      `cummins-pcc-v1 v3 rules=5` intacto en Mongo. Bot Telegram sin
+      mensajes espurios.
+
+**Si algún ítem falla**: capturar screenshot/GIF del parpadeo o del
+spinner + consola browser + Network + log del edge.
+
+**GATE 10-ter** queda en manos de Franco. Con GATE 10-ter verde:
+**SF-4 CERRADO** de verdad-de-verdad. Quedan **SF-6** (hoja de suma
+cross-equipo) y **SF-7** (edición C/S en consola).
+
