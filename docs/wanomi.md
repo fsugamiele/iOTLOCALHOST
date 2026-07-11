@@ -6174,3 +6174,46 @@ edge + screenshot Telegram y adjuntar.
 CERRADO** (motor + sim + API + editor + Telegram real). Queda solo
 **SF-7** (edición C/S en consola) para completar A8.
 
+### R17 — GATE 13 FRENADO por Franco (recon dirigido, READ-ONLY)
+
+**Fecha**: 2026-07-11 · **Motivo**: Franco corrió la checklist visual
+de R16 y levantó dos anomalías + un residuo. GATE 13 NO se firma
+hasta diagnosticar. Ronda de RECON puro; ningún fix aplicado.
+
+#### Anomalías reportadas por Franco (líneas crudas del log del edge)
+
+1. **var=null en los ALARM de la regla de suma** — Franco pega:
+   ```
+   ALARM _sf6v_x1 sev=warning var:dc_load_current=null
+   ```
+   El log del edge muestra la variable `dc_load_current` con
+   `value=null` en el fire de la regla cross tipo `sum`.
+   Contradice la lectura optimista de R15/GATE 12 sobre el message
+   "con el total sumado". Ver reconciliación en fase B4 abajo.
+
+2. **Pin del mapa en la página de DETALLE
+   (`/sites/CR00061`) NO actualiza color en vivo**. Franco confirma
+   que el listado `/sites` sí cede al warning (R13 vigente), pero
+   el pin dentro del detalle del site se queda con el color previo
+   hasta que se refresca la pestaña. El fix de R13 quedó
+   incompleto para el detalle.
+
+#### Residuo pre-existente detectado por Franco
+
+- Rulepack `_test-sf4-visual` **VIVO desde R12**. La checklist de
+  GATE 10-bis (SF-4) quedó sin su último paso de limpieza. Reglas
+  productivas intactas: 6. Franco YA borró `_sf6v_x1` al final de
+  la ronda (última línea del log del edge: `eliminadas: 1`), o sea
+  el residuo de R17 es SOLO `_test-sf4-visual` — no hay `_test-sf6-visual`
+  colgado.
+
+#### Alcance de R17
+
+Recon dirigido READ-ONLY: reconstruir causa raíz de las dos
+anomalías (Mongo real + código citado + evaluación real) para
+poder redactar en la próxima ronda un plan de fix acotado.
+La checklist visual completa se re-ejecuta post-fix.
+
+**STOP GATE 13-recon** — la síntesis va al reporte en pantalla,
+no se cierra ningún gate en esta ronda.
+
