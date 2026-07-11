@@ -6217,3 +6217,71 @@ La checklist visual completa se re-ejecuta post-fix.
 **STOP GATE 13-recon** — la síntesis va al reporte en pantalla,
 no se cierra ningún gate en esta ronda.
 
+#### R17 Síntesis del diagnóstico (para archivo)
+
+**Anomalía 1 — `value:null` en alarm de suma**. Causa raíz confirmada
+con tres fuentes:
+- Código: `edge-engine/evaluators/typeCross.js:59-103` (`evaluateSum`
+  calcula el `total` pero solo retorna el boolean tri-state);
+  `evaluateCross:146-189` (retorna `{fired, resolved}` sin el total);
+  `edge-engine/ruleEngine.js:18-24` (**hardcode `value: null,
+  thresholdUsed: null`** al llamar `fireAlarm` para el path cross);
+  `edge-engine/notificationRouter.js:213` (log line
+  `` `var:${alarm.variable}=${alarm.value}` ``).
+- Mongo (`iotix.notifications`, 10 notifs de `_sf6v_x1` del
+  2026-07-10T13:54-14:07Z): shape idéntico —
+  `{kind:'fire', mode:'cross', variable:'dc_load_current',
+  value:null, thresholdUsed:null, reason:'cross-tree-fired',
+  payload:{value:null, recommendation:''}}`.
+- Evaluación real (ventana 14:03:30-14:08:00Z, `db.data` sobre
+  los 3 ELTEK `wrFwUpMt`/`4lkbkJtW`/`ftG9Msrp`): total
+  ~267-271 A, umbral `gt 200`. **Fires legítimos, presentación
+  rota** — la regla evaluó correctamente.
+
+Reconciliación con R15: no hay discrepancia técnica. R15 (fila 3
+de la tabla E3.2, docs/wanomi.md:5955) ya mostraba textualmente
+`var:n/a=null` como evidencia del fire y R16 (líneas 6138-6146) lo
+formalizó como opt-in "post-GATE 13". Franco re-catalogó lo que
+era opt-in como frenante — decisión de gravedad, no falla nueva.
+
+**Anomalía 2 — pin del detalle sin refresh**. Causa raíz:
+`app/pages/sites/_siteCode.vue:170-174` — `_notifHandler` invoca
+solo `loadAlarms()`; `this.status` (línea 214, decide color del
+pin) solo se setea en `loadDetail()`; `initMap:258-277` tiene
+guarda `if (this.map) return` y no rehace el marker.
+`git show --stat 722069a` confirma que R13 modificó exclusivamente
+`pages/sites/index.vue` (73 líneas). Bitácora R13 (5722-5725) lo
+declaraba explícitamente: "no aplica fix en `_siteCode.vue` porque
+`loadAlarms` ya era silencioso" — la sala pasó por alto que el pin
+del detalle depende de status, no de alarmas.
+
+**Residuo**: `_test-sf4-visual` con `_sf4v_d1` vivo desde R12 en
+`db.rulepacks` — último paso pendiente de la checklist GATE 10-bis.
+
+**DEC-REF-65-A firmada por Franco al abrir R18** (`docsRefactor/WanomiRefactor.md`
+§5, v0.41): salda las dos brechas de presentación autorizando los
+fixes de motor (propagar total y umbral por `evaluateSum` →
+`evaluateCross` → `fireAlarm`) y frontend (replicar patrón R13 en
+`_siteCode.vue`), la limpieza del residuo, y la re-checklist.
+
+**Orden de push de Franco (#44/R18)**: `git push origin
+feature/telco-support` con auditoría previa. El remoto quedó
+rezagado desde el registro documentado en `34dc4e0` (docs #44/R6);
+las 12 rondas posteriores (R7→R17) no lo materializaron por falta
+de orden explícita. Franco lo autoriza ahora explícitamente,
+antes de aplicar los fixes de R18 — el estado en `origin` refleja
+lo diagnosticado (incluye el commit `38ac2a6` de apertura R17).
+
+### R18 — Fixes GATE 13 (motor + frontend) + PUSH + limpieza + re-checklist
+
+**Fecha**: 2026-07-11 · **Alcance**: aplicar los dos fixes de
+DEC-REF-65-A, limpiar `_test-sf4-visual`, correr E2E técnico del
+total, y re-emitir checklist visual para Franco. Un concern por
+commit.
+
+**Orden ejecutivo de Franco al abrir R18**: PUSH primero (con
+auditoría), después los fixes. Rationale: el estado en origin
+refleja el diagnóstico R17 y las 12 rondas previas cerradas — el
+push no arriesga trabajo en curso (los fixes de B/C van en commits
+posteriores).
+
