@@ -6285,3 +6285,172 @@ refleja el diagnóstico R17 y las 12 rondas previas cerradas — el
 push no arriesga trabajo en curso (los fixes de B/C van en commits
 posteriores).
 
+#### R18 — Trabajo aplicado
+
+**A — Registro + PUSH**. 51 commits sin push auditados; commit docs
+`7991dac` (DEC-REF-65-A + síntesis R17 + apertura R18 + v0.41);
+`git push origin feature/telco-support` OK (`a5d7e1a..7991dac`).
+Verificación post-push: `Your branch is up to date with
+'origin/feature/telco-support'`.
+
+**B — Fix motor (commit `37ca985`)**. Firma composicional de
+`evaluateNode` en `edge-engine/evaluators/typeCross.js`: cada nodo
+retorna `{val, total, thresholdUsed}`; `evaluateSum` calcula el
+total y lo propaga con el `thresholdUsed` de la condition;
+AND/OR componen (AND propaga el primer total no-null visto entre
+los children true; OR propaga el total del primer child true por
+short-circuit); hoja equipo mantiene total=null. `evaluateCross`
+expone `sumTotal` y `thresholdUsed` en el retorno `{fired:true}`.
+`edge-engine/ruleEngine.js:18-28` pasa `res.sumTotal ?? null` y
+`res.thresholdUsed ?? null` a `fireAlarm` — reglas cross-tree sin
+sum siguen recibiendo null (path DEC-REF-56-A intacto).
+Reinicio planificado del edge: el PID 49423 documentado en R15/R16
+no existía (WSL2 debió reiniciar en el ínterin, sim PID 72807
+también caído). Relanzamiento con env íntegro (SITE_ID, MQTT_*,
+MONGODB_URI, TELEGRAM_*, NODE_PATH) → **Edge PID nuevo: 5527**,
+Telegram: ON, 7 devices en siteState, packs cargados con el fix
+activo.
+
+**C — Fix frontend (commit `0b0a9df`)**. `app/pages/sites/_siteCode.vue`:
+`_notifHandler` gana llamada a `refreshStatusSilently()` además de
+`loadAlarms()`. `initMap` se refactoriza para usar el nuevo helper
+`iconForStatus(status)` (dedupe entre init y refresh, espejo del
+patrón de `sites/index.vue`). `refreshStatusSilently()` fetchea
+`/sites/status` silencioso (sin `loading`, silent-on-error),
+lookup del `siteCode` actual, `setIcon` in-place solo si el status
+cambió — sin re-crear el mapa. Build `docker-compose -f
+docker_nuxt_build.yml up` OK exit 0; `docker restart node`; smoke:
+`GET /login → 200`, `GET /sites/CR00061 → 200`, `GET /api/rulepacks
+sin token → 401`.
+
+**D — Limpieza + E2E técnico**. DELETE `_test-sf4-visual` +
+DELETE `_test-sf6-visual` (residuo colateral de R17, pack sin
+reglas) vía superadmin JWT firmado directo con `JWT_SECRET`
+(patrón RISK-SEC-1). Estado final: `rulepacks.count = 1`, solo
+`cummins-pcc-v1` con 5 reglas. Sim relanzado (**PID 6407**,
+SIMULATOR_MODE=true, 13 devices publicando incluyendo los 3 ELTEK).
+Pack `_test-sf6` creado con hoja sum idéntica a R15
+(`{sum:[{deviceType:'ELTEK', variable:'dc_load_current'}],
+condition:{op:'gt', value:200}}`, unit `A`); trigger
+`eltek_load_high` en `wrFwUpMt`; el sharedState propagó a los 3
+Eltek. **Evidencia del fix — fire real 2026-07-11T15:47:13.099Z**:
+
+```
+[ALARM] WARNING  | 2026-07-11T15:47:13.099Z | device:4lkbkJtW |
+    rule:_sf6_x1 | var:dc_load_current=202.1473316341542
+```
+
+Antes de R18 esa línea decía `var:dc_load_current=null`. **Mongo real** (`iotix.notifications`):
+
+```
+{ kind:'fire', mode:'cross', sev:'warning',
+  ruleId:'_sf6_x1', variable:'dc_load_current',
+  value: 202.1473316341542, thresholdUsed: 200,
+  reason:'cross-tree-fired', unit:'A',
+  payload.value: 202.1473316341542, dId:'4lkbkJtW' }
+```
+
+El toast/Telegram que arma `sendMqttNotif`/`sendTelegram` con este
+alarm sale `[WARNING] Carga combinada Eltek | CR00061 | 202.15 A
+| umbral: 200 A` (comparar con el "... | null" del R17). Restore
+del escenario a T+45s → **resolve real 15:48:44.237Z** con
+`value:null` (correcto: fireResolve mantiene value=null porque un
+"cierre" no tiene un valor natural — DEC-REF-64). DELETE del
+pack: `Reload OK — eliminadas:1 [_sf6_x1] · intactas:5 ·
+resolve-by-edit:1 [_sf6_x1]`.
+
+Sub-observación operativa (no bloqueante): durante D2 aparecieron
+fires colaterales (~15:49-15:51 UTC) sobre `_sf6_x1` con reloads
+`editadas:1` que no dispararon desde este proceso. Compatible con
+Franco tocando la regla en paralelo desde el editor R16 (ronda
+concurrente de exploración). El fix se comportó correctamente en
+esos ciclos: cada fire trajo el `value` real del total en ese
+tick y el `thresholdUsed` real de la condition editada. No es
+regresión — es co-uso del sistema.
+
+**Saver-webhook rezagado** (BACKLOG-OPS-1): tras el restart del
+contenedor node, `[EMQX] saver resource not ready after 120000ms`
+en los logs. `db.data` histórico se congeló ~14 h antes; el
+motor edge y las notifs siguen operando normalmente (canal
+separado). No bloquea GATE 13; pertenece al pull operacional A9.
+
+#### Re-Checklist GATE 13 para Franco (post-fix DEC-REF-65-A)
+
+**Setup**:
+- Terminal: `tail -f logs/edge-CR00061.log | grep --line-buffered -E "Reload|ALARM|Suma _sf6"`.
+- Browser: tres pestañas — `/rulepacks` (editor), `/sites`
+  (listado + mapa) y `/sites/CR00061` (detalle del site con pin).
+  Dejar `/sites/CR00061` visible mientras editás en `/rulepacks`
+  para verificar el **ítem nuevo del pin del detalle**.
+- Telegram: abrir la conversación con Wanomi_bot.
+
+**Ciclo**:
+
+- [ ] `/rulepacks` → **Nuevo pack** → `_test-sf6-visual`,
+      deviceType `ELTEK`, canary NO tildado → Crear.
+- [ ] Entrar al detalle → **Nueva regla**:
+  - ruleId `_sf6v_x1`, label libre, inferenceId `SF6V`, severity
+    **warning**, deviceType `ELTEK`, variable `n/a`, cooldownSec
+    `30`, graceSec `0`, unit `A` (para que el toast lo muestre).
+  - Type **cross** → aparece "Árbol crossExpr" con un grupo AND
+    vacío en la raíz.
+  - Selector del tipo de nodo raíz permite "Hoja suma".
+    Cambiarlo → aparece el mini-form.
+  - Renglón 1: deviceType `ELTEK`, variable `dc_load_current`.
+    (Un solo renglón alcanza — la suma se expande a los 3 devices
+    del site, DEC-REF-65.a.)
+  - Condición del total: op `gt`, value `200`.
+- [ ] Guardar → `$notify` verde. Log del edge: `Reload OK — nuevas:
+      1 [_sf6v_x1]`.
+- [ ] Con el sim en estado normal (cada Eltek ~30 A, total ~90 A):
+      **sin fire** — verificar ≥2 ciclos (60s de silencio en el
+      log para la regla `_sf6v_x1`).
+- [ ] Activar carga alta vía `mosquitto_pub`:
+      ```
+      mosquitto_pub -h localhost -p 1883 -u superiotix -P iotixsuperuser \
+        -t 'simulator/wrFwUpMt/control' \
+        -m '{"command":"scenario","value":"eltek_load_high"}' -q 1
+      ```
+- [ ] En 60-90s: **toast AMARILLO** con severity warning en el
+      browser + ⚠️ en Telegram. **Corrección R18/DEC-REF-65-A: el
+      mensaje del toast AHORA INCLUYE EL TOTAL SUMADO Y EL
+      UMBRAL** — el texto debe leerse
+      `[WARNING] <label> | CR00061 | <total> A | umbral: 200 A`
+      con `<total>` numérico (esperado 200-280 A). Telegram:
+      `Dispositivo: ... | Variable: dc_load_current = <total> A`
+      seguido de `Umbral: 200 A (fijo)`. Si aparece `null`
+      donde debería haber un número: **FRENAR** — el fix no
+      llegó al bundle o al edge.
+- [ ] Pin de CR00061 en `/sites` (sin refrescar la pestaña) → cede
+      al warning solo (patrón R13 del refresco silencioso vigente).
+- [ ] **ÍTEM NUEVO R18**: pin de CR00061 en `/sites/CR00061` (la
+      pestaña de DETALLE, sin refrescar) → cede al warning solo
+      in-place (DEC-REF-65-A. El fix R18 replica el patrón R13
+      en el detalle). Verificar: SIN spinner "Cargando sitio...",
+      SIN parpadeo del mapa, SÓLO el color del pin cambia.
+- [ ] Restore: `mosquitto_pub -m '{"command":"scenario","value":"eltek_load_restore"}'`.
+- [ ] En 60s: **toast VERDE "Resuelto: ..."** + ✅ Resuelto: en
+      Telegram. Pin vuelve solo **en AMBAS pestañas** (listado
+      Y detalle, silencioso in-place en las dos).
+- [ ] Volver al editor de `_sf6v_x1` → **round-trip**: el árbol
+      sum se re-renderiza fiel (deviceType `ELTEK`, variable
+      `dc_load_current`, op `gt`, value `200`). Los `__editorKey`
+      quedaron limpiados al guardar y se re-agregan al abrir.
+- [ ] **Forzar 400 de sum**: editar la regla, **vaciar el campo
+      `variable` del único renglón** → Guardar. Backend responde:
+      `hoja sum: término sin deviceType/variable`. `$notify` ROJO
+      con esa razón textual. Verificar: la versión del pack NO
+      cambió (atomicidad).
+- [ ] Restaurar el renglón (variable `dc_load_current` de nuevo)
+      → Guardar → OK.
+- [ ] Borrar `_test-sf6-visual` (fricción tipeo). `cummins-pcc-v1`
+      intacto (5 reglas). Bot Telegram sin mensajes espurios.
+
+Si algún ítem falla, capturar consola browser + Network + log del
+edge + screenshot Telegram y adjuntar.
+
+**GATE 13-bis** queda en manos de Franco. Con GATE 13-bis verde:
+**SF-6 CIERRA** (motor + sim + API + editor + Telegram real con
+número + pin listado + pin detalle). Queda solo **SF-7** (edición
+C/S en consola) para completar A8.
+
