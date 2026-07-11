@@ -15,11 +15,15 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
         if (!siteCode) continue;
         const res = evaluateCross(rule, siteState, crossState, eventTs, siteCode);
         if (res.fired) {
+          // DEC-REF-65-A · propagamos sumTotal + thresholdUsed cuando la
+          // regla es cross-con-hoja-sum (evaluateCross los expone). Reglas
+          // cross-tree sin sum: res.sumTotal es undefined → value queda
+          // null como antes (path DEC-REF-56-A intacto).
           fireAlarm({
-            rule, value: null, deviceId: dId,
+            rule, value: res.sumTotal ?? null, deviceId: dId,
             reason: 'cross-tree-fired',
             mode: 'cross',
-            thresholdUsed: null,
+            thresholdUsed: res.thresholdUsed ?? null,
             cooldownState, siteState, activeState,
           });
         } else if (res.resolved) {

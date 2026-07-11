@@ -67,7 +67,7 @@ function evaluateSum(node, siteState, siteCode, eventTs, ruleId) {
       console.warn(
         `[typeCross] Suma ${ruleId}: sin devices de deviceType=${term.deviceType} en site=${siteCode} — hoja no evaluada`
       );
-      return null;
+      return { val: null, total: null, thresholdUsed: null };
     }
     for (const { dId, devState } of devices) {
       const value = devState[term.variable];
@@ -75,76 +75,93 @@ function evaluateSum(node, siteState, siteCode, eventTs, ruleId) {
         console.warn(
           `[typeCross] Suma ${ruleId}: ${dId}.${term.variable} sin valor numérico — hoja no evaluada`
         );
-        return null;
+        return { val: null, total: null, thresholdUsed: null };
       }
       const lastUpdate = devState._lastUpdate && devState._lastUpdate[term.variable];
       if (!lastUpdate) {
         console.warn(
           `[typeCross] Suma ${ruleId}: ${dId}.${term.variable} sin timestamp — hoja no evaluada`
         );
-        return null;
+        return { val: null, total: null, thresholdUsed: null };
       }
       const ageMs = eventTs - lastUpdate;
       if (ageMs > SUM_STALENESS_MS) {
         console.warn(
           `[typeCross] Suma ${ruleId}: sumando viejo — deviceId=${dId} variable=${term.variable} antigüedad=${ageMs}ms > ventana=${SUM_STALENESS_MS}ms — hoja no evaluada`
         );
-        return null;
+        return { val: null, total: null, thresholdUsed: null };
       }
       total += value;
       expandidos++;
     }
   }
   // Total agregado, todos frescos → aplicar condition sobre el total.
-  return evaluateD(
+  // DEC-REF-65-A · propagamos {val tri-state, total, thresholdUsed} hacia
+  // arriba para que el path de fire pueda mostrar el número al operador.
+  const val = evaluateD(
     { ruleId: `${ruleId}:sum`, condition: node.condition },
     total
   );
+  return { val, total, thresholdUsed: node.condition.value };
 }
 
 // ── Evaluación recursiva — TRI-STATE (SF-6 · DEC-REF-65.b) ─────────────────
-// Retornos:
-//   true   → condición cumplida.
-//   false  → condición no cumplida.
-//   null   → NO EVALUABLE este ciclo (staleness/ausencia en hoja sum).
-// La hoja equipo mantiene comportamiento boolean puro (staleness no aplica —
-// SF-6 introduce el concepto solo para la hoja de suma; scope creep evitado).
-// AND/OR propagan null: en AND, un false gana (short-circuit); si no hay false
-// y hay algún null, el AND es null; todos true → true. Simétrico para OR.
+// Firma composicional (DEC-REF-65-A): cada nodo retorna
+//   { val: true|false|null, total: <number>|null, thresholdUsed: <number>|null }
+//   val=true   → condición cumplida.
+//   val=false  → condición no cumplida.
+//   val=null   → NO EVALUABLE este ciclo (staleness/ausencia en hoja sum).
+// total+thresholdUsed viajan solo cuando la contribución al `true` del árbol
+// vino de una hoja sum (única con "total" natural); son null en hoja equipo
+// y en cualquier retorno false/null. AND/OR componen: AND propaga el primer
+// total no-null visto entre los children evaluados como true; OR propaga el
+// total del primer child true (short-circuit). Regla productiva actual R16:
+// hoja sum en la raíz — este esquema soporta AND/OR anidados sin cambio.
 function evaluateNode(node, siteState, siteCode, eventTs, ruleId) {
   if (node.op === 'AND') {
     let sawNull = false;
+    let sumTotal = null;
+    let sumThreshold = null;
     for (const child of node.children) {
-      const v = evaluateNode(child, siteState, siteCode, eventTs, ruleId);
-      if (v === false) return false;
-      if (v === null) sawNull = true;
+      const r = evaluateNode(child, siteState, siteCode, eventTs, ruleId);
+      if (r.val === false) return { val: false, total: null, thresholdUsed: null };
+      if (r.val === null) sawNull = true;
+      if (sumTotal === null && r.total !== null) {
+        sumTotal = r.total;
+        sumThreshold = r.thresholdUsed;
+      }
     }
-    return sawNull ? null : true;
+    if (sawNull) return { val: null, total: null, thresholdUsed: null };
+    return { val: true, total: sumTotal, thresholdUsed: sumThreshold };
   }
   if (node.op === 'OR') {
     let sawNull = false;
     for (const child of node.children) {
-      const v = evaluateNode(child, siteState, siteCode, eventTs, ruleId);
-      if (v === true) return true;
-      if (v === null) sawNull = true;
+      const r = evaluateNode(child, siteState, siteCode, eventTs, ruleId);
+      if (r.val === true) return { val: true, total: r.total, thresholdUsed: r.thresholdUsed };
+      if (r.val === null) sawNull = true;
     }
-    return sawNull ? null : false;
+    return sawNull
+      ? { val: null, total: null, thresholdUsed: null }
+      : { val: false, total: null, thresholdUsed: null };
   }
   if (Array.isArray(node.sum)) {
     return evaluateSum(node, siteState, siteCode, eventTs, ruleId);
   }
   const devState = findDeviceByType(siteState, node.deviceType, siteCode);
-  if (!devState) return false;
+  if (!devState) return { val: false, total: null, thresholdUsed: null };
   const value = devState[node.variable];
-  return evaluateD(
+  const val = evaluateD(
     { ruleId: `${node.deviceType}/${node.variable}`, condition: node.condition },
     value
   );
+  return { val, total: null, thresholdUsed: null };
 }
 
 // ── Wrapper: evaluación + temporizador graceSec, scopeado por siteCode ────
 function evaluateCross(rule, siteState, crossState, eventTs, siteCode) {
-  const treeVal = evaluateNode(rule.crossExpr, siteState, siteCode, eventTs, rule.ruleId);
+  const r = evaluateNode(rule.crossExpr, siteState, siteCode, eventTs, rule.ruleId);
+  const treeVal = r.val;
 
   const startKey = `${siteCode}:${rule.ruleId}:start`;
   const firedKey = `${siteCode}:${rule.ruleId}:fired`;
@@ -168,10 +185,13 @@ function evaluateCross(rule, siteState, crossState, eventTs, siteCode) {
 
   const graceMs = (rule.graceSec || 0) * 1000;
 
+  // DEC-REF-65-A · sumTotal y thresholdUsed viajan al caller para que el
+  // path de fire los pinte en toast/Telegram/Mongo. Reglas cross sin hoja
+  // sum → total=null → path actual intacto (`value:null` como antes).
   if (graceMs === 0) {
     if (crossState.has(firedKey)) return { fired: false };
     crossState.set(firedKey, eventTs);
-    return { fired: true };
+    return { fired: true, sumTotal: r.total, thresholdUsed: r.thresholdUsed };
   }
 
   if (!crossState.has(startKey)) {
@@ -183,7 +203,7 @@ function evaluateCross(rule, siteState, crossState, eventTs, siteCode) {
   const started = crossState.get(startKey);
   if (eventTs - started >= graceMs) {
     crossState.set(firedKey, eventTs);
-    return { fired: true };
+    return { fired: true, sumTotal: r.total, thresholdUsed: r.thresholdUsed };
   }
   return { fired: false };
 }
