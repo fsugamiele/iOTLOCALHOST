@@ -167,9 +167,15 @@ export default {
     // tópicos nuevos. Filtro por siteId (DEC-REF-55): evita re-fetch cuando
     // la notif es de otro site del scope. Legacy path (payload.siteId=null)
     // no dispara re-fetch por diseño.
+    // DEC-REF-65-A · el pin del detalle también gana refresh silencioso
+    // (patrón R13 replicado desde pages/sites/index.vue): setIcon in-place
+    // sin loading ni parpadeo. Cierra la brecha que R13 declaró como
+    // "no aplica al detalle porque loadAlarms ya era silencioso" — cubría
+    // el feed, no el pin del site.
     this._notifHandler = (payload) => {
       if (!payload || payload.siteId !== this.siteCode) return;
       this.loadAlarms().catch((e) => console.warn('[SiteDetail] loadAlarms on notif failed', e));
+      this.refreshStatusSilently().catch((e) => console.warn('[SiteDetail] silent status refresh failed', e));
     };
     this.$nuxt.$on('wanomi:notif', this._notifHandler);
   },
@@ -264,16 +270,41 @@ export default {
         maxZoom: 18,
       }).addTo(this.map);
 
-      const color = STATUS_COLOR[this.status] || STATUS_COLOR.ok;
-      const icon = L.divIcon({
+      this.marker = L.marker([this.site.lat, this.site.lng], { icon: this.iconForStatus(this.status) })
+        .addTo(this.map)
+        .bindTooltip(`${this.site.nombre || this.site.siteCode} (${this.site.siteCode})`);
+    },
+
+    iconForStatus(status) {
+      const color = STATUS_COLOR[status] || STATUS_COLOR.ok;
+      return L.divIcon({
         className: 'site-pin-wrapper',
         html: `<span class="site-pin" style="background:${color}"></span>`,
         iconSize: [18, 18],
         iconAnchor: [9, 9],
       });
-      this.marker = L.marker([this.site.lat, this.site.lng], { icon })
-        .addTo(this.map)
-        .bindTooltip(`${this.site.nombre || this.site.siteCode} (${this.site.siteCode})`);
+    },
+
+    // DEC-REF-65-A · espejo del refreshSitesSilently de sites/index.vue.
+    // Fetch silencioso de /sites/status, se queda con el status del site
+    // actual, y aplica setIcon in-place SOLO si el status cambió. Sin
+    // loading, sin re-crear el mapa, sin pisar loadError visible.
+    async refreshStatusSilently() {
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      let nextStatus;
+      try {
+        const res = await this.$axios.get('/sites/status', headers);
+        if (!res.data || res.data.status !== 'success') return;
+        const list = res.data.data || [];
+        const me = list.find((s) => s.siteCode === this.siteCode);
+        nextStatus = (me && me.status) || 'ok';
+      } catch (err) {
+        console.warn('[SiteDetail] silent /sites/status fetch failed:', err.message || err);
+        return;
+      }
+      if (nextStatus === this.status) return;
+      this.status = nextStatus;
+      if (this.marker) this.marker.setIcon(this.iconForStatus(nextStatus));
     },
 
     labelOf(widget) {
