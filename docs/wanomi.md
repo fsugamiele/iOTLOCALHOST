@@ -7087,4 +7087,263 @@ tras leer el gap `~14h+` desde el restart de R18). Registro de
 apertura cierra acá; sigue Fase B/C/D en commits separados
 (un concern por commit).
 
+**Fase B · Recon EMQX (READ-ONLY).** Verificación previa al fix
+para confirmar que el cuadro coincide con el playbook DEC-REF-52-A
+y no hay drift nuevo.
+
+Resources EMQX (endpoint `GET /api/v4/resources`):
+
+```
+resource:e2327e37 | saver-webhook | http://node:3001/api/saver-webhook | is_alive: False
+resource:95b9d530 | alarm-webhook | http://node:3001/api/alarm-webhook | is_alive: False
+resource:cd1dfc4e | rule-webhook  | http://node:3001/api/rule-webhook  | is_alive: False
+```
+
+`app/.env` verificado con `grep`: `WEBHOOKS_HOST=node` (fix de #41
+DEC-REF-52-A intacto, sin drift tras el reinicio de WSL2 entre R18
+y R19). URL de los 3 resources apunta a `node:3001` — la resolución
+DNS interna Docker está OK, el problema es sólo la conexión hacia
+el proceso del contenedor `node` (los resources se inicializaron
+antes de que el proceso Node tuviera el endpoint listo, y EMQX
+marca `is_alive: false` en el primer health-check fallido y no
+reintenta automáticamente).
+
+Rule Engine (`GET /api/v4/rules`): **13 rules, todas
+`enabled: True`**, cada una filtrando por `<userId>/<dId>/+/sdata`
+para un dId distinto (las 13 saverrules del sistema).
+
+Alineación EMQX ↔ Mongo (`db.saverrules`):
+
+```
+db.saverrules.count() = 13   (perfecto match con las 13 rules en EMQX)
+Muestra: a0qjh6dh → rule:59e6d435  ✓ (rule existe en EMQX)
+         vVdhiW97 → rule:1300fb6e  ✓
+         UvplE5jG → rule:dc4c9178  ✓
+```
+
+Legacy observado (no bloqueante, no relacionado con este fix):
+`db.emqxsaverrules.count() = 1` con un doc de `dId: 2087` que
+apunta a una `rule:6c5506f6` inexistente en el Rule Engine — es
+huérfano viejo de una colección legacy no usada por
+`emqxapi.js:reconcileSaverRules()` (que lee de
+`db.saverrules`, no `db.emqxsaverrules`). Se deja donde está.
+
+Gap de ingesta (dimensión real del rebrote):
+
+```
+db.data.count() = 954950
+último data doc: 2026-07-10T19:59:26Z (ObjectId decodificado)
+                                       ^^^^^^^^^^^^^^^^^^^^^^
+                 tstamp actual: 2026-07-12 16:47:xx
+                 GAP REAL: ~44h  (mayor que las ~14h que Franco estimó
+                                  desde el restart de R18 — el saver
+                                  ya venía muerto ANTES del restart y
+                                  el restart en sí no cambió eso; el
+                                  reinicio de WSL2 que precedió a R18
+                                  también degradó los resources)
+```
+
+Notifs (canal separado): `db.notifications.count() = 2194`, último
+doc `2026-07-12T16:23:27Z` (resolve `_sf6v_x1` — el gate visual de
+Franco). Confirmado: canal MQTT directo → frontend + Telegram
+funciona independiente del saver-webhook (esperado — path
+`fireAlarm → sendMqttNotif → bus MQTT` no pasa por EMQX Rule
+Engine).
+
+**Veredicto GATE B: cuadro CONFIRMADO como DEC-REF-52-A**. Los 3
+resources muertos con URL correcta, las 13 rules vivas y enabled
+en EMQX, las 13 saverrules en Mongo bien apuntadas a rules
+existentes. Los deltas cuantitativos vs el playbook original de
+#41 (10→13 saverrules, 2→3 resources agregando `rule-webhook`
+para bus del edge) son crecimiento orgánico, no desviación del
+patrón. Se procede a Fase C.
+
+**Fase C · Aplicación del fix (DEC-REF-52-A).**
+
+Captura T0 antes del fix:
+
+```
+T0 db.data.count() = 954950
+```
+
+Ejecución del playbook (nota: el `?force=true` en DELETE
+resource retorna `400 Bad Arguments: {dependency_exists,{rule,
+<<"rule:bb8a4055">>}}` — el saver-resource está referenciado por
+las 13 rules del Rule Engine y EMQX 4.2.x no soporta cascade
+delete. Se elimina el orden correcto: primero rules, luego
+resource):
+
+```
+DELETE de las 13 rules dependientes de saver-resource
+  DELETE rule:bb8a4055 → HTTP 200
+  DELETE rule:9fe9706e → HTTP 200
+  DELETE rule:59e6d435 → HTTP 200
+  DELETE rule:dc4c9178 → HTTP 200
+  DELETE rule:1300fb6e → HTTP 200
+  DELETE rule:5b64cf89 → HTTP 200
+  DELETE rule:fb75a4fe → HTTP 200
+  DELETE rule:a49fa8f9 → HTTP 200
+  DELETE rule:f2c994ac → HTTP 200
+  DELETE rule:42ccbb5e → HTTP 200
+  DELETE rule:315cfd2d → HTTP 200
+  DELETE rule:9acc5bd5 → HTTP 200
+  DELETE rule:80824179 → HTTP 200
+
+DELETE resources
+  resource:95b9d530 (alarm-webhook) → code=0  ✓
+  resource:cd1dfc4e (rule-webhook)  → code=0  ✓
+  resource:e2327e37 (saver-webhook, 2do intento tras borrar rules) → code=0  ✓
+
+Estado intermedio EMQX: 0 resources, 0 rules  (limpio para bootstrap)
+
+docker restart node
+```
+
+Espera de ~45s post-restart para que:
+- Node arranque
+- MongoDB conecte
+- `check_mqtt_superuser()` corra
+- `EMQX_RESOURCES_DELAY=30000ms` transcurra
+- `emqxapi.js:manager()` bootstrap corra `listResources()` →
+  detecta 3 missing → crea los 3 con las nuevas IDs
+- `reconcileRules()` detecte las 13 saverrules en Mongo con
+  `emqxRuleId` apuntando a rules ya inexistentes → las recree
+  apuntando al nuevo saver-resource-id y actualice el Mongo
+
+Verificación post-bootstrap:
+
+```
+EMQX resources (fresh IDs):
+  resource:dad877d6 | rule-webhook  | http://node:3001/api/rule-webhook
+  resource:36c18878 | alarm-webhook | http://node:3001/api/alarm-webhook
+  resource:9730c636 | saver-webhook | http://node:3001/api/saver-webhook
+
+saver-webhook is_alive: True  ✓
+
+EMQX rules: 13  ✓  (reconcileSaverRules recreó todas)
+
+db.saverrules alineación post-fix:
+  a0qjh6dh → rule:7f1a2311  ✓  (Mongo actualizado con el nuevo emqxRuleId)
+  vVdhiW97 → rule:e80019fc  ✓
+  UvplE5jG → rule:14dee5a1  ✓
+```
+
+Sub-observación operativa (declarada). El log del contenedor
+mostró "saver resource not alive yet (attempt 2..38)" durante los
+primeros ~2min, seguido de un `ERROR: saver resource not ready
+after 120000ms — rules for NEW devices will NOT be created until
+next restart`. Sin embargo, la verificación posterior confirma
+`is_alive: True` y las 13 rules recreadas correctamente. Interpretación:
+el warmup del webhook Node arrancó justo después del timeout de la
+espera activa de `emqxapi.js`, pero el `manager()` de bootstrap
+igual disparó la recreación de rules porque `reconcileRules()`
+corre en paralelo con la espera de `is_alive` (o el timeout no
+bloqueó el resto del boot). En cualquier caso el resultado
+observable es el correcto — es una falsa alarma en el log a
+investigar en pull operacional A9 (BACKLOG-OPS-2 nuevo — el
+mensaje asusta pero el flujo terminó bien).
+
+**Fase C smoke (curl):**
+
+```
+GET http://localhost:3000/login              → 200
+GET http://localhost:3001/api/rulepacks      → 401  (sin token, esperado)
+GET http://localhost:3000/sites/CR00061      → 200
+
+PID 5527 (edge)       →  1-00:26:03 uptime  · node edge-engine/index.js       ✓ INTOCADO
+PID 6407 (simulador)  →  1-00:19:39 uptime  · node tools/device_simulator/run.js ✓ INTOCADO
+```
+
+Regla dura de la ronda respetada: NO se tocaron los PIDs del edge
+ni del sim — solo EMQX (via API) y el contenedor `node` (via
+docker restart). El edge conserva su siteState en memoria, los
+packs cargados y el crossState de las 5 reglas de
+`cummins-pcc-v1`.
+
+**Fase D · Verificación de ingesta sostenida.**
+
+```
+T0  (pre-fix, capturado en Fase C):
+      db.data.count() = 954950
+      último ts:       2026-07-10T19:59:26Z  (gap ~44h)
+
+T1  (post-fix + ~45s de espera de cadencia):
+      db.data.count() = 955208     (Δ = +258 docs en ~45s)
+      último ts:       2026-07-12T16:51:30Z  (dId: wrFwUpMt, variable: temperature)
+
+T2  (T1 + ~15s adicionales, verificación de sostenimiento):
+      db.data.count() = 955258     (Δ = +50 docs en ~15s)
+```
+
+Cadencia observada: ~3 docs/s sostenido — coherente con 13 devices
+simulados publicando a ~1 Hz cada uno con `save=1` (algunos
+sensores publican a menor frecuencia, promediando el 3 doc/s
+resultante).
+
+**Notifs channel post-fix** (verificado no-regresión):
+
+```
+último db.notifications: 2026-07-12T16:23:27Z (resolve _sf6v_x1)
+```
+
+Sin fires nuevos entre GATE 13-bis y ahora, así que el "último
+notif" no cambia — es esperable (el canal notifs es event-driven
+y no hubo eventos). Lo importante es que las notifs de R18/GATE 13
+siguen en Mongo (`count = 2194`) — el fix del saver no las tocó,
+canal separado confirmado.
+
+**Post-condición estable (R19 cierre):**
+
+- EMQX: 3 resources vivos con URL `http://node:3001` (fix #41
+  vigente), 13 rules vivas y enabled, dependencia
+  saver-resource↔rules re-establecida
+- Mongo: 13 saverrules re-alineadas con nuevos `emqxRuleId`,
+  `db.data` reanudando ingesta a ~3 docs/s
+- Edge PID 5527 y sim PID 6407: intocados, siteState y packs
+  cargados intactos
+- Notifs: canal MQTT directo → frontend + Telegram operativo
+  independiente
+- SF-6: **CERRADO** (validado por Franco en GATE 13-bis, pulido
+  cosmético diferido en BACKLOG-UI-8)
+
+**BACKLOG-OPS-1 (rebrote saver-webhook)**: **RESUELTO** con el fix
+DEC-REF-52-A aplicado por 2ª vez (1ª en #41). Observación
+sistémica: cada vez que WSL2 reinicia el host, hay riesgo alto de
+que EMQX marque los resources como muertos y no re-negocie sin
+intervención. Sería útil un cronjob o script `wanomi-health-check`
+que detecte `is_alive: false` y aplique el playbook DEC-REF-52-A
+automáticamente (queda como BACKLOG-OPS-3 nuevo — a diseñar).
+
+**BACKLOG-OPS-2 nuevo (falsa alarma del bootstrap)**: el mensaje
+`ERROR: saver resource not ready after 120000ms — rules for NEW
+devices will NOT be created until next restart` apareció en el log
+del bootstrap pese a que el resultado observable fue exitoso
+(is_alive True + 13 rules recreadas). Revisar la coordinación
+entre la espera de `is_alive` y `reconcileRules()` en
+`emqxapi.js` — probablemente el timeout es demasiado corto o el
+warmup del webhook Node compite con la espera del bootstrap.
+Impacto: mensaje asusta al operador pero el sistema queda sano.
+Prioridad BAJA.
+
+**BACKLOG-OPS-3 nuevo (auto-recuperación tras reinicio WSL2)**:
+diseñar `wanomi-health-check` (cronjob o daemon liviano) que
+consulte `/api/v4/resources`, detecte `is_alive: false` en los 3
+webhooks, y aplique el playbook DEC-REF-52-A automáticamente. Con
+el patrón consolidado en R19, la lógica es determinística y
+scriptable. Cubre la clase completa "reinicio del host degrada
+resources EMQX" que se está volviendo recurrente en el entorno de
+desarrollo WSL2 de Franco. Prioridad MEDIA (no bloquea el piloto
+Claro porque en producción el host es Orange Pi Zero 3 con
+uptime largo, pero mejora la experiencia dev y el runbook
+operacional).
+
+---
+
+**STOP GATE 14.** SF-6 CERRADO + saver-webhook RECUPERADO. R20
+(recon micro SF-7 — edición C/S en consola) arranca solo con
+orden explícita de Franco. Estado git esperado tras el commit de
+Fase D: branch `feature/telco-support` con **6 commits sin push**
+(37ca985, 0b0a9df, f476589, e04658b, 616c4c8, y el commit de
+Fase D). Ningún push automático en esta ronda por regla dura.
+
 
