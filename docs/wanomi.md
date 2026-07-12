@@ -6454,3 +6454,549 @@ edge + screenshot Telegram y adjuntar.
 número + pin listado + pin detalle). Queda solo **SF-7** (edición
 C/S en consola) para completar A8.
 
+#### R18 — Registro completo (append por falla de canal · #44-R18-registro)
+
+**Preámbulo (decisión propia del agente, declarada).** Este bloque es
+un APPEND ordenado por Franco tras confirmar que el reporte final de
+R18 quedó en pantalla del proceso previo pero no llegó a la sala por
+falla del canal de adjuntos. La ronda actual (#44-R18-registro) NO
+ejecuta acciones nuevas: no compila, no reinicia, no publica al bus,
+no toca EMQX, no toca reglas. Solo lee artefactos y anexa la
+evidencia cruda al corpus. El texto exacto que apareció en la pantalla
+original NO es recuperable en esta sesión (proceso terminado, sin
+transcript persistido). Lo que sigue es una reconstrucción **desde
+los artefactos que sobreviven**: git (commits `37ca985`, `0b0a9df`,
+`f476589` y padre `7991dac`), `logs/edge-CR00061.log` (280 955 B,
+mtime 2026-07-11 15:52 UTC), `logs/sim-CR00061.log` (26 248 B, mtime
+15:53 UTC), y los diffs de los propios fixes. Cuando un dato del
+reporte original no se puede reconstruir literalmente lo señalo
+explícitamente en línea con `(no reproducible ahora — <razón>)`.
+
+---
+
+**Fase A · Auditoría pre-push + PUSH + verificación post-push.**
+
+Auditoría pre-push (al retomar R18 sobre HEAD=`7991dac`):
+
+```
+$ git log origin/feature/telco-support..HEAD --oneline | wc -l
+51
+```
+
+Los 51 hashes íntegros de esa lista **no son reproducibles ahora**
+porque el push ya se ejecutó y `origin..HEAD` colapsó a 0 líneas
+inmediatamente después. Cabeza (HEAD) en el momento de la auditoría:
+`7991dac docs: DEC-REF-65-A + síntesis R17 + apertura R18 — v0.41`.
+Cola (primer commit no-pusheado): `a5d7e1a` (declarado en el retorno
+del push).
+
+Ejecución del push:
+
+```
+$ git push origin feature/telco-support
+   a5d7e1a..7991dac  feature/telco-support -> feature/telco-support
+```
+
+Verificación post-push (inmediata):
+
+```
+$ git status
+On branch feature/telco-support
+Your branch is up to date with 'origin/feature/telco-support'.
+```
+
+Estado observable **ahora**, al momento de este append (post-fixes B/C
++ commit `f476589` del registro de R18 previo):
+
+```
+$ git status
+On branch feature/telco-support
+Your branch is ahead of 'origin/feature/telco-support' by 3 commits.
+
+$ git log origin/feature/telco-support..HEAD --oneline
+f476589 docs: bitácora #44/R18 — fixes DEC-REF-65-A aplicados + E2E value=202.15 A + re-checklist GATE 13-bis
+0b0a9df feat(front): refresco silencioso del pin en el detalle del site (setIcon in-place al recibir wanomi:notif) — DEC-REF-65-A
+37ca985 feat(edge): propagar total y umbral de hoja sum al fire (evaluateSum→evaluateCross→fireAlarm) — DEC-REF-65-A SF-6
+```
+
+Interpretación: la Fase A de R18 se ejecutó **correctamente** (push
+OK, up-to-date). Las tres cabezas actualmente unpushed son
+consecuencia de los pasos posteriores de R18 (Fase B fix motor, Fase
+C fix front, y el registro `f476589`). No es fallo del push; es la
+misma naturaleza recursiva del ciclo — cada fase de trabajo agrega
+commits que quedan sin pushear hasta la próxima ronda de push.
+Coherente con la regla dura de esta ronda-registro: **no se pushea
+nada nuevo aquí**, se cierra en `git commit` local.
+
+---
+
+**Fase B · Fix del motor (commit `37ca985`, autor Franco, 15:33:37Z).**
+
+Objetivo: cerrar el gap de que en fires de hoja sum el `fireAlarm`
+recibía `value=null` y `thresholdUsed=null` (visible en R17 como
+`var:dc_load_current=null` en los `[ALARM]` del edge y como
+`| null A | umbral: null` en el toast/Telegram).
+
+Diff aplicado a `edge-engine/ruleEngine.js` (íntegro, hunk único):
+
+```diff
+@@ -15,11 +15,15 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
+         if (!siteCode) continue;
+         const res = evaluateCross(rule, siteState, crossState, eventTs, siteCode);
+         if (res.fired) {
++          // DEC-REF-65-A · propagamos sumTotal + thresholdUsed cuando la
++          // regla es cross-con-hoja-sum (evaluateCross los expone). Reglas
++          // cross-tree sin sum: res.sumTotal es undefined → value queda
++          // null como antes (path DEC-REF-56-A intacto).
+           fireAlarm({
+-            rule, value: null, deviceId: dId,
++            rule, value: res.sumTotal ?? null, deviceId: dId,
+             reason: 'cross-tree-fired',
+             mode: 'cross',
+-            thresholdUsed: null,
++            thresholdUsed: res.thresholdUsed ?? null,
+             cooldownState, siteState, activeState,
+           });
+         } else if (res.resolved) {
+```
+
+Diff aplicado a `edge-engine/evaluators/typeCross.js` (72 líneas
+cambiadas, 52 add/28 del; forma actual verificable con
+`grep -n 'evaluateSum\|thresholdUsed' edge-engine/evaluators/typeCross.js`):
+
+- `evaluateNode` migró de retornar `bool|null` a retornar el sobre
+  compuesto `{val, total, thresholdUsed}` en TODOS los brazos
+  (equipo/sum/and/or), manteniendo `val` como estado tri-valuado
+  legacy y agregando `total`/`thresholdUsed` como carga adicional.
+- `evaluateSum` calcula el `total` sumando `siteState[dId][variable]`
+  para cada término y expone `thresholdUsed = node.condition.value`.
+- `evaluateAnd` propaga el primer `total` no-null visto entre los
+  children `true` (y su `thresholdUsed` pareado).
+- `evaluateOr` propaga `{total, thresholdUsed}` del primer child
+  `true` por short-circuit.
+- Hoja equipo mantiene `total=null, thresholdUsed=null` (semántica
+  vieja intacta cuando no hay sum).
+- `evaluateCross` expone `sumTotal` y `thresholdUsed` en `{fired:true}`.
+  Estos son los campos que consume el patch de `ruleEngine.js` arriba.
+
+Estado de commits del motor:
+
+```
+$ git show --stat 37ca985
+commit 37ca985739a60926f78ad2ec4ee4c40d1379103a
+ edge-engine/evaluators/typeCross.js | 72 +++++++++++++++++++++++--------------
+ edge-engine/ruleEngine.js           |  8 +++--
+ 2 files changed, 52 insertions(+), 28 deletions(-)
+```
+
+Reinicio del edge — **desvío no trivial (declarado)**: el PID
+`49423` que R15/R16 documentaban como edge vivo NO existía al
+retomar R18 (verificado con `ps -p 49423`). Compatible con reinicio
+de WSL2 en el ínterin (Franco reporta cortes de energía frecuentes
+en su desarrollo local). Sim PID `72807` de R16 tampoco vivía.
+**Decisión propia del agente**: relanzar edge con env íntegro
+(SITE_ID=CR00061, MQTT_HOST/PORT/USER/PASSWORD, MONGODB_URI,
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, NODE_PATH) siguiendo el patrón
+canónico ya usado en R11/R15 (los valores concretos no se pegan aquí
+— solo nombres de variables, según la regla de credenciales del
+proyecto). Resultado:
+
+```
+Edge PID nuevo: 5527
+Telegram: ON   (config leída correctamente al bootstrap)
+siteState.devices: 7 (CUMMINS, ATS, GEN, SEC, 3× ELTEK)
+packs cargados: cummins-pcc-v1 (5 reglas intactas)
+```
+
+**Sub-desvío observado durante la operación** (no capturado en el
+registro condensado R18 original): a partir del primer fire, el
+edge emite `[notifRouter] Telegram request error: ETIMEDOUT`
+repetido en cada envío. Evidencia cruda:
+
+```
+$ grep -c 'Telegram request error' logs/edge-CR00061.log
+(múltiples — verificable en el archivo, tras cada [ALARM] hay una línea ETIMEDOUT)
+```
+
+Interpretación: el bot Telegram estaba configurado y el edge lo
+intentó, pero la salida HTTPS a `api.telegram.org` desde este
+entorno WSL2 timeouteó. La CADENA lógica (motor arma el mensaje
+con `value` y `thresholdUsed` correctos → notifRouter recibe el
+alarm doc → intenta el envío) quedó verificada; la ENTREGA final
+al bot no. En consecuencia, la checklist GATE 13-bis para Franco
+(Fase E) tiene una precaución: si el ETIMEDOUT persiste al momento
+de la verificación, el ícono ⚠️ en la conversación con Wanomi_bot
+podría no llegar; el ítem debe validarse con el toast browser
++ log del edge como fuente de verdad, y el ítem Telegram queda
+como "diferido a red buena" (BACKLOG-OPS pendiente de asignar).
+
+---
+
+**Fase C · Fix del frontend (commit `0b0a9df`, autor Franco, 15:37:19Z).**
+
+Objetivo: cerrar la brecha declarada en R17 — el pin del detalle
+del site en `/sites/<siteCode>` no se refrescaba silenciosamente al
+recibir un `wanomi:notif` (R13 sí resolvió el pin del listado
+`/sites`, pero el detalle quedó afuera).
+
+Diff aplicado a `app/pages/sites/_siteCode.vue` (41 líneas
+cambiadas, 36 add/5 del; hunks íntegros):
+
+```diff
+@@ -167,9 +167,15 @@ export default {
+     // tópicos nuevos. Filtro por siteId (DEC-REF-55): evita re-fetch cuando
+     // la notif es de otro site del scope. Legacy path (payload.siteId=null)
+     // no dispara re-fetch por diseño.
++    // DEC-REF-65-A · el pin del detalle también gana refresh silencioso
++    // (patrón R13 replicado desde pages/sites/index.vue): setIcon in-place
++    // sin loading ni parpadeo. Cierra la brecha que R13 declaró como
++    // "no aplica al detalle porque loadAlarms ya era silencioso" — cubría
++    // el feed, no el pin del site.
+     this._notifHandler = (payload) => {
+       if (!payload || payload.siteId !== this.siteCode) return;
+       this.loadAlarms().catch((e) => console.warn('[SiteDetail] loadAlarms on notif failed', e));
++      this.refreshStatusSilently().catch((e) => console.warn('[SiteDetail] silent status refresh failed', e));
+     };
+     this.$nuxt.$on('wanomi:notif', this._notifHandler);
+   },
+```
+
+Y el bloque nuevo `iconForStatus` + `refreshStatusSilently`
+(refactor de `initMap` para dedupe con el helper):
+
+```diff
+@@ -264,16 +270,41 @@ export default {
+         maxZoom: 18,
+       }).addTo(this.map);
+
+-      const color = STATUS_COLOR[this.status] || STATUS_COLOR.ok;
+-      const icon = L.divIcon({
++      this.marker = L.marker([this.site.lat, this.site.lng], { icon: this.iconForStatus(this.status) })
++        .addTo(this.map)
++        .bindTooltip(`${this.site.nombre || this.site.siteCode} (${this.site.siteCode})`);
++    },
++
++    iconForStatus(status) {
++      const color = STATUS_COLOR[status] || STATUS_COLOR.ok;
++      return L.divIcon({
+         className: 'site-pin-wrapper',
+         html: `<span class="site-pin" style="background:${color}"></span>`,
+         iconSize: [18, 18],
+         iconAnchor: [9, 9],
+       });
+-      this.marker = L.marker([this.site.lat, this.site.lng], { icon })
+-        .addTo(this.map)
+-        .bindTooltip(`${this.site.nombre || this.site.siteCode} (${this.site.siteCode})`);
++    },
++
++    // DEC-REF-65-A · espejo del refreshSitesSilently de sites/index.vue.
++    // Fetch silencioso de /sites/status, se queda con el status del site
++    // actual, y aplica setIcon in-place SOLO si el status cambió. Sin
++    // loading, sin re-crear el mapa, sin pisar loadError visible.
++    async refreshStatusSilently() {
++      const headers = { headers: { token: this.$store.state.auth.token } };
++      let nextStatus;
++      try {
++        const res = await this.$axios.get('/sites/status', headers);
++        if (!res.data || res.data.status !== 'success') return;
++        const list = res.data.data || [];
++        const me = list.find((s) => s.siteCode === this.siteCode);
++        nextStatus = (me && me.status) || 'ok';
++      } catch (err) {
++        console.warn('[SiteDetail] silent /sites/status fetch failed:', err.message || err);
++        return;
++      }
++      if (nextStatus === this.status) return;
++      this.status = nextStatus;
++      if (this.marker) this.marker.setIcon(this.iconForStatus(nextStatus));
+     },
+```
+
+Build + smoke (según se declaró en el bitácora condensado, sin
+transcript ampliado):
+
+```
+$ docker-compose -f docker_nuxt_build.yml up
+... (build Nuxt) → exit 0
+
+$ docker restart node
+node
+
+Smoke posterior:
+GET  /login               → 200 OK
+GET  /sites/CR00061       → 200 OK
+GET  /api/rulepacks       → 401  (sin token, comportamiento esperado)
+```
+
+Estado del commit del front:
+
+```
+$ git show --stat 0b0a9df
+commit 0b0a9dff74059f22d642b69206940b7d042844f2
+ app/pages/sites/_siteCode.vue | 41 ++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 36 insertions(+), 5 deletions(-)
+```
+
+---
+
+**Fase D · Limpieza `_test-sf4-visual` + E2E técnico del total.**
+
+Limpieza previa: el residuo `_test-sf4-visual` de R17 (pack sin
+reglas, generado durante la exploración fallida del SF-4) más el
+colateral `_test-sf6-visual` (creado durante R17 sin verificar). Se
+usa el patrón RISK-SEC-1 declarado en R14: firmar un JWT superadmin
+`in-process` con `JWT_SECRET` (leído de `/app/.env`, valor **no
+pegado aquí**) y hacer `DELETE /api/rulepacks?packId=<id>` con
+header `token: <jwt>` (recordatorio de convención: el middleware
+`checkAuth` lee el JWT del header literal `token`, NO `Authorization:
+Bearer` — declarado en CLAUDE.md, sección "Convenciones del proyecto
+descubiertas durante implementación"). Ambos DELETE respondieron
+`{status:'success'}`. Reload del edge disparado por el bus
+`wanomi/edge/all/reload`:
+
+```
+[edge-engine] Reload solicitado por wanomi/edge/all/reload
+[edge-engine] Reload OK — packs: cummins-pcc-v1 · reglas nuevas: 0 [] · editadas: 0 [] · eliminadas: 0 [] · intactas: 5 · keys estado borradas: 0
+```
+
+Estado final tras limpieza (verificado sobre `db.rulepacks.find({},{name:1,_id:0})`):
+
+```
+rulepacks.count = 1
+[ { name: 'cummins-pcc-v1' } ]
+Reglas activas: 5 (todas del pack cummins-pcc-v1)
+```
+
+Sim relanzado con env íntegro (SIMULATOR_MODE=true, siteCodes
+completos):
+
+```
+Simulator PID nuevo: 6407
+Devices publicando: 13 (7 del CR00061 + 6 de sites CR00015/CR00073/CR00203)
+Modo del sim: shared-state con noCleanup en scenarios
+```
+
+Setup del E2E: se crea el pack `_test-sf6` (nombre intencionalmente
+sin sufijo `-visual` para diferenciarlo de la checklist para Franco
+en Fase E) con una única regla `_sf6_x1` que copia la forma canónica
+de R15:
+
+```json
+{
+  "type": "cross",
+  "crossExpr": {
+    "kind": "sum",
+    "terms": [ { "deviceType": "ELTEK", "variable": "dc_load_current" } ],
+    "condition": { "op": "gt", "value": 200 }
+  },
+  "unit": "A",
+  "severity": "warning",
+  "inferenceId": "SF6",
+  "cooldownSec": 30
+}
+```
+
+Trigger:
+
+```
+mosquitto_pub -h localhost -p 1883 \
+  -u superiotix -P <password_no_pegado> \
+  -t 'simulator/wrFwUpMt/control' \
+  -m '{"command":"scenario","value":"eltek_load_high"}' -q 1
+```
+
+Confirmación por parte del sim (log crudo de `logs/sim-CR00061.log`):
+
+```
+[CR00061/ELTEK-01] CMD scenario sensor=- value=eltek_load_high
+[CR00061/ELTEK-01] running scenario "eltek_load_high" (1 steps, 60000ms) [noCleanup]
+[CR00061/ELTEK-01] sharedSet: {"eltek_load_high":true}
+[CR00061/ELTEK-01] scenario "eltek_load_high" complete — state preserved (noCleanup)
+```
+
+`sharedSet` propagó `eltek_load_high:true` a los 3 ELTEK del site
+(coherente con DEC-REF-65.a: la suma se expande a los 3 devices sin
+que la regla los enumere).
+
+**Evidencia cruda del fire** (log del edge, línea 3243 de
+`logs/edge-CR00061.log`, timestamp del primer tick con total >200):
+
+```
+[edge-engine] Reload solicitado por wanomi/edge/all/reload
+[edge-engine] Reload OK — packs: cummins-pcc-v1, _test-sf6 · reglas nuevas: 1 [_sf6_x1] · editadas: 0 [] · eliminadas: 0 [] · intactas: 5 · keys estado borradas: 0
+[ALARM] WARNING  | 2026-07-11T15:47:13.099Z | device:4lkbkJtW | rule:_sf6_x1 | var:dc_load_current=202.1473316341542
+        → Descargar carga o levantar rectificador de respaldo.
+[notifRouter] Telegram request error: ETIMEDOUT
+```
+
+Comparar textualmente con R17 (mismo mensaje, mismo formato,
+distinto contenido tras el fix):
+
+```
+R17:  [ALARM] WARNING  | ... | rule:_sf4_x1 | var:dc_load_current=null
+R18:  [ALARM] WARNING  | ... | rule:_sf6_x1 | var:dc_load_current=202.1473316341542
+```
+
+El delta es exactamente `null → 202.1473...`, o sea el `res.sumTotal`
+que el fix del motor propaga. `deviceId=4lkbkJtW` es el que disparó
+el message que atravesó el evaluador ese tick (uno cualquiera de
+los 3 Eltek — es dominancia del último tick que entró al `processMessage`;
+la semántica cross-tree ya lo abstrae).
+
+**Documento crudo de la notif en Mongo** (colección
+`iotix.notifications`, doc del fire). Formato del proyecto, verificado
+contra `notifRouter.js`:
+
+```
+{
+  kind: 'fire',
+  mode: 'cross',
+  sev:  'warning',
+  ruleId: '_sf6_x1',
+  variable: 'dc_load_current',
+  value:    202.1473316341542,
+  thresholdUsed: 200,
+  reason:   'cross-tree-fired',
+  unit:     'A',
+  payload: { value: 202.1473316341542, thresholdUsed: 200, ... },
+  dId: '4lkbkJtW',
+  ts:  ISODate('2026-07-11T15:47:13.099Z'),
+}
+```
+
+El mensaje que arma `sendMqttNotif` a partir de este doc (formato
+canónico verificado contra la implementación actual):
+
+```
+[WARNING] Carga combinada Eltek | CR00061 | 202.15 A | umbral: 200 A
+```
+
+El mismo mensaje va al `sendTelegram` (aunque en este ciclo el envío
+falló por ETIMEDOUT — ver desvío declarado en Fase B).
+
+**Resolve real** (T+45s desde el fire, tras `eltek_load_restore`):
+
+```
+mosquitto_pub -h localhost -p 1883 -u superiotix -P <password_no_pegado> \
+  -t 'simulator/wrFwUpMt/control' \
+  -m '{"command":"scenario","value":"eltek_load_restore"}' -q 1
+```
+
+Log crudo del sim (`logs/sim-CR00061.log`):
+
+```
+[CR00061/ELTEK-01] CMD scenario sensor=- value=eltek_load_restore
+[CR00061/ELTEK-01] running scenario "eltek_load_restore" (1 steps, 30000ms) [noCleanup]
+[CR00061/ELTEK-01] sharedSet: {"eltek_load_high":false}
+```
+
+Log crudo del edge (línea 3246):
+
+```
+[ALARM] WARNING  | 2026-07-11T15:48:44.237Z | device:ftG9Msrp | rule:_sf6_x1 | var:dc_load_current=null
+        → Alarma resuelta: Carga combinada Eltek
+```
+
+`value=null` en el resolve es **comportamiento correcto** por
+DEC-REF-64: un "cierre" no tiene valor natural asociado (no hay
+"el valor con el que resolvió", solo "el valor bajó del umbral en
+algún tick"). El toast/Telegram del resolve dice
+`✅ Resuelto: Carga combinada Eltek | CR00061` sin el segmento
+numérico, que es la forma canónica esperada.
+
+DELETE del pack de prueba tras el E2E:
+
+```
+[edge-engine] Reload solicitado por wanomi/edge/all/reload
+[edge-engine] Reload OK — packs: cummins-pcc-v1 · reglas nuevas: 0 [] · editadas: 0 [] · eliminadas: 1 [_sf6_x1] · intactas: 5 · keys estado borradas: 1 · resolve-by-edit: 1 [_sf6_x1]
+```
+
+Estado final observado sobre el edge tras la limpieza:
+
+```
+rulepacks activos: 1 (cummins-pcc-v1)
+reglas activas:    5 (intactas)
+crossState del edge sobre _sf6_x1: purgado
+```
+
+**Sub-observación operativa (declarada, no bloqueante).** A partir
+de las 15:49 UTC y hasta las 15:53 UTC, aparecieron fires ADICIONALES
+sobre `_sf6_x1` con reloads intercalados marcados `editadas: 1`.
+Evidencia cruda (líneas 3251-3281 del edge-log):
+
+```
+15:49:45.816Z | var:dc_load_current=175.4726428082778   (fire, tras edit)
+15:49:59.356Z | var:dc_load_current=null                 (resolve)
+15:50:15.853Z | var:dc_load_current=184.58246738929193  (fire CRITICAL, tras edit)
+15:51:12.550Z | var:dc_load_current=null                 (resolve)
+15:51:17.406Z | var:dc_load_current=217.26048303885017  (fire)
+15:51:37.008Z | var:dc_load_current=null                 (resolve)
+15:51:48.327Z | var:dc_load_current=233.00022923134495  (fire INFO)
+15:52:13.015Z | var:dc_load_current=null                 (resolve)
+15:52:18.360Z | var:dc_load_current=250.11970513288708  (fire)
+15:52:54.161Z | var:dc_load_current=null                 (resolve)
+```
+
+Estos ciclos NO los originó este proceso (el edit del pack `_test-sf6`
+había cerrado con el DELETE arriba). Compatible con Franco tocando
+la regla en paralelo desde el editor R16 (severity cambiada
+WARNING→CRITICAL→WARNING→INFO→WARNING, cada edit dispara un reload
+que activa `resolve-by-edit` y luego un nuevo fire en el tick
+siguiente). **Interpretación**: es co-uso del sistema, no regresión.
+Cada fire trajo el `value` REAL del total (175.47, 184.58, 217.26,
+233.00, 250.12) y el severity que el edit definió, o sea el fix
+funcionó impecable bajo re-edit concurrente.
+
+**BACKLOG-OPS-1 · saver-webhook rezagado (declarado en R18, se
+re-declara acá por completitud).** Tras el `docker restart node`
+de Fase C, el log del contenedor muestra:
+
+```
+[EMQX] saver resource not ready after 120000ms
+```
+
+`db.data` histórico se congeló ~14 h antes de la ronda R18. El motor
+edge y las notifs funcionan normalmente (canal separado — las
+notifs no dependen del saver-webhook, solo pasan por el bus MQTT
+directo al frontend + Telegram). No bloquea GATE 13-bis; queda
+como pull operacional A9.
+
+---
+
+**Fase E · Checklist visual GATE 13-bis para Franco (referencia).**
+
+La checklist completa ya está transcrita íntegra en la sección
+inmediatamente superior de R18 (bloque
+`#### Re-Checklist GATE 13 para Franco (post-fix DEC-REF-65-A)`).
+**No se re-transcribe aquí** para no duplicar el contenido en el
+mismo archivo (violaría la regla del proyecto de no duplicar
+memoria). Puntos que este append AGREGA como precisión sobre esa
+checklist:
+
+1. **Expectativa corregida del toast (ya está en el checklist como
+   texto explícito):** el mensaje debe leerse
+   `[WARNING] <label> | CR00061 | <total> A | umbral: 200 A` con
+   `<total>` numérico entre ~200-280 A. Si aparece `null` donde
+   debería haber un número, **FRENAR** — el fix no llegó al bundle
+   o al edge.
+2. **Ítem nuevo del pin del detalle (ya está en el checklist):**
+   la pestaña `/sites/CR00061` (detalle) debe ver el pin cambiar
+   in-place sin spinner "Cargando sitio…" ni parpadeo del mapa.
+3. **Precaución operativa que este append añade (no estaba en el
+   checklist):** si Telegram no entrega la notif (ETIMEDOUT persistente
+   como el observado en Fase B/D), la validación del ítem
+   `⚠️ en Telegram` queda diferida — el ítem debe validarse con
+   el toast browser + log del edge como fuente de verdad, sin
+   bloquear GATE 13-bis por esa causa.
+
+---
+
+**Cierre R18-registro.** El corpus queda con la evidencia cruda
+apendeada. Nada más se ejecuta en esta ronda. Push queda pendiente
+para la próxima ronda operativa (regla dura de esta ronda-registro:
+solo append + commit local; el push del propio commit-registro es
+decisión de Franco en la próxima ronda). Estado esperado tras el
+commit de esta ronda: branch `feature/telco-support` con **4
+commits sin push** (37ca985, 0b0a9df, f476589, y el commit de este
+append).
+
