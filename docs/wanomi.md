@@ -7346,4 +7346,77 @@ Fase D: branch `feature/telco-support` con **6 commits sin push**
 (37ca985, 0b0a9df, f476589, e04658b, 616c4c8, y el commit de
 Fase D). Ningún push automático en esta ronda por regla dura.
 
+#### R20 — recon micro SF-7
+
+**Apertura + correcciones de registro (por APPEND, sin editar lo
+ya escrito — regla de bitácora).** Franco firmó **GATE 14 — VERDE**
+tras leer la evidencia de la Fase D de R19 (saver-webhook vivo,
+ingesta sostenida ~3 docs/s, gap real ~44h medido y documentado,
+edge/sim intocados, notifs channel independiente). SF-7 abre para
+recon micro dirigido — la sala diseñará el fix con Franco DESPUÉS
+del recon.
+
+**Corrección de registro (i) — colisión de ID BACKLOG-OPS-2.** En
+R19 se registró como "BACKLOG-OPS-2 nuevo (falsa alarma del
+bootstrap)" un ítem cuyo ID ya estaba tomado por el BACKLOG-OPS-2
+histórico de #41 ("deriva `.env` ↔ CLAUDE.md"). Verificación con
+`grep -n 'BACKLOG-OPS-2' docs/wanomi.md` confirmó las dos
+ocupaciones (líneas 2929/2936/3050/3055/3363/3627 = el original de
+#41, líneas 7243/7317 = el uso duplicado en R19). Verificación del
+próximo ID libre con `grep -oE 'BACKLOG-OPS-[0-9]+' | sort -u`
+antes de asignar (lección RULE-4 aplicada — también BACKLOG-UI-8
+lo aplicó en la apertura de R19): OPS-1/2/3 tomados → **OPS-4
+libre**. **Se renumera el ítem de R19 "falsa alarma del bootstrap"
+como `BACKLOG-OPS-4`**. Todas las referencias futuras usan
+`BACKLOG-OPS-4` para ese pull; el texto de R19 en las líneas
+7243/7317 queda como huella histórica (append-only) pero **queda
+oficialmente inválido para efectos de tracking**. Es la 2ª colisión
+de IDs registrada en el proyecto (la 1ª fue RULE-4 en R2 que forzó
+renumerar en dos etapas) — patrón claro: **verificar con grep el
+próximo libre antes de asignar cualquier ID nuevo**. Este es un
+principio ya interiorizado desde la apertura de R19 (BACKLOG-UI-8);
+la falla en R19-C fue no aplicarlo dos veces en la misma ronda.
+
+**Corrección de registro (ii) — balance A8 con sub-frentes
+intercambiados.** En la apertura de R19 el balance se escribió:
+
+- SF-1 ✓ (fires/resolves cross-tree básicos)
+- SF-3 ✓ (severity + inferenceId multi-severity, R14)
+- SF-4 ✓ (round-trip editor cross-tree, R15/R16)
+- SF-5 ✓ (guardado atómico + reload por bus, R11)
+- SF-6 ✓ (hoja sum motor + editor + toast/Telegram con total real
+  + pin detalle in-place, R15→R18/R19)
+- SF-7 pendiente (edición C/S en consola)
+
+Las descripciones asociadas a SF-1/3/4/5 estaban **intercambiadas**
+respecto al mapeo canónico usado desde #43-R2. Para uso operativo
+en R20 y siguientes, el balance correcto de A8 queda registrado
+aquí, y es el que se usa desde ahora:
+
+- **SF-1** = CRUD HTTP de RulePack (rutas + persistencia
+  atómica, R2/R3)
+- **SF-3** = Hot-reload por bus MQTT (edge lee del bus y aplica
+  diff, R5/R5-bis)
+- **SF-5** = Consola superadmin 3 capas (listado → detalle →
+  editor de regla, R7→R9-bis)
+- **SF-4** = Resolve events (fires con contraparte de resolve,
+  incluyendo resolve-by-edit y resolve silencioso, R11→R13)
+- **SF-6** = Hoja de suma cross-tree (motor + editor + toast/
+  Telegram + pin detalle in-place, R14→R19)
+- **SF-7** = Edición completa de reglas type C y S en la consola
+  (hoy read-only con banner DEC-REF-62-B, **abre en R20**)
+
+Balance por status: **SF-1/3/5/4/6 = ✓ · SF-7 = pendiente (arranca
+recon en R20)**. El texto de la apertura de R19 en las líneas
+7016-7028 queda como huella histórica de la confusión y se
+sobrescribe por este párrafo para efectos operativos.
+
+---
+
+**Fase B · Recon micro SF-7 (READ-ONLY salvo la Fase A del APPEND
+anterior).** Sigue en respuesta de pantalla la evidencia archivo:línea
+por cada punto B1-B5 con la síntesis en tabla al cierre.
+
+
+
 
