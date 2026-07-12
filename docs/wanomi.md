@@ -7417,6 +7417,397 @@ sobrescribe por este párrafo para efectos operativos.
 anterior).** Sigue en respuesta de pantalla la evidencia archivo:línea
 por cada punto B1-B5 con la síntesis en tabla al cierre.
 
+##### R20-registro — reporte completo del recon (append por falla de canal)
 
+**Preámbulo.** El reporte completo de la Fase B de R20 se
+respondió en pantalla al cierre de STOP GATE 15 pero no llegó a la
+sala. La ronda #44-R20-registro **NO ejecuta acciones nuevas**:
+no lee archivos que no haya leído R20, no cambia código, no toca
+EMQX/edge/sim. Se vuelca la evidencia recolectada durante R20 al
+corpus para que la sala diseñe SF-7 con Franco desde el corpus.
+Todos los artefactos citados (rule_definition.js, typeC.js,
+typeS.js, ruleValidation.js, _packId.vue, seeds de _validate,
+sensor-engine.js) siguen en disco a esta fecha; la reconstrucción
+es **literal** desde ellos (no hace falta marcar
+`(no reproducible ahora)` en ningún punto — el recon corrió sobre
+los mismos archivos que persisten al momento del registro).
+
+---
+
+**B1 — Anatomía type C (autocalibrado)**
+
+Schema — `app/api/models/rule_definition.js:16-49` (campos
+relevantes de C):
+
+- `type: enum ['D','C','S','cross']` (línea 16, required)
+- `condition: ConditionSchema {op, value}` (línea 27, default
+  `null`) — es el **umbral de respaldo** cuando C corre en modo
+  `fallback`
+- `setpointSource:` (líneas 29-33):
+  - `register: Number` — metadata Modbus del driver, **no
+    consumido** por el evaluador actual
+  - `scale: Number, default 1` — idem, **no consumido**
+  - `variable: String` — **la key de `siteState[dId]` donde el
+    driver publica el setpoint real**; es el único campo del
+    sub-objeto que consume el evaluador
+- `fallbackToD: Boolean, default true` (línea 34) — si `true`,
+  cuando no hay setpoint compara contra `condition.value`
+- `on_missing_ref: enum ['physical','inferred','connect', null],
+  default null` (línea 46 — hay dos enums parecidos, este es el
+  segundo grupo `enum ['ignore', 'alarm']`, verificar en el
+  archivo real: **línea 46 correcta** =
+  `on_missing_ref: enum ['ignore','alarm'], default 'ignore'`) —
+  decisión cuando NO hay setpoint Y NO hay fallback
+- `escalateAfterMinutes: Number, default null` (línea 22, EDGE-2)
+  — minutos sin setpoint antes de escalar INFO→warning.
+  **Declarado en schema pero NO consumido** por `typeC.js` actual;
+  es una pieza EDGE-2 pendiente de implementar en el evaluador.
+
+Evaluador — `edge-engine/evaluators/typeC.js:6-44`. Los tres
+caminos:
+
+- **`calibrated`** (líneas 15-26): si `deviceState[sp.variable]`
+  existe (no-null/no-undefined) → arma
+  `synthetic.condition = {op: rule.condition.op, value: setpoint}`,
+  llama `evaluateD(synthetic, value)`. `thresholdUsed = setpoint`.
+- **`fallback`** (líneas 28-35): setpoint ausente +
+  `fallbackToD===true` → llama `evaluateD(rule, value)` (usa
+  `rule.condition.value` como umbral).
+  `thresholdUsed = rule.condition.value`.
+- **`no-ref`** (líneas 37-41): setpoint ausente +
+  `fallbackToD===false` → si `on_missing_ref==='alarm'` dispara
+  sin comparar; si `'ignore'` (default) silencia.
+  `thresholdUsed = null`.
+- **Guard nulo** (líneas 7-9): `value===null|undefined` →
+  `mode:'no-ref'`, no dispara.
+
+Combinaciones inválidas que **HOY nada valida**:
+
+- `type:'C'` sin `condition` → si cae en `fallback`, `rule.condition`
+  es null → `evaluateD` recibe rule.condition undefined → probable
+  crash silencioso o falso false.
+- `setpointSource.variable` vacío/undefined → `sp.variable` es
+  falsy → siempre cae en `fallback` (nunca `calibrated`). No es
+  "roto" pero es semánticamente muerto si el usuario quería
+  `calibrated`.
+- `condition.op` fuera del enum de ConditionSchema (línea 5) —
+  Mongoose lo rechaza al PUT ✓ (defensa en el schema).
+- `on_missing_ref:null` con `fallbackToD:false` → cae en `no-ref`
+  con `on_missing_ref !== 'alarm'` → silencia por default. Legal
+  pero engañoso.
+
+`ruleValidation.js:validateCrossTree` sólo valida `crossExpr` —
+**NO tiene rama para C** (líneas 17-56 son íntegramente
+cross-tree). El único freno para C es el enum del schema.
+
+**Regla C real de referencia** — no hay ninguna en
+`db.rulepacks` en tiempo de recon (`aggregate({$match:{"rules.type":"C"}})`
+→ 0 resultados). Fuente canónica: `seeds/_dev/_validate_typeC_seed.js:9-24`:
+
+```js
+const rule = (n, { backup, fallbackToD, on_missing_ref = 'ignore' }) => ({
+  ruleId:        `__test-C${n}`, label: `Test C${n}`, inferenceId: `TC${n}`,
+  type:          'C', severity: 'warning', cooldownSec: 0,
+  deviceType:    'cummins-pcc', variable: `coolant_temp_c${n}`,
+  condition:     { op: 'gt', value: backup },
+  setpointSource:{ register: 3000 + n, scale: 1, variable: `setpoint_c${n}` },
+  fallbackToD, on_missing_ref,
+});
+```
+
+Los 5 casos del seed cubren la matriz `{con setpoint | sin setpoint} × {fallback | no-fallback} × {ignore | alarm}` — es la
+tabla de verdad de referencia dorada para el mini-form.
+
+---
+
+**B2 — Anatomía type S (ventana)**
+
+Schema — `rule_definition.js:36-40`:
+
+```js
+window: {
+  durationSec:    { type: Number },
+  countThreshold: { type: Number },
+  matchCondition: { type: ConditionSchema, default: null },
+},
+```
+
+Evaluador — `edge-engine/evaluators/typeS.js:10-46`:
+
+- **Guard forma** (líneas 12-15): sin `w`, sin `w.durationSec`,
+  sin `w.countThreshold`, sin `w.matchCondition` →
+  `console.warn('[typeS] Regla X sin window válida — omitida')` +
+  `fired:false`. **Failure MUDA** (log warning, no error visible
+  en UI).
+- **Purga deslizante** (líneas 17-22):
+  `cutoff = now - durationSec*1000`, filtra timestamps ≥ cutoff.
+- **Match** (líneas 25-26): construye
+  `synthetic.condition = w.matchCondition`, llama
+  `evaluateD(synthetic, value)`.
+- **Registro + evaluación** (líneas 36-43): si matchea agrega
+  timestamp, `fired = count >= countThreshold`.
+- **TODO línea 8**: `reset_behavior:'manual'` fuera de A2 (no hay
+  ACK de regla aún). `'auto'` (default schema línea 47) ya se
+  cumple con la purga.
+
+**Verificación del mislabel histórico #37** (nota vigente del
+corpus a inspeccionar antes de tocar): el schema **NO tiene** un
+campo `mode` bajo `window`. Se hizo `grep -n "window\|mode" rule_definition.js`
+y sólo aparecen los 3 sub-campos (`durationSec`, `countThreshold`,
+`matchCondition`). El comentario histórico de sesión #37 se
+refería a un intento previo de agregar `window: {mode:'window'}` que
+fue **silenciado por `strict:true`** al hacer el PUT — no llegó
+nunca al runtime, forzando el aprendizaje que después cristalizó
+en DEC-REF-53 (graceSec). **Estado actual: la clase de bug
+mode:'window' NO se reproduce hoy porque el schema es minimal y
+no tiene campos huérfanos.** La lección aplica al futuro:
+cualquier campo nuevo del mini-form S (p.ej. `window.reset_mode`,
+`window.priority`, un `mode` enum) debe entrar al schema PRIMERO,
+PR aparte, ANTES de exponerse en la UI.
+
+Combinaciones inválidas que **HOY nada valida** (backend):
+
+- `window.durationSec <= 0` → cutoff en el futuro, purga borra
+  todo, nunca dispara. Legal en schema (Number sin `min`).
+- `window.countThreshold <= 0` → dispara con 0 eventos,
+  comportamiento degenerado. Legal en schema.
+- `window.matchCondition` null → `evaluateD(synthetic, value)` con
+  `synthetic.condition=null` → cae en el guard mudo del evaluador
+  (línea 13), regla omitida sin error visible.
+- Ninguna rama de `ruleValidation.js` cubre S — mismo diagnóstico
+  que C.
+
+**Regla S real de referencia** — no hay en `db.rulepacks` en
+tiempo de recon. Fuente canónica
+`seeds/_dev/_validate_typeS_seed.js:19-56` con 2 reglas:
+
+```js
+POSITIVA:  durationSec:120, countThreshold:3,
+           matchCondition:{op:'gte', value:1}
+           sobre variable 'crank_attempts_failed' en deviceType 'GEN'
+           → dispara al 3er evento (los 3 vivos en ventana 120s)
+
+NEGATIVA:  durationSec:5, countThreshold:3, misma matchCondition
+           → nunca dispara (purga deja solo 1 vivo, gap entre
+             eventos 4.5s + 4.5s + 5s > 5s)
+```
+
+Es la forma canónica que el mini-form S debe producir.
+
+---
+
+**B3 — Estado del editor (`app/pages/rulepacks/_packId.vue`)**
+
+Banner read-only C/S — líneas 105-117 (literal):
+
+```html
+<!-- Type C y S: edición NO implementada en Capa 3 (schema
+     requiere setpointSource / window respectivamente, con
+     mini-forms propios). Se muestra read-only con nota. -->
+<div v-if="!isEditableType(ruleDraft.type)" class="alert alert-info">
+  <strong>{{ ruleDraft.type }}</strong> · edición en roadmap
+  futuro. Requiere config específica del schema
+  ({{ ruleDraft.type === 'C' ? 'setpointSource + flags EDGE-2'
+                             : 'window (durationSec, countThreshold, matchCondition)' }}).
+  Podés visualizarla read-only o cambiar el tipo a D/cross para editar.
+</div>
+```
+
+Comentario canónico del componente — líneas 268-285:
+`DEC-REF-62.d/e + DEC-REF-62-A` para la Capa 3; **el prompt de la
+sala se refiere a este banner como "DEC-REF-62-B"** (nomenclatura
+de la sala para "el subset de SF-7 = edición C/S en la consola");
+en el código no hay literal DEC-REF-62-B — es el nombre de trabajo
+del pull.
+
+**Qué se reusa del form D/cross:**
+
+Campos comunes del form (líneas 119-175) que YA valen para C y S:
+
+- `ruleId`, `label`, `inferenceId` (línea 120-135; ruleId
+  `:disabled="editingIndex !== null"` — clave primaria inmutable)
+- `type` (select con las 4 opciones D/cross/C/S — líneas 141-146)
+- `severity` (info/warning/critical — líneas 149-154)
+- `deviceType`, `variable` (líneas 156-163)
+- `cooldownSec` (línea 168-169)
+- `graceSec` (línea 171-174) — **hoy sólo se muestra si
+  `type==='cross'`**; para C/S no aplica
+
+**Qué necesita mini-form propio:**
+
+- Para C: los cuatro sub-campos consumidos por el evaluador
+  (`setpointSource.variable`, `fallbackToD`, `on_missing_ref`,
+  `condition.op` + `condition.value`). Metadata visualizable:
+  `setpointSource.register`, `setpointSource.scale`
+  (bajo un colapsable "avanzado"). EDGE-2:
+  `escalateAfterMinutes` **queda afuera** hasta que el evaluador
+  lo consuma.
+- Para S: los tres del schema
+  (`window.durationSec`, `window.countThreshold`,
+  `window.matchCondition.op` + `.value`). `reset_behavior` queda
+  afuera hasta que exista ACK de reglas (typeS.js:8 TODO).
+
+**Métodos relevantes del editor:**
+
+- `isEditableType()` — líneas 404-406: `t === 'D' || t === 'cross'`.
+  El fix debe extender a `t === 'D' || t === 'cross' || t === 'C' || t === 'S'`.
+- `isRuleReady()` — línea 336: bloquea creación NUEVA de C/S
+  (`editingIndex === null`). Permite **edición** de C/S existente
+  con bump de campos comunes (severity, cooldownSec, label,
+  inferenceId, variable) — los sub-objetos `setpointSource`/`window`
+  se preservan tal cual porque `openEditRule` línea 436 hace
+  `JSON.parse(JSON.stringify(original))` y `submitRule` línea 463
+  hace otro clone al finalRule.
+- `submitRule()` — líneas 457-491:
+  - Línea 464-466: si `type==='D'` → `crossExpr=null`,
+    `delete graceSec`
+  - Línea 467-470: si `type==='cross'` →
+    `crossExpr=stripEditorKeys(finalRule.crossExpr)`,
+    `condition=null`
+  - **Sin branch para C/S** → los campos `setpointSource`/`window`
+    sobreviven del clone al PUT. Los nuevos branches C/S deben
+    limpiar campos irrelevantes al cambiar el `type` (p.ej.:
+    `type→C` debe nullear `crossExpr` y `window`; `type→S` debe
+    nullear `crossExpr`, `condition`, `setpointSource`,
+    `fallbackToD`, `on_missing_ref`).
+- `savePack()` — líneas 515-531: PUT canónico
+  `/rulepacks/:packId` con `{rulepack: packBody}` completo. Todo
+  el pack viaja. **No hay que cambiar `savePack()`.**
+
+**PUNTO CRÍTICO — verificación de persistencia con `strict:true`
+(clase de bug mode:'window' del #37).**
+
+- `RulePackSchema` — `app/api/models/rule_pack.js:5-15`: **no
+  declara `strict`** → default Mongoose `strict:true`.
+- `RuleDefinitionSchema` — `rule_definition.js:9-49`: **no declara
+  `strict`** → default `true`.
+- **Estado ACTUAL**: TODOS los campos hoy consumidos por `typeC.js`
+  + `typeS.js` YA están declarados en `RuleDefinitionSchema`
+  (`setpointSource {register, scale, variable}`, `fallbackToD`,
+  `on_missing_ref`, `escalateAfterMinutes`, `window
+  {durationSec, countThreshold, matchCondition}`,
+  `reset_behavior`). **Ningún campo de C/S se cae silencioso HOY**
+  al hacer PUT desde el editor. Se verificó campo por campo entre
+  el evaluador y el schema.
+- **Riesgo FUTURO**: si el mini-form introduce **un campo nuevo**
+  (p.ej. `setpointSource.hysteresis` para banda muerta, o un
+  `window.mode` que reincida en #37, o `escalationStrategy` para
+  EDGE-2) sin declararlo primero en el schema → **cae silencioso
+  en el PUT**. La lección DEC-REF-53 (graceSec) aplica textualmente.
+- **Regla dura para SF-7**: cualquier campo nuevo va al schema
+  ANTES del mini-form, en PR aparte, con smoke `db.rulepacks.findOne()`
+  post-PUT verificando que el campo llegó a Mongo. Sin excepción.
+
+---
+
+**B4 — Validación de forma necesaria + E2E en papel**
+
+`ruleValidation.js` — sólo valida cross (líneas 17-56). Inventario
+mínimo de reglas de forma que debería sumar como espejo del patrón
+sum:
+
+- Para **type D** (hoy no validado backend tampoco — huella de
+  #43): `condition.op` en enum, `condition.value` numérico si op
+  aritmético (`lt/lte/gt/gte`). Frontend `isRuleReady` línea 327
+  lo cubre a medias (bloquea vacío pero no valida numero para
+  op aritmético). Registrado como observación colateral, no
+  bloquea SF-7.
+- Para **type C**:
+  - `condition` presente si `fallbackToD:true` o si `on_missing_ref:'alarm'`
+    (para que fallback y camino no-ref tengan referencia)
+  - `condition.op` en enum + `condition.value` numérico si op
+    aritmético
+  - `setpointSource.variable` string no-vacío (si el usuario
+    quiere `calibrated`); advertir "sin setpointSource:
+    la regla nunca correrá en modo calibrated"
+  - Config degenerada `fallbackToD:false + on_missing_ref:null|
+    'ignore'` sin setpoint publicado → silencia siempre. Advertir
+    (no rechazar).
+- Para **type S**:
+  - `window.durationSec > 0`
+  - `window.countThreshold >= 1`
+  - `window.matchCondition.op` presente y en enum
+  - `window.matchCondition.value` numérico si op aritmético
+    (misma exigencia que sum: DEC-REF-65.d)
+
+Cadencias y candidatas E2E (papel — no se ejecuta en R20):
+
+- **Type S — E2E CLARO Y REUTILIZABLE**: `crank_attempts_failed`
+  + escenario `genset_no_start` en
+  `tools/device_simulator/lib/sensor-engine.js:278-291`:
+  ```js
+  genset_no_start: {
+    duration_ms: 45000,
+    steps: [
+      { at: 4500,  set: { crank_current: 0, crank_attempts_failed: 1 } },
+      { at: 9000,  set: { crank_current: 0, crank_attempts_failed: 2 } },
+      { at: 14000, set: { crank_current: 0, crank_attempts_failed: 3 } },
+    ],
+  }
+  ```
+  Regla positiva (`durationSec:120, countThreshold:3,
+  matchCondition:{gte,1}`) dispara al 3er evento (~t=14s). Regla
+  negativa (`durationSec:5`) nunca dispara. Playbook documentado
+  en el seed #37. Trigger:
+  `mosquitto_pub -t 'simulator/<dId-GEN>/control' -m '{"command":"scenario","value":"genset_no_start"}'`
+  sobre CR00061 (dId GEN = `Yf86psyC`, verificado en R18/R19).
+
+- **Type C — E2E BLOQUEADO por sim**: el simulador **NO publica
+  ninguna variable `*setpoint*`**
+  (`grep -rn 'setpoint' tools/device_simulator/` → 0 hits en tiempo
+  de recon). Sin setpoint publicado, TODO type C corre en
+  `fallback` (si `fallbackToD:true`) o `no-ref` (si false). Para
+  ejercitar el camino `calibrated` hace falta una de dos vías:
+  - **Opción A — publisher manual** estilo
+    `seeds/_dev/_validate_typeC_publish.js:14-27`:
+    `mosquitto_pub -t '<userId>/<dId>/setpoint_XXX/sdata' -m '{"value":95}'`
+    antes de que el evaluador tome ese tick. Alcanza para el
+    GATE de SF-7 pero es fricción manual para Franco.
+  - **Opción B — enriquecer el sim** con un scenario tipo
+    `cummins_setpoint_publish` que emita los setpoints
+    periódicamente. Es la solución limpia, cubre `calibrated`
+    sin intervención.
+
+  Sin una u otra, el E2E de C tapa 2 de los 3 caminos
+  (`fallback`, `no-ref`) pero deja `calibrated` sin verificar en
+  la consola de Franco.
+
+---
+
+**B5 — Síntesis para la sala (tabla decisión→opciones→evidencia→recomendación)**
+
+| # | Decisión | Opciones | Evidencia | Recomendación |
+|---|---|---|---|---|
+| a | Campos + validaciones del mini-form C | (A) Sólo campos hoy consumidos: `setpointSource.variable`, `fallbackToD`, `on_missing_ref`, `condition{op,value}`. (B) Sumar `setpointSource.{register,scale}` como metadata sólo-visualización bajo colapsable "avanzado". (C) Incluir `escalateAfterMinutes` (EDGE-2) marcando "no cableado". | Schema declara todos (`rule_definition.js:29-46`). Evaluador consume sólo `variable, condition, fallbackToD, on_missing_ref` (`typeC.js:11-41`). `register/scale/escalateAfterMinutes` declarados pero no consumidos. | **Opción A + backend validation espejo sum**. `register/scale` en colapsable "avanzado" opcional. `escalateAfterMinutes` afuera hasta que el evaluador lo consuma (EDGE-2 tiene su propio pull). |
+| b | Campos + validaciones del mini-form S | (A) Los 3 del schema: `window.durationSec`, `window.countThreshold`, `window.matchCondition{op,value}`. (B) Sumar `reset_behavior` visible aunque hoy `'manual'` no hace nada (nota "requiere ACK"). | Schema líneas 36-40 + `typeS.js:12` los exige. `reset_behavior` línea 47 declarado pero `typeS.js:8` TODO. | **Opción A + backend validation** (`durationSec>0`, `countThreshold≥1`, `matchCondition.op` en enum, `matchCondition.value` numérico si op aritmético). `reset_behavior` afuera hasta ACK implementado. |
+| c | Riesgo persistencia silenciosa (strict:true) | (A) No agregar campos nuevos en el mini-form, sólo cablear los declarados. (B) Si SF-7 quiere sumar `hysteresis`, `window.mode`, etc → declararlos en schema PRIMERO, PR aparte. | RulePackSchema + RuleDefinitionSchema con `strict:true` implícito. Todos los campos hoy consumidos están declarados. Lección graceSec DEC-REF-53 explicita el orden. Verificado campo por campo en R20 (no hay huérfanos). | **(A) para R21** (arranque limpio, cero deriva). Si en R22+ aparece necesidad de un campo nuevo → PR de schema ANTES del PR de UI, sin excepción. Smoke `findOne()` post-PUT como parte del gate. |
+| d | Escenario E2E | (A) S: reusar `genset_no_start` + regla positiva/negativa del seed #37. (B) C: pattern del publish del seed #22 → publisher manual con mosquitto. (C) C: enriquecer sim con `cummins_setpoint_publish` para cubrir camino `calibrated` sin fricción manual. | S: sim + seed listos, trigger 1 línea. C: sim no publica setpoints (`grep -rn 'setpoint' tools/device_simulator/` → 0), path calibrated queda descubierto por defecto. `seeds/_dev/_validate_typeC_publish.js` documenta el pattern manual. | S: **(A) ya** — GATE se puede correr sin cambios de sim. C: **(B) alcanza para SF-7 GATE** ("puedo crear/editar una regla C válida y observarla") pero **declarar (C) como BACKLOG-SIM-N nuevo** para automatizar el camino calibrated (id a verificar libre con grep antes de asignar — lección RULE-4/OPS-2). |
+
+**Consideraciones transversales para la sala:**
+
+- La forma del PUT ya persiste C/S sin pérdida hoy (el clone
+  `JSON.parse` preserva los campos, y el schema los reconoce). Lo
+  que falta es: (1) mini-forms UI, (2) `submitRule()` branches
+  para C/S que normalicen (borrar campos irrelevantes al cambiar
+  `type`), (3) `isRuleReady()` bloqueos por forma, (4)
+  `ruleValidation.js` con `validateD/C/S` espejo de
+  `validateCrossTree`.
+- **No hace falta cambiar `savePack()`** — el PUT canónico ya
+  viaja pack entero.
+- El banner líneas 108-117 es la superficie a **eliminar** (o
+  convertir en tooltip informativo) cuando el mini-form entre.
+- Los 2 seeds en `seeds/_dev/` (`_validate_typeC_seed.js` y
+  `_validate_typeS_seed.js`) siguen siendo la fuente canónica del
+  shape esperado — la sala puede leerlos como referencia dorada.
+- E2E S ya tiene todo; E2E C camino `calibrated` requiere trigger
+  manual o enriquecer sim — no bloquea SF-7 pero es una fricción
+  a declarar para Franco al momento del gate.
+
+---
+
+**Cierre R20-registro.** El corpus queda con el recon SF-7
+apendeado. Nada más se ejecuta en esta ronda. Push queda
+pendiente para próxima ronda operativa (regla dura de ronda-registro).
+La sala diseña SF-7 con Franco después de leer este bloque.
 
 
