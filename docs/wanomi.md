@@ -7000,3 +7000,91 @@ commit de esta ronda: branch `feature/telco-support` con **4
 commits sin push** (37ca985, 0b0a9df, f476589, y el commit de este
 append).
 
+#### R19 — recuperación saver-webhook
+
+**Contexto de apertura.** Franco corrió la checklist visual GATE
+13-bis (post-fix DEC-REF-65-A) sobre `/rulepacks` +
+`/sites/CR00061` + Telegram y reportó **GATE 13-bis — VERDE**.
+Evidencia validada punto por punto: creación del pack
+`_test-sf6-visual` con hoja sum, fire real con **total numérico
+visible** (`264.00…` A vs umbral `200` A) en toast browser
+amarillo + Telegram con ⚠️, pin del listado `/sites` y del
+detalle `/sites/CR00061` cediendo al warning **in-place** (sin
+spinner "Cargando sitio…", sin parpadeo del mapa — DEC-REF-65-A
+verificado en el detalle también), ciclo `eltek_load_restore` con
+toast verde de resolve y pin volviendo solo en AMBAS pestañas,
+borrado final del pack con `intactas:5` sobre `cummins-pcc-v1`.
+Round-trip del editor del árbol sum y el 400 forzado (vaciar
+`variable` del renglón único) también funcionaron según lo
+esperado. Telegram entregó normalmente esta vez (el ETIMEDOUT que
+se declaró en R18 fue transitorio de la red WSL2, no bloqueó la
+validación).
+
+**SF-6 CERRADO.** Balance de A8 tras GATE 13-bis:
+
+- SF-1 ✓ (fires/resolves cross-tree básicos)
+- SF-3 ✓ (severity + inferenceId multi-severity, R14)
+- SF-4 ✓ (round-trip editor cross-tree, R15/R16)
+- SF-5 ✓ (guardado atómico + reload por bus, R11)
+- SF-6 ✓ (hoja sum motor + editor + toast/Telegram con total real
+  + pin detalle in-place, R15→R18/R19)
+- SF-7 pendiente (edición C/S en consola de reglas — arranca en R20
+  con orden de Franco)
+
+**Pulido diferido (decisión de Franco, no bloqueante — nuevo
+`BACKLOG-UI-8`).** Durante el gate visual Franco relevó dos
+divergencias cosméticas del reporte R18 vs la pantalla real que
+decidió tratar como pulido, no como fix urgente:
+
+- (a) **Formato del total en el toast.** El reporte R18 citó como
+  evidencia el mensaje canónico `202.15 A | umbral: 200 A`
+  (redondeo a 2 decimales + unidad explícita). En pantalla, el
+  fire del gate mostró el `Number` crudo con ~14 decimales
+  (`264.0034…`) sin redondeo y sin sufijo de unidad. La cadena de
+  datos está intacta (el `res.sumTotal` que propaga el fix de R18
+  llega correcto al `sendMqttNotif`; verificable en la Mongo doc
+  de `iotix.notifications`); lo que falta es la capa de
+  presentación en el string que arma `sendMqttNotif`/`sendTelegram`
+  a partir del `payload.value` — no aplica `toFixed(2)` ni concatena
+  `unit` del rule doc. Es la **segunda divergencia reporte-vs-pantalla
+  en presentación** (marca de proceso: en R18 el registro
+  reconstruido asumió el formato canónico del path DEC-REF-56-A/64
+  sin verificar el string real que sale al bus; queda como aviso
+  para el estilo de reportes futuros — comparar con la evidencia
+  observable en pantalla, no con la forma canónica documentada).
+- (b) **Jerga interna en el toast de borrado de pack.** Al eliminar
+  `_test-sf6-visual` el toast mostró un texto con la referencia
+  `(SF-3)` embebida — nomenclatura de expediente de desarrollo
+  filtrada al usuario. En producto para Claro/Ricoh esa jerga debe
+  reemplazarse por texto de dominio (algo tipo "Pack de reglas
+  eliminado" a secas o con el nombre del pack). Es de bajo esfuerzo
+  y el impacto es puramente de UX.
+
+**`BACKLOG-UI-8` (id verificado como próximo libre — se leyó
+`docs/wanomi.md` con `grep -oE 'BACKLOG-UI-[0-9]+' | sort -u`
+antes de asignar, evitando repetir la colisión RULE-4 de R2 que
+tuvo que renumerarse en dos etapas):**
+
+- **Alcance:** (i) redondeo a 2 decimales + concatenación de
+  `unit` en el message del fire de hoja sum (aplica a
+  `notifRouter.sendMqttNotif` y `sendTelegram` sobre el
+  `payload.value` cuando el rule doc trae `unit`), (ii) revisión
+  de textos de UI de `/rulepacks` y del feed de alarmas para
+  reemplazar cualquier referencia visible a "SF-N" u otra jerga
+  de expediente por texto de producto.
+- **Prioridad:** BAJA. No bloquea SF-7 ni el resto de A8. Se
+  toma cuando haya ventana cosmética.
+- **Origen:** relevado por Franco durante GATE 13-bis (2026-07-12,
+  ronda #44-R19).
+- **Referencias:** notif message formatting es reutilizable desde el
+  path de fires DEC-REF-56-A/DEC-REF-64/DEC-REF-65-A — un solo
+  helper de formateo en `edge-engine/notifRouter.js` cubre ambos
+  puntos del sub-item (i).
+
+**Nada más se toca de UI en esta ronda.** El fix de esta R19 es
+sobre saver-webhook (BACKLOG-OPS-1 rebrote confirmado por Franco
+tras leer el gap `~14h+` desde el restart de R18). Registro de
+apertura cierra acá; sigue Fase B/C/D en commits separados
+(un concern por commit).
+
+
