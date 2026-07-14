@@ -100,6 +100,13 @@ const CUMMINS_TEMPLATE = {
     { variable: 'bitmap_42101',    variableFullName: 'Alarm word 1 (42101)',          variableType: 'int',   variableSendFreq: 60 },
     { variable: 'bitmap_42102',    variableFullName: 'Alarm word 2 (42102)',          variableType: 'int',   variableSendFreq: 60 },
     { variable: 'bitmap_42110',    variableFullName: 'Event word (42110)',            variableType: 'int',   variableSendFreq: 60 },
+    // DEC-REF-66.d + EDGE-2 — setpoints publicados por el controlador
+    // (equivalentes reales: HET high-engine-temp y LOP low-oil-pressure del PCC).
+    // typeC los consume vía `setpointSource.variable` para el camino calibrated;
+    // `sharedSet:{cummins_setpoint_suppressed:true}` corta la publicación
+    // (modela pérdida Modbus del driver) para probar fallback / no-ref / escalada.
+    { variable: 'coolant_temp_setpoint', variableFullName: 'Setpoint temp. refrigerante (°C)', variableType: 'float', variableSendFreq: 60 },
+    { variable: 'oil_pressure_setpoint', variableFullName: 'Setpoint presión aceite (psi)',   variableType: 'float', variableSendFreq: 60 },
   ],
 };
 
