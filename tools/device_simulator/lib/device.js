@@ -145,9 +145,16 @@ class SimulatedDevice {
   _publish(varName) {
     if (!this._connected) return;
     const value = this._state[varName];
-    // Defensa: nunca publicar undefined o null
-    if (value === undefined || value === null) {
-      console.warn(`${this.tag} skipping publish of ${varName}: invalid value`);
+    // Defensa: nunca publicar undefined.
+    // null se permite EXPLÍCITAMENTE para variables que matchean /setpoint/i —
+    // modela pérdida del setpoint del driver Modbus (DEC-REF-66.d + EDGE-2);
+    // edge asigna siteState=null y typeC entra en fallback/no-ref/escalada.
+    if (value === undefined) {
+      console.warn(`${this.tag} skipping publish of ${varName}: undefined value`);
+      return;
+    }
+    if (value === null && !/setpoint/i.test(varName)) {
+      console.warn(`${this.tag} skipping publish of ${varName}: null value (only allowed for setpoint_* vars)`);
       return;
     }
     const topic = `${this._userId}/${this._dId}/${varName}/sdata`;

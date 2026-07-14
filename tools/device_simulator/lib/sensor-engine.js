@@ -65,6 +65,12 @@ function initialCumminsState() {
     bitmap_42101:    0,
     bitmap_42102:    0,
     bitmap_42110:    0,
+    // DEC-REF-66.d + EDGE-2 — setpoints del controlador PCC.
+    // Valores realistas Cummins: HET (High Engine Temp) alarm ~95°C,
+    // LOP (Low Oil Pressure) alarm ~25 psi. typeC los consume para
+    // camino calibrated; scenario cummins_setpoint_lost los suprime.
+    coolant_temp_setpoint: 95.0,
+    oil_pressure_setpoint: 25.0,
   };
 }
 
@@ -203,6 +209,20 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       // -48 VDC nominal con jitter menor. En scenario eltek_bus_alarm
       // (futuro) puede bajar a -46 (undervoltage) — no en R15.
       return clamp(currentValue + jitter(0.15), -49.5, -46.5);
+
+    // ── Setpoints Cummins PCC (DEC-REF-66.d + EDGE-2) ────────────
+    // Retornan null cuando el sharedState lo indica → device.js:_publish
+    // acepta null en variables setpoint y publica {"value":null} — el
+    // edge asigna siteState[dId][setpointVar]=null → typeC entra en
+    // fallback/no-ref (typeC.js:12-13). Modela pérdida de comm Modbus
+    // real del controlador.
+    case 'coolant_temp_setpoint':
+      if (sharedState.cummins_setpoint_suppressed) return null;
+      return clamp(currentValue + jitter(0.2), 94.5, 95.5);
+
+    case 'oil_pressure_setpoint':
+      if (sharedState.cummins_setpoint_suppressed) return null;
+      return clamp(currentValue + jitter(0.2), 24.5, 25.5);
 
     case 'dc_load_current': {
       // Estado compartido del site controla carga alta/normal
@@ -389,6 +409,30 @@ const SCENARIOS = {
     noCleanup: true,
     steps: [
       { at: 0, sharedSet: { eltek_load_high: false } },
+    ],
+  },
+
+  // DEC-REF-66.d + EDGE-2 — pérdida de comm Modbus del controlador PCC:
+  // los setpoints dejan de publicarse (evolve retorna null → _publish
+  // acepta null para variables setpoint_*). typeC entra en fallback si
+  // fallbackToD:true, o no-ref/ignore/alarm. Tras escalateAfterMinutes
+  // sin setpoint, EDGE-2 emite el warning setpoint-unavailable-escalated
+  // (ruleEngine.js:104, DEC-REF-26 — ya cableado, verificable acá).
+  cummins_setpoint_lost: {
+    description: 'Cummins PCC pierde publicación de setpoints (falla comm Modbus)',
+    duration_ms: 30000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { cummins_setpoint_suppressed: true } },
+    ],
+  },
+
+  cummins_setpoint_restore: {
+    description: 'Cummins PCC recupera publicación de setpoints',
+    duration_ms: 30000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { cummins_setpoint_suppressed: false } },
     ],
   },
 
