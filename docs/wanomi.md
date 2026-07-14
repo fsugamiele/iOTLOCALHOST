@@ -7810,4 +7810,73 @@ apendeado. Nada más se ejecuta en esta ronda. Push queda
 pendiente para próxima ronda operativa (regla dura de ronda-registro).
 La sala diseña SF-7 con Franco después de leer este bloque.
 
+#### R21 — SF-7 parte 1 (DEC-REF-66)
+
+**Apertura.** SF-7 arranca con DEC-REF-66 firmada por Franco
+(corpus §5, filas DEC-REF-66 + DEC-REF-66-A, v0.42). El diseño
+cierra los cuatro puntos del recon R20 con dos correcciones de
+Franco: (a) EDGE-2 (`escalateAfterMinutes`) se cablea al motor y
+se expone en el mini-form C, dejando de ser perilla desconectada;
+(b) `reset_behavior` (ACK) sale del mini-form S y se registra como
+candidata formal al bloque A9 con diseño propio y opinión del
+Asesor Telco (en telco NOC el ACK es estándar). Reglas
+transversales: (c) regla dura escrita — todo campo nuevo entra al
+schema ANTES que a la UI, en commit aparte, con smoke
+`db.rulepacks.findOne()` post-PUT (lección graceSec/DEC-REF-53 +
+`mode:'window'` #37); (d) el sim aprende a publicar setpoints
+Cummins para cerrar el camino `calibrated` del E2E sin fricción
+manual y para siempre (coherente con "el sim es producto",
+DEC-REF-63). Cierre de la puerta fantasma: `ruleValidation.js`
+gana `validateC/S/D` (espejo del patrón sum) — advertencias vs
+rechazos según la letra de DEC-REF-66.
+
+**Nota de proceso — corrección R20/B1 (referenciada en
+DEC-REF-66-A).** El recon R20 declaró `escalateAfterMinutes` como
+"declarado en schema pero **NO consumido** por `typeC.js` actual
+— es una pieza EDGE-2 pendiente de implementar en el evaluador"
+(bitácora línea 7461-7464). La afirmación es técnicamente
+correcta sobre `typeC.js` (el campo no se consume ahí) pero la
+conclusión "pendiente de implementar" fue errónea: EDGE-2 está
+implementado y vivo en `ruleEngine.js:69-134` desde el commit
+`d83ed7e` (sesión #24, 2026-06-14, DEC-REF-26), y sus 3 keys de
+estado están cubiertas por `cleanupStateForRules` en
+`edge-engine/reloadState.js:96-98` (D3). El corpus advirtió esto
+en dos lugares: DEC-REF-57 tombstonea el doble uso de la etiqueta
+BACKLOG-EDGE-2 ("el uso previo — escalada temporal del fallback,
+dentro de DEC-REF-26 — está implementado y cerrado"), y
+BACKLOG-RULE-1 en `docs/wanomi.md:1654` lo declaró explícito ("las
+features tipo C de #22-#24 (auto-calibrado, INFO 2b config,
+escalada temporal EDGE-2/DEC-REF-26) están implementadas y
+validadas por harness pero NO cableadas a ninguna regla viva del
+pack"). El recon R20 no hizo `grep escalateAfterMinutes edge-engine/`
+antes de declarar el pendiente — falla de método clase DEC-PROC-2.
+La regla R20 (grep en el evaluador SOLAMENTE) no cruzó la
+implementación real con la letra canónica del corpus. Corrección
+sin suavizar registrada en DEC-REF-66-A + este bloque.
+
+**Consecuencia estructural para R21.** Fase B (motor typeC —
+EDGE-2) queda VACIADA por decisión de Franco (autorización
+explícita en respuesta a este freno). Se preserva la premisa
+semántica de DEC-REF-66.a (el mini-form C expone el campo, con
+tooltip DEC-REF-26); se cancela el trabajo de motor. La ronda
+sigue con Fase C (sim setpoints), D (validateC/S/D), E (reinicio
+edge + E2E). El E2E paso (3) de escalada EDGE-2 verifica la
+implementación EXISTENTE — evidencia esperada:
+`reason:'setpoint-unavailable-escalated'` en `iotix.notifications`
++ `severity:'warning'` cuando el tiempo-de-eventos supera
+`escalateAfterMinutes`, marca idempotente por episodio, reset
+silencioso al recuperar setpoint (mode `calibrated`).
+
+**Auditoría preservada como huella.** El recon R20 auditó
+correctamente el resto de SF-7 (schema C/S completo, evaluador
+`typeC.js` + `typeS.js`, editor `_packId.vue`, riesgo `strict:true`,
+E2E S sobre `genset_no_start`, gap E2E C `calibrated` por sim sin
+setpoints, `ruleValidation.js` sin ramas C/S/D). Ninguno de esos
+hallazgos se invalida. La sección R20-registro en este mismo
+archivo (líneas 7422+) queda intacta como referencia — la
+corrección se hace por append (bitácora APPEND-ONLY),
+DEC-REF-66-A funciona como el pointer histórico.
+
+
+
 
