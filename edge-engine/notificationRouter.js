@@ -45,10 +45,19 @@ let _siteId     = null;
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID_DEFAULT;
 
+// DEC-REF-67 (#45/R22) — retry acotado async no-bloqueante en sendTelegram.
+const TELEGRAM_MAX_ATTEMPTS      = 3;
+const TELEGRAM_RETRY_BASE_MS     = 2000;   // 2s → 4s → 8s (exponencial)
+const TELEGRAM_RETRY_JITTER_MS   = 1000;   // 0-1s de jitter
+const TELEGRAM_REQUEST_TIMEOUT_MS = 5000;  // req.setTimeout — corta cuelgues largos
+
 function init({ mqttClient, siteId }) {
   _mqttClient = mqttClient;
   _siteId     = siteId;
-  console.log(`[notifRouter] Inicializado — siteId: ${siteId} · Telegram: ${TELEGRAM_TOKEN ? 'ON' : 'OFF'}`);
+  const telegramMode = TELEGRAM_TOKEN
+    ? `ON (retry ${TELEGRAM_MAX_ATTEMPTS}× / ${TELEGRAM_RETRY_BASE_MS/1000}·${TELEGRAM_RETRY_BASE_MS*2/1000}·${TELEGRAM_RETRY_BASE_MS*4/1000}s + jitter, timeout ${TELEGRAM_REQUEST_TIMEOUT_MS/1000}s)`
+    : 'OFF';
+  console.log(`[notifRouter] Inicializado — siteId: ${siteId} · Telegram: ${telegramMode}`);
 }
 
 // ── Canal 1: MQTT dashboard (DEC-REF-55 — tópico B-narrow + JSON) ───────────
@@ -191,20 +200,63 @@ function sendTelegram(alarm) {
   const text   = lines.join('\n');
   const params = new URLSearchParams({ chat_id: TELEGRAM_CHAT_ID, text });
   const url    = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?${params}`;
-  https.get(url, res => {
+
+  // DEC-REF-67 (#45/R22): la construcción del mensaje ocurre 1 vez;
+  // los reintentos reutilizan la URL ya armada.
+  attemptSendTelegram(url, 1, alarm.ruleId || '?', alarm.kind || 'fire');
+}
+
+// DEC-REF-67 (#45/R22) — envío con reintento acotado async no-bloqueante.
+// Fire-and-forget preservado hacia ruleEngine: la cadena de evaluación no
+// espera al canal. Simétrico fire+resolve.
+function attemptSendTelegram(url, attempt, ruleId, kind) {
+  const req = https.get(url, res => {
     // DEC-REF-64-A (iii) — Drenar el body es OBLIGATORIO con Node http
     // keepAlive: sockets sin drenar quedan zombies en el pool y el server
     // (Telegram) cierra idle connections → los siguientes requests fallan
     // con `err.message = ''` (patrón observado en R12/C5 antes del fix).
-    // res.resume() consume el body sin acumularlo en memoria.
     res.resume();
-    if (res.statusCode !== 200)
-      console.error(`[notifRouter] Telegram error: HTTP ${res.statusCode}`);
-  }).on('error', err => {
-    // Mejor diagnóstico: message puede venir vacío en socket hangups;
-    // .code aporta ECONNRESET/ENOTFOUND/ETIMEDOUT.
-    console.error('[notifRouter] Telegram request error:', err.message || err.code || 'unknown');
+    if (res.statusCode === 200) {
+      if (attempt > 1) {
+        console.log(`[notifRouter] Telegram OK tras retry (${kind} ${ruleId}, intento ${attempt}/${TELEGRAM_MAX_ATTEMPTS})`);
+      }
+      return;
+    }
+    // 429 (rate-limit) y 5xx (transient server) → vale la pena reintentar.
+    // Otros 4xx (400 formato, 401/403 token/chat) → mensaje/config inválido:
+    // reintento no ayuda, se abandona con log claro.
+    const retryable = res.statusCode === 429 || res.statusCode >= 500;
+    console.error(`[notifRouter] Telegram error: HTTP ${res.statusCode} (${kind} ${ruleId}, intento ${attempt}/${TELEGRAM_MAX_ATTEMPTS})`);
+    if (retryable && attempt < TELEGRAM_MAX_ATTEMPTS) {
+      scheduleTelegramRetry(url, attempt, ruleId, kind);
+    }
   });
+
+  // Timeout explícito de request — sin esto, ETIMEDOUT depende del kernel
+  // TCP y puede tardar minutos, haciendo el retry inútil en la práctica.
+  req.setTimeout(TELEGRAM_REQUEST_TIMEOUT_MS, () => {
+    // Destroy con Error para que el handler 'error' de abajo reciba código.
+    req.destroy(Object.assign(new Error('client-timeout'), { code: 'ETIMEDOUT' }));
+  });
+
+  req.on('error', err => {
+    const code = err.code || err.message || 'unknown';
+    console.error(`[notifRouter] Telegram request error (${kind} ${ruleId}, intento ${attempt}/${TELEGRAM_MAX_ATTEMPTS}): ${code}`);
+    // Errores de red genéricos son todos retryables (ETIMEDOUT, ECONNRESET,
+    // ENOTFOUND, EAI_AGAIN, socket hangup). Falla definitiva solo si
+    // agotamos intentos.
+    if (attempt < TELEGRAM_MAX_ATTEMPTS) {
+      scheduleTelegramRetry(url, attempt, ruleId, kind);
+    }
+  });
+}
+
+function scheduleTelegramRetry(url, attempt, ruleId, kind) {
+  const baseMs   = TELEGRAM_RETRY_BASE_MS * Math.pow(2, attempt - 1);  // 2s → 4s → 8s
+  const jitterMs = Math.floor(Math.random() * TELEGRAM_RETRY_JITTER_MS);
+  const delayMs  = baseMs + jitterMs;
+  console.log(`[notifRouter] Telegram retry programado (${kind} ${ruleId}, próximo intento ${attempt + 1}/${TELEGRAM_MAX_ATTEMPTS}) en ${delayMs}ms`);
+  setTimeout(() => attemptSendTelegram(url, attempt + 1, ruleId, kind), delayMs);
 }
 
 // ── notify: orquestador principal ────────────────────────────────────────────
