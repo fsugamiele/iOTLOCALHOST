@@ -8246,6 +8246,151 @@ con **11 commits sin push** (37ca985, 0b0a9df, f476589, e04658b,
 616c4c8, c71286f, 4bd5f8c, 0fdf6ac, 05d17ff, ecf763d, fdbcae9,
 a374669, 47117ae — sumado a este commit de cierre serán 12).
 
+##### Hallazgos post-cierre R21 (Franco, checklist visual sobre el E2E)
+
+Franco observó el E2E técnico en vivo desde el navegador y Telegram
+mientras el agente cerraba el reporte. Levantó **dos hallazgos** que
+NO estaban previstos por el diseño DEC-REF-66 y ameritan recon
+propio antes de fixear. **No se fixea en esta ronda — sólo se
+registra para trabajar luego.**
+
+**Hallazgo 1 · Pin no cambió a verde tras el resolve** (integración
+EDGE-2 ↔ SF-4).
+
+Franco recibió el toast verde de "Resuelto: Test S positivo …"
+correctamente cuando la ventana de `_sf7_s_pos` se purgó. Pero el
+pin de CR00061 en el mapa NO cambió del color warning al ok — quedó
+warning. Consulta directa a `/sites/status` post-resolve:
+
+```
+{ "siteCode":"CR00061", "status":"warning" }
+```
+
+Notifs vivas en la ventana de 15 min del endpoint:
+
+```
+_sf7_s_pos   → lastKind:resolve   (00:16:12Z, no cuenta ✓)
+_sf7_c1      → lastKind:fire      (00:11:50Z, sev:warning, cuenta ✗)
+                reason: setpoint-unavailable-escalated
+```
+
+**Causa raíz.** El último fire de `_sf7_c1` fue la **escalada EDGE-2**
+emitida cuando el setpoint permaneció suprimido > `escalateAfterMinutes`
+(DEC-REF-26, `ruleEngine.js:104-127`). Después el agente restauró el
+setpoint con `cummins_setpoint_restore` — DEC-REF-26 dice literalmente
+"reset EN SILENCIO al recuperar setpoint (`mode='calibrated'`): borra
+el estado del episodio". El código actual (`ruleEngine.js:131-134`)
+borra las 3 keys del `cooldownState` (`:no-setpoint`, `:no-setpoint:start`,
+`:no-setpoint:escalated`) pero **NO emite un `fireResolve`** para
+cerrar el episodio de cara al frontend. El pin queda pintado warning
+hasta que la notif de escalada caiga fuera de la ventana de 15 min
+del pin (o alguien la resuelva manualmente).
+
+**Naturaleza.** GAP de INTEGRACIÓN entre DEC-REF-26 (EDGE-2, sesión
+#24 · 2026-06-14) y DEC-REF-64/SF-4 (sesión #43 · 2026-07-09).
+EDGE-2 se diseñó cuando el pipeline de resolves no existía; el
+"reset silencioso" era coherente con el sistema de la época
+(cero visibilidad de resolve; solo el edge se limpiaba). SF-4
+introdujo el ciclo RAISE→CLEAR con `fireResolve` explícito, pero no
+retro-integró la escalada EDGE-2 al nuevo pipeline. Esta ronda
+R21 es la primera vez que EDGE-2 se ejercita en un pack productivo
+(cierre parcial de BACKLOG-RULE-1) — el gap emerge recién ahora.
+
+**Opciones para el fix (a decidir en recon):**
+1. **EDGE-2 emite fireResolve al reset**: `ruleEngine.js:131-134`
+   detecta si hubo escalada previa (`escalatedKey` estaba set) y
+   emite `fireResolve` con `mode:'resolve-by-setpoint-recovered'`
+   antes de borrar keys. Cambio semántico de DEC-REF-26 (deja de
+   ser silencioso), coherente con la política SF-4 de "ninguna
+   alarma abierta muere en silencio" (DEC-REF-64.a).
+2. **`/sites/status` excluye reasons EDGE-2**: filtro adicional en
+   la agregación de `sites.js:105-118` para no contar
+   `reason:'setpoint-unavailable-escalated'` como fire vigente.
+   Quirúrgico pero acopla la ruta a un reason específico.
+3. **Auto-resolve por timeout de notifs viejas**: barre otros casos
+   también (fires huérfanos sin resolve por bug del edge). Cambio
+   más amplio, riesgo de over-engineering.
+
+Recomendación tentativa (no vinculante): **opción 1** — cierra la
+política "todo RAISE tiene CLEAR" incluyendo la escalada EDGE-2, y
+retro-integra DEC-REF-26 al modelo de SF-4 sin quirúrgicos. Requiere
+DEC-REF-66-B o similar para registrar el cambio semántico de "reset
+silencioso" a "reset emite resolve trazable".
+
+**Hallazgo 2 · Toast de resolve llegó al browser pero NO llegó a
+Telegram** (canal Telegram inconsistente).
+
+Franco descarta explícitamente la hipótesis "ETIMEDOUT genérico del
+entorno WSL2": los mensajes Telegram de los estados ANTERIORES del
+E2E (CALIBRATED, FALLBACK con INFO 2b, ESCALADA warning) **sí
+llegaron correctamente al bot** dentro del mismo ciclo — el canal
+Telegram estaba operativo. Solo el mensaje del RESOLVE `[RESUELTO]
+Test S positivo …` no llegó.
+
+**Diagnóstico preliminar del código** (no concluyente):
+
+- `edge-engine/notificationRouter.js:157-208` (`sendTelegram`) tiene
+  rama para resolves con emoji `✅` y prefijo "Resuelto: "
+  (líneas 160-186). Sin gating por kind.
+- `edge-engine/notificationRouter.js:211-221` (`notify`) llama
+  `sendTelegram(alarm)` incondicional — no filtra resolves.
+- `edge-engine/ruleEngine.js:228-256` (`fireResolve`) construye
+  alarm con `severity: rule.severity`, `kind:'resolve'`, todos los
+  campos necesarios. Lo pasa al mismo `notify()` que los fires.
+
+Ergo el código NO gatea. Hipótesis abiertas para el recon:
+
+- **(a) Longitud/formato del payload Telegram del resolve** —
+  algún caracter especial en `label`/`recommendation`, escape mal
+  encoded via `URLSearchParams`, o mensaje > 4096 chars (límite
+  Telegram). El `recommendation` del resolve arma
+  `'Alarma resuelta: ' + rule.label` — el label de la regla test
+  tenía "Test S positivo (3 crank fail en 120s)" con paréntesis;
+  poco probable pero verificable.
+- **(b) Timing de la request** — el `https.get` es fire-and-forget;
+  si la request se emitió en un instante puntual con la red WSL2
+  degradada (ETIMEDOUT observado en el log del edge en esa
+  ventana), pudo haber caído solo el request de resolve. Baja
+  correlación con "otros del mismo ciclo llegaron" pero no
+  descartable — ETIMEDOUT es por-conexión, no persistente.
+- **(c) Rate limiting del bot** — el ciclo E2E emitió ~5 mensajes
+  Telegram en 8 minutos (CALIBRATED, FALLBACK, ESCALADA, S+ fire,
+  S+ resolve). Telegram rate-limits a 30 msg/s por bot pero también
+  a "1 msg/s por chat conversacional" con burst. Si el resolve
+  llegó dentro de un burst denso, el bot API pudo rechazarlo
+  silenciosamente y el edge no lee la response (línea 199-207 solo
+  drena el body para keepalive, no verifica status code).
+- **(d) Bug de método en la rama resolve del sendTelegram** — hay
+  algo que sólo cae en el path `isResolve` pero se emite silente.
+  Poco probable dado que el código luce trivial, pero requiere
+  reproducibilidad.
+
+**Recon a hacer en la ronda dedicada (previo a fix):**
+
+- Reproducir el escenario con logueo detallado en `sendTelegram`
+  (código temporal para dumpear la URL construida + statusCode del
+  response). Verificar si la request se emite y qué responde
+  Telegram.
+- Si Telegram responde 429 (rate limit) → agregar back-off en el
+  cliente edge.
+- Si es error de formato → normalizar caracteres del recommendation
+  del resolve.
+- Si es timing → agregar cola/retry para resolves (más costoso).
+
+Ambos hallazgos amerita **una ronda de recon dedicada** (R21-A o
+similar) antes de decidir el fix. R22 (mini-forms UI) puede
+avanzar en paralelo si Franco así lo decide — el hallazgo 1 se
+puede exhibir en la checklist visual como "efecto conocido a
+resolver post-R22"; el hallazgo 2 no bloquea la UI pero degrada la
+experiencia operativa del site.
+
+**Estado del pin al momento del registro:** aún warning; se
+autoresolverá cuando la notif de escalada caiga fuera de la
+ventana de 15 min (~00:26:50Z, ~11 min tras el fire). No se hace
+workaround manual.
+
+
+
 
 
 
