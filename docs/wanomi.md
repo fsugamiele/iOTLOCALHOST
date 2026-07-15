@@ -8565,15 +8565,148 @@ duplicados molestos en operación real.
    por verificación de `.env` con `grep -c '^TELEGRAM_BOT_TOKEN='`
    (conteo, jamás valor — RISK-SEC-3).
 
-### R22 — Fase D pendiente (Fase 1 de DEC-REF-67 + E2E cold-start)
+### R22 — Fase D ejecutada (E2E cold-start)
 
-Falta: (i) implementar el retry en `sendTelegram` según DEC-REF-67
-(commit propio, "un concern por commit"); (ii) verificación `.env`
-por conteo (RISK-SEC-3); (iii) relanzar edge+sim; (iv) E2E ciclo
-`_test-r22` (canary:false) — supresión → escalada → restore →
-`fireResolve resolve-by-setpoint-recovered` + Telegram OK (con o sin
-retry, según se provoque); (v) DELETE `_test-r22`, cummins-pcc-v1
-intacto (5).
+**D0 — inserción de env faltante (arranque desde archivo git-ignored,
+pata (a) de DEC-REF-68 implementada de facto):** identificado
+`app/.env` como archivo cargado por dotenv del edge (CWD=app/),
+confirmado git-ignored (`app/.gitignore:61` + `/.gitignore:12`,
+`git check-ignore` exit 0). Cuatro vars faltantes appendeadas vía
+heredoc con interpolación desde `set -a; . app/.env; set +a`
+(valores nunca a stdout): `MONGODB_URI`, `SITE_ID`, `MQTT_USER`
+(← `EMQX_NODE_SUPERUSER_USER`), `MQTT_PASS`
+(← `EMQX_NODE_SUPERUSER_PASSWORD`). Dos vars quedan **inline al
+launch** por conflicto/naturaleza — documentado: `MQTT_HOST`
+(app/.env ya lo tiene en formato hostname-only para browser WS;
+override inline `mqtt://localhost:1883` sin clobbering) y
+`NODE_PATH=/root/IotLocalhost/app/node_modules` (variable Node-level,
+Node la lee ANTES que dotenv). Verificación por conteo (RISK-SEC-3,
+jamás valores): las 4 nuevas keys presentes con `grep -c` = 1;
+invariante DB: `grep -c '/iotix'` = 1 y `grep -c '/wanomi'` = 0
+(cumplido); `git status app/.env` = empty (ignored, no commit).
+
+**D1 — precondición bloqueante VERDE:** lista de vars requeridas del
+código (`grep -rho process.env.[A-Z_]+`): MONGODB_URI, MQTT_HOST,
+MQTT_PASS, MQTT_USER, SITE_ID, TELEGRAM_BOT_TOKEN,
+TELEGRAM_CHAT_ID_DEFAULT — todas presentes vía archivo o inline.
+Contenedores healthy (mongo/emqx `Up 2h healthy`) — sin carrera de
+arranque, sin ECONNREFUSED en el startup del edge.
+
+**D10-D11 — lanzamiento limpio:**
+- Edge PID **5042** (primera ronda) / **7840** (tras reinicio por
+  fix de regresión enum, ver abajo). Arranque limpio en ambos:
+  `Mongo conectado — .../iotix` · `siteState: 7/7 devices hidratados`
+  · `Packs cargados: cummins-pcc-v1[, _test-r22]` ·
+  `[notifRouter] Inicializado — siteId: CR00061 · Telegram: ON
+  (retry 3× / 2·4·8s + jitter, timeout 5s)` ✓ **DEC-REF-67 cargó
+  correctamente**.
+- Sim PID **5136**: 7 devices online publicando (SEC, GEN, ATS,
+  CUMMINS, ELTEK-01/02/03). Setpoints Cummins publicando @60s.
+
+**D12-D15 — verificación arranque = VERDE.** GATE D condición 2
+cumplido.
+
+**Regresión colateral descubierta durante D2 (registrada sin
+suavizar):** el fix del Hallazgo 1 (DEC-REF-66-B, commit
+`4b49393`) usó `mode:'resolve-by-setpoint-recovered'` pero **no
+extendió el enum del schema `NotificationRO` en
+`notificationRouter.js:25` ni el paralelo `notifications.js:30` de
+la app**. Clase idéntica a la regla dura de campos nuevos de
+DEC-REF-66-c ("todo campo nuevo entra al schema ANTES que a la UI,
+en commit aparte, con smoke post-PUT verificando llegada a Mongo").
+Evidencia en vivo (primera ronda del E2E):
+`[notifRouter] Mongo save error: NotificationRO validation failed:
+mode: 'resolve-by-setpoint-recovered' is not a valid enum value
+for path 'mode'`. El `fireResolve` emitía correctamente el log +
+Telegram, pero `saveToMongo` fallaba silenciosamente (try/catch
+interno) → `/sites/status` seguía viendo la escalada como último
+evento → pin quedaba warning (misma clase de bug que Hallazgo 1
+en su origen). Fix: enum extendido en ambos archivos, paridad
+DEC-REF-64 preservada. Commit propio `42255c1`:
+`fix(schema): enum 'resolve-by-setpoint-recovered' en paridad
+edge+app — DEC-REF-66-B`. Restart de edge (`kill 5042`) + `docker
+restart node` para recargar mongoose model.
+
+**D2 — E2E ciclo completo `_test-r22` (canary:false), 2ª ronda
+post-fix enum:**
+
+- **Pack `_test-r22`** creado vía `PUT /api/rulepacks/_test-r22`
+  con token superadmin de `admin@wanomi.com` minted por
+  `seeds/_dev/mint_tokens.js` (tempfile 0600, jamás a stdout,
+  cleanup al cerrar). Regla `_r22_c1` typeC coolant_temp,
+  `condition{gt,90}`, `setpointSource.variable:'coolant_temp_setpoint'`,
+  `fallbackToD:true, on_missing_ref:'ignore', escalateAfterMinutes:2,
+  severity:warning`. Reload OK edge: `reglas nuevas: 1 [_r22_c1] ·
+  intactas: 5`.
+
+- **Paso (1) — supresión + INFO 2b:** trigger MQTT
+  `simulator/Z5tKK1rN/control` `{"command":"scenario","value":"cummins_setpoint_lost"}`
+  a `T_lost2=16:54:49Z`. Log edge `T=16:56:20.713Z`: `[ALARM] INFO
+  | rule:_r22_c1 | var:coolant_temp=30 → Setpoint de "Temp.
+  refrigerante" no disponible en siteState. …`. Mongo: `kind:fire
+  mode:fallback sev:info reason:setpoint-unavailable`. ✓
+
+- **Paso (2) — escalada warning a los 2 min (DEC-REF-26/EDGE-2):**
+  `T=16:58:21.006Z` (Δ=2m01s desde INFO): `[ALARM] WARNING |
+  rule:_r22_c1 | var:coolant_temp=30 → Setpoint de "Temp.
+  refrigerante" sigue no disponible tras 2 min. Revisar
+  configuración del controlador con prioridad.`. Mongo: `kind:fire
+  mode:fallback sev:warning reason:setpoint-unavailable-escalated`.
+  Telegram del fire de escalada: `Telegram request error (fire
+  _r22_c1, intento 1/3): ETIMEDOUT` → `retry programado en 2585ms`
+  → **`Telegram OK tras retry (fire _r22_c1, intento 2/3)`** ←
+  DEC-REF-67 salvó un mensaje que en R21 se hubiera perdido.
+
+- **Paso (3) — restore + fireResolve (Hallazgo 1 CERRADO):**
+  trigger `cummins_setpoint_restore` a `T_restore2=16:58:31Z`.
+  Log edge `T=16:59:02.700Z` (Δ=31s desde trigger, coherente con
+  cadencia setpoint @60s): `[ALARM] WARNING | rule:_r22_c1 |
+  var:coolant_temp=null → Resuelto: setpoint de "Temp. refrigerante"
+  recuperado.`. Mongo: `kind:resolve
+  mode:resolve-by-setpoint-recovered sev:warning
+  reason:setpoint-recovered` ✓ **schema fix aplicó**. Telegram del
+  resolve: `error intento 1/3 ETIMEDOUT` → `retry programado en
+  2734ms` → **`Telegram OK tras retry (resolve _r22_c1, intento
+  2/3)`** ← **el mensaje QUE EN R21 SE PERDIÓ (Hallazgo 2) ahora
+  llegó al bot**. Doble función del retry cumplida (fix +
+  diagnóstico) — Hallazgo 2 CERRADO en vivo.
+
+- **`/sites/status` para CR00061** (post-resolve, token superadmin
+  renovado): `CR00061 status: ok` ← **pin resuelto SIN esperar la
+  ventana de 15 min**, agregate DEC-REF-64.c reconoció el resolve
+  como último evento por ruleId. Hallazgo 1 confirmado cerrado por
+  el mecanismo previsto.
+
+- **Paso (4) — DELETE + verificación de intactas:** `DELETE
+  /api/rulepacks/_test-r22` → `{"status":"success"}`. Reload edge:
+  `Reload OK — packs: cummins-pcc-v1 · reglas nuevas: 0 · editadas:
+  0 · eliminadas: 1 [_r22_c1] · intactas: 5 · keys estado
+  borradas: 0`. Mongo: `db.rulepacks.find({}) →
+  cummins-pcc-v1 · rules:5` ✓ **canónico intacto** (RISK-DATA-1
+  preservado).
+
+**Balance final de R22:**
+- Commits locales aplicados en la ronda (6 total, ninguno pusheado
+  después de la Fase A): `4b49393` fix Hallazgo 1 · `fb14a64`
+  corpus DEC-REF-67 · `717fbd8` bitácora R22 Fase B/C1/GATE ·
+  `ed4f882` retry Telegram DEC-REF-67 · `42255c1` fix enum
+  paridad · [este commit] bitácora cierre R22.
+- Hallazgo 1 CERRADO en vivo (código + persistencia + pin).
+- Hallazgo 2 CERRADO en vivo (retry cubrió DOS ETIMEDOUT
+  independientes en el mismo ciclo — fire de escalada y resolve).
+- Regresión colateral descubierta y corregida (regla dura
+  DEC-REF-66-c aplicada retroactivamente al fix del Hallazgo 1).
+- SF-7 parte 1 queda con los dos hallazgos post-cierre resueltos.
+- SF-7 parte 2 (mini-forms UI de C y S) sigue pendiente para R23.
+
+**Push explícitamente NO ejecutado** por orden de Franco
+(`#45/R22`): "hay 4 commits locales ahead; el push va solo con mi
+orden". Ahora son **6 commits ahead** tras el fix de regresión + el
+commit de cierre.
+
+**STOP GATE 17.** Espera de orden de Franco para: (a) push, (b)
+apertura de R23 (mini-forms C/S + checklist visual que cierra SF-7
+y A8).
 
 
 
