@@ -106,6 +106,10 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
               const escalateMs   = rule.escalateAfterMinutes * 60 * 1000;
               if (Date.now() - episodeStart >= escalateMs) {
                 cooldownState.set(escalatedKey, Date.now());  // marca idempotente: no re-emitir ni re-bypass
+                // DEC-REF-66-B (#45/R22): la escalada pinta el pin warning
+                // (DEC-REF-27) — marcar activeState para que el reset
+                // calibrado pueda emitir fireResolve simétrico.
+                if (activeState) activeState.set(rule.ruleId, Date.now());
                 notify({
                   ruleId:         rule.ruleId,
                   inferenceId:    rule.inferenceId,
@@ -127,10 +131,24 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
               }
             }
           } else if (res.mode === 'calibrated') {
-            // EDGE-2 reset: el setpoint reapareció → cerrar el episodio en silencio.
+            // EDGE-2 reset: el setpoint reapareció → cerrar el episodio.
+            // DEC-REF-66-B (#45/R22): si el episodio HABÍA escalado (pin
+            // warning visible al operador vía DEC-REF-64.a), emitir
+            // fireResolve simétrico. El INFO sin escalada (DEC-REF-27,
+            // no pinta pin) sigue cerrando en silencio.
+            const escalatedKey = `${rule.ruleId}:no-setpoint:escalated`;
+            if (cooldownState.has(escalatedKey)) {
+              fireResolve({
+                rule, deviceId: dId,
+                reason: 'setpoint-recovered',
+                mode:   'resolve-by-setpoint-recovered',
+                recommendation: `Resuelto: setpoint de "${rule.variableLabel || rule.variable}" recuperado.`,
+                cooldownState, siteState, activeState,
+              });
+            }
             cooldownState.delete(`${rule.ruleId}:no-setpoint`);
             cooldownState.delete(`${rule.ruleId}:no-setpoint:start`);
-            cooldownState.delete(`${rule.ruleId}:no-setpoint:escalated`);
+            cooldownState.delete(escalatedKey);
           }
           continue;
         }
@@ -225,7 +243,7 @@ function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldow
 // controla ahí). Borra el flag activo antes de notify() por el mismo
 // motivo: si notify tarda y otro path evalúa la regla en el intertanto,
 // no re-emite resolve por la misma transición.
-function fireResolve({ rule, deviceId, reason, mode, cooldownState, siteState, activeState }) {
+function fireResolve({ rule, deviceId, reason, mode, recommendation, cooldownState, siteState, activeState }) {
   if (!activeState || !activeState.has(rule.ruleId)) return;
   activeState.delete(rule.ruleId);
   // No borramos cooldownState — protege contra fire re-inmediato tras
@@ -242,7 +260,7 @@ function fireResolve({ rule, deviceId, reason, mode, cooldownState, siteState, a
     label:             rule.label,
     variableLabel:     rule.variableLabel || '',
     severity:          rule.severity,
-    recommendation:    'Alarma resuelta: ' + (rule.label || rule.ruleId),
+    recommendation:    recommendation || ('Alarma resuelta: ' + (rule.label || rule.ruleId)),
     unit:              rule.unit || '',
     correlationParent: rule.correlationParent,
     deviceId,
