@@ -22,7 +22,7 @@ const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
-const { validateCrossTree } = require("../services/ruleValidation.js");
+const { validateRule } = require("../services/ruleValidation.js");
 
 const RulePack = require("../models/rule_pack.js");
 
@@ -57,16 +57,20 @@ function isSuperadmin(req) {
   return grants.some(g => g.role === 'superadmin');
 }
 
-// Valida crossExpr de cada regla type:'cross' del pack. Retorna
-// { ok:true } o { ok:false, ruleId, reason } con el primer error.
-function validatePackCrossRules(pack) {
+// SF-7 · DEC-REF-66 — despacho por tipo de regla. Retorna
+// { ok:true, warnings:[] } (acumulado de todas las reglas) o
+// { ok:false, ruleId, reason } con el primer rechazo.
+function validatePackRules(pack) {
   const rules = Array.isArray(pack?.rules) ? pack.rules : [];
+  const warnings = [];
   for (const r of rules) {
-    if (r.type !== 'cross') continue;
-    const v = validateCrossTree(r.crossExpr);
+    const v = validateRule(r);
     if (!v.ok) return { ok: false, ruleId: r.ruleId, reason: v.reason };
+    if (v.warnings && v.warnings.length) {
+      for (const w of v.warnings) warnings.push(`[${r.ruleId}] ${w}`);
+    }
   }
-  return { ok: true };
+  return { ok: true, warnings };
 }
 
 // GET /rulepacks — lista. Superadmin ve todo; resto DENY (0 packs).
@@ -121,11 +125,11 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
     // Fuerza consistencia: el packId autoritativo es el de la URL.
     const doc = { ...body, packId };
 
-    const cross = validatePackCrossRules(doc);
-    if (!cross.ok) {
+    const v = validatePackRules(doc);
+    if (!v.ok) {
       return res.status(400).json({
         status: "error",
-        error: `crossExpr inválido en regla ${cross.ruleId}: ${cross.reason}`,
+        error: `regla ${v.ruleId} inválida: ${v.reason}`,
       });
     }
 
@@ -140,6 +144,9 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
       packId: result.packId,
       version: result.version,
       rules: result.rules.length,
+      // SF-7 · DEC-REF-66 — advertencias no bloqueantes (config semánticamente
+      // muerta). El frontend las muestra en amarillo sin frenar el save.
+      warnings: v.warnings || [],
     });
   } catch (error) {
     console.log("ERROR PUTTING RULEPACK");
