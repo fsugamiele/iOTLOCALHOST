@@ -8389,6 +8389,103 @@ autoresolverá cuando la notif de escalada caiga fuera de la
 ventana de 15 min (~00:26:50Z, ~11 min tras el fire). No se hace
 workaround manual.
 
+---
+
+### R21 — Cierre formal Sesión #44 (append por #45/R22)
+
+Sesión #44 recorrida 2026-07-07 → 2026-07-14, **21 rondas
+(R1–R21)**, foco A8 (consola superadmin de reglas).
+
+**Balance final:**
+
+- Sub-frentes cerrados: **SF-1** (CRUD HTTP RulePack + candado
+  superadmin, DEC-REF-58/60/60-A), **SF-3** (hot-reload runtime
+  del edge, DEC-REF-61), **SF-5** (frontend RulePack editor Capa 1,
+  DEC-REF-62), **SF-4** (resolve events con `resolve-by-edit` y
+  `resolve-by-condition`, DEC-REF-59/64/64-A), **SF-6** (hoja de
+  suma cross-equipo por deviceType con frescura, DEC-REF-63/65/65-A),
+  **SF-7 parte 1** (motor typeC + sim setpoints Cummins periódicos
+  + validación backend C/S/D + E2E técnico, DEC-REF-66/66-A).
+- Sub-frente pendiente: **SF-7 parte 2** (mini-forms UI de reglas C
+  y S en la consola) — para R23.
+- DEC-REF registradas en el bloque: DEC-REF-57, -58, -59, -60,
+  -60-A, -61, -62, -63, -64, -64-A, -65, -65-A, -66, -66-A.
+- Incidentes de infraestructura declarados formalmente durante la
+  sesión: **RISK-SEC-2-bis** (procedimiento de reinicio de proceso
+  edge conservando env, sin exposición de credenciales) y
+  **RISK-SEC-3** (política dura de no imprimir valores de
+  credenciales en shell/log/bitácora — solo verificar presencia con
+  conteo).
+- Hallazgos post-cierre (checklist visual de Franco sobre E2E R21)
+  abiertos y registrados en la sección "Hallazgos post-cierre R21"
+  de esta bitácora: **Hallazgo 1** (pin del site queda warning
+  tras restaurarse el setpoint — gap EDGE-2 ↔ SF-4) y **Hallazgo 2**
+  (resolve del `_sf7_s_pos` no llegó al bot Telegram aunque las
+  Telegrams del ciclo previo — CALIBRATED, FALLBACK, ESCALADA — sí
+  llegaron; Franco descartó ETIMEDOUT genérico como causa).
+
+**Sesión #44 CERRADA.** Sigue #45.
+
+---
+
+## Sesión #45 — 2026-07-15 · Área 2 · A8 (SF-7 hallazgos post-cierre → R23)
+
+### Estado heredado al abrir #45 (2026-07-15)
+
+Verificado en Fase 0 de R22, NO asumido:
+
+- Rama `feature/telco-support`, **15 commits ahead de origin**
+  (`75573da` HEAD, últimos: R21 docs hallazgos post-cierre · R21
+  reporte cierre SF-7 parte 1 · validateC/S/D · sim Cummins
+  setpoints · template Cummins widgets setpoint). Tree limpio salvo
+  untracked conocidos (`.claude/`, `~$nomi_guia_layout_...docx`,
+  `conectividad_recomendada_hub.pdf`).
+- **Procesos edge/sim CAÍDOS**: `ps -ef | grep -iE "node|edge|sim"`
+  sin coincidencias. Host WSL reiniciado hace ~13 min al abrir
+  Fase 0 (`uptime`: `up 13 min`, load 9.00 en bootstorm). Última
+  mtime de `logs/edge-CR00061.log` = `2026-07-15T11:50:40Z` (~1 h
+  antes del arranque de #45). PIDs de R21 (edge 52759, sim 52360)
+  ya no existen — **cold-start post-reboot, no reinicio planificado**.
+- El log del edge muestra cierre coherente pre-reboot: tras el
+  DELETE R21 de `_sf7_c1/_sf7_s_pos/_sf7_s_neg` (`Reload OK ·
+  eliminadas: 3 · intactas: 5 · keys estado borradas: 4`), el edge
+  perdió MQTT (`Error MQTT: connect ECONNREFUSED 127.0.0.1:1883`
+  ×4) y murió con el host.
+- Contenedores Docker `node`/`emqx`/`mongo` — `Up 12 minutes`,
+  ambos servicios de datos healthy al cerrar Fase 0.
+- Nota operativa: `/usr/bin/docker` (integración WSL) reportaba
+  "could not be found in this WSL 2 distro" en los primeros
+  minutos del bootstorm; con contenedores healthy volvió a responder
+  normalmente y se usa desde ahí. `docker.exe` del Docker Desktop
+  de Windows queda como fallback verificado si vuelve a caer.
+  Registro por transparencia — no cambia el método estándar.
+- Mongo — `db.data` T0 (`13:02:08.621Z`) = **1 554 525** documentos;
+  T0+159s (`13:04:47.985Z`) = **1 554 525** (Δ=0, esperado: sim
+  caído, no hay publisher). `db.rulepacks` = 1 pack
+  (`cummins-pcc-v1`, **5 reglas**) — íntegro tras el DELETE de R21.
+
+**Foco de #45:** cerrar los dos hallazgos post-R21. Plan aprobado
+por Franco en apertura: **R22 = A (docs + push) → B (fix motor
+Hallazgo 1) → C1 (recon Telegram, con posible FRENO si el patrón de
+timeouts abre decisión de diseño) → GATE intermedio → D (E2E
+adaptado a cold-start: `/proc/<PID>/environ` sustituido por
+verificación de `.env` con `grep -c` — RISK-SEC-3)**. R23
+(mini-forms C/S UI + checklist visual de Franco que cierra SF-7 y
+A8) solo con orden.
+
+### R22 — Fase A: cierre #44 formalizado + DEC-REF-66-B + PUSH
+
+Ronda de docs + push. Sin cambios de código.
+
+- Bitácora: cierre formal #44 + apertura #45 (esta entrada).
+- Corpus: append **DEC-REF-66-B** (adenda DEC-REF-26/66 — el reset
+  de EDGE-2 emite resolve tras la recuperación del setpoint, cierra
+  gap con DEC-REF-64.a "ninguna alarma abierta muere en silencio").
+  Bump §7 → v0.43.
+- Push: al finalizar Fase A, con auditoría íntegra de
+  `git log origin/feature/telco-support..HEAD --oneline` reproducida
+  en el reporte final de R22.
+
 
 
 
