@@ -8486,6 +8486,95 @@ Ronda de docs + push. Sin cambios de código.
   `git log origin/feature/telco-support..HEAD --oneline` reproducida
   en el reporte final de R22.
 
+### R22 — Fase B: fix Hallazgo 1 (motor)
+
+`ruleEngine.js` rama reset calibrado (`res.mode==='calibrated'` en
+typeC, líneas 129-149 tras el fix): antes de borrar keys, si
+`cooldownState.has(escalatedKey)` → `fireResolve` con
+`mode:'resolve-by-setpoint-recovered'`, `reason:'setpoint-recovered'`,
+`recommendation:'Resuelto: setpoint de "<variableLabel>" recuperado.'`.
+
+Colateral necesario: la escalada al warning (línea 108-110) ahora
+setea `activeState.set(rule.ruleId, Date.now())` junto con
+`cooldownState.set(escalatedKey, ...)` — sin ese seteo, el guard de
+`fireResolve` (`if (!activeState.has(rule.ruleId)) return`) hubiera
+descartado el resolve en silencio. La escalada es lo que pinta el
+pin warning (DEC-REF-27: INFO no pinta), por lo que `activeState`
+debe representarla — coherente con DEC-REF-64.a.
+
+`fireResolve` gana parámetro opcional `recommendation` (default =
+wording actual `'Alarma resuelta: <label>'`), backward compatible
+con los 3 call-sites preexistentes (SF-4 typeS/typeCross/typeD).
+
+Commit `4b49393`: `fix(edge): reset EDGE-2 emite fireResolve tras
+escalada (Hallazgo 1) — DEC-REF-66-B` — un concern, +22/-4 líneas.
+
+### R22 — Fase C1: diagnóstico Hallazgo 2 (READ-ONLY)
+
+Diagnóstico del `_sf7_s_pos` resolve perdido. Reporte al GATE
+intermedio + cita íntegra en el turno correspondiente de la
+sesión #45 (ventana R21 E2E líneas L3319–L3339 del
+`logs/edge-CR00061.log`).
+
+**Hallazgos técnicos:**
+- 6 eventos Telegram intentados en la ventana R21 E2E (8 min),
+  2 ETIMEDOUT observados: L3330 (entre fire repetido 00:09:20 y
+  INFO 00:09:45) y L3339 (después del resolve 00:16:12).
+- Historial: ~30 ETIMEDOUT distribuidos a lo largo del log
+  completo. Patrón recurrente — no evento aislado.
+- `sendTelegram` (notificationRouter.js:157-208): fire-and-forget
+  vía `https.get`, `on('error', …)` solo loguea. **Sin retry, sin
+  backoff, sin cola, sin persistencia, sin dedup.**
+- C1 cross-check: `fireAlarm` y `fireResolve` llaman `notify(alarm)`
+  (ruleEngine.js:237, 276); `notify()` llama `sendTelegram(alarm)`
+  una sola vez (notificationRouter.js:220). **Mismo camino, sin
+  ramificación por kind** — cierra "¿por qué solo el resolve?".
+- Descarte de hipótesis: (a) formato — la huella es *timeout* (falla
+  de red), no *rechazo* (falla de contenido); Telegram devolvería
+  400/403, no ETIMEDOUT; (c) rate-limit — misma razón, sería 429;
+  (d) bug en rama resolve — imposible, mismo path para fire y
+  resolve.
+- Reencuadre de la duda de Franco ("¿por qué solo en recuperación?"):
+  en la ventana hubo **dos** pérdidas, una sobre un warning y otra
+  sobre el resolve — no es exclusivo del resolve. El resolve queda
+  más expuesto solo por **posición** (llega al final de la ráfaga
+  del ciclo; el último de una tanda rápida es el más propenso al
+  timeout), no por ser un mensaje distinto.
+
+### R22 — GATE intermedio Hallazgo 2 RESUELTO
+
+Diagnóstico C1 aceptado por Franco: ETIMEDOUT por-request sobre
+canal fire-and-forget sin retry; el resolve no es especial, solo el
+más expuesto por posición al final de la ráfaga. **Decisión: Opción
+1** — retry acotado 3× con backoff exponencial 2·4·8s + jitter,
+async (`setTimeout`), simétrico fire+resolve, `req.setTimeout` ~5s,
+sin dedup/persistencia → registrado como **DEC-REF-67**. Outbox
+durable diferido a **BACKLOG-NOTIF-1** (camino NOC/LTE-M, con
+opinión del Asesor Telco). **Opción 3** (mínima: solo timeout, sin
+retry) registrada como alternativa evaluada y NO elegida —
+conservada como fallback de degradación si el retry introdujera
+duplicados molestos en operación real.
+
+**Condiciones para habilitar Fase D (Franco, #45/R22):**
+1. C1 bloqueante — VERDE (verificado antes del corpus): `fireAlarm`
+   y `fireResolve` comparten el mismo `sendTelegram`, sin path
+   aparte para el resolve. Duda cerrada por diseño.
+2. Arranque limpio del edge tras Fase 1: el bloque de retry debe
+   cargar sin error; log de reintento visible cuando aplique.
+3. Resto de Fase D sin cambios: `/proc/<PID>/environ` sustituido
+   por verificación de `.env` con `grep -c '^TELEGRAM_BOT_TOKEN='`
+   (conteo, jamás valor — RISK-SEC-3).
+
+### R22 — Fase D pendiente (Fase 1 de DEC-REF-67 + E2E cold-start)
+
+Falta: (i) implementar el retry en `sendTelegram` según DEC-REF-67
+(commit propio, "un concern por commit"); (ii) verificación `.env`
+por conteo (RISK-SEC-3); (iii) relanzar edge+sim; (iv) E2E ciclo
+`_test-r22` (canary:false) — supresión → escalada → restore →
+`fireResolve resolve-by-setpoint-recovered` + Telegram OK (con o sin
+retry, según se provoque); (v) DELETE `_test-r22`, cummins-pcc-v1
+intacto (5).
+
 
 
 
