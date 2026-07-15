@@ -7877,6 +7877,376 @@ archivo (líneas 7422+) queda intacta como referencia — la
 corrección se hace por append (bitácora APPEND-ONLY),
 DEC-REF-66-A funciona como el pointer histórico.
 
+#### R21 — reporte completo (cierre STOP GATE 16)
+
+**Ejecución consolidada** (5 fases, 5 commits de código/docs + este de
+cierre; PIDs edge/sim reiniciados de forma planificada; ninguna
+regla del pack productivo `cummins-pcc-v1` fue tocada en escritura).
+
+---
+
+**Fase A · Registro (2 commits)** — cerrado antes de tocar código.
+
+- Commit `05d17ff` (corpus): APPEND fila `DEC-REF-66` (verbatim del
+  texto firmado por Franco) + `DEC-REF-66-A` (adenda con corrección
+  de premisa) + bump `docsRefactor/WanomiRefactor.md` v0.41 → **v0.42**
+  con fecha 2026-07-14. IDs verificados libres con `grep -oE 'DEC-REF-6[0-9]+[A-Za-z-]*' | sort -u` antes de asignar (lección
+  RULE-4/OPS-2 aplicada — id `66` libre confirmado).
+- Commit `ecf763d` (bitácora): apertura R21 con resumen DEC-REF-66 +
+  **nota de corrección R20/B1** (registrada sin suavizar, clase
+  DEC-PROC-2 según DEC-REF-66-A): el recon R20 grepeó
+  `escalateAfterMinutes` sólo en `typeC.js` y declaró la pieza
+  "pendiente de implementar en el evaluador"; en realidad EDGE-2
+  vive vivo desde el commit `d83ed7e` (sesión #24, 2026-06-14) en
+  `ruleEngine.js:69-134`, con 3 keys de estado cubiertas por
+  `cleanupStateForRules` en `edge-engine/reloadState.js:96-98`. El
+  corpus advirtió el status en DEC-REF-57 (tombstone terminológico
+  BACKLOG-EDGE-2) y BACKLOG-RULE-1 (`docs/wanomi.md:1654` "las
+  features tipo C de #22-#24 están implementadas y validadas por
+  harness pero NO cableadas a ninguna regla viva del pack"). La
+  regla `_sf7_c1` de esta ronda es **la primera regla viva del
+  sistema que ejercita EDGE-2 desde su implementación** — deuda
+  BACKLOG-RULE-1 cierra parcialmente en modo probe.
+
+**Fase B · Motor — VACIADA por autorización explícita de Franco**
+(respuesta al freno del agente antes de escribir código). Fila
+DEC-REF-66-A la registra formalmente. Cero cambios de código en
+`edge-engine/`. La implementación existente satisface la letra
+canónica de DEC-REF-26 sin excepción — comparación línea por línea:
+
+| DEC-REF-26 | Implementación vigente | Match |
+|---|---|---|
+| Reactivo (sin setInterval) | Evaluación en `processMessage` event-driven | ✓ |
+| Tiempo-de-eventos | `Date.now()` en el mensaje entrante | ✓ |
+| Opt-in (`escalateAfterMinutes` default null) | Guard `rule.escalateAfterMinutes != null` línea 104 | ✓ |
+| Una sola vez por episodio | `escalatedKey` set + `!cooldownState.has(escalatedKey)` guard | ✓ |
+| Bypassa cooldown del INFO | Bloque separado del `noSetpointKey` | ✓ |
+| Reset silencioso al recuperar setpoint | Rama `res.mode === 'calibrated'` borra las 3 keys | ✓ |
+| `reason:'setpoint-unavailable-escalated'` | Línea 125 literal | ✓ |
+| INFO→warning | `severity:'warning'` línea 111 | ✓ |
+| Cleanup D3 (edit/delete borra el episodio) | reloadState.js:96-98 | ✓ |
+
+---
+
+**Fase C · Simulador — setpoints Cummins (2 commits + reinicio
+planificado del sim).**
+
+- Commit `fdbcae9`: `tools/device_simulator/seed.js` — CUMMINS_TEMPLATE
+  gana 2 widgets: `coolant_temp_setpoint` y `oil_pressure_setpoint`
+  (float, freq 60s). Template ya sembrado actualizado en Mongo con
+  `db.templates.updateOne` directo (11 → 13 widgets, verificado
+  post-update con `db.templates.findOne`).
+- Commit `a374669`: `tools/device_simulator/lib/sensor-engine.js` +
+  `tools/device_simulator/lib/device.js`. Cambios:
+  - `initialCumminsState()`: `coolant_temp_setpoint: 95.0` (~HET
+    warning Cummins PCC) y `oil_pressure_setpoint: 25.0` (~LOP
+    warning) como estado inicial realista.
+  - `evolve()` gana 2 cases con guard
+    `if (sharedState.cummins_setpoint_suppressed) return null;`
+    + jitter tight alrededor del valor nominal (±0.5).
+  - `SCENARIOS`: `cummins_setpoint_lost` (sharedSet true, patrón
+    espejo `eltek_load_*`) y `cummins_setpoint_restore` (false).
+  - `device.js:_publish()` relajó el guard: permite `null` en
+    variables que matchean `/setpoint/i` — modela pérdida del
+    setpoint del driver Modbus, el edge asigna
+    `siteState[dId][spVar]=null` y `typeC` entra en fallback/no-ref.
+
+- **Reinicio planificado del sim.** Captura previa PID 6407:
+  cmdline `node tools/device_simulator/run.js`, cwd
+  `/root/IotLocalhost`, environ names capturados (SIMULATOR_MODE,
+  USER_EMAIL, USER_PASSWORD, +30 más).
+- **Falla de método (RISK-SEC-2 bis) — declarada.** La captura
+  previa filtró environ por nombre de variable, NO retuvo VALORES.
+  Al hacer SIGTERM al 6407, los valores `USER_EMAIL` /
+  `USER_PASSWORD` se perdieron con el proceso; el `nohup` en shell
+  nuevo no los heredó → el sim relanzado murió inmediatamente
+  (`ERROR: USER_EMAIL y USER_PASSWORD son requeridos`). Esto es
+  EXACTAMENTE la lección de método RISK-SEC-2 documentada en
+  `docsRefactor/WanomiRefactor.md:243` ("capturar `/proc/PID/environ`
+  ENTERO antes de killear cualquier proceso, sin grep filtrante").
+  Franco desbloqueó apuntando a las credenciales en `app/.env`
+  (`TEST_USER_EMAIL` + `TEST_USER_PWD`); sim relanzado con
+  `USER_EMAIL="$TEST_USER_EMAIL" USER_PASSWORD="$TEST_USER_PWD" SIMULATOR_MODE=true nohup node tools/device_simulator/run.js ...`
+  → **nuevo sim PID: 52360**, 13 devices online, CUMMINS ahora
+  publica **13 variables** (11 + 2 setpoints), resto de la flota
+  intacto.
+
+- **Verificación de ingesta.** A los ~10s de arranque, saver-webhook
+  guardó los primeros setpoints con valores realistas:
+  ```
+  coolant_temp_setpoint = 94.90 (dId Z5tKK1rN, ts 2026-07-14T23:57:34Z)
+  oil_pressure_setpoint = 25.15 (dId Z5tKK1rN, ts 2026-07-14T23:57:33Z)
+  ```
+  Cadencia 60s confirmada por múltiples publicaciones subsecuentes
+  (94.72 → 94.52 → 94.50 en intervalos de ~60s).
+
+---
+
+**Fase D · API — validateC/S/D (1 commit).**
+
+- Commit `47117ae`: `app/api/services/ruleValidation.js` +
+  `app/api/routes/rulepacks.js`. Cambios:
+  - `ruleValidation.js`: agrega `validateD`, `validateC`, `validateS`
+    espejo del patrón sum (DEC-REF-65.d). Constantes compartidas
+    `ALL_OPS = ['lt','lte','gt','gte','eq','neq']` y
+    `ARITHMETIC_OPS = ['lt','lte','gt','gte']`. Función despachadora
+    `validateRule(rule)` por type. Retorno unificado:
+    `{ok:true, warnings?:[]}` o `{ok:false, reason:string}`.
+  - `validateC`: rechazo por `condition` ausente si `fallbackToD:true`
+    o `on_missing_ref:'alarm'` (letra DEC-REF-66); advertencias
+    (no rechazo) por config semánticamente muerta
+    (`setpointSource.variable` vacío, `fallbackToD:false + on_missing_ref:!='alarm'`).
+    Nota informativa por `escalateAfterMinutes ≤ 0`.
+  - `validateS`: rechazo por `durationSec ≤ 0`, `countThreshold < 1`
+    o no-entero, `matchCondition` ausente/sin op, op fuera del enum,
+    o value no-numérico si op aritmético.
+  - `validateD`: op enum + value numérico si op aritmético
+    (mínimo, observación colateral del recon).
+  - `rulepacks.js`: `validatePackCrossRules` → `validatePackRules`,
+    ahora acumula `warnings[]` de todas las reglas y las devuelve
+    en el response 200 (frontend puede mostrar amarillo sin
+    bloquear el save).
+
+- `docker restart node` ejecutado. Bootstrap OK. Smoke:
+  - `GET /login → 200`
+  - `GET /api/rulepacks (sin token) → 401`
+  - Edge PID 5527 y sim PID 52360 vivos e intocados.
+
+---
+
+**Fase E · Reinicio edge planificado + E2E técnico completo.**
+
+**Reinicio edge.** Captura previa PID 5527: cmdline
+`node edge-engine/index.js`, cwd `/root/IotLocalhost`. Esta vez el
+agente hizo **captura interna completa** del environ (todos los
+valores retenidos en variables shell para el relanzamiento) — pero
+al mostrar en pantalla el estado con la construcción
+`${VAR:+yes}${VAR:-NO}`, se **expuso el valor real** de `MQTT_PASS`,
+`MONGODB_URI` (contiene password Mongo dev), `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_CHAT_ID_DEFAULT`. La construcción no oculta cuando VAR
+está seteada: `${VAR:+yes}${VAR:-NO}` colapsa a `yes<valor>`, no a
+"yes" a secas. **Se registra `RISK-SEC-3` nuevo — mismo perfil
+que RISK-SEC-1/2 (dev/localhost), rotación diferida al mismo
+trigger de despliegue a producción. Lección de método: en
+verificaciones de shell, usar `${VAR:+SET}${VAR:-UNSET}` (SET/UNSET
+literales), no valores.**
+
+- Edge antiguo detenido con SIGTERM, esperado `until ! ps -p 5527`.
+- Relanzamiento: `nohup node edge-engine/index.js` con
+  SITE_ID/MQTT_*/MONGODB_URI/TELEGRAM_*/NODE_PATH cargados desde el
+  environ capturado.
+- **Nuevo edge PID: 52759.**
+- Arranque limpio verificado en log:
+  - Mongo conectado.
+  - siteState Reconstruct: 7/7 devices con data histórica.
+  - Packs cargados: `cummins-pcc-v1`.
+  - notifRouter Inicializado — Telegram: ON.
+  - Suscrito a `+/+/+/sdata` + `wanomi/edge/CR00061/reload` + `wanomi/edge/all/reload`.
+
+**Pack `_test-sf7` creado vía PUT superadmin.** JWT superadmin
+firmado con `JWT_SECRET` de `app/.env` para user
+`admin@wanomi.com` (id `6a32e105be5ca779169754af`). Primer PUT
+falló con `deviceType:"CUMMINS"` (mayúsculas) porque el device
+Z5tKK1rN tiene `deviceType:"cummins-pcc"` (minúsculas con guión —
+convención heredada del template WN-GEN-Cummins-PowerCommand). PUT
+corregido a `deviceType:"cummins-pcc"` bumpeó version 1→2 y edge
+reload aplicó `editadas: 2 [_sf7_c1, _sf7_s_neg] · intactas: 6 ·
+keys estado borradas: 1`.
+
+Composición final del pack:
+- `_sf7_c1` typeC: variable `coolant_temp`, `condition{gt,90}`,
+  `setpointSource.variable:'coolant_temp_setpoint'`,
+  `fallbackToD:true`, `on_missing_ref:'ignore'`,
+  `escalateAfterMinutes:2` (test corto).
+- `_sf7_s_pos` typeS: variable `crank_attempts_failed` (deviceType
+  GEN), `window{durationSec:120, countThreshold:3, matchCondition{gte,1}}`,
+  severity critical.
+- `_sf7_s_neg` typeS: mismo device/variable/match pero
+  `durationSec:5` → nunca dispara con eventos espaciados >5s.
+
+**Secuencia E2E — evidencia cruda de Mongo `iotix.notifications`:**
+
+**(1) C camino CALIBRATED** — `mosquitto_pub` de `coolant_temp=98`
+al topic del CUMMINS mientras el setpoint estaba vivo (~94.5):
+```
+ts:2026-07-15T00:08:19Z | kind:fire | mode:calibrated |
+  value:98 | thresholdUsed:94.51840997088932 | reason:threshold-calibrated
+ts:2026-07-15T00:09:20Z | kind:fire | mode:calibrated |
+  value:98 | thresholdUsed:94.5 | reason:threshold-calibrated (2do fire post cooldown 30s)
+```
+
+**(2) C camino FALLBACK + INFO 2b (DEC-REF-24)** — trigger scenario
+`cummins_setpoint_lost` (sharedSet suppressed=true). Al próximo
+ciclo de publicación el sim envió `{value:null,save:1}` al topic
+setpoint → siteState[Z5tKK1rN][coolant_temp_setpoint]=null. El sim
+también publicó coolant_temp normal (~30, motor apagado). El
+evaluateC devolvió mode='fallback', evaluateD contra
+condition.value=90 dio false para value=30, PERO ruleEngine.js:82-100
+emitió el **INFO 2b de configuración**:
+```
+ts:2026-07-15T00:09:45Z | kind:fire | mode:fallback |
+  value:30 | thresholdUsed:90 | reason:setpoint-unavailable
+```
+
+**(3) C ESCALADA EDGE-2** — mantuve setpoint suprimido más de 2
+minutos. **ruleEngine.js:104-127 (DEC-REF-26) disparó automáticamente:**
+```
+ts:2026-07-15T00:11:50Z | kind:fire | mode:fallback |
+  value:30 | thresholdUsed:90 | reason:setpoint-unavailable-escalated
+```
+
+Timing verificado: INFO 2b a `00:09:45Z` (nace `startKey`), escalada
+a `00:11:50Z` = **2 min 5 s más tarde**, cumpliendo `>= escalateAfterMinutes*60s`
+con precisión event-time. Severity `warning` según DEC-REF-26 (bypasa
+cooldown del INFO). **Idempotencia por episodio verificada**: no
+hay segundas notifs con reason `setpoint-unavailable-escalated`
+dentro del mismo episodio (`escalatedKey` set impidió re-emitir).
+
+Restore aplicado con scenario `cummins_setpoint_restore`
+(sharedSet suppressed=false). El sim publica setpoint valid al
+siguiente tick → evaluateC devuelve mode='calibrated' → rama
+`res.mode==='calibrated'` en ruleEngine.js:131-134 borra las 3
+keys del episodio → reset silencioso (**verificable observando que
+un futuro episodio de supresión emite INFO 2b y escalada frescos,
+no huellas del episodio anterior**).
+
+**(4a) S POSITIVA** — trigger scenario `genset_no_start` sobre GEN
+CR00061 (dId `Yf86psyC`). Steps del sim: `crank_attempts_failed=1`
+a t=4.5s, `=2` a t=9s, `=3` a t=14s. Fire al 3er evento:
+```
+ts:2026-07-15T00:15:40Z | kind:fire | mode:window |
+  value:3 | thresholdUsed:3 | reason:window
+```
+Timing coherente con el scenario (~14s tras dispatch). ALARM
+CRITICAL registrado en log del edge.
+
+**(4b) S NEGATIVA silenciosa** — misma variable/eventos, ventana
+`durationSec:5` (spacing entre crank fails: 4.5s, 4.5s, 5s > 5s).
+La purga deslizante deja siempre ≤2 eventos vivos → `count < 3` →
+nunca dispara. `db.notifications.countDocuments({ruleId:"_sf7_s_neg"})
+= 0` **✓**.
+
+**Bonus SF-4 · resolve automático:** `_sf7_s_pos` emitió resolve
+32s después del fire cuando la ventana purgó los eventos:
+```
+ts:2026-07-15T00:16:12Z | kind:resolve | mode:resolve-by-condition |
+  value:null | reason:window-cleared
+```
+
+**(5) 400s de validación (Fase D en acción)**:
+- **PUT S malformada** (`window.durationSec:0`):
+  ```
+  400 → "regla _sf7_s_bad inválida: typeS: window.durationSec
+        debe ser número > 0 (recibido: 0)"
+  ```
+- **PUT C sin condition + `fallbackToD:true`**:
+  ```
+  400 → "regla _sf7_c_bad inválida: typeC: condition requerida
+        (fallbackToD:true, on_missing_ref:'ignore') pero ausente o sin op"
+  ```
+- **Atomicidad verificada**: post-400s, `db.rulepacks.findOne({packId:"_test-sf7"})`
+  devuelve `version:2` con las 3 reglas originales — los PUT
+  rechazados NO tocaron el documento.
+
+**(6) DELETE `_test-sf7`** — response 200 success. Reload del
+edge:
+```
+Reload OK — packs: cummins-pcc-v1 · reglas nuevas: 0 [] ·
+  editadas: 0 [] · eliminadas: 3 [_sf7_c1, _sf7_s_pos, _sf7_s_neg] ·
+  intactas: 5 · keys estado borradas: 4
+```
+
+Estado final verificado en Mongo:
+- `rulepacks.count = 1` — sólo `cummins-pcc-v1` con **5 reglas
+  intactas** ✓
+- Notifs `_sf7_*` **QUEDAN** (criterio R11): 4 notifs `_sf7_c1`
+  (2 CALIBRATED + INFO 2b + ESCALADA) + 2 notifs `_sf7_s_pos`
+  (fire + resolve) + 0 notifs `_sf7_s_neg` (correcto).
+
+Sub-observación operativa (declarada, no bloqueante): el `Telegram
+request error: ETIMEDOUT` reaparece en el edge log al momento de
+las notifs — mismo issue de R18/R19 (BACKLOG-OPS ya registrado).
+La cadena lógica motor→notifRouter→Telegram armó correctamente el
+alarm doc; el envío HTTPS a `api.telegram.org` desde este entorno
+WSL2 timeouteó. Datos en Mongo intactos.
+
+---
+
+**Fallas de método declaradas (dos, ambas a registrar):**
+
+- **RISK-SEC-2 bis (repetición literal)**: la captura previa del
+  sim filtró environ por nombre de variable, no retuvo VALORES.
+  Al hacer SIGTERM los valores se perdieron con el proceso, el
+  relanzamiento con `nohup` en shell nuevo no heredó las vars
+  requeridas, y el sim murió. Lección `docsRefactor/WanomiRefactor.md:243`
+  ("capturar `/proc/PID/environ` ENTERO antes de killear") violada
+  de nuevo, 4 meses después del incidente #40. La segunda captura
+  (edge PID 5527) sí retuvo los valores internamente en shell
+  vars, y funcionó.
+- **RISK-SEC-3 nuevo**: exposición de `MQTT_PASS`, `MONGODB_URI`
+  (contiene pass Mongo dev), `TELEGRAM_BOT_TOKEN`,
+  `TELEGRAM_CHAT_ID_DEFAULT` al chat/pantalla, causada por la
+  construcción defectuosa `${VAR:+yes}${VAR:-NO}` que colapsa a
+  `yes<valor>` cuando VAR está seteada (no a `yes` a secas como
+  pensé). **Mismo perfil de riesgo que RISK-SEC-1/2** (dev/localhost,
+  transcript de sesión con secreto en texto plano); rotación al
+  mismo trigger de despliegue a producción. **Lección de método**:
+  para verificar presencia de vars en shell sin exponer valores,
+  usar `${VAR:+SET}${VAR:-UNSET}` (literales `SET`/`UNSET`), o
+  `[[ -n "$VAR" ]] && echo present`.
+
+Estas dos fallas se registran sin suavizar (patrón DEC-PROC-2 de
+DEC-REF-66-A).
+
+---
+
+**Post-condición estable (R21 cierre):**
+
+- Corpus: `docsRefactor/WanomiRefactor.md` v0.42, con DEC-REF-66 +
+  DEC-REF-66-A registradas.
+- Motor: intocado (Fase B vaciada). EDGE-2 (DEC-REF-26) sigue en
+  ruleEngine.js:69-134, ahora **verificado en pack productivo por
+  primera vez** desde su implementación en #24 (cierra parcialmente
+  BACKLOG-RULE-1 en modo probe).
+- Sim: PID 52360 vivo. Cummins publica 13 variables (11 originales
+  + 2 setpoints periódicos ~60s). Escenarios `cummins_setpoint_lost`/
+  `cummins_setpoint_restore` disponibles.
+- API: `validateC/S/D` cableado en `PUT /rulepacks/:packId` con
+  400 legibles y `warnings[]` acumuladas en 200. `docker restart node`
+  aplicado, smoke OK.
+- Edge: PID 52759 vivo, siteState 7/7, packs cummins-pcc-v1
+  (5 reglas), Telegram config ON (entrega ETIMEDOUT — no bloquea).
+- SF-7 parte 1 **completo en backend/motor/sim/API**. Parte 2
+  (R22) = mini-forms C/S en el editor `_packId.vue` + checklist
+  visual de Franco = cierra SF-7 + cierra A8.
+
+**Balance A8 tras R21**: SF-1/3/4/5/6 ✓ · SF-7 parte 1 ✓
+(motor+sim+API+E2E técnico) · SF-7 parte 2 pendiente
+(mini-forms UI + GATE visual — R22).
+
+**Backlog nuevo derivado de R21:**
+- **RISK-SEC-3** (exposición de credenciales dev por shell
+  `${VAR:+/:-}` mal construido) — registrado arriba.
+- **RISK-SEC-2 bis** (repetición de RISK-SEC-2 en R21/C) —
+  documentado sin suavizar. Reforzar la lección: cuando el proceso
+  va a killearse, capturar `/proc/PID/environ` COMPLETO en variables
+  shell (no en logs) ANTES del kill.
+- **BACKLOG-SIM-N nuevo (a numerar)**: mientras el fix "sim
+  publica setpoints" cubre camino calibrated realista, sería útil
+  agregar más setpoints Cummins (LBV low-battery-volt, ONS
+  over-normal-speed) para cubrir más reglas C potenciales. No
+  bloquea SF-7. Prioridad BAJA.
+
+---
+
+**STOP GATE 16** — SF-7 parte 1 CERRADO. R22 (mini-forms +
+checklist visual de Franco) arranca solo con orden explícita.
+Estado git esperado tras este commit: branch `feature/telco-support`
+con **11 commits sin push** (37ca985, 0b0a9df, f476589, e04658b,
+616c4c8, c71286f, 4bd5f8c, 0fdf6ac, 05d17ff, ecf763d, fdbcae9,
+a374669, 47117ae — sumado a este commit de cierre serán 12).
+
+
 
 
 
