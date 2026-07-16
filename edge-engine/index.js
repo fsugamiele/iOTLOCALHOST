@@ -34,12 +34,31 @@ const crossState    = new Map();
 // viaja como argumento a processMessage.
 const activeState  = new Map();
 
+// DEC-REF-68 (c) — handlers globales de errores no manejados.
+// Sin esto, un rechazo async no capturado tumba el proceso EN SILENCIO
+// (Node <15 solo warning; Node ≥15 exit sin trace útil). Estos handlers
+// convierten "muerte muda" en "muerte registrada + relanzada por el
+// guardián docker (restart:always del compose de PROD)".
+process.on('unhandledRejection', (reason) => {
+  console.error('[edge-engine] unhandledRejection:', reason && (reason.stack || reason.message || reason));
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[edge-engine] uncaughtException:', err && (err.stack || err.message || err));
+  process.exit(1);
+});
+
 async function start() {
   await mongoose.connect(MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     useCreateIndex: true,
     useFindAndModify: false,
+    // DEC-REF-68 (c) — fast-fail 5s en connect inicial. Default ~30s hace
+    // pesado el ciclo morir-revivir cuando Mongo aún no está listo (reboot
+    // del host, reinicio por política — `depends_on: service_healthy` NO
+    // cubre esos caminos).
+    serverSelectionTimeoutMS: 5000,
   });
   console.log(`[edge-engine] Mongo conectado — ${MONGO_URI}`);
 
