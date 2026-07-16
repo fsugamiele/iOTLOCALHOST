@@ -1,4 +1,10 @@
-require('dotenv').config();
+// DEC-REF-68 (a) — env fuente única: `edge-engine/.env.edge` (git-ignored).
+// Path absoluto vía `__dirname` → cero dependencia del CWD del proceso, tanto
+// corriendo dentro del container docker como en corridas manuales de dev.
+// El servicio compose adicionalmente inyecta `env_file:` (DEC-REF-68 pata b);
+// dotenv NO pisa lo que ya está en `process.env`, así que ambos coexisten sin
+// conflicto (compose gana si define el mismo key).
+require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') });
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState } = require('./siteState');
