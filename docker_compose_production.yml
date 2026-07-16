@@ -129,3 +129,51 @@ services:
 
       EMQX_LISTENER__TCP__EXTERNAL__MAX_CONNECTIONS: 1000
 
+  # DEC-REF-68 (b) — arranque autónomo del edge, crash-only.
+  # Guardián: `restart: always` (NUNCA `on-failure:N` — se rendiría tras N).
+  # `depends_on: service_healthy` cierra la carrera SOLO en `compose up`; en
+  # reinicios por política y en reboot del host, el que cierra la carrera es
+  # el fast-fail 5s de mongoose.connect + los handlers globales del código
+  # (DEC-REF-68 pata c). En este contenedor el edge resuelve a sus vecinos
+  # por hostname de servicio (`mongo`, `emqx`) — cero deriva localhost.
+  wanomi-edge:
+    container_name: wanomi-edge
+    image: "node:14"
+    restart: always
+
+    env_file:
+      - ./edge-engine/.env.edge
+
+    environment:
+      # Node busca modules desde la ubicación del script hacia arriba;
+      # edge-engine/ no tiene node_modules propio y las libs viven en app/.
+      NODE_PATH: /home/edge/app/node_modules
+
+    working_dir: /home/edge/app
+
+    volumes:
+      # Bind del repo entero equivalente al servicio `node`. El edge
+      # `require('../app/api/models/rule_pack')` desde edge-engine/, así que
+      # ambos árboles tienen que coexistir en el mismo layout que en el host.
+      - ./app/:/home/edge/app
+      - ./edge-engine/:/home/edge/edge-engine
+      # Preserva log per-site (DEC-REF-64.e). `tee -a` en el command duplica
+      # a stdout para que `docker logs wanomi-edge` también sirva.
+      - ./logs/:/home/edge/logs
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+
+    # `set -o pipefail` (bash-only, por eso bash y no sh) propaga el exit del
+    # node por el pipe → `restart: always` dispara ante cualquier muerte del
+    # edge, no ante fallo aislado de `tee`. `$${SITE_ID}` escapa la
+    # interpolación de compose y deja que bash del container la resuelva
+    # desde el env_file (que ya lo tiene con valor CR00061).
+    command: >
+      bash -c "set -o pipefail;
+      node /home/edge/edge-engine/index.js 2>&1
+      | tee -a /home/edge/logs/edge-$${SITE_ID}.log"
+
