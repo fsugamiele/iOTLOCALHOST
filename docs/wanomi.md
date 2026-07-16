@@ -8708,6 +8708,90 @@ commit de cierre.
 apertura de R23 (mini-forms C/S + checklist visual que cierra SF-7
 y A8).
 
+---
+
+## Sesión #46 — Área 2 · A8 · arranque autónomo del edge (DEC-REF-68) + adenda enum (DEC-REF-66-C)
+
+Registros nuevos en corpus (v0.45): **DEC-REF-66-C** (adenda punto
+(c) de DEC-REF-66 — "campo nuevo → schema primero" se generaliza a
+valores de enum; doc-only, código ya en origin `42255c1`) y
+**DEC-REF-68** (arranque autónomo del edge, crash-only
+containerizado, Opción A).
+
+**DEC-REF-68 — corrección de premisa por recon (DEC-PROC-2):** el
+carry-over atribuía la muerte a `ECONNREFUSED :1883` (EMQX); FALSO
+— 82 `ECONNREFUSED` históricos todos recuperados por `mqtt.js`. El
+asesino real era **Mongo al arranque** (`mongoose.connect` →
+`.catch` → `process.exit(1)` pelado) + ausencia de handlers
+globales (muerte muda). El borrador
+`req_arranque_autonomo_hub_s45r22.md` no existía; se hizo recon
+propio en su lugar. Dato de Franco que fijó la topología: el Hub
+de campo correrá Docker con Mongo local containerizado → **Opción
+A** (edge dentro del compose de PROD).
+
+**Implementación en 3 commits atómicos** (pusheados, origin
+`884eef7..5203e5a`):
+
+- `7528fce` **feat(edge)**: resiliencia mínima — handlers globales
+  `unhandledRejection`/`uncaughtException` (log + `exit(1)`) +
+  `serverSelectionTimeoutMS:5000` — DEC-REF-68 (c)
+- `dd9f5ab` **feat(edge)**: env fuente única en
+  `edge-engine/.env.edge` (dotenv path absoluto vía `__dirname`) +
+  template `.env.edge.example` + `.gitignore` `!.env.*.example` —
+  DEC-REF-68 (a)
+- `5203e5a` **feat(compose)**: servicio `wanomi-edge` en
+  `docker_compose_production.yml` (`restart:always`, `depends_on`
+  `service_healthy` `mongo`+`emqx`, bind-mount `app`+`edge-engine`+
+  `logs`, `NODE_PATH`, `pipefail`+`tee`) — DEC-REF-68 (b)
+
+(Docs previos ya en origin: `8716a32` DEC-REF-66-C + bump v0.45,
+`884eef7` DEC-REF-68.)
+
+**Validación E2E (producto, no demo):**
+
+- **Infra (STOP-gated):** kill seguro del edge host PID 7840
+  (captura de entorno previa a archivo 0600, regla
+  RISK-SEC-2-bis/3) → `compose up wanomi-edge` → arranque limpio
+  (`Mongo conectado @mongo:27017/iotix`, hostnames de red, cero
+  deriva localhost) → prueba del guardián: `kill -9` al node
+  PID 8 dentro del container → `pipefail` propagó →
+  `restart:always` revivió (RestartCount 0→1) + cadena de arranque
+  reaparecida (no zombi). Todos los gates aprobados por Franco.
+- **Funcional (canónico #45/R22 sobre edge containerizado):** pack
+  `_test-r22` recreado + hot-reload DEC-REF-61 verificado DENTRO
+  del container (`Reload OK · reglas nuevas: 1 · intactas: 5`) →
+  ciclo lost → INFO → escalada warning a 2m08s
+  (`escalateAfterMinutes:2`) → restore →
+  `resolve-by-setpoint-recovered`. Cadena de `notifications` en
+  Mongo calca #45 evento por evento. `restarts` NO subió (un fire
+  no reinicia). Cleanup: `DELETE _test-r22`, `cummins-pcc-v1` con
+  5 reglas intacto. Telegram + pin del browser CONFIRMADOS
+  visualmente por Franco en vivo (fire y resolve llegaron al bot;
+  pin coloreó y resolvió).
+
+**Cabo 2 del carry-over (DEC-REF-66-C) cerrado. DEC-REF-68 cerrado
+con sello completo.**
+
+**Higiene:** env capture `_env_capture_edge_host_s46.txt` borrado.
+Nota operativa: los smokes de restart count deben usar
+`docker inspect -f {{.RestartCount}}`, NO `docker ps --format` (no
+soporta el campo).
+
+**Estado del edge:** DE AHORA EN MÁS VIVE EN DOCKER (servicio
+`wanomi-edge`). El edge del host (`nohup`) quedó jubilado. El
+simulador es el único proceso que sigue en el host publicando por
+`localhost:1883` (vía port mapping) — candidato natural a
+containerizar en UI-1/UI-2.
+
+**Untracked observados post-push** (para `.gitignore` cuando toque
+OPS-2): `.claude/`, `~$*.docx` (lockfile Word),
+`docsRefactor/Hardware/conectividad_recomendada_hub.pdf`.
+
+**PENDIENTE PRINCIPAL para #47:** R23 — SF-7 parte 2 (mini-forms UI
+de reglas C y S en consola superadmin + checklist visual de
+Franco). Cierra SF-7 y con eso A8. Diseño congelado en
+DEC-REF-66.a/.b.
+
 
 
 
