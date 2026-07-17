@@ -1,0 +1,47 @@
+# Overlay de desarrollo R23+ — NUNCA usar en campo.
+# Prod = docker_compose_production.yml sin este archivo.
+#
+# Uso típico:
+#   docker compose -f docker_compose_production.yml up -d           # prod primero
+#   docker compose -f docker_compose_dev.yml up -d node_dev         # dev encima
+#
+# node_dev corre `npm run dev` (Nuxt sin build, con hot-reload de páginas/componentes)
+# sobre el mismo bind mount `./app/:/home/node/app` que el `node` de prod.
+# Se une a la red default del prod compose (`iotlocalhost_default`, verificada
+# con `docker network ls`) para resolver `mongo`, `emqx` y `node` por hostname
+# sin cambio de configuración de la app.
+#
+# Puertos host — mapeados para evitar colisión con el `node` de prod
+# (que ocupa 3000/3001/80):
+#   host 3010 → container 3000 (Nuxt dev server, hot-reload)
+#   host 3011 → container 3001 (Express API dev)
+# Sin puerto 80 en dev (no aplica SSL redirect en el ciclo de iteración).
+#
+# Franco (R23 · #47): usar SOLO durante iteración de UI; descartar el compose
+# al cierre de la ronda o cuando `nuxt build` esté listo para test final.
+
+version: "3.8"
+
+networks:
+  default:
+    name: iotlocalhost_default
+    external: true
+
+services:
+
+  node_dev:
+    container_name: node_dev
+    image: "node:14"
+    env_file:
+      - .env
+    working_dir: /home/node/app
+    volumes:
+      - ./app/:/home/node/app
+    ports:
+      - "3010:3000"
+      - "3011:3001"
+    environment:
+      # Nuxt bind en todas las interfaces del container para que el port
+      # mapping funcione (default es 127.0.0.1 en algunas versiones).
+      HOST: "0.0.0.0"
+    command: sh -c "npm run dev"
