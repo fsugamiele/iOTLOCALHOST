@@ -44,4 +44,8 @@ services:
       # Nuxt bind en todas las interfaces del container para que el port
       # mapping funcione (default es 127.0.0.1 en algunas versiones).
       HOST: "0.0.0.0"
-    command: sh -c "npm run dev"
+    # `npm run dev` del package.json usa `NODE_OPTIONS=--openssl-legacy-provider`
+    # (flag introducida en Node 17+; la imagen es node:14 y la rechaza con
+    # exit 9). Bypass: llamar el binario `nuxt` local directamente — Node 14
+    # tiene OpenSSL 1.x y no necesita la flag legacy. Sin tocar package.json.
+    command: sh -c "./node_modules/.bin/nuxt"
