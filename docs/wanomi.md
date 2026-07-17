@@ -8792,6 +8792,255 @@ de reglas C y S en consola superadmin + checklist visual de
 Franco). Cierra SF-7 y con eso A8. Diseño congelado en
 DEC-REF-66.a/.b.
 
+---
+
+## Sesión #47 — Área 2 · A8 · R23 (SF-7 parte 2: mini-forms C y S)
+
+**Apertura — corpus-first OK.** Auditoría al abrir: corpus en **v0.45
+· #46**, DEC-REF-66-C / 67 / 68 presentes, git sync
+(`ahead=0/behind=0`, HEAD origin `4475e83`). Sin desvíos.
+
+**Sub-equipo R23** (decisión de sala): *Lucía Bermúdez* (Frontend
+Vue lead, Nuxt 2 / componentización), *Andrés Ferreiro* (Backend
+Senior, custodio del contrato `validateC/S/D`), *Camila* (UX
+enterprise, nombrada por decisión de sala para tooltips/consistencia
+visual), *Franco* al cierre con checklist visual.
+
+### R23 · Recon (READ-ONLY)
+
+- **Contrato `warnings[]`** (Andrés): son **strings simples** con la
+  explicación embebida (`warnings.push('typeC: setpointSource ...')`)
+  agregados con prefijo `[ruleId]` en `validatePackRules`. El **PUT
+  SÍ devuelve `warnings[]` en el body 200** (`rulepacks.js:142-150`,
+  comentario del código: *"El frontend las muestra en amarillo sin
+  frenar el save"*). Cierra Q3 del lado backend: canal ya listo, UI
+  decide presentación.
+- **Stubs C/S en `_packId.vue`** (Lucía): mensaje literal *"edición
+  en roadmap futuro"* (líneas 105-118) + bloqueo `isRuleReady` para
+  crear nueva (línea 336). typeD y cross con edición completa.
+- **Schema `rule_definition.js`**: todos los paths de DEC-REF-66.a
+  (`setpointSource.variable`, `fallbackToD`, `on_missing_ref`,
+  `condition{op,value}`, `escalateAfterMinutes`) y 66.b
+  (`window.{durationSec, countThreshold, matchCondition{op,value}}`)
+  **existen y coinciden**. R23 NO agrega campos ni valores de enum
+  → DEC-REF-66-C no aplica como restricción; sí sigue como
+  disciplina para futuras rondas.
+- **Corrección de supuesto de la sala**: no existe compose de dev
+  con node — `docker-compose.yml` levanta solo mongo + emqx (100
+  líneas, coherente con `CLAUDE.md`). El único `node` está en el
+  compose de PROD con `sh -c "npm run start"` = `nuxt start`
+  (producción, sin hot-reload). Habilita la decisión Q5 abajo.
+
+### R23 · Decisiones (Q1-Q5)
+
+Franco delegó las Q a la sala; aprobó el diseño y confirmó Q1
+explícitamente.
+
+- **Q1 — componentización: IN-PLACE** (bloques `v-if` dentro de
+  `_packId.vue`), NO componentes propios `<TypeCForm>/<TypeSForm>`.
+  La sala revirtió su recomendación inicial (que empujaba a componentes
+  propios espejando `<CrossExprNode>`) con evidencia: los campos de C
+  NO son un subárbol contiguo — se dispersan entre `setpointSource`,
+  flags top-level (`fallbackToD`, `on_missing_ref`, `escalateAfterMinutes`)
+  y `condition`. El precedente CrossExprNode no transfiere.
+- **Q2 — layout**: `v-if="ruleDraft.type === 'X'"` por tipo, mismo
+  patrón que el existente. Nuevo método `ensureShapeForType(type)`
+  con `this.$set` (obligatorio en Vue 2 — sub-objetos agregados
+  post-`data()` no son reactivos sin él). Llamado desde
+  `openEditRule` y desde el watcher de `ruleDraft.type` (no `@change`
+  del select — Vue 2 con `v-model` usa watcher). Sin poda de sub-objetos
+  ajenos (diferida salvo ruido en el smoke).
+- **Q3 — banner ámbar persistente in-page**. Inicial: banner
+  in-form dentro del modal. **Bug detectado por Franco en checklist
+  visual**: el modal se cierra al `save success` y mata el banner
+  antes de que el operador lo lea. **Corrección**: reubicado a nivel
+  de página (arriba de la tabla de reglas), refleja el estado del
+  pack — el `savePack` re-asigna `saveWarnings = res.data.warnings
+  || []` en cada PUT (limpio → banner vacío; con avisos → actualiza).
+  Ganancia semántica: el banner ya no describe la acción recién
+  hecha sino el **estado del pack completo**, coherente con que
+  `validateC` re-valida el pack entero. Ciclo de vida: `savePack`
+  lo re-asigna, la × lo limpia manual, y **NO se toca en
+  `openNewRule/openEditRule/closeRuleModal`** (el banner ya no
+  pertenece al modal). Título: "Advertencias de configuración del
+  pack:".
+- **Q4 — tooltip `escalateAfterMinutes` con semántica exacta**
+  (Camila): *"Minutos consecutivos sin setpoint antes de escalar
+  el aviso de configuración de INFO a ATENCIÓN. Escala la
+  notificación de 'falta referencia', no la alarma operativa del
+  equipo. Vacío = escalada desactivada."*. Coherente con DEC-REF-26
+  (INFO de configuración, no alarma operativa) + DEC-REF-66-A
+  (promesa de tooltip). Ícono `tim-icons icon-alert-circle-exc`
+  para respetar convención dominante.
+- **Q5 — overlay `docker_compose_dev.yml`** (nuevo, sin tocar prod).
+  Servicio `node_dev` con `sh -c "./node_modules/.bin/nuxt"`
+  (bypass del script `dev` del package.json — ver hallazgo
+  colateral). Puertos host: **3010:3000** (Nuxt dev) y **3011:3001**
+  (API), evitan colisión con prod (3000/3001/80). Red externa
+  `iotlocalhost_default` (nombre real verificado con `docker
+  network ls`) → `node_dev` ve `mongo`/`emqx` por hostname sin
+  cambio de config. `HOST=0.0.0.0` en env para que Nuxt escuche en
+  todas las interfaces del container. Overlay se levanta con
+  `-f docker_compose_dev.yml` sin afectar prod.
+
+### R23 · Hallazgo colateral — deuda `node:14`
+
+`npm run dev` del `package.json` usa
+`cross-env NODE_OPTIONS=--openssl-legacy-provider nuxt` (flag Node
+17+; `node:14` la rechaza con `exit 9`). Bypass en el overlay:
+`command: sh -c "./node_modules/.bin/nuxt"` — Node 14 tiene
+OpenSSL 1.x y no necesita la flag legacy. Sin tocar `package.json`
+(que otros dev con Node 17+ pueden querer usar tal cual). Síntoma
+adicional de la deuda `node:14` EOL ya registrada dentro de
+DEC-REF-68 ("imagen de campo Orange Pi Zero 3 acoplada al despliegue,
+deuda transversal `node:14` EOL").
+
+### R23 · Smokes (evidencia)
+
+**Smokes API — 4/4 VERDE** (via API dev :3011):
+
+- **S1 typeC completo** (`_test-r23c`): 200, Mongo persistió exacto
+  → `setpointSource.variable=coolant_temp_setpoint`, `fallbackToD=true`,
+  `on_missing_ref=ignore`, `escalateAfterMinutes=2`,
+  `condition={op:"gt", value:90}`. **Smoke DEC-REF-66-C cumplido**
+  (campo llega a Mongo con el path exacto).
+- **S2 typeS completo** (`_test-r23s`): 200, Mongo →
+  `window={durationSec:120, countThreshold:3, matchCondition:{op:"gte",
+  value:1}}`.
+- **S3 camino warning** (`_test-r23warn` con
+  `setpointSource.variable:""`): **200 con `warnings:["[_r23warn1]
+  typeC: setpointSource.variable vacío — la regla nunca correrá en
+  modo 'calibrated' (siempre fallback/no-ref)"]`** ← contrato
+  `validateC` funcionando.
+- **Regresión** `cummins-pcc-v1`: 5 reglas intactas antes del smoke
+  visual manual (que rompió después, ver INCIDENTE abajo).
+
+**Smoke visual (checklist Franco) — 4/4 VERDE tras fix del banner**:
+
+- (a) C con setpointSource vacío → modal cierra Y **banner
+  persistente en la página** con `[ruleId]` adelante ✓
+- (b) Corregir esa regla → banner **desaparece solo** en el
+  siguiente save ✓
+- (c) Save de D sana → sin banner ✓
+- (d) Regresión: editar D y cross existentes → comportamiento
+  idéntico al previo ✓ (a excepción del INCIDENTE, ver abajo)
+
+### R23 · INCIDENTE (registrado sin suavizar)
+
+Durante el smoke visual, Franco creó una regla `TESTC` en el pack
+productivo `cummins-pcc-v1` (typo `variable:OIL_PRESURE`) y editó
+accidentalmente la regla `cummins-C1-mains-loss-gen-no-start`:
+
+- **Perdió la 2ª hoja `gen_status neq RUNNING`** de `crossExpr.children`
+  → cascada M1→C1 rota (queda ≈ M1 duplicada, sin la condición "gen
+  no responde").
+- **`severity: critical → warning`** — degradación operativa: la
+  cascada debe salir critical.
+- **`graceSec: 90 → 100`** — edición redonda accidental.
+
+**Detección**: regresión del smoke posterior mostró
+`rules_n=6` cuando se esperaba 5. Franco confirmó y pidió Fase 1
+read-only de restauración.
+
+**Fase 1 (READ-ONLY, con STOP y OK de Franco)**:
+- Localización de seed único: `seeds/cummins_pcc_v1.js` (fuente
+  autoritativa, 5 reglas canónicas).
+- Dump completo Mongo. Diff campo-por-campo `seed ↔ Mongo`,
+  clasificado por regla.
+- Tabla de deltas: A0/A1/G2/M1 **INTACTAS**; C1 con **3 deltas
+  clasificados (b) RESTAURAR** (hoja gen_status, severity,
+  graceSec). Defaults del schema (`setpointSource.scale:1`,
+  `window.matchCondition:null`, `escalateAfterMinutes:null`,
+  `fallbackToD:true`) preservados como los completa Mongoose al
+  insertar. Version del pack (31 → PUT bumpea a 32) NO se restaura
+  a la del seed (contador natural del editor).
+
+**Fase 2 (con OK)**:
+- PUT canónico con body construido desde el seed
+  (`vm.runInNewContext` sobre el object literal, para no duplicar
+  fuente). `version=32`.
+- Response: `{"status":"success","version":32,"rules":5,"warnings":[]}`.
+- Mongo verificado: 5 reglas, C1 con `severity=critical`, `graceSec=90`,
+  `children_n=2` (hoja `gen_status neq "RUNNING"` restaurada).
+- **Hot-reload edge SF-3 coincidió con la predicción de Fase 1**:
+  `editadas: 1 [cummins-C1-mains-loss-gen-no-start] · intactas: 5
+  · keys estado borradas: 0`. **0 alarmas post-reload**, **0
+  restarts** del container (RestartCount=1 estable — el mismo del
+  staging de #46). Sin tormenta.
+- Sin commit — el seed **no necesitó corrección**; era autoritativo.
+- Cleanup de packs de prueba (`tESTc`, `TESTC`, `PruebaReglaC` con
+  regla `ReglaC` — segunda basura detectada al leer el log del edge,
+  confirmada por Franco y borrada).
+
+**Lección**: primer daño accidental real desde la consola en el
+pack productivo. **Valida la fricción de borrado existente
+(DEC-REF-62-B)** — sin ella el daño hubiera sido peor. Si se repite,
+"historial/undo de packs" será candidato con nombre propio en el
+backlog. Sin registrarlo ahora (minimum backlog #46 vigente).
+
+**Nota positiva**: la exploración de Franco fue **stress-test
+involuntario del hot-reload SF-3** — el motor edge digirió múltiples
+reloads consecutivos (creación/edición/eliminación de reglas y
+packs), sin tormenta, sin restart, sin desviaciones. El log del edge
+muestra la secuencia limpia:
+```
+Reload OK — eliminadas: 1 [testC]
+Reload OK — packs: cummins-pcc-v1, tESTc
+Reload OK — reglas nuevas: 1 [TESTC]
+Reload OK — eliminadas: 1 [TESTC]
+Reload OK — packs: cummins-pcc-v1
+Reload OK — packs: cummins-pcc-v1, PruebaReglaC
+Reload OK — reglas nuevas: 1 [ReglaC]
+Reload OK — editadas: 1 [C1]                              ← PUT restauración
+Reload OK — eliminadas: 1 [ReglaC]                         ← cleanup final
+```
+
+### R23 · Registros
+
+- **BACKLOG-UI-8** (`docsRefactor/WanomiRefactor.md`): consistencia
+  visual consola de Reglas. **ID 8** porque UI-1/2/3 viven en
+  bitácora histórica (#25-#32); el corpus formaliza desde UI-4.
+  Voces: Camila + Lucía. Disparador: sesión visual dedicada que
+  abra Franco.
+
+### R23 · Commits pusheados a origin (5 en total, `9d89bc7→30bc694`)
+
+- `9d89bc7` docs: registra BACKLOG-UI-8 — consistencia visual
+  consola de Reglas
+- `1918a49` build: agrega overlay dev con hot-reload para iteración
+  de UI (R23)
+- `fdea14e` feat(rulepacks): mini-forms C y S en editor — cierra
+  SF-7 parte 2 (DEC-REF-66.a/.b)
+- `8b75524` build(dev): bypass NODE_OPTIONS incompatible con
+  node:14 en node_dev
+- `30bc694` fix(rulepacks): banner de warnings a nivel de página —
+  sobrevive al cierre del modal y refleja estado del pack
+
+### R23 · Estado de cierre — corrección explícita
+
+**SF-7**: UI completa y publicada; **E2E DEC-REF-66.d PENDIENTE**
+(sim publicando `setpoint_*` + camino calibrated verificado sobre
+build de PROD, no sobre el bundle dev). **A8 NO se sella hasta ese
+E2E** — corrección al reporte del agente que lo había dado por
+cerrado.
+
+### Carry-over #48
+
+- **Abrir con E2E DEC-REF-66.d** — adaptar el sim para que publique
+  `setpoint_*` de manera coherente con el mini-form C (el sim es
+  producto, DEC-REF-63). Requiere `docker compose -f
+  docker_nuxt_build.yml up` para regenerar el bundle de prod +
+  `docker restart node` **con confirmación de Franco** (acción
+  irreversible sobre proceso vivo).
+- Cosmética botones duplicados del modal (detectado por Franco en
+  checklist visual, sin bloquear R23) → absorber en **BACKLOG-UI-8**.
+- Prioridades siguientes según Franco: UI-3/reports (seeds
+  estáticos) o OPS-2 (auditoría `.env` ↔ CLAUDE.md + `.gitignore`
+  de `~$*.docx` / `.claude` / PDFs hardware).
+
+**Sesión #47 CERRADA. Push del cierre (bitácora + bump corpus a
+v0.46) con orden explícita.**
+
 
 
 
