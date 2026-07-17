@@ -102,20 +102,9 @@
       :close-on-click-modal="false"
     >
       <template v-if="ruleDraft">
-        <!-- Type C y S: edición NO implementada en Capa 3 (schema
-             requiere setpointSource / window respectivamente, con
-             mini-forms propios). Se muestra read-only con nota. -->
-        <div
-          v-if="!isEditableType(ruleDraft.type)"
-          class="alert alert-info"
-        >
-          <strong>{{ ruleDraft.type }}</strong> · edición en roadmap
-          futuro. Requiere config específica del schema
-          ({{ ruleDraft.type === 'C' ? 'setpointSource + flags EDGE-2' : 'window (durationSec, countThreshold, matchCondition)' }}).
-          Podés visualizarla read-only o cambiar el tipo a D/cross para
-          editar.
-        </div>
-
+        <!-- SF-7 parte 2 · DEC-REF-66.a/.b — mini-forms C y S incorporados
+             (R23). El stub anterior "edición en roadmap futuro" queda
+             obsoleto: ahora los 4 types se editan con paridad. -->
         <div class="row">
           <div class="col-md-4">
             <label>ruleId <span class="text-danger">*</span></label>
@@ -221,6 +210,143 @@
             @input="ruleDraft.crossExpr = $event"
           />
         </div>
+
+        <!-- typeC → setpointSource + flags EDGE-2 + condition (DEC-REF-66.a) -->
+        <div v-else-if="ruleDraft.type === 'C' && ruleDraft.setpointSource && ruleDraft.condition" class="mt-3">
+          <h5>Autocalibrado (typeC)</h5>
+          <div class="row">
+            <div class="col-md-6">
+              <label>setpointSource.variable <span class="text-danger">*</span></label>
+              <base-input
+                v-model="ruleDraft.setpointSource.variable"
+                placeholder="key de siteState, ej: setpoint_oil_pressure"
+              />
+            </div>
+            <div class="col-md-3">
+              <label>fallbackToD</label>
+              <div>
+                <base-checkbox v-model="ruleDraft.fallbackToD">
+                  Fallback a umbral fijo si falta setpoint
+                </base-checkbox>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label>on_missing_ref</label>
+              <select v-model="ruleDraft.on_missing_ref" class="form-control">
+                <option value="ignore">ignore</option>
+                <option value="alarm">alarm</option>
+              </select>
+            </div>
+          </div>
+
+          <p class="text-muted small mt-3 mb-2">
+            Umbral de respaldo — lo exige el backend si Fallback está activo o al faltar referencia se alarma.
+          </p>
+          <div class="row">
+            <div class="col-md-4">
+              <label>condition.op</label>
+              <select
+                class="form-control"
+                :value="(ruleDraft.condition || {}).op || 'gt'"
+                @change="setConditionField('op', $event.target.value)"
+              >
+                <option value="lt">lt</option>
+                <option value="lte">lte</option>
+                <option value="gt">gt</option>
+                <option value="gte">gte</option>
+                <option value="eq">eq</option>
+                <option value="neq">neq</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label>condition.value</label>
+              <base-input
+                type="number"
+                :value="(ruleDraft.condition || {}).value !== undefined ? ruleDraft.condition.value : ''"
+                @input="setConditionField('value', numericOrRaw($event))"
+              />
+            </div>
+            <div class="col-md-4">
+              <label
+                title="Minutos consecutivos sin setpoint antes de escalar el aviso de configuración de INFO a ATENCIÓN. Escala la notificación de 'falta referencia', no la alarma operativa del equipo. Vacío = escalada desactivada."
+              >
+                escalateAfterMinutes
+                <i class="tim-icons icon-alert-circle-exc"></i>
+              </label>
+              <base-input
+                type="number"
+                placeholder="vacío = desactivado"
+                :value="ruleDraft.escalateAfterMinutes !== null && ruleDraft.escalateAfterMinutes !== undefined ? ruleDraft.escalateAfterMinutes : ''"
+                @input="setEscalateAfterMinutes($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- typeS → window (durationSec, countThreshold, matchCondition) (DEC-REF-66.b) -->
+        <div v-else-if="ruleDraft.type === 'S' && ruleDraft.window" class="mt-3">
+          <h5>Ventana (typeS)</h5>
+          <div class="row">
+            <div class="col-md-4">
+              <label>window.durationSec <span class="text-danger">*</span></label>
+              <base-input
+                type="number"
+                v-model.number="ruleDraft.window.durationSec"
+              />
+            </div>
+            <div class="col-md-4">
+              <label>window.countThreshold <span class="text-danger">*</span></label>
+              <base-input
+                type="number"
+                v-model.number="ruleDraft.window.countThreshold"
+              />
+            </div>
+          </div>
+
+          <h6 class="mt-3">matchCondition</h6>
+          <div class="row">
+            <div class="col-md-4">
+              <label>op</label>
+              <select
+                class="form-control"
+                :value="((ruleDraft.window || {}).matchCondition || {}).op || 'gt'"
+                @change="setWindowConditionField('op', $event.target.value)"
+              >
+                <option value="lt">lt</option>
+                <option value="lte">lte</option>
+                <option value="gt">gt</option>
+                <option value="gte">gte</option>
+                <option value="eq">eq</option>
+                <option value="neq">neq</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label>value</label>
+              <base-input
+                type="number"
+                :value="(((ruleDraft.window || {}).matchCondition || {}).value !== undefined ? ruleDraft.window.matchCondition.value : '')"
+                @input="setWindowConditionField('value', numericOrRaw($event))"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- SF-7 parte 2 · DEC-REF-66 — banner ámbar in-form persistente
+             con las warnings devueltas por el 200 del PUT (config
+             semánticamente muerta detectada por validateC). No frena el
+             save. Se limpia al cerrar el modal, al reabrir o al re-guardar. -->
+        <div v-if="saveWarnings.length" class="alert alert-warning mt-3">
+          <button
+            type="button"
+            class="close"
+            @click="saveWarnings = []"
+            aria-label="Close"
+          >×</button>
+          <strong>Guardado OK — advertencias de configuración:</strong>
+          <ul class="mb-0 mt-2">
+            <li v-for="(w, i) in saveWarnings" :key="i">{{ w }}</li>
+          </ul>
+        </div>
       </template>
 
       <div slot="footer">
@@ -299,7 +425,12 @@ export default {
       saving: false,
       // Delete rule modal
       deleteRuleModal: false,
-      deleteRuleTargetIndex: null
+      deleteRuleTargetIndex: null,
+      // SF-7 parte 2 · DEC-REF-66 — warnings no bloqueantes que el
+      // backend devuelve en el 200 del PUT (validateC ADVERTENCIAS de
+      // config semánticamente muerta). Se muestran como banner ámbar
+      // in-form; no bloquean el save.
+      saveWarnings: []
     };
   },
   computed: {
@@ -331,9 +462,21 @@ export default {
       if (r.type === 'cross') {
         if (!r.crossExpr) return false;
       }
-      // typeC/S: no editables desde acá — no bloquear si la regla
-      // existía (permitir bump de campos comunes) pero no crear nueva.
-      if ((r.type === 'C' || r.type === 'S') && this.editingIndex === null) return false;
+      // SF-7 parte 2 · DEC-REF-66.a — typeC: mínimos no-vacíos (setpointSource
+      // existe + condition.op presente). La validación real la hace validateC
+      // en el backend con warnings (DEC-REF-66-C: no clonar el contrato).
+      if (r.type === 'C') {
+        if (!r.setpointSource) return false;
+        if (!r.condition || !r.condition.op) return false;
+      }
+      // SF-7 parte 2 · DEC-REF-66.b — typeS: window.durationSec > 0,
+      // countThreshold >= 1, matchCondition.op presente.
+      if (r.type === 'S') {
+        if (!r.window) return false;
+        if (!(r.window.durationSec > 0)) return false;
+        if (!(r.window.countThreshold >= 1)) return false;
+        if (!r.window.matchCondition || !r.window.matchCondition.op) return false;
+      }
       return true;
     }
   },
@@ -427,6 +570,7 @@ export default {
     openNewRule() {
       this.editingIndex = null;
       this.ruleDraft = this.emptyRule();
+      this.saveWarnings = [];
       this.ruleModal = true;
     },
     openEditRule(index) {
@@ -434,22 +578,72 @@ export default {
       // Copia profunda para no mutar la fuente hasta guardar.
       const original = this.pack.rules[index];
       const copy = JSON.parse(JSON.stringify(original));
-      // Asegurar shape para types editables.
-      if (copy.type === 'D' && !copy.condition) copy.condition = { op: 'gt', value: 0 };
-      if (copy.type === 'cross' && !copy.crossExpr) {
-        copy.crossExpr = { op: 'AND', children: [] };
-      }
       this.ruleDraft = copy;
+      // Asegurar shape para types editables (D/cross intactos + C/S nuevos).
+      // ensureShapeForType usa this.$set porque en Vue 2 los sub-objetos
+      // agregados post-data() no son reactivos sin él.
+      if (copy.type === 'D' && !copy.condition) {
+        this.$set(this.ruleDraft, 'condition', { op: 'gt', value: 0 });
+      }
+      if (copy.type === 'cross' && !copy.crossExpr) {
+        this.$set(this.ruleDraft, 'crossExpr', { op: 'AND', children: [] });
+      }
+      this.ensureShapeForType(copy.type);
+      this.saveWarnings = [];
       this.ruleModal = true;
     },
     closeRuleModal() {
       this.ruleModal = false;
       this.ruleDraft = null;
       this.editingIndex = null;
+      this.saveWarnings = [];
+    },
+    // SF-7 parte 2 · DEC-REF-66.a/.b — asegura los sub-objetos que los
+    // mini-forms C y S bindean. $set obligatorio en Vue 2 (los campos
+    // agregados post-creación no son reactivos sin él). No pisa valores
+    // existentes: solo inicializa si el sub-objeto/flag falta.
+    ensureShapeForType(type) {
+      const r = this.ruleDraft;
+      if (!r) return;
+      if (type === 'C') {
+        if (!r.setpointSource) this.$set(r, 'setpointSource', { variable: '' });
+        if (r.fallbackToD === undefined) this.$set(r, 'fallbackToD', true);
+        if (!r.on_missing_ref) this.$set(r, 'on_missing_ref', 'ignore');
+        if (r.escalateAfterMinutes === undefined) this.$set(r, 'escalateAfterMinutes', null);
+        if (!r.condition) this.$set(r, 'condition', { op: 'gt', value: 0 });
+      }
+      if (type === 'S') {
+        if (!r.window) {
+          this.$set(r, 'window', { durationSec: 60, countThreshold: 1, matchCondition: { op: 'gt', value: 0 } });
+        } else if (!r.window.matchCondition) {
+          this.$set(r.window, 'matchCondition', { op: 'gt', value: 0 });
+        }
+      }
     },
     setConditionField(field, value) {
       const cond = { ...(this.ruleDraft.condition || {}), [field]: value };
       this.$set(this.ruleDraft, 'condition', cond);
+    },
+    // SF-7 parte 2 · DEC-REF-66.b — espejo de setConditionField pero
+    // sobre el path window.matchCondition. $set garantiza reactividad si
+    // window o matchCondition faltaran (defensivo — normalmente
+    // ensureShapeForType('S') ya los inicializó).
+    setWindowConditionField(field, value) {
+      if (!this.ruleDraft.window) {
+        this.$set(this.ruleDraft, 'window', { durationSec: 0, countThreshold: 0, matchCondition: { op: 'gt', value: 0 } });
+      }
+      const mc = { ...(this.ruleDraft.window.matchCondition || {}), [field]: value };
+      this.$set(this.ruleDraft.window, 'matchCondition', mc);
+    },
+    // Helper para escalateAfterMinutes: '' o valor no numérico → null
+    // (schema default es null; opt-in EDGE-2 requiere número > 0).
+    setEscalateAfterMinutes(value) {
+      if (value === '' || value === null || value === undefined) {
+        this.$set(this.ruleDraft, 'escalateAfterMinutes', null);
+        return;
+      }
+      const n = Number(value);
+      this.$set(this.ruleDraft, 'escalateAfterMinutes', Number.isFinite(n) ? n : null);
     },
     // Cuando el usuario cambia type, ajustar shape.
     // Watchers Vue no juegan bien con select v-model (Vue actualiza
@@ -529,6 +723,10 @@ export default {
         { rulepack: packBody },
         { headers: { token: this.$store.state.auth.token } }
       );
+      // SF-7 parte 2 · DEC-REF-66 — warnings del validator viajan en el 200.
+      // Se pintan como banner ámbar in-form; no bloquean el save (el pack
+      // ya está guardado en Mongo y el edge recargó).
+      this.saveWarnings = (res.data && res.data.warnings) || [];
       const msgs = {
         add: 'Regla agregada',
         edit: 'Regla actualizada',
@@ -553,6 +751,12 @@ export default {
       }
       if (newType === 'cross' && !this.ruleDraft.crossExpr) {
         this.$set(this.ruleDraft, 'crossExpr', { op: 'AND', children: [] });
+      }
+      // SF-7 parte 2 · DEC-REF-66.a/.b — asegurar shape de C y S al
+      // cambiar de tipo (no pisa valores existentes; solo inicializa
+      // sub-objetos si faltan).
+      if (newType === 'C' || newType === 'S') {
+        this.ensureShapeForType(newType);
       }
     }
   }
