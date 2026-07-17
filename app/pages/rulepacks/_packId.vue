@@ -41,6 +41,26 @@
 
             <hr />
 
+            <!-- SF-7 parte 2 · DEC-REF-66 — banner ámbar a nivel de página
+                 con las warnings devueltas por el 200 del último PUT
+                 (config semánticamente muerta detectada por validateC).
+                 Sobrevive al cierre del modal y refleja el estado actual
+                 del pack: el save handler lo re-asigna en cada PUT
+                 (limpio → banner vacío; con avisos → banner actualizado).
+                 La × permite descartar manualmente. -->
+            <div v-if="saveWarnings.length" class="alert alert-warning">
+              <button
+                type="button"
+                class="close"
+                @click="saveWarnings = []"
+                aria-label="Close"
+              >×</button>
+              <strong>Advertencias de configuración del pack:</strong>
+              <ul class="mb-0 mt-2">
+                <li v-for="(w, i) in saveWarnings" :key="i">{{ w }}</li>
+              </ul>
+            </div>
+
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
               <base-button type="primary" size="sm" @click="openNewRule">
@@ -331,22 +351,6 @@
           </div>
         </div>
 
-        <!-- SF-7 parte 2 · DEC-REF-66 — banner ámbar in-form persistente
-             con las warnings devueltas por el 200 del PUT (config
-             semánticamente muerta detectada por validateC). No frena el
-             save. Se limpia al cerrar el modal, al reabrir o al re-guardar. -->
-        <div v-if="saveWarnings.length" class="alert alert-warning mt-3">
-          <button
-            type="button"
-            class="close"
-            @click="saveWarnings = []"
-            aria-label="Close"
-          >×</button>
-          <strong>Guardado OK — advertencias de configuración:</strong>
-          <ul class="mb-0 mt-2">
-            <li v-for="(w, i) in saveWarnings" :key="i">{{ w }}</li>
-          </ul>
-        </div>
       </template>
 
       <div slot="footer">
@@ -570,7 +574,6 @@ export default {
     openNewRule() {
       this.editingIndex = null;
       this.ruleDraft = this.emptyRule();
-      this.saveWarnings = [];
       this.ruleModal = true;
     },
     openEditRule(index) {
@@ -589,14 +592,12 @@ export default {
         this.$set(this.ruleDraft, 'crossExpr', { op: 'AND', children: [] });
       }
       this.ensureShapeForType(copy.type);
-      this.saveWarnings = [];
       this.ruleModal = true;
     },
     closeRuleModal() {
       this.ruleModal = false;
       this.ruleDraft = null;
       this.editingIndex = null;
-      this.saveWarnings = [];
     },
     // SF-7 parte 2 · DEC-REF-66.a/.b — asegura los sub-objetos que los
     // mini-forms C y S bindean. $set obligatorio en Vue 2 (los campos
