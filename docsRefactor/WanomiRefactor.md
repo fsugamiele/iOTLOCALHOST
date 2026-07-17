@@ -1,7 +1,7 @@
 # Wanomi 3.0 — Refactorización
 
 **Documento maestro del refactor.**
-Versión 0.45 · 2026-07-15 · Actualizado: sesión #46
+Versión 0.46 · 2026-07-17 · Actualizado: sesión #47
 
 ---
 
