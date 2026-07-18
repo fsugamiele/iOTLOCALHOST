@@ -9041,6 +9041,218 @@ cerrado.
 **Sesión #47 CERRADA. Push del cierre (bitácora + bump corpus a
 v0.46) con orden explícita.**
 
+---
+
+## Sesión #48 — 2026-07-17/18 · Área 2 · A8 · E2E DEC-REF-66.d, SF-7 cerrado, A8 sellada
+
+Sesión con **narrativa honesta**: tres diagnósticos consecutivos
+sobre la misma pregunta (¿por qué `db.data` no persiste?), doble
+error DEC-PROC-2 sin suavizar (sala + agente), fix DEC-REF-52-A
+finalmente aplicado con backup, E2E de cierre 4/4 verde. Sin
+epopeya.
+
+### Apertura y auditoría corpus-first
+
+Corpus en v0.46 · #47, DEC-REF-66-C / 67 / 68 presentes, git sync
+(HEAD `4475e83`). Sim publicando, edge containerizado `Up 41h ·
+restarts=1`. Trabajo declarado: E2E DEC-REF-66.d (camino calibrated
+completo) sobre bundle de PROD, para sellar SF-7 y con eso A8.
+
+### Recon inicial y hallazgo lateral
+
+Descubierto durante Paso 2 del recon: **`db.data` congelado desde
+2026-07-15T11:50Z** (~49h atrás, coincidente con el cold-start del
+host WSL2 al inicio de #45). El sim publicaba con `save:1` y el
+edge recibía MQTT, pero los datos no llegaban a Mongo. Cabo
+colateral que se convirtió en trabajo principal antes del E2E.
+
+### Los TRES diagnósticos consecutivos — doble DEC-PROC-2
+
+**Diagnóstico #48/R1 (sala) — INCORRECTO por analogía:** BACKLOG-OPS-1
+recurrencia 3, patrón DEC-REF-52-A. Emitido sin correr el recon del
+cuadro EMQX (management API v4 con `EMQX_DEFAULT_APPLICATION_SECRET`)
+antes de commitear. Commit `2399fc5` con adenda, bump v0.47.
+
+**Diagnóstico #48/R2 (agente) — INCORRECTO por canary bogus:** al
+correr el recon EMQX el cuadro salió sano (13 rules enabled + 3
+resources con URL correcta). Interpreté eso como refutación de OPS-1
+y construí sobre el 404 de `webhooks.js` la teoría del "bundle
+server ausente → serverMiddleware parcial". El 404 real era el
+handler `webhooks.js:82-85` respondiendo 404 explícito ante token
+no matcheado — mi canary llamaba con `token:x` bogus. Commit
+`f9fba50` con adenda, bump v0.48. **Franco autorizó el fix apply
+(`nuxt build` + `docker restart node`)**, que reveló que el
+diagnóstico era falso: 3 de 4 routes se recuperaron (los que
+realmente estaban afectados por otra causa menor no determinada,
+cabo 404→401), pero `webhooks.js` seguía respondiendo 404 al canary
+bogus.
+
+**Diagnóstico #48/R3 (agente con evidencia atómica) — CORRECTO:**
+recon dirigido post-restart con `docker logs emqx | grep
+resource_not_initialized` reveló la firma inconfundible: 10+ líneas
+críticas `Can not re-build rule <<"rule:X">>:
+{resource_not_initialized,<<"resource:9730c636">>}. The rule is
+disabled. Fix the issue and enable it manually.` con timestamp
+**2026-07-15T12:49:39Z** (1h después del cold-start #45). El
+diagnóstico OPS-1 recurrencia 3 restaurado con evidencia. Rules
+enabled en la API v4 pero con `matched:23865, failed:23865` porque
+el resource quedó `is_alive:false` post-cold-start. **Doble error
+DEC-PROC-2 registrado sin suavizar en la adenda `#48/R3`** de
+BACKLOG-OPS-1 (commit `76104c6`, bump v0.49) — parientes
+DEC-REF-66-A (sala #44/R20 con `grep` insuficiente) y DEC-REF-66-B
+(Franco #45/R21 primer daño accidental no detectado por
+diagnóstico automático). Familia: recon con inferencia por analogía
+o por canary superficial sin cruce con evidencia atómica. Lección
+de método incorporada al corpus: la verificación **primera y
+barata** para confirmar/descartar OPS-1 recurrencia es
+`docker logs emqx | grep resource_not_initialized`.
+
+### Fix DEC-REF-52-A aplicado con backup
+
+- **Backup pre-fix** `seeds/_dev/emqx_state_backup_s48r3.json`
+  (9286 bytes, `git-ignored` por `seeds/_dev/`): 3 resources + 13
+  rules con IDs y config completos.
+- **DELETE de 13 rules** una por una (HTTP 200 c/u).
+- **DELETE de 3 resources** (`{"code":0}` c/u).
+- **`docker restart node`** (irreversible, con "dale" explícito
+  de Franco) → `emqxapi.js` bootstrap recrea 3 resources con URL
+  `http://node:3001/api/...` + `token: EMQX_API_TOKEN` actual +
+  `is_alive:true` en `/resource_status/` + 13 rules enabled +
+  `db.saverrules` alineado con nuevos `emqxRuleId`.
+- **Persistencia reanudada**: db.data `1554525 → 1554971` (Δ+446
+  en ~4 min), distribución por dId coherente (SEC=57, CUMMINS=47,
+  GEN=39, ATS=29, ELTEKs=21 c/u).
+- **Bundle nuevo servido**: mini-forms C/S de R23 presentes en
+  `.nuxt/dist/client/` (verificado por `grep 'Autocalibrado' /
+  'setpointSource' / 'escalateAfterMinutes'`).
+- **`wanomi-edge` intacto** todo el fix: Up 41h · `restarts=1` sin
+  cambio.
+
+### E2E DEC-REF-66.d — 4/4 fases VERDE
+
+Con `db.data` reanudada, mini-forms de R23 visibles y contrato de
+persistencia sano, se ejecutó el E2E producto que sella SF-7.
+
+- **División de roles:** Franco creó la regla `_e2e66d_c1` desde
+  el browser en `:3000/rulepacks/cummins-pcc-v1` — **los mini-forms
+  de R23 validados con uso real, no solo por PUT**. Toast success,
+  banner ámbar vacío. Agente custodió hot-reload + digestión del
+  pack + Mongo.
+- **Parámetros**: `condition{lt,50}`,
+  `setpointSource.variable:'coolant_temp_setpoint'`,
+  `fallbackToD:true`, `on_missing_ref:'ignore'`,
+  `escalateAfterMinutes:2`, `cooldownSec:60`, `severity:warning`.
+- **Timeline con evidencia atómica** (todos los timestamps
+  observados en `db.notifications`):
+  - **CALIBRATED** 12:48:39.405Z · `fire mode:'calibrated'
+    thresholdUsed:94.5 reason:'threshold-calibrated'` (setpoint
+    real jitter 95±).
+  - **FALLBACK + INFO 2b** 12:54:07.613Z / 12:54:07.616Z · Δ
+    trigger→transición = 94s, `thresholdUsed:50`,
+    `reason:'threshold-fallback'` + INFO
+    `reason:'setpoint-unavailable'` (DEC-REF-24).
+  - **ESCALADA EDGE-2** 12:56:12.049Z · `Δ INFO 2b→escalada =
+    124.4s` (`escalateAfterMinutes:2 = 120s` + un tick del sim,
+    match exacto con DEC-REF-26).
+  - **RECOVERY** 12:58:38.766Z · `kind:'resolve'
+    mode:'resolve-by-setpoint-recovered' reason:'setpoint-recovered'
+    thresholdUsed:null` (Δ trigger→resolve = 93s). **Pin
+    `/sites/status: CR00061 ok` sin esperar la ventana de 15 min**
+    — cierre visible del fix DEC-REF-66-B Hallazgo 1 en producto
+    real. Recommendation custom aplicada: `'Resuelto: setpoint de
+    "coolant_temp" recuperado.'`.
+- **D3 de DEC-REF-64.a probado sobre episodio EDGE-2 real** —
+  cierra el círculo con DEC-REF-26: la escalada quedó registrada
+  como pin warning, el resolve por setpoint recuperado lo cerró
+  trazablemente, ningún fire quedó "muriendo en silencio".
+- **Checklist visual de Franco** (browser + Telegram + pin)
+  confirmó las 4 fases sin degradación.
+- **Cleanup por PUT canónico** desde el seed
+  `seeds/cummins_pcc_v1.js` (`version:34`); hot-reload SF-3
+  digirió el delete: `eliminadas: 1 [ _e2e66d_c1  ] · intactas: 5
+  · keys estado borradas: 1` — el motor limpió el episodio EDGE-2
+  completo del `cooldownState`.
+- **`wanomi-edge` intacto todo el E2E**: Up 41h · `restarts=1` sin
+  cambio, los fixes DEC-REF-66-B / -67 / -68 vigentes.
+
+**A8 SELLADA:** SF-1 · SF-3 · SF-4 · SF-5 · SF-6 · **SF-7** —
+alcance declarado en DEC-REF-57 cierra completo. Registrado en
+DEC-REF-66-D del corpus (bump v0.50, commit `f56ac8a`).
+
+### Hallazgos colaterales (no bloquean el sello)
+
+- (a) Los mini-forms de R23 no aplican `.trim()` al input de
+  `ruleId` (Franco pegó `" _e2e66d_c1  "` con espacios accidentales
+  de copy-paste; el motor evaluó bien pero el ruleId con espacios
+  se persistió literal). **Subitem de BACKLOG-UI-8**.
+- (b) El mini-form C no expone `variableLabel` / `unit` /
+  `recommendation` en la UI → los messages del edge muestran
+  `"coolant_temp"` raw en lugar de "Temp. refrigerante". **Subitem
+  de BACKLOG-UI-8**.
+- (c) El handler `POST /api/saver-webhook` responde HTTP 500 ante
+  payload `{}` sin `topic/payload` en lugar de validar → observación
+  menor, **candidato al bloque A9** (hardening de webhooks bajo
+  pull operacional).
+- (d) El flip 404→401 de `alarms/rules` post-rebuild que #48/R2
+  vio no volvió a manifestarse con el estado post-fix DEC-REF-52-A.
+  Sigue etiquetado como **"no resuelto, sin teoría"** hasta que
+  reaparezca.
+
+### Estado git al cierre
+
+Commits de la sesión #48 (ahead de `origin/feature/telco-support`):
+
+- `2399fc5` docs(refactor): BACKLOG-OPS-1 adenda #48/R1 — bump
+  v0.47 (diagnóstico OPS-1 por analogía, INCORRECTO)
+- `f9fba50` docs(refactor): BACKLOG-OPS-1 adenda #48/R2 — bump
+  v0.48 (corrección DEC-PROC-2 R1, INCORRECTA)
+- `76104c6` docs(refactor): BACKLOG-OPS-1 adenda #48/R3 — bump
+  v0.49 (doble DEC-PROC-2 R1/R2, OPS-1 restaurado con evidencia)
+- `f56ac8a` docs(refactor): DEC-REF-66-D — SF-7 cerrado + A8
+  sellada + bump v0.50
+- `[este commit]` docs(bitacora): cierre sesión #48
+
+Rama `feature/telco-support`, ahead=**5** de origin al momento del
+commit de cierre, sin push hasta orden explícita de Franco.
+
+### RISK-SEC de la sesión — consolidados al checklist de rotación
+
+- **`EMQX_DEFAULT_APPLICATION_SECRET`** (secret de la app management
+  de EMQX v4): expuesto en el output del terminal durante `emqx_ctl
+  mgmt list` del recon Paso 3 de #48/R1 (dev local, sin push del
+  transcript).
+- **`EMQX_API_TOKEN`** (`app/.env`): cross-check contra el header
+  del resource EMQX durante #48/R3.
+
+Ambos van al checklist de rotación de RISK-SEC-1 junto a
+`TELEGRAM_BOT_TOKEN`, MongoDB, MQTT y `FORENSIC_HMAC_SECRET`. No
+urgente hoy; obligatorio antes de deployment productivo o antes de
+compartir el repo.
+
+### Estado del entorno al cierre
+
+- Rama `feature/telco-support`, HEAD local `[este commit]`, ahead=5
+  de origin.
+- Corpus v0.50 · sesión #48 (DEC-REF-66-D registrado, BACKLOG-OPS-1
+  con adendas #48/R1-R2-R3).
+- Prod: `mongo` (2d healthy) · `emqx` (2d healthy) · `node` (Up
+  post-restart, todos los routes de webhooks cargados) ·
+  `wanomi-edge` (Up 41h · restarts=1 sin cambio).
+- Persistencia sana (`db.data` crece con distribución por dId
+  coherente).
+- Cuadro EMQX limpio (3 resources `is_alive:true` + 13 rules
+  enabled + `db.saverrules` alineado).
+- `cummins-pcc-v1` canónico (5 reglas del seed, v34).
+
+### Siguiente tramo (declarado, NO arrancado)
+
+**A8 sellada habilita el siguiente tramo del plan de #32:
+UI-3/reports con seeds estáticos.** Franco decide cuándo y con qué
+sub-equipo abrir. No arranca en #48.
+
+**Sesión #48 CERRADA.** Push del cierre (bitácora + los 4 commits
+de corpus) con orden explícita de Franco.
+
 
 
 
