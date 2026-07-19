@@ -54,13 +54,8 @@
 <script>
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-
-// Colores de estado (DEC-REF-27)
-const STATUS_COLOR = {
-  critical: '#E24B4A',
-  warning: '#EF9F27',
-  ok: '#639922',
-};
+// DEC-REF-27 · fuente única del pin — extraído en R3 de #49 (ajuste 3'/2').
+import { iconForStatus } from '@/components/Noc/leafletPin.js';
 
 export default {
   name: 'SitesMap',
@@ -163,7 +158,7 @@ export default {
     },
 
     addPin(site) {
-      const marker = L.marker([site.lat, site.lng], { icon: this.iconForStatus(site.status) })
+      const marker = L.marker([site.lat, site.lng], { icon: iconForStatus(site.status) })
         .addTo(this.map)
         .bindTooltip(`${site.nombre || site.siteCode} (${site.siteCode})`);
 
@@ -176,17 +171,6 @@ export default {
       marker._siteCode = site.siteCode;
 
       this.markers.push(marker);
-    },
-
-    iconForStatus(status) {
-      const color = STATUS_COLOR[status] || STATUS_COLOR.ok;
-      // divIcon: pin de CSS puro, sin imagen → esquiva el bug de iconos en Webpack 4
-      return L.divIcon({
-        className: 'site-pin-wrapper',
-        html: `<span class="site-pin" style="background:${color}"></span>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-      });
     },
 
     // R13 — refresco silencioso. No prende `loading` (no aparece el
@@ -216,7 +200,7 @@ export default {
         if (!next) return;  // sitio removido, se maneja en (3)
         const prev = prevBySite.get(marker._siteCode);
         if (!prev || prev.status !== next.status) {
-          marker.setIcon(this.iconForStatus(next.status));
+          marker.setIcon(iconForStatus(next.status));
         }
       });
 

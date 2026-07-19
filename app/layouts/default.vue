@@ -64,6 +64,21 @@
           }"
         >
         </sidebar-item>
+
+        <!-- DEC-REF-69 · R3 #49 · ajuste 1' — link a la consola de
+             configuración/debugging interno (DEC-DASH-1b), solo-superadmin.
+             String plano en español porque no existe sistema i18n en el
+             proyecto (BACKLOG-UI-nn: si algún día se internacionaliza, esta
+             key entra ahí). -->
+        <sidebar-item
+          v-if="isSuperadmin"
+          :link="{
+            name: 'Dashboard admin',
+            icon: 'tim-icons icon-settings',
+            path: '/dashboard-admin'
+          }"
+        >
+        </sidebar-item>
       </template>
     </side-bar>
 
