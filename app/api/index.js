@@ -37,6 +37,7 @@ app.use("/api", require("./routes/alarms.js"));
 app.use("/api", require("./routes/rules.js"));
 app.use("/api", require("./routes/rulepacks.js"));
 app.use("/api", require("./routes/dataprovider.js"));
+app.use("/api", require("./routes/dashboard_noc.js"));
  
 module.exports = app;
 
