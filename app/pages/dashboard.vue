@@ -128,11 +128,17 @@ export default {
       // R7 · pedido Franco — refresh event-driven al recibir wanomi:notif.
       // Handler bindeado al bus $nuxt (mismo patrón que pages/sites/_siteCode.vue).
       _notifHandler: null,
-      // Debounce del refresh: cuando un episodio dispara N notifs seguidas
-      // (fire + escalada + resolve), no queremos correr /noc N veces. 1s
-      // absorbe la ráfaga; después de eso el próximo notif dispara otro
-      // refresh. TTL corto porque el operador quiere ver el cambio ya.
-      _notifDebounceTimer: null,
+      // R8 · fix Franco (resolve no actualiza) — race MQTT/Mongo:
+      // edge-engine/notificationRouter.js publica MQTT inmediatamente y
+      // guarda a Mongo async sin await. El browser recibe el notif antes
+      // que Mongo tenga el doc. Con un solo refresh a 1s, la agregación
+      // activeEpisodes puede leer un estado donde el resolve todavía no
+      // existe y devolver la regla como activa → status crítico "pegado".
+      //
+      // Doble refresh: 1s (rápido, cubre 90%) + 4s (cubre lag Mongo).
+      // Ambos con fresh=1. Cualquier notif nueva resetea ambos.
+      _notifFastTimer: null,
+      _notifSlowTimer: null,
     };
   },
   async mounted() {
@@ -152,20 +158,27 @@ export default {
     // notificación (DEC-REF-55). Refrescamos el Panel en fresco (bypass
     // cache) para que el cambio de estado sea visible en <2s. No filtramos
     // por siteId porque el Panel es multi-site del scope.
+    // R8 · fix Franco — doble refresh (ver comentario en data()).
     this._notifHandler = () => {
-      if (this._notifDebounceTimer) clearTimeout(this._notifDebounceTimer);
-      this._notifDebounceTimer = setTimeout(() => {
-        this._notifDebounceTimer = null;
+      if (this._notifFastTimer) clearTimeout(this._notifFastTimer);
+      if (this._notifSlowTimer) clearTimeout(this._notifSlowTimer);
+      this._notifFastTimer = setTimeout(() => {
+        this._notifFastTimer = null;
         this.loadNoc({ silent: true, fresh: true });
       }, 1000);
+      this._notifSlowTimer = setTimeout(() => {
+        this._notifSlowTimer = null;
+        this.loadNoc({ silent: true, fresh: true });
+      }, 4000);
     };
     this.$nuxt.$on('wanomi:notif', this._notifHandler);
   },
   beforeDestroy() {
-    if (this.pollTimer)          { clearInterval(this.pollTimer); this.pollTimer = null; }
-    if (this.themeObserver)      { this.themeObserver.disconnect(); this.themeObserver = null; }
-    if (this._notifDebounceTimer){ clearTimeout(this._notifDebounceTimer); this._notifDebounceTimer = null; }
-    if (this._notifHandler)      { this.$nuxt.$off('wanomi:notif', this._notifHandler); this._notifHandler = null; }
+    if (this.pollTimer)      { clearInterval(this.pollTimer); this.pollTimer = null; }
+    if (this.themeObserver)  { this.themeObserver.disconnect(); this.themeObserver = null; }
+    if (this._notifFastTimer){ clearTimeout(this._notifFastTimer); this._notifFastTimer = null; }
+    if (this._notifSlowTimer){ clearTimeout(this._notifSlowTimer); this._notifSlowTimer = null; }
+    if (this._notifHandler)  { this.$nuxt.$off('wanomi:notif', this._notifHandler); this._notifHandler = null; }
   },
   methods: {
     async loadNoc({ silent = false, fresh = false } = {}) {
