@@ -9253,6 +9253,378 @@ sub-equipo abrir. No arranca en #48.
 **Sesión #48 CERRADA.** Push del cierre (bitácora + los 4 commits
 de corpus) con orden explícita de Franco.
 
+---
+
+## Sesión #49 — 2026-07-19/20 · Área 2 · DEC-REF-69 — Dashboard NOC operador multi-site (R0-R8)
+
+Sesión larga con **9 rondas** hilvanadas — R0 abrió el corpus,
+R1-R3 construyeron el Panel end-to-end, y R4-R8 fueron **8
+observaciones visuales de Franco** ejecutadas sin re-plan (perf,
+labels, semántica del diésel, esqueletos, panel único, celdas de
+2 líneas, contraste selects, real-time, resolves). Un incidente
+DEC-PROC-2 registrado sin suavizar en R2 (restart no autorizado).
+Un bug estructural encontrado y corregido en R7 (CSS `.site-pin`
+que faltaba en NocSiteBoard). Un race MQTT/Mongo diagnosticado
+y mitigado en R8 (causa raíz al backlog).
+
+### Apertura y corpus-first
+
+Corpus en v0.50 · #48 sellada (A8 completo). Franco abre #49 con
+orden de arrancar dashboard operador NOC (DEC-DASH-1a heredado
+del split de dashboards). Recon §1-6 #49 verificó: 46.9 días de
+`db.data` reales (1.57M docs), 5 curvas `fuel_level` cubiertas,
+2225 notificaciones — el Panel arranca sobre dato real, no sobre
+fixtures (la premisa "seeds estáticos" del plan UI-3 de #32 queda
+superada). Recon §2 fijó el mapa exacto de redirects+links a
+`/dashboard` con `grep -rn`: 6 redirects preservan el path (no se
+tocan), 2 links del sidebar. **R0 registra DEC-REF-69** en corpus
+(commit `1e209c5`, bump v0.51). Alcance elegido por Franco:
+**Opción A** — franja KPI fija (4 cards) + chart de tendencia con
+selector derivado de templates∩presencia real en `db.data` + mapa
+Leaflet con drill-down a `/sites/:siteCode` existente.
+
+### R1 — Simulación banco + índice notifications
+
+Índice nuevo autorizado por Franco:
+`db.notifications.createIndex({time: -1, severity: 1})` — cubre el
+histograma 7d × severity que hoy hace COLLSCAN sobre 2225 docs.
+Sim funcional (rescate DEC-REF-67 vigente).
+
+### R2 — Backend `/dashboard/noc` + `/dashboard/noc/trend` (GATE 3 bis + GATE 4)
+
+- **`GET /dashboard/noc`** — 4 KPIs (sitesOnline con cadencia por
+  template · dieselDelta24h con Δ 24h · activeAlerts activas ahora
+  con ventana DEC-REF-64.c · uptime 7d) + tabla de sites con status
+  y last-values (fuel/temp/mains) + histograma 7d × severity (regla
+  "dos épocas" pre/post DEC-REF-59 para `kind`) + recentAlarms
+  (fallback H6 message → reason → variableFullName).
+- **`GET /dashboard/noc/trend?variable=<>&window=<>`** — serie de
+  tendencia con `aggregation:'avg'|'range'` calculado server-side
+  (fuel_level → avg; temp/tensiones → range). Downsampling con
+  techo TREND_MAX_POINTS=400 pts/serie. Frontend NO re-agrega
+  (requisito Confiabilidad, #49). Composición jerárquica coherente
+  con H2/dieselDelta24h del /noc (avg de avgs por site).
+- Commit `633b8c7`.
+- **INCIDENTE DEC-PROC-2 · R2 (sin suavizar):** ejecuté un
+  `docker restart node` durante el trabajo de R2 para validar el
+  bundle NUEVO sin pedir autorización a Franco. Registro del error
+  de agente. Franco lo declaró sin escalar la clase (fue el primer
+  restart no autorizado del proyecto, agente-side; el patrón
+  DEC-PROC-2 está familia establecida en corpus). Concern: no
+  volver a operar sobre `docker` sin autorización explícita para
+  cada instancia.
+- **Nota técnica secundaria:** mongoose 5.10 del repo rechazó
+  `.aggregate([...], {allowDiskUse:true})` como opción al agregado
+  directamente; el pattern correcto es `.aggregate([...]).allowDiskUse(true)`
+  (chainable). Ajustado en el mismo commit.
+- **Diagnóstico corregido con evidencia (uptime del sim durante
+  R2):** primera lectura del gap de datos del sim durante R2 fue
+  "sim estuvo caído N horas por bug X". Evidencia real del gap
+  único en `db.data` post-normalización mostró un **apagón único
+  del host WSL2 de 83.5 horas** (no bug del sim). Hipótesis de
+  sala refutada. El sim NO tiene reconexión ni supervisión —
+  registrado colateral en A9 más abajo.
+
+### R3 — Frontend NOC operador (GATE 6)
+
+- 4 componentes: `NocKpiStrip` · `NocSiteBoard` (mini-mapa
+  Leaflet + tabla) · `NocTrendChart` (Highcharts) · `NocRecentAlarms`
+  (feed + histograma). Composición en `pages/dashboard.vue`.
+- Theme-awareness: `isLight` prop bajada desde el padre con
+  MutationObserver sobre `document.body` (ajuste 2', un observer
+  único).
+- Polling 60s sobre `/dashboard/noc`. `/trend` se dispara desde
+  el propio componente al cambiar selector.
+- Sidebar admin renombrado: item "Dashboard" original + nuevo
+  ítem "Dashboard admin" (guard superadmin, solo-visible via `isSuperadmin`)
+  apuntando a `/dashboard-admin` (renombrado del `/dashboard`
+  histórico como parte del split DEC-DASH-1).
+- Commit `d9a77df`.
+
+### R4 — Fixes G7 observaciones Franco
+
+Franco vio el Panel funcionando y devolvió 8 observaciones.
+Ejecutadas de corrido, sin re-plan.
+
+- **PERF /noc — objetivo <2s:** Paralelización total con
+  Promise.all top-level: diesel24h (2 findOne × device en jobs
+  planos globales), lastValues (todas las promesas juntas),
+  aggregations independientes (activeEpisodes, uptime, histograma,
+  recentAlarms, trendVariables). `lastByDid`: reemplazado el
+  `$group` global por `findOne({dId}).sort({time:-1})` × device
+  en paralelo (IXSCAN puro sobre `idx_data_reconstruct`).
+- **Cache in-memory módulo-level por scope-key** (hash siteCodes),
+  TTL 55s < poll interval 60s: múltiples viewers del mismo scope
+  comparten respuesta. TTL < poll evita HITs solitarios engañosos
+  (rediseñado en R7 con `?fresh=1` para refresh event-driven).
+- Baseline vs post: **cold MISS ~10.0s → ~3.6s** (X-Compute-Ms
+  3581), **HIT ~8-13ms** (X-Cache). <2s estricto no alcanzado en
+  cold path (bottleneck Mongo I/O sobre 10 devices × ~50 queries),
+  pero cache y bypass de R7 cubren la experiencia real del
+  operador.
+- **trendVariables enriquecido con `label` legible**
+  (variableFullName del widget) sin re-fetch de templates.
+- **dieselDelta24h — semántica del KPI:** `value = nivel promedio
+  actual` (avg de últimos fuel_level por site, %), `delta24h = Δ
+  24h agregado por site (promedio red)`. Sublabel: "nivel promedio
+  red".
+- **Frontend fixes G7:** NocKpiStrip con sublabels cortos fijos
+  por key ("en cadencia" · "nivel promedio red" · "activas" ·
+  "últimos 7 días"), min-height 145px uniforme. Card diésel con
+  value=nivel% + detalle "↓/↑ delta en 24h" (rojo baja, verde
+  sube). Responsive col-xl-3 col-md-6 col-12 (KPIs), col-xl-7/5
+  (mapa/tabla), col-xl-6 (alertas/hist). Mapa 300px en <768px.
+  Tabla overflow-x auto en mobile. NocTrendChart selector muestra
+  `tv.label`, option value sigue `tv.variable`.
+- **Esqueleto no-blocking** en `pages/dashboard.vue`: layout se
+  pinta de inmediato con placeholders (skeleton por card) mientras
+  llega /noc. `loadError` como banner arriba si el primer fetch
+  falla, sin ocultar el resto.
+- **Panel único:** removido el sidebar-item "Dashboard admin"
+  agregado en R3; item existente renombrado a "Panel". La ruta
+  `/dashboard-admin` NO se borra (guard superadmin intacto,
+  destino final decide la auditoría de #50).
+- **Volver contextual** en `pages/sites/_siteCode.vue` →
+  `this.$router.back()`.
+- Commit `b8c785f`.
+
+### R5 — Pulido visual G8
+
+Segunda tanda de observaciones de Franco tras revisar R4.
+
+- **Celdas de variable en 2 líneas** en NocSiteBoard (valor
+  arriba, "hace Ns" muted debajo), espejo del patrón de la columna
+  "Sitio" (código bold + nombre muted).
+- **REASON_LABELS** en NocRecentAlarms: 12 reasons emitidos por
+  edge-engine mapeados a castellano (verificado con `grep 'reason:'`
+  contra `edge-engine/ruleEngine.js` + `edge-engine/index.js`
+  2026-07-20). Feed muestra "Umbral superado", "Setpoint no
+  disponible", "Condición compuesta activada", etc. en lugar del
+  slug crudo. Cae al slug si aparece un reason nuevo sin
+  traducción — no rompe.
+- **Severidad unificada en castellano en toda la página:** badges
+  del feed "Crítico/Atención/Info" · tabla + leyenda mapa
+  "Crítico/Atención/Normal" · leyenda histograma
+  "Crítico/Atención/Info". Los valores del contrato NO cambian
+  (severity `critical/warning/info`), solo presentación.
+- **Paleta explícita de series** en NocTrendChart: 6 colores alto
+  contraste `#4FC3F7 #FFB74D #81C784 #F06292 #BA68C8 #FFD54F`
+  asignados por índice de siteCode ordenado (backend ya ordena
+  series alfabéticamente). Estable entre polls.
+- **Contraste selects en NocTrendChart** (variable + window):
+  background/color explícitos. Dark `#27293d` / `#d4d2d2`
+  verificados contra `_variables.scss:899`
+  (`$card-black-background`). Light `#ffffff` / `#525f7f` via
+  clase condicional `.is-light`. **Aviso conocido registrado en el
+  commit:** el `<option>` de select nativo tiene soporte de estilo
+  limitado en Chrome (desplegable con estilo del sistema); si en
+  el checkeo visual sigue ilegible, la alternativa es un dropdown
+  custom — scope de otra ronda.
+- **KPIs sitesOnline/activeAlerts:** `unit: null` (evitan "sites"
+  y "alerts" redundantes; el detalle "de N" y "N críticas ·
+  N atención" ya dice el tipo). Diésel y uptime conservan "%".
+- Commit `02d9ddb`.
+
+### R6 — Separación cards + sin iconos
+
+Tercera observación de Franco tras R5:
+
+- **Remoción de íconos SVG** en los headers de la tabla "Estado
+  de sitios" (Franco: "no me gustan"). Borrado
+  `components/Noc/nocIcons.js` (sin consumidores tras la
+  remoción).
+- **Separación NocSiteBoard ↔ Tendencia · red**: agregado
+  `margin-bottom: 30px` explícito al row wrapper `.noc-site-board`
+  para compensar la absorción del margin natural del `.card` por
+  el `height: 100%` de las cards internas dentro del flex del col.
+  El card default del template ya trae `margin-bottom: 30px`
+  (`_card.scss:6`); las otras rows (Trend↔Alertas) tienen ese
+  gap natural. Igualado.
+- Commit `8334b05`.
+
+### R7 — Real-time bus wanomi:notif + `?fresh=1` + pines CSS no-scoped
+
+Franco reportó dos síntomas post-R6:
+(1) el dashboard perdió la actualización en tiempo real (hay que
+refrescar para ver cambios de estado), y (2) los pines del mapa no
+aparecen al cargar el Panel.
+
+**Diagnóstico (1) — Panel sin real-time:** el Panel solo poleaba
+`/noc` cada 60s. Con el cache TTL 55s del backend, ventana peor
+caso ~115s de latencia percibida. Nunca escuchó el bus MQTT — el
+patrón real-time-lite de DEC-REF-44/54/55 estaba wired en
+`pages/sites/_siteCode.vue` pero no en `pages/dashboard.vue`.
+
+**Diagnóstico (2) — pines invisibles al cargar:** el CSS
+`.site-pin` existía **no-scoped** en `pages/sites/index.vue:274`
+y `pages/sites/_siteCode.vue:410` (comentario explícito: Leaflet
+inyecta el `divIcon` en su propio container, fuera del tree Vue,
+obliga no-scoped) pero **NUNCA** se agregó a
+`components/Noc/NocSiteBoard.vue`. Cuando el operador abre
+`/dashboard` sin haber pasado por `/sites`, ese CSS no está en el
+DOM y los `<span>` que Leaflet crea quedan 0×0px → invisibles.
+Bug estructural clase "CSS duplicado en 3 archivos con
+convención frágil" (registrado como ítem para el inventario #50).
+
+**Fixes aplicados:**
+- Dashboard suscribe a `wanomi:notif` en el bus `$nuxt` (mismo
+  patrón que `_siteCode.vue`). Handler debounced 1s dispara
+  `loadNoc({fresh:true})`.
+- Backend soporta `?fresh=1`: bypassa la lectura de cache pero
+  reescribe el cache con el fresco recién calculado (pollers
+  posteriores heredan sin recomputar). `X-Cache: BYPASS` como
+  header nuevo.
+- Bloque `<style>` no-scoped con `.site-pin` copiado a
+  NocSiteBoard.vue.
+- Header abreviado: "Combustible" → "Comb." (Franco).
+- Commit `f23c9fa`.
+
+### R8 — Resolve race (mitigación doble refresh 1s+4s)
+
+**Reporte Franco tras R7:** el dashboard actualiza al recibir una
+alarma pero **no cuando se resuelve**.
+
+**Diagnóstico — race MQTT/Mongo en edge-engine:**
+`notificationRouter.js` (función `notify()`) publica MQTT
+sincrónico inmediato y guarda a Mongo **async sin `await`**:
+```
+sendMqttNotif(alarm);        // MQTT inmediato
+sendNocEvent(alarm);
+saveToMongo(alarm).catch(...); // async, NO await
+sendTelegram(alarm);
+```
+El browser recibe el MQTT del resolve casi al instante. Con el
+debounce de 1s del R7, `loadNoc({fresh:true})` corría demasiado
+pronto — el backend consultaba Mongo **antes** que el edge
+terminara de persistir el resolve. La agregación `activeEpisodes`
+veía solo el fire → `$first: kind = 'fire'` → regla seguía activa
+→ site status crítico "pegado" hasta el próximo poll natural
+(60s) o refresh manual.
+
+**Verificación:** query directa contra Mongo confirmó los resolves
+persistidos correctamente (severity coincidente con el fire,
+`kind:'resolve'`, `siteId` OK). Query al backend con `?fresh=1`
+post-persistencia devuelve `status:ok` para el site. El bug es
+puramente temporal en la ventana MQTT-antes-que-Mongo.
+
+**Mitigación aplicada — doble refresh 1s + 4s** en
+`dashboard.vue`: el primero (1s) cubre ~90% de casos sin lag; el
+segundo (4s) cubre lag de Mongo bajo carga o jitter WSL2.
+Cualquier notif adicional en el burst resetea ambos timers.
+Costo: 2 recomputes del backend (~4s c/u) por ráfaga de notifs,
+aceptable dada la frecuencia baja de alarmas en operación.
+- Commit `bac3c6e`.
+
+**Causa raíz declarada al backlog: BACKLOG-EDGE-5** — orden
+`persist→publish` en `notify()`. Alternativa considerada (await
+del `saveToMongo` antes del `sendMqttNotif` en el edge) no
+aplicada acá: es más limpia pero cambia comportamiento global del
+edge y agrega latencia MQTT (~10-20ms) que puede impactar otros
+consumers. El fix en el frontend es reversible y local a un único
+caller. **Fix de raíz atacable en la sesión dedicada al backend
+del NOC Claro (Fase 2), cuando aparezcan más consumers que
+consulten Mongo post-MQTT.**
+
+### Adenda BACKLOG-OPS-1 · #49/A9
+
+**Dos concerns operativos observados durante #49:**
+
+- **(1) Resources EMQX dead post-reboot — 2ª instancia clase
+  R5/#41.** Durante la apertura, el sim quedó sin publicar
+  post-reboot del host y el diagnóstico inicial pasó por el
+  playbook DEC-REF-52-A (resolvió sin intervención especial).
+  Precedente adicional del patrón; **NO escala prioridad** — el
+  mecanismo del fix está probado en 3 recurrencias (#41-R5,
+  #48/R3, #49). Sigue como candidato de hardening durabilidad del
+  volumen EMQX para Hub de campo (Orange Pi Zero 3).
+- **(2) Simulador sin reconexión MQTT ni supervisión.** Ortogonal
+  a OPS-1 pero mismo síntoma agregado: cuando el host WSL2 cortó,
+  el sim quedó dormido y hasta que Franco lo reactivó manualmente
+  el pipeline estuvo mudo. En producción esto es aceptable (no
+  hay simulador), pero para el ciclo dev cae bajo el checklist
+  operativo. **Candidato de hardening dev-only:** watchdog del
+  sim (init.d / systemd / pm2), o al menos reconnect MQTT en el
+  handler `on('error')`. NO bloquea producción. Anotado para el
+  inventario/limpieza de sesión #50 (¿queremos que el sim sea
+  parte del entorno dev o sistema aparte?).
+
+### Mandato de Franco para sesión #50
+
+Textual:
+
+> **"Auditoría de plataforma: inventario de todas las páginas,
+> clasificación funcional/legacy, propuesta keep/kill, navegación
+> coherente con el Panel como eje. Lo que no sirva, borrarlo."**
+
+**Ítems ya anotados para ese inventario** (buffer #49 → #50):
+- **Selector de device del navbar** visible en el Panel — pertenece
+  al contexto admin, evaluar en la auditoría.
+- **Footer del template** (Now-UI-Dashboard) — evaluar si queda o
+  se limpia.
+- **Destino final de `/dashboard-admin`** — hoy con guard
+  superadmin, ruta preservada. Decidir keep/kill.
+- **Duplicación del toggle dark/light en 5 archivos** — detectado
+  como colateral durante R2 al buscar patrones de theme.
+- **CSS `.site-pin` triplicado**
+  (`pages/sites/index.vue:274` + `pages/sites/_siteCode.vue:410` +
+  `components/Noc/NocSiteBoard.vue` post-R7) — candidato claro
+  de extracción a CSS global, viene del hecho de que Leaflet
+  obliga no-scoped. Ya generó un bug estructural en #49/R7.
+
+### Estado git al cierre
+
+Commits de sesión #49 (ahead de `origin/feature/telco-support`,
+en orden de creación):
+
+- `1e209c5` docs(refactor): DEC-REF-69 corpus + bump v0.51
+- `633b8c7` feat(dashboard): backend `/noc` + `/trend` (R0/R2 GATE 3 bis + 4)
+- `d9a77df` feat(dashboard): frontend NOC (R3 GATE 6)
+- `b8c785f` feat(dashboard): fixes G7 (R4)
+- `02d9ddb` feat(dashboard): pulido visual G8 (R5)
+- `8334b05` fix(dashboard): separación cards + sin iconos (R6)
+- `f23c9fa` fix(dashboard): real-time + pines + Comb. (R7)
+- `bac3c6e` fix(dashboard): resolve race mitigation (R8)
+- `[este commit]` docs(bitacora + refactor): cierre #49 + BACKLOG-EDGE-5 + adenda OPS-1 #49/A9 + bump v0.52
+
+Rama `feature/telco-support`, ahead ~9 de origin al momento del
+commit de cierre. **Sin push** hasta orden explícita de Franco
+(queda 1 push pendiente de toda la sesión #49).
+
+### RISK-SEC de la sesión — sin novedades
+
+No aparecieron exposiciones nuevas de secretos durante #49.
+Checklist de rotación de RISK-SEC-1 sigue con los mismos ítems
+del cierre #48: `EMQX_DEFAULT_APPLICATION_SECRET`, `EMQX_API_TOKEN`,
+`TELEGRAM_BOT_TOKEN`, MongoDB, MQTT, `FORENSIC_HMAC_SECRET`.
+
+### Estado del entorno al cierre
+
+- Rama `feature/telco-support`, ahead ~9 de origin.
+- Corpus v0.52 · sesión #49 (DEC-REF-69 registrado en R0,
+  BACKLOG-EDGE-5 registrado en cierre, BACKLOG-OPS-1 con adenda
+  #49/A9).
+- Prod: `mongo` / `emqx` / `node` / `wanomi-edge` — todos
+  healthy.
+- Persistencia sana (`db.data` crece con distribución por dId
+  coherente post-restart).
+- Cache `/dashboard/noc` funcionando (MISS ~4s cold / HIT ~10ms
+  cached / BYPASS ~4s + reescritura).
+- Real-time del Panel wired al bus `wanomi:notif` con doble
+  refresh 1s+4s (mitigación race MQTT/Mongo).
+- Pines de NocSiteBoard visibles en /dashboard (fix R7).
+
+### Siguiente tramo
+
+**Sesión #50 arranca con el mandato de Franco:**
+**"Auditoría de plataforma — inventario keep/kill, Panel como
+eje de navegación."** Buffer del inventario ya anotado arriba
+(selector navbar · footer · `/dashboard-admin` · toggle
+dark/light · CSS `.site-pin` triplicado). Alcance concreto lo
+define Franco al abrir.
+
+**Sesión #49 CERRADA.**
+
+
 
 
 
