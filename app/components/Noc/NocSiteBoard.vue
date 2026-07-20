@@ -21,12 +21,13 @@
         <div v-else class="table-responsive">
         <table class="table noc-sites-table">
           <thead>
+            <!-- R6 · pedido Franco — sin íconos en los headers, solo texto. -->
             <tr>
               <th>Sitio</th>
               <th>Estado</th>
-              <th><span v-html="icons.fuel"></span>Combustible</th>
-              <th><span v-html="icons.temp"></span>Temp</th>
-              <th><span v-html="icons.mains"></span>Red</th>
+              <th>Combustible</th>
+              <th>Temp</th>
+              <th>Red</th>
             </tr>
           </thead>
           <tbody>
@@ -80,7 +81,6 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { iconForStatus } from '@/components/Noc/leafletPin.js';
-import { fuelIcon, tempIcon, mainsIcon } from '@/components/Noc/nocIcons.js';
 
 export default {
   name: 'NocSiteBoard',
@@ -88,13 +88,7 @@ export default {
     sites:   { type: Array,   default: () => [] },
     isLight: { type: Boolean, default: false },
   },
-  data() {
-    return {
-      map: null, markers: [],
-      // R5 · G8 · 2 — precomputados: no dependen de props, no re-render por watch.
-      icons: { fuel: fuelIcon(), temp: tempIcon(), mains: mainsIcon() },
-    };
-  },
+  data() { return { map: null, markers: [] }; },
   mounted() {
     this.initMap();
     this.renderPins();
@@ -177,8 +171,15 @@ export default {
 .dot-ok         { background: #639922; }
 .noc-sites-table tr.clickable         { cursor: pointer; }
 .noc-sites-table tr.clickable:hover   { background: rgba(255, 255, 255, 0.04); }
-/* R5 · G8 · 2 — íconos en headers heredan color del <th>. */
-.noc-sites-table th svg               { opacity: 0.8; }
+
+/* R6 · pedido Franco — separación coherente entre esta card y la
+   Tendencia · red, matching la que existe entre Tendencia y las
+   Alertas recientes/7 días. El card interno tiene margin-bottom:30px
+   propio del template (assets/sass/dashboard/custom/_card.scss:6),
+   pero al forzar height:100% en las cards para igualar la altura, el
+   flex del col visualmente absorbe ese margen. Compensamos aplicando
+   el mismo 30px directo al row wrapper. */
+.noc-site-board                       { margin-bottom: 30px; }
 
 /* Fallback de badges scoped (ajuste 5') — no dependemos de que el template
    Bootstrap traiga .badge-*. Colores alineados con DEC-REF-27. */
