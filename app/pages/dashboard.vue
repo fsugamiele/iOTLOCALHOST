@@ -125,6 +125,14 @@ export default {
       pollTimer: null,
       isLight: false,
       themeObserver: null,
+      // R7 · pedido Franco — refresh event-driven al recibir wanomi:notif.
+      // Handler bindeado al bus $nuxt (mismo patrón que pages/sites/_siteCode.vue).
+      _notifHandler: null,
+      // Debounce del refresh: cuando un episodio dispara N notifs seguidas
+      // (fire + escalada + resolve), no queremos correr /noc N veces. 1s
+      // absorbe la ráfaga; después de eso el próximo notif dispara otro
+      // refresh. TTL corto porque el operador quiere ver el cambio ya.
+      _notifDebounceTimer: null,
     };
   },
   async mounted() {
@@ -139,16 +147,32 @@ export default {
     }
     await this.loadNoc();
     this.pollTimer = setInterval(() => this.loadNoc({ silent: true }), POLL_INTERVAL_MS);
+
+    // R7 · real-time-lite: bus MQTT del layout emite wanomi:notif con cada
+    // notificación (DEC-REF-55). Refrescamos el Panel en fresco (bypass
+    // cache) para que el cambio de estado sea visible en <2s. No filtramos
+    // por siteId porque el Panel es multi-site del scope.
+    this._notifHandler = () => {
+      if (this._notifDebounceTimer) clearTimeout(this._notifDebounceTimer);
+      this._notifDebounceTimer = setTimeout(() => {
+        this._notifDebounceTimer = null;
+        this.loadNoc({ silent: true, fresh: true });
+      }, 1000);
+    };
+    this.$nuxt.$on('wanomi:notif', this._notifHandler);
   },
   beforeDestroy() {
-    if (this.pollTimer)     { clearInterval(this.pollTimer); this.pollTimer = null; }
-    if (this.themeObserver) { this.themeObserver.disconnect(); this.themeObserver = null; }
+    if (this.pollTimer)          { clearInterval(this.pollTimer); this.pollTimer = null; }
+    if (this.themeObserver)      { this.themeObserver.disconnect(); this.themeObserver = null; }
+    if (this._notifDebounceTimer){ clearTimeout(this._notifDebounceTimer); this._notifDebounceTimer = null; }
+    if (this._notifHandler)      { this.$nuxt.$off('wanomi:notif', this._notifHandler); this._notifHandler = null; }
   },
   methods: {
-    async loadNoc({ silent = false } = {}) {
+    async loadNoc({ silent = false, fresh = false } = {}) {
       const headers = { headers: { token: this.$store.state.auth.token } };
+      const url = '/dashboard/noc' + (fresh ? '?fresh=1' : '');
       try {
-        const res = await this.$axios.get('/dashboard/noc', headers);
+        const res = await this.$axios.get(url, headers);
         if (res.data.status !== 'success') {
           throw new Error(res.data.error || 'Error al cargar el dashboard');
         }

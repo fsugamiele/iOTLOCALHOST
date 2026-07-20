@@ -21,11 +21,13 @@
         <div v-else class="table-responsive">
         <table class="table noc-sites-table">
           <thead>
-            <!-- R6 · pedido Franco — sin íconos en los headers, solo texto. -->
+            <!-- R6 · pedido Franco — sin íconos en los headers, solo texto.
+                 R7 · pedido Franco — "Combustible" abreviado a "Comb." para
+                 no romper el layout de la columna. -->
             <tr>
               <th>Sitio</th>
               <th>Estado</th>
-              <th>Combustible</th>
+              <th>Comb.</th>
               <th>Temp</th>
               <th>Red</th>
             </tr>
@@ -188,4 +190,23 @@ export default {
 .noc-badge-warning      { background: #EF9F27; color: #333; }
 .noc-badge-success      { background: #639922; }
 .noc-badge-info         { background: #3aa2ff; }
+</style>
+
+<style>
+/* R7 · pedido Franco — pines invisibles al cargar el Panel.
+   Diagnóstico: el mismo bloque de CSS ya existe (no-scoped) en
+   pages/sites/index.vue:274 y pages/sites/_siteCode.vue:410, pero NO estaba
+   incluido acá. Cuando el usuario abre /dashboard (sin haber visitado
+   /sites), el CSS de .site-pin no está en el DOM y los <span> que Leaflet
+   inyecta quedan sin tamaño → invisibles.
+   Leaflet crea el divIcon fuera del tree de Vue, así que el style DEBE ir
+   no-scoped (misma razón que en las otras dos páginas). */
+.site-pin {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
 </style>

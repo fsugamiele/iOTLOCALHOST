@@ -141,11 +141,19 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
 
     // Cache de servidor (R4 · G7 · 1c) — clave = hash(scope).
     // NO cachea el caso empty (return arriba); solo respuestas útiles.
+    //
+    // R7 · pedido Franco — soporte de `?fresh=1` para refresh event-driven
+    // (llamado por dashboard.vue al recibir un wanomi:notif MQTT). Bypassa
+    // la lectura de cache y recomputa; DE TODAS FORMAS reescribe el cache
+    // así los pollers regulares y otros viewers heredan el fresco.
+    const bypassCache = req.query.fresh === "1";
     const cacheKey = scopeKeyOf(siteCodes);
-    const cached = nocCache.get(cacheKey);
-    if (cached && (now - cached.at) < NOC_CACHE_TTL_MS) {
-      res.set("X-Cache", "HIT");
-      return res.json(cached.payload);
+    if (!bypassCache) {
+      const cached = nocCache.get(cacheKey);
+      if (cached && (now - cached.at) < NOC_CACHE_TTL_MS) {
+        res.set("X-Cache", "HIT");
+        return res.json(cached.payload);
+      }
     }
 
     // Devices + templates — necesarios para armar allowedDIds y templateById.
@@ -424,8 +432,10 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     };
 
     // Guarda en cache y devuelve.
+    // R7 — bypassCache (fresh=1) también reescribe: los pollers posteriores
+    // heredan el fresco calculado por este request event-driven.
     nocCache.set(cacheKey, { at: now, payload });
-    res.set("X-Cache", "MISS");
+    res.set("X-Cache", bypassCache ? "BYPASS" : "MISS");
     res.set("X-Compute-Ms", String(Date.now() - t0));
     return res.json(payload);
   } catch (error) {
