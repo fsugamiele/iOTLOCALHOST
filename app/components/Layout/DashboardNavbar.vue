@@ -20,26 +20,24 @@
     </div>
 
     <ul class="navbar-nav" :class="$rtl.isRTL ? 'mr-auto' : 'ml-auto'">
-      <!-- DEC-REF-70 (b/c) · #50 — el <el-select> de device del navbar
-           salió de acá (único cliente era /dashboard-admin; se mudó
-           adentro de esa página). -->
+      <!-- DEC-REF-70 (b/c) · #50 — el <el-select> de device salió
+           de acá (único cliente era /dashboard-admin; se mudó
+           adentro de esa página).
+           DEC-REF-70 (g) · #50 refinamiento — el toggle sol/luna que
+           había pasado al navbar se retira; el switch dark/light
+           vuelve al SidebarSharePlugin junto con el selector de
+           colores (un solo lugar de configuración de tema). -->
 
       <li class="nav-item d-flex align-items-center mr-2">
-        <el-tooltip :content="$store.state.mqttConnected ? 'MQTT Connected' : 'MQTT Disconnected'" placement="bottom">
-          <span class="mqtt-status-dot" :class="$store.state.mqttConnected ? 'mqtt-connected' : 'mqtt-disconnected'"></span>
-        </el-tooltip>
-      </li>
-
-      <!-- DEC-REF-70 (g) · #50 — toggle sol/luna migrado desde el
-           SidebarSharePlugin. Mismo mecanismo body.white-content →
-           el observer en pages/dashboard.vue lo detecta y baja
-           `isLight` como prop a los 4 componentes Noc*. -->
-      <li class="nav-item d-flex align-items-center mr-2">
-        <el-tooltip :content="isLight ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro'" placement="bottom">
-          <a href="#" class="nav-link theme-toggle" @click.prevent="toggleTheme">
-            <i :class="isLight ? 'tim-icons icon-moon-stars' : 'tim-icons icon-sun'"></i>
-          </a>
-        </el-tooltip>
+        <span class="mqtt-status-dot mr-2"
+              :class="$store.state.mqttConnected ? 'mqtt-connected' : 'mqtt-disconnected'"></span>
+        <!-- Pedido Franco #50 — leyenda al lado de la luz. Texto
+             corto ("MQTT Conectado/Desconectado") en tono muted
+             para no competir con el resto del navbar. -->
+        <span class="mqtt-status-label"
+              :class="$store.state.mqttConnected ? 'text-success' : 'text-danger'">
+          mqtt {{ $store.state.mqttConnected ? 'conectado' : 'desconectado' }}
+        </span>
       </li>
 
       <base-dropdown
@@ -118,13 +116,7 @@ export default {
       activeNotifications: false,
       showMenu: false,
       searchModalVisible: false,
-      searchQuery: "",
-      // DEC-REF-70 (g) · #50 — el navbar dueño del estado del toggle
-      // sol/luna. El observer en pages/dashboard.vue sigue detectando
-      // el cambio en body.white-content (no depende de saber que somos
-      // nosotros quienes toggleamos).
-      isLight: false,
-      _themeObserver: null,
+      searchQuery: ""
     };
   },
   computed: {
@@ -142,38 +134,8 @@ export default {
   },
   mounted() {
     this.$store.dispatch("getDevices");
-    // DEC-REF-70 (g) · #50 — sync inicial + observer para que el ícono
-    // (sol/luna) refleje el estado actual del body, aunque el toggle
-    // haya sido activado desde otro lado (compatibilidad con el
-    // SidebarSharePlugin durante la migración; futuro-a-prueba).
-    if (typeof document !== 'undefined') {
-      this.isLight = document.body.classList.contains('white-content');
-      this._themeObserver = new MutationObserver(() => {
-        this.isLight = document.body.classList.contains('white-content');
-      });
-      this._themeObserver.observe(document.body, {
-        attributes: true, attributeFilter: ['class'],
-      });
-    }
-  },
-  beforeDestroy() {
-    if (this._themeObserver) {
-      this._themeObserver.disconnect();
-      this._themeObserver = null;
-    }
   },
   methods: {
-    // DEC-REF-70 (g) · #50 — toggle sol/luna. Mismo mecanismo que el
-    // BaseSwitch del SidebarSharePlugin removido: body.white-content
-    // + observer en el Panel que baja isLight como prop.
-    toggleTheme() {
-      const docClasses = document.body.classList;
-      if (docClasses.contains('white-content')) {
-        docClasses.remove('white-content');
-      } else {
-        docClasses.add('white-content');
-      }
-    },
     notificationReaded(notifId) {
       const axiosHeaders = {
         headers: {
@@ -268,9 +230,10 @@ export default {
   background-color: #fd5d93;
   animation: blink 1.2s infinite;
 }
-.theme-toggle i {
-  font-size: 1.2rem;
-  vertical-align: middle;
+.mqtt-status-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 @keyframes blink {
   0%, 100% { opacity: 1; }
