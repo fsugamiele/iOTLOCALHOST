@@ -9624,6 +9624,312 @@ define Franco al abrir.
 
 **Sesión #49 CERRADA.**
 
+---
+
+## Sesión #50 — 2026-07-20 · Área 2 · Auditoría de plataforma (mandato Franco #49)
+
+Mandato textual de Franco al abrir: *"Auditoría de plataforma:
+inventario de todas las páginas, clasificación funcional/legacy,
+propuesta keep/kill, navegación coherente con el Panel como eje.
+Lo que no sirva, borrarlo."* Sesión ejecutada en **dos fases**
+estrictas: FASE 1 recon + STOP GATE 1 para decisiones de Franco;
+FASE 2 ejecución en 6 commits atómicos por concern. Un
+refinamiento visual post-Paso 7 corrigió el punto (g) de
+DEC-REF-70 en dos rondas — registrado sin suavizar como adenda
+DEC-REF-70-A.
+
+### FASE 0 — Corpus-first + typo verificado
+
+Corpus v0.52 al abrir, #49 cerrada. Últimos IDs por familia
+verificados con grep: DEC-REF-69 · BACKLOG-EDGE-5 · BACKLOG-OPS-1
+con adenda #49/A9 · BACKLOG-UI-8 con subitems.
+
+**Typo del cierre #49 verificado y corregido** (sin violar
+append-only — el cambio fue sobre un blockquote, no sobre fila
+DEC ni backlog). La nota introductoria de la sección 5h decía
+*"hot-reload = DEC-REF-58"* como referencia al tombstone de
+BACKLOG-EDGE-2. Cruzando con DEC-REF-66-A (que cita explícitamente
+*"El corpus advirtió esto en DEC-REF-57 ('BACKLOG-EDGE-2
+tombstoneado — hot-reload; la escalada del fallback de DEC-REF-26
+está implementada y cerrada')"*), quedó claro que el tombstone se
+firma en **DEC-REF-57** (nota terminológica: *"El doble uso queda
+tombstoneado aquí"*) y **DEC-REF-58** es el diseño alto-nivel del
+hot-reload. Nota reescrita: *"(tombstone del doble uso en
+DEC-REF-57 · hot-reload diseñado en DEC-REF-58 y refinado en
+DEC-REF-61 · escalada del fallback dentro de DEC-REF-26)"*.
+
+### FASE 1 — Recon de inventario (STOP GATE 1)
+
+Recon read-only sobre todo `app/`. Inventario en tabla
+Página/Layout/Componente · Propósito · Consumidores ·
+Clasificación · Recomendación · Riesgo del kill. Números:
+
+- **17 páginas** (10 con `middleware:'authenticated'`, 2 con
+  `notAuthenticated`, 2 con guard superadmin (`dashboard-admin`,
+  `rulepacks/*`), 1 sin middleware (`test.vue`), 2 con `layout:'auth'`).
+- **3 layouts** (`default`, `auth`, `starter` sin consumidores).
+- **49 componentes** — auditados por consumo (grep de `import`,
+  `require`, tags kebab-case y PascalCase, más
+  `plugins/globalComponents.js`). Buckets: **7 ORPHAN** puros
+  (CloseButton, Dashboard/TaskList, Dashboard/UserTable, Json,
+  Layout/LoadingMainPanel, UserProfile/EditProfileForm,
+  UserProfile/UserCard), **2 SOLO-STARTER** (Layout/starter/*),
+  **1 DEAD-LAYOUT** (Layout/DashboardLayout.vue con 25 items a
+  rutas inexistentes), **40 USADOS**.
+- **46 endpoints backend únicos** cruzados contra consumers
+  frontend. **Huérfanos legítimos** (consumidores externos):
+  `/saver-webhook`, `/alarm-webhook`, `/rule-webhook`
+  (EMQX Rules Engine), `/getdevicecredentials` (ESP8266 firmware
+  + sim). **Huérfanos frontend pero KEEP** (infraestructura
+  futura): `/zone`, `/forensic-events*`, `/me`,
+  `/simulator/{trigger,set}`. **Huérfano candidato revisión**:
+  `/get-last-data` (0 consumers, espejo de `/get-small-charts-data`).
+- **CSS `.site-pin` triplicado** confirmado no-scoped en 3
+  archivos: `pages/sites/index.vue:274` ·
+  `pages/sites/_siteCode.vue:410` ·
+  `components/Noc/NocSiteBoard.vue:204` (agregado en #49/R7 al
+  arreglar el bug de pines invisibles del Panel).
+
+**Tabla keep/kill entregada a Franco** con 3 buckets: **fáciles**
+(kill directo, cero riesgo — 5 páginas/layouts + 7 componentes),
+**decisiones de arquitectura** (necesitan palabra de Franco —
+9 ítems: dashboard-admin · selector device navbar · register ·
+alarms · rules · sites vs Panel · simulator visibility · footer ·
+SidebarSharePlugin), **refactor** (2 ítems: `.site-pin` global,
+endpoints huérfanos).
+
+### Decisiones de Franco sobre GATE 1
+
+Bloque por bloque, palabra explícita:
+
+- **KILLS directos aprobados:** todos los fáciles + `pages/rules.vue`
+  y `pages/alarms.vue` (con verificación pre-kill obligatoria).
+- **`/dashboard-admin` KEEP sin link.** Revisión final en la
+  sesión dedicada de DEC-DASH-2 (Hub display).
+- **Selector de device del navbar** → migrar dentro de
+  `pages/dashboard-admin.vue` (único cliente real).
+- **`register.vue` NO kill hoy.** Registrar como **RISK-SEC-4**:
+  signup público abierto, trigger de ejecución del kill = antes
+  de demo Claro O antes del deployment.
+- **`/sites` KEEP** con link nuevo de sidebar (vista full-screen
+  del mapa, complementa al mini-mapa del Panel).
+- **`/demo/simulator` KEEP** con link `v-if="isSuperadmin"`.
+  Rediseño como consola de demo → **BACKLOG-UI-10 nuevo**.
+- **`ContentFooter.vue`** → footer mínimo `"Wanomi · v{version}"`
+  con versión leída de `package.json` en build.
+- **CSS `.site-pin`** → extraer a
+  `app/assets/sass/dashboard/custom/_leaflet-pins.scss` global,
+  importar desde `black-dashboard.scss`, remover los 3
+  duplicados dejando comentario apuntando al archivo global.
+- **`SidebarSharePlugin` — poda, no kill.** (i) toggle
+  dark/light MUDA al navbar como sol/luna; (ii) selector de color
+  QUEDA; (iii) **color primario azul** por default (`value:'blue'`
+  del set del template — hex `$info=#1d8cf8` verificado contra
+  `_variables.scss:105`). **Identidad visual azul** anotada como
+  referencia para Área 4 (branding).
+- **Sidebar operador final (orden fijo):** Panel · Sitios ·
+  Histórico · Devices · Templates · Reglas de monitoreo
+  (superadmin) · Simulador (superadmin).
+
+**DEC-REF-70 registrada en corpus** con los 7 puntos (a-g) y bump
+v0.53. También RISK-SEC-4 y BACKLOG-UI-10.
+
+### FASE 2 — Ejecución en 6 commits atómicos
+
+**Paso 1 · commit `4e48d0f`** — docs (DEC-REF-70 + RISK-SEC-4 +
+BACKLOG-UI-10 + bump v0.53 + typo 5h corregido). Registro antes
+que código.
+
+**Paso 2 · verificación pre-kill /alarms + /rules** — evidencia
+atómica documentada, no asumida:
+- `db.devices`: 13 devices, TODOS `firmwareType:"wanomi-sim"`
+  (SEC/GEN/ATS/cummins-pcc/ELTEK). **Cero ESP8266 productivos.**
+- `db.alarmrules = 0`, `db.rules = 0` (colecciones vacías).
+  `db.saverrules` tiene 13 pero esas son del edge/rulepacks,
+  gestionadas por `emqxapi.js`.
+- `db.data`: los 13 dIds publican al broker, todos alcanzables
+  por el motor edge.
+- `grep` de consumers: únicos hits eran los 2 sidebar-items del
+  `layouts/default.vue`. Cero redirects, cero `$router.push`,
+  cero `nuxt-link`.
+- **Rutas backend NO tocadas** (mantenimiento explícito de
+  interfaz EMQX-legacy en DEC-REF-70 b).
+
+**Paso 3 · commit `028ac90`** — kills BLOQUE A (limpieza template)
+**−1184 líneas**. 13 archivos removidos: 2 páginas
+(`test.vue`, `GeneralViews/NotFoundPage.vue`), 3 layouts
+(`starter.vue`, `starter/SampleFooter.vue`, `starter/SampleNavbar.vue`),
+1 dead-layout (`DashboardLayout.vue` con 25 items dead links),
+7 componentes orphan. Directorios `GeneralViews/`, `Dashboard/`,
+`UserProfile/`, `Layout/starter/` eliminados por consecuencia.
+
+**Paso 4 · commit `65b75cb`** — kill `/alarms` y `/rules`
+**−844 líneas**. `pages/alarms.vue` y `pages/rules.vue` removidos +
+2 sidebar-items retirados con nota inline apuntando a DEC-REF-70.
+Backend rules/alarms.js intactos.
+
+**Paso 5 · commit `6c2a0e6`** — navegación (**5 archivos, +212 −213**):
+- `layouts/default.vue`: sidebar reordenado (Panel · Sitios ·
+  Histórico · Devices · Templates · Reglas de monitoreo (superadmin)
+  · Simulador (superadmin)); `sidebarBackground: "blue"` por default.
+- `DashboardNavbar.vue`: selector de device REMOVIDO;
+  botón sol/luna AGREGADO (implementación original de DEC-REF-70 g).
+- `SidebarSharePlugin.vue`: switch dark/light REMOVIDO;
+  default `active:true` movido al swatch `blue`.
+- `ContentFooter.vue`: footer mínimo `"Wanomi · v{version}"`
+  con `require('../../package.json').version`.
+- `pages/dashboard-admin.vue`: `<el-select>` MIGRADO al
+  componente, con listener del bus `$nuxt` (`selectedDeviceIndex`)
+  emitido por `store/index.js`.
+
+**Paso 6 · commit `9ad8080`** — CSS global (**5 archivos, +29 −39**):
+- Nuevo `app/assets/sass/dashboard/custom/_leaflet-pins.scss`
+  con `.site-pin` (18×18px, border-radius: 50%, border 2px,
+  box-shadow), importado desde `black-dashboard.scss`.
+- Los 3 bloques duplicados eliminados en `sites/index.vue`,
+  `sites/_siteCode.vue`, `NocSiteBoard.vue` dejando un comentario
+  HTML de una línea apuntando al archivo global.
+- Cierra la convención frágil (comentario no-scoped en cada
+  archivo) que había generado el bug estructural de #49/R7.
+
+**Paso 7 · APPLY autorizado** — build único
+(`docker_nuxt_build.yml up`) + `docker restart node` +
+smoke completo. Resultado:
+- `/login`, `/dashboard`, `/sites`, `/history`, `/demo/simulator`,
+  `/dashboard-admin`, `/devices`, `/templates`, `/rulepacks`,
+  `/register` → HTTP 200 (SPA shells).
+- `/alarms`, `/rules`, `/test` → HTTP 200 shell fallback (comportamiento
+  estándar Nuxt SPA); bundle `.nuxt/dist/client/` verificado sin
+  chunks para esas páginas → el router client-side muestra 404
+  al montar. Confirmado que las páginas están efectivamente muertas.
+- `GET /api/dashboard/noc` → HTTP 200 en 4.5s (cold MISS
+  post-restart).
+- Backend legacy vivo: `/api/rule-webhook`, `/api/alarm-webhook`,
+  `/api/saver-webhook` → HTTP 200 (interfaz EMQX intacta).
+
+### Refinamiento G (post-Paso 7) — corrección de Franco en dos rondas
+
+Franco revisó visualmente el checklist y devolvió dos rondas
+sucesivas de corrección sobre el punto (g) de DEC-REF-70. Sin
+suavizar:
+
+**1ª ronda:** *"regresa el BaseSwitch de dark/light y el import a
+SidebarSharePlugin, no tiene sentido sacar el switch si dejamos
+el select de colores en el toogle. Y como el select de dark/light
+no tiene ícono o no se observa vuelve a insertarlo en el toogle
+como te solicité antes"*. Argumento: los controles visuales van
+juntos con el selector de colores (coherencia UX).
+
+**2ª ronda (al preguntar si mantener el sol/luna en el navbar
+como redundancia):** *"No, quita el sol y la luna"* + *"agrega
+leyenda 'mqtt conectado' al lado de la luz"* + *"en minúscula
+mqtt"*.
+
+**Ejecución final — commit `22ef9ab`** (**2 archivos, +64 −62**):
+- `SidebarSharePlugin.vue`: `BaseSwitch` + `import BaseSwitch` +
+  método `toggleMode(isDarkMode)` **RESTAURADOS**. Sync inicial
+  en `mounted()` contra `body.classList` (mejora vs original —
+  cubre tema persistido).
+- `DashboardNavbar.vue`: botón sol/luna **REMOVIDO**, observer
+  local del theme y estado `isLight` local **REMOVIDOS**. Nueva
+  leyenda `mqtt conectado`/`mqtt desconectado` al lado de la luz
+  indicadora, minúsculas, verde/rojo, 0.82rem tono muted.
+- Mecanismo intacto: el observer en `pages/dashboard.vue` sigue
+  detectando `body.white-content` y bajando `isLight` a los 4
+  componentes `Noc*` — patrón DEC-REF-69 R3 sin cambio.
+
+**Registro sin suavizar del error de diseño (adenda
+DEC-REF-70-A):** la sala firmó el punto (g) por analogía con "un
+lugar único de control" (mudar todo lo interactivo al navbar),
+sin cruzar la decisión con el resto del contenido del plugin (el
+selector de colores del sidebar YA vivía en el plugin y no se
+movía). Al quedar la mitad de los controles visuales en el plugin
+y la otra mitad en el navbar, el conjunto perdió coherencia.
+Franco lo percibió en el checklist visual y corrigió.
+
+**Familia de errores:** decisión de diseño tomada por analogía
+sin auditar la vecindad completa del componente afectado (misma
+raíz que DEC-PROC-2, versión light — no había recon técnico
+faltante, había recon UX faltante). Sin nueva DEC-PROC porque el
+fix visual es reversible y trivial; queda como lección explícita
+del cierre: **las decisiones visuales del corpus deben cruzarse
+contra el conjunto de controles del componente afectado antes de
+firmarse, no sólo contra su propia lógica**.
+
+Fila DEC-REF-70 queda intacta (append-only). Adenda DEC-REF-70-A
+registrada como fila propia reemplazando el punto (g) del
+original.
+
+### Estado del backlog al cierre
+
+- **BACKLOG-UI-4 CERRADO** (link `/history` en el sidebar,
+  commit `6c2a0e6`). Tombstone en blockquote debajo de la tabla
+  UI. Fila conservada como precedente inmutable (convención
+  DEC-REF-54).
+- **BACKLOG-UI-10 vigente** — rediseño de `/demo/simulator` como
+  consola de demo. Disparador: fecha firme de demo Claro con
+  audiencia definida, o sesión de branding con Área 4.
+- **RISK-SEC-4 vigente con trigger propio** — signup público
+  abierto en `/register`. Kill diferido a la ejecución de la
+  demo Claro O al deployment productivo. Mitigación provisoria
+  disponible (comentar `router.post('/register')` en
+  `users.js`, 10 minutos, reversible).
+- **BACKLOG-EDGE-5** (persist→publish del edge, #49) sigue
+  vigente sin cambios — la mitigación #49/R8 sostiene el Panel.
+- **BACKLOG-OPS-1** con adenda #49/A9 vigente.
+
+### Estado git al cierre
+
+Commits de sesión #50 (ahead de `origin/feature/telco-support`,
+en orden de creación):
+
+- `4e48d0f` docs(refactor): DEC-REF-70 + RISK-SEC-4 + BACKLOG-UI-10 + bump v0.53
+- `028ac90` chore: limpieza template BLOQUE A (−1184 líneas)
+- `65b75cb` chore: KILL /alarms y /rules (−844 líneas)
+- `6c2a0e6` feat(nav): sidebar + toggle + footer + selector
+- `9ad8080` refactor(css): `.site-pin` a global _leaflet-pins.scss
+- `22ef9ab` fix(nav): refinamiento G — switch dark/light vuelve al plugin + leyenda mqtt en navbar
+- `[este commit]` docs(bitacora + refactor): cierre #50 + DEC-REF-70-A + BACKLOG-UI-4 tombstone + bump v0.54
+
+Rama `feature/telco-support`, ahead **acumulado de #49+#50** al
+momento del commit de cierre. **Sin push** — Franco acumula
+todos los pushes de las dos sesiones para una sola orden explícita.
+
+### RISK-SEC de la sesión — sin novedades operativas, uno nuevo declarativo
+
+No aparecieron exposiciones nuevas de secretos durante #50.
+**RISK-SEC-4** nace declarativo (no incidente): signup público
+abierto en `/register` — se documenta antes de que sea vector
+real (demo Claro con audiencia externa o deployment productivo,
+lo que llegue primero).
+
+### Estado del entorno al cierre
+
+- Rama `feature/telco-support`, ahead **acumulado de #49+#50**
+  de origin.
+- Corpus **v0.54** · sesión #50 (DEC-REF-70 + DEC-REF-70-A adenda,
+  RISK-SEC-4 nuevo, BACKLOG-UI-10 nuevo, BACKLOG-UI-4 tombstone).
+- Prod: `mongo` / `emqx` / `node` / `wanomi-edge` — todos
+  healthy.
+- Bundle Nuxt reconstruido y servido por el `node` post-restart
+  del Paso 7.
+- Sidebar operador azul por default, orden final DEC-REF-70 (a).
+- Navbar sin selector de device y sin sol/luna, con luz MQTT +
+  leyenda `"mqtt conectado/desconectado"`.
+- SidebarSharePlugin con selector de colores + `BaseSwitch`
+  LIGHT/DARK MODE (default AZUL / DARK).
+- CSS `.site-pin` global, pines vivos en las 3 vistas de mapa.
+
+### Mandato de Franco para sesión #51
+
+**Por definir** (Franco no lo pasó en el mensaje del cierre;
+punto 4 del cierre explícito autoriza dejar "por definir"
+cuando no se recibe). Reemplazable con una línea del propio
+Franco al abrir #51 o en cualquier momento previo.
+
+**Sesión #50 CERRADA.**
+
+
 
 
 
