@@ -20,6 +20,9 @@
     </div>
 
     <ul class="navbar-nav" :class="$rtl.isRTL ? 'mr-auto' : 'ml-auto'">
+      <!-- DEC-REF-70 (b/c) · #50 — el <el-select> de device del navbar
+           salió de acá (único cliente era /dashboard-admin; se mudó
+           adentro de esa página). -->
 
       <li class="nav-item d-flex align-items-center mr-2">
         <el-tooltip :content="$store.state.mqttConnected ? 'MQTT Connected' : 'MQTT Disconnected'" placement="bottom">
@@ -27,20 +30,17 @@
         </el-tooltip>
       </li>
 
-      <el-select
-        class="select-success"
-        placeholder="Select Device"
-        @change="selectDevice()"
-        v-model="selectedDevice"
-      >
-        <el-option
-          v-for="(device, index) in $store.state.devices"
-          :value="index"
-          :label="device.name"
-          :key="device._id"
-        >
-        </el-option>
-      </el-select>
+      <!-- DEC-REF-70 (g) · #50 — toggle sol/luna migrado desde el
+           SidebarSharePlugin. Mismo mecanismo body.white-content →
+           el observer en pages/dashboard.vue lo detecta y baja
+           `isLight` como prop a los 4 componentes Noc*. -->
+      <li class="nav-item d-flex align-items-center mr-2">
+        <el-tooltip :content="isLight ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro'" placement="bottom">
+          <a href="#" class="nav-link theme-toggle" @click.prevent="toggleTheme">
+            <i :class="isLight ? 'tim-icons icon-moon-stars' : 'tim-icons icon-sun'"></i>
+          </a>
+        </el-tooltip>
+      </li>
 
       <base-dropdown
         tag="li"
@@ -106,15 +106,26 @@
 <script>
 import { CollapseTransition } from "vue2-transitions";
 import { BaseNav, Modal } from "@/components";
-import { Select, Option } from "element-ui";
 
 export default {
   components: {
     CollapseTransition,
     BaseNav,
-    Modal,
-    [Option.name]: Option,
-    [Select.name]: Select
+    Modal
+  },
+  data() {
+    return {
+      activeNotifications: false,
+      showMenu: false,
+      searchModalVisible: false,
+      searchQuery: "",
+      // DEC-REF-70 (g) · #50 — el navbar dueño del estado del toggle
+      // sol/luna. El observer en pages/dashboard.vue sigue detectando
+      // el cambio en body.white-content (no depende de saber que somos
+      // nosotros quienes toggleamos).
+      isLight: false,
+      _themeObserver: null,
+    };
   },
   computed: {
     routeName() {
@@ -129,25 +140,39 @@ export default {
       return this.$rtl.isRTL;
     }
   },
-  data() {
-    return {
-      activeNotifications: false,
-      showMenu: false,
-      searchModalVisible: false,
-      searchQuery: "",
-      selectedDevice: null
-    };
-  },
   mounted() {
     this.$store.dispatch("getDevices");
-    this.$nuxt.$on("selectedDeviceIndex", this.updateSelectedDeviceIndex);
+    // DEC-REF-70 (g) · #50 — sync inicial + observer para que el ícono
+    // (sol/luna) refleje el estado actual del body, aunque el toggle
+    // haya sido activado desde otro lado (compatibilidad con el
+    // SidebarSharePlugin durante la migración; futuro-a-prueba).
+    if (typeof document !== 'undefined') {
+      this.isLight = document.body.classList.contains('white-content');
+      this._themeObserver = new MutationObserver(() => {
+        this.isLight = document.body.classList.contains('white-content');
+      });
+      this._themeObserver.observe(document.body, {
+        attributes: true, attributeFilter: ['class'],
+      });
+    }
   },
   beforeDestroy() {
-    this.$nuxt.$off("selectedDeviceIndex");
+    if (this._themeObserver) {
+      this._themeObserver.disconnect();
+      this._themeObserver = null;
+    }
   },
   methods: {
-    updateSelectedDeviceIndex(index) {
-      this.selectedDevice = index;
+    // DEC-REF-70 (g) · #50 — toggle sol/luna. Mismo mecanismo que el
+    // BaseSwitch del SidebarSharePlugin removido: body.white-content
+    // + observer en el Panel que baja isLight como prop.
+    toggleTheme() {
+      const docClasses = document.body.classList;
+      if (docClasses.contains('white-content')) {
+        docClasses.remove('white-content');
+      } else {
+        docClasses.add('white-content');
+      }
     },
     notificationReaded(notifId) {
       const axiosHeaders = {
@@ -155,8 +180,6 @@ export default {
           token: this.$store.state.auth.token
         }
       };
-
-      var auto;
 
       const toSend = {
         notifId: notifId
@@ -181,29 +204,6 @@ export default {
       this.$store.commit("setAuth", auth);
 
       window.location.href = "/login";
-    },
-    selectDevice() {
-      const device = this.$store.state.devices[this.selectedDevice];
-
-      const axiosHeaders = {
-        headers: {
-          token: this.$store.state.auth.token
-        }
-      };
-
-      const toSend = {
-        dId: device.dId
-      };
-
-      this.$axios
-        .put("/device", toSend, axiosHeaders)
-        .then(res => {
-          this.$store.dispatch("getDevices");
-        })
-        .catch(e => {
-          console.log(e);
-          return;
-        });
     },
     //UNIX A FECHA
     unixToDate(ms) {
@@ -267,6 +267,10 @@ export default {
 .mqtt-disconnected {
   background-color: #fd5d93;
   animation: blink 1.2s infinite;
+}
+.theme-toggle i {
+  font-size: 1.2rem;
+  vertical-align: middle;
 }
 @keyframes blink {
   0%, 100% { opacity: 1; }

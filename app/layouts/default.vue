@@ -8,11 +8,32 @@
       title="IoTix"
     >
       <template slot-scope="props" slot="links">
+        <!-- DEC-REF-70 (a) · #50 — sidebar operador final, orden fijo:
+             Panel · Sitios · Histórico · Devices · Templates · Reglas
+             de monitoreo (superadmin) · Simulador (superadmin). -->
         <sidebar-item
           :link="{
             name: 'Panel',
             icon: 'tim-icons icon-laptop',
             path: '/dashboard'
+          }"
+        >
+        </sidebar-item>
+
+        <sidebar-item
+          :link="{
+            name: 'Sitios',
+            icon: 'tim-icons icon-pin',
+            path: '/sites'
+          }"
+        >
+        </sidebar-item>
+
+        <sidebar-item
+          :link="{
+            name: 'Histórico',
+            icon: 'tim-icons icon-chart-bar-32',
+            path: '/history'
           }"
         >
         </sidebar-item>
@@ -25,11 +46,6 @@
           }"
         >
         </sidebar-item>
-
-        <!-- DEC-REF-70 · #50 — /rules y /alarms retirados (páginas KILL,
-             motor edge/rulepacks las reemplaza). Los routes backend
-             /rule, /alarm-rule, /rule-webhook, /alarm-webhook siguen
-             vivos como interfaz de dispositivos EMQX-legacy. -->
 
         <sidebar-item
           :link="{
@@ -52,11 +68,23 @@
         >
         </sidebar-item>
 
-        <!-- DEC-REF-69 · R4 #49 · G7 · 8 — el sidebar-item "Dashboard admin"
-             de R3 se retiró. La ruta /dashboard-admin sigue existiendo con el
-             guard superadmin intacto (destino final decide la auditoría de #50
-             sobre inventario de páginas). El sidebar queda con un solo link
-             al panel para no duplicar. -->
+        <!-- DEC-REF-70 (a) · #50 — Simulador solo-superadmin, mismo
+             patrón que Reglas de monitoreo. BACKLOG-UI-10 registra el
+             rediseño como consola de demo (diseño en sesión dedicada;
+             hoy la página existente detrás del link). -->
+        <sidebar-item
+          v-if="isSuperadmin"
+          :link="{
+            name: 'Simulador',
+            icon: 'tim-icons icon-settings',
+            path: '/demo/simulator'
+          }"
+        >
+        </sidebar-item>
+
+        <!-- DEC-REF-70 (c) · #50 — /dashboard-admin KEEP sin link;
+             ruta con guard superadmin intacta, destino final en
+             DEC-DASH-2. -->
       </template>
     </side-bar>
 
@@ -115,7 +143,9 @@ export default {
   },
   data() {
     return {
-      sidebarBackground: "primary", //vue|blue|orange|green|red|primary
+      // DEC-REF-70 (g) · #50 — default AZUL (identidad visual Wanomi).
+      // Set del template: blue|vue|orange|green|red|primary.
+      sidebarBackground: "blue",
       client: null,
       options: {
         host: "",

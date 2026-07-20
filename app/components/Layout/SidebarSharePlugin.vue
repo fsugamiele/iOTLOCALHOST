@@ -22,66 +22,32 @@
           </a>
         </li>
 
-        <li class="header-title">Sidebar Mini</li>
-        <li class="adjustments-line">
-          <div class="togglebutton switch-change-color mt-3">
-            <span class="label-switch">LIGHT MODE</span>
-            <base-switch v-model="darkMode" @input="toggleMode"></base-switch>
-            <span class="label-switch label-right">DARK MODE</span>
-          </div>
-        </li>
-
-        <li class="button-container mt-4">
-          <a
-            href="https://www.creative-tim.com/learning-lab/nuxt/overview/black-dashboard"
-            target="_blank"
-            rel="noopener"
-            class="btn btn-default btn-block btn-round"
-          >
-            Documentation
-          </a>
-          <a
-            href="https://creative-tim.com/product/nuxt-black-dashboard"
-            target="_blank"
-            rel="noopener"
-            class="btn btn-primary btn-block btn-round"
-          >
-            Download Now
-          </a>
-          <a
-            href="https://creative-tim.com/product/nuxt-black-dashboard-pro"
-            target="_blank"
-            rel="noopener"
-            class="btn btn-info btn-block btn-round"
-          >
-            Upgrade to PRO
-          </a>
-        </li>
+        <!-- DEC-REF-70 (g) · #50 — poda: el toggle dark/light salió
+             de acá y vive ahora como botón sol/luna en el
+             DashboardNavbar. El selector de color de fondo del
+             sidebar QUEDA. -->
       </ul>
     </div>
   </div>
 </template>
 <script>
-  import { BaseSwitch } from '@/components';
-
   export default {
     name: 'sidebar-share',
-    components: {
-      BaseSwitch
-    },
     props: {
       backgroundColor: String
     },
     data() {
       return {
-        sidebarMini: true,
-        darkMode: true,
         isOpen: false,
+        // DEC-REF-70 (g) · #50 — default AZUL (`value:'blue'` → CSS
+        // `.badge-info` → hex $info=#1d8cf8 en _variables.scss:105).
+        // El default en layouts/default.vue también arranca en "blue"
+        // para que el sync inicial no muestre el swatch equivocado.
         sidebarColors: [
           { color: 'primary', active: false, value: 'primary' },
-          { color: 'vue', active: true, value: 'vue' },
-          { color: 'info', active: false, value: 'blue' },
-          { color: 'success', active: false, value: 'green' }
+          { color: 'vue',     active: false, value: 'vue'     },
+          { color: 'info',    active: true,  value: 'blue'    },
+          { color: 'success', active: false, value: 'green'   }
         ]
       };
     },
@@ -101,14 +67,6 @@
       changeSidebarBackground(item) {
         this.$emit('update:backgroundColor', item.value);
         this.toggleList(this.sidebarColors, item);
-      },
-      toggleMode(type) {
-        let docClasses = document.body.classList;
-        if (type) {
-          docClasses.remove('white-content');
-        } else {
-          docClasses.add('white-content');
-        }
       },
       minimizeSidebar() {
         this.$sidebar.toggleMinimize();
