@@ -1,0 +1,20 @@
+// DEC-REF-70 (f) · #50 — CSS global de los pines Leaflet.
+//
+// Consumidores: pages/sites/index.vue · pages/sites/_siteCode.vue ·
+// components/Noc/NocSiteBoard.vue.
+//
+// Leaflet inyecta el divIcon en su propio container, fuera del tree
+// de Vue → NO se puede scopear al SFC. La convención previa era
+// duplicar este bloque en cada archivo consumidor como <style> no
+// scoped; el bug estructural de #49/R7 (pines invisibles en el
+// Panel) ocurrió justamente por olvidarnos de la copia en
+// NocSiteBoard. Una fuente global cierra la clase.
+
+.site-pin {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}

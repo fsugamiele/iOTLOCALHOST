@@ -405,14 +405,5 @@ export default {
 }
 </style>
 
-<style>
-/* Pin del marker — fuera de scope porque Leaflet inyecta el divIcon en su propio container. */
-.site-pin {
-  display: block;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.35);
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-}
-</style>
+<!-- DEC-REF-70 (f) · #50 — .site-pin vive en assets/sass/dashboard/custom/_leaflet-pins.scss (global). -->
+

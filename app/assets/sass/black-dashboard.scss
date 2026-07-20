@@ -112,3 +112,6 @@
 @import "dashboard/custom/cards/card-user";
 @import "dashboard/custom/cards/card-profile";
 @import "dashboard/custom/cards/card-plain";
+
+// DEC-REF-70 (f) · #50 — pines Leaflet (fuente única global).
+@import "dashboard/custom/leaflet-pins";

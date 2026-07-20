@@ -192,21 +192,5 @@ export default {
 .noc-badge-info         { background: #3aa2ff; }
 </style>
 
-<style>
-/* R7 · pedido Franco — pines invisibles al cargar el Panel.
-   Diagnóstico: el mismo bloque de CSS ya existe (no-scoped) en
-   pages/sites/index.vue:274 y pages/sites/_siteCode.vue:410, pero NO estaba
-   incluido acá. Cuando el usuario abre /dashboard (sin haber visitado
-   /sites), el CSS de .site-pin no está en el DOM y los <span> que Leaflet
-   inyecta quedan sin tamaño → invisibles.
-   Leaflet crea el divIcon fuera del tree de Vue, así que el style DEBE ir
-   no-scoped (misma razón que en las otras dos páginas). */
-.site-pin {
-  display: block;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.35);
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-}
-</style>
+<!-- DEC-REF-70 (f) · #50 — .site-pin vive en assets/sass/dashboard/custom/_leaflet-pins.scss (global). -->
+
