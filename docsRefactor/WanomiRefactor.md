@@ -1,7 +1,7 @@
 # Wanomi 3.0 — Refactorización
 
 **Documento maestro del refactor.**
-Versión 0.54 · 2026-07-20 · Actualizado: cierre sesión #50 (DEC-REF-70-A adenda refinamiento G, BACKLOG-UI-4 tombstone)
+Versión 0.55 · 2026-07-20 · Actualizado: post-cierre #50 (BACKLOG-UI-11 branding visual pendiente)
 
 ---
 
@@ -295,6 +295,8 @@ Software y Hardware corren desde T0 sin bloqueo; el simulador reemplaza sitio y 
 | BACKLOG-UI-10 | 2026-07-20 | **Rediseño de `/demo/simulator` como consola de demo (mandato Franco #50).** La página existente (`pages/demo/simulator.vue`, 202 líneas, master-detail con `DeviceList` + `DevicePanel`) sirve para control operativo del sim en dev, pero NO tiene diseño de consola de demo: falta narrativa (para qué se abre en una demo Claro), agrupación por site/rol operativo, story-mode (secuencia de eventos que muestren el motor edge en vivo), y visualización de estado del sim (qué está publicando, qué está escuchando el edge). En #50 la página **solo gana link de sidebar `v-if="isSuperadmin"`** sobre la implementación existente (DEC-REF-70, punto (a)) — el rediseño de consola queda para sesión dedicada. Voces: Camila (UX) + Lucía (Frontend) + Franco (narrativa de demo). Disparador: cuando exista fecha firme de demo Claro con audiencia definida, o cuando Franco quiera armar la sesión de branding/marketing con Área 4 (referencia identidad visual azul de DEC-REF-70 punto (g)). |
 
 > **BACKLOG-UI-4 — CERRADO en #50 (DEC-REF-70 punto (a), commit `6c2a0e6`).** El link `Histórico` a `/history` está en el sidebar operador (`layouts/default.vue`), orden fijo Panel · Sitios · Histórico · Devices · Templates · Reglas de monitoreo · Simulador. Verificado por smoke del Paso 7 (`/history` HTTP 200 accesible por sidebar). Fila conservada como precedente inmutable (convención de la sesión #43 / DEC-REF-54).
+
+> **BACKLOG-UI-11 — branding visual del template pendiente (post-cierre #50, Franco).** Franco cerró #50 con `chore(branding)` `76f1d75` cambiando `nuxt.config.js` `head.title` de `"IoTiX"` a `"wanomi"` (verificado en el bundle post-restart: `<title>wanomi</title>`). Quedan pendientes 3 puntos de branding del template Now-UI-Dashboard que arrastran identidad IoTiX/Creative Tim: **(a) favicon** en `app/static/favicon.ico` + `favicon.png` + `icon.png` (hoy con branding heredado); **(b) sidebar brand** en `layouts/default.vue:7-8` — `short-title="IX"` + `title="IoTix"` (visible en la esquina superior izquierda del sidebar cuando está expandido y colapsado); **(c) assets restantes** — revisión de otros hardcodes visuales del template (imágenes en `static/img/`, avatares del navbar como `img/mike.jpg` en `DashboardNavbar.vue:88`, splash de login/register si aplica). Coherente con la identidad visual azul de DEC-REF-70 (g) — el logo debe cerrar el conjunto sidebar-azul + título wanomi + favicon wanomi. Voces: Franco (dirección de identidad) + Área 4 (branding, ver referencia identidad en DEC-REF-70 g). Disparador: sesión visual dedicada, o previa a demo Claro / material de presentación.
 
 ### 5d · Backlog del simulador (BACKLOG-SIM-*)
 

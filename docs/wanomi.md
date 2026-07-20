@@ -9929,6 +9929,37 @@ Franco al abrir #51 o en cualquier momento previo.
 
 **Sesión #50 CERRADA.**
 
+### Post-cierre — push acumulado + branding del título
+
+Al confirmar el cierre, Franco autorizó push acumulado
+(#49 + #50) y anotó que había hecho un cambio manual en
+`app/nuxt.config.js` (`head.title` `"IoTiX"` → `"wanomi"`), con
+la aclaración *"me faltó modificar la imagen del logo, lo dejamos
+para sesión posterior"*.
+
+**Ejecutado:**
+- Commit `76f1d75` — `chore(branding): título de página "wanomi"
+  (F.S.)`. Nota en el mensaje: pendiente del logo para sesión
+  posterior.
+- Push a `origin/feature/telco-support` — `e10ef72..76f1d75`
+  (todos los commits de #49 + #50 + branding, 17 commits totales
+  acumulados desde el push previo de #48).
+- Rebuild Nuxt + `docker restart node` para que el runtime
+  refleje el título nuevo. Verificado: `<title>wanomi</title>`
+  presente en el HTML servido de `/dashboard`. Smoke completo
+  verde.
+
+**Pendiente registrado en corpus (BACKLOG-UI-11 nuevo, bump
+v0.55):** branding visual del template — favicon
+(`app/static/favicon.*`), sidebar brand en `layouts/default.vue:7-8`
+(`short-title="IX"` / `title="IoTix"`), y assets restantes del
+template Now-UI-Dashboard (imágenes de `static/img/`, avatar del
+navbar `img/mike.jpg`). Coherencia con identidad azul de
+DEC-REF-70 (g). Voces: Franco + Área 4.
+
+**Sesión #50 CERRADA (definitivo, post-push).**
+
+
 
 
 
