@@ -1,6 +1,6 @@
 <template>
   <div class="row noc-recent">
-    <div class="col-lg-6 col-md-12">
+    <div class="col-xl-6 col-12">
       <card class="noc-alarms-card">
         <div slot="header"><h5 class="card-title mb-0">Alertas recientes</h5></div>
         <div v-if="!recentAlarms || recentAlarms.length === 0" class="text-muted text-center p-3">
@@ -22,7 +22,7 @@
       </card>
     </div>
 
-    <div class="col-lg-6 col-md-12">
+    <div class="col-xl-6 col-12">
       <card class="noc-hist-card">
         <div slot="header">
           <h5 class="card-title mb-0">Alertas · 7 días</h5>

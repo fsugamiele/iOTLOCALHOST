@@ -6,7 +6,7 @@
         <select v-model="selectedVariable" class="form-control form-control-sm">
           <option value="" disabled>Elegí una variable</option>
           <option v-for="tv in trendVariables" :key="tv.variable" :value="tv.variable">
-            {{ tv.variable }} ({{ tv.aggregation }})
+            {{ tv.label || tv.variable }} ({{ tv.aggregation }})
           </option>
         </select>
         <select v-model="selectedWindow" class="form-control form-control-sm">

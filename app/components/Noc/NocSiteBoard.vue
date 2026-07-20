@@ -1,6 +1,6 @@
 <template>
   <div class="row noc-site-board">
-    <div class="col-lg-7 col-md-12">
+    <div class="col-xl-7 col-12">
       <card class="noc-map-card">
         <div slot="header"><h5 class="card-title mb-0">Mapa de sitios</h5></div>
         <div ref="mapEl" class="noc-map"></div>
@@ -11,13 +11,14 @@
         </div>
       </card>
     </div>
-    <div class="col-lg-5 col-md-12">
+    <div class="col-xl-5 col-12">
       <card class="noc-table-card">
         <div slot="header"><h5 class="card-title mb-0">Estado de sitios</h5></div>
         <div v-if="!sites || sites.length === 0" class="text-muted text-center p-3">
           Sin sitios en el scope.
         </div>
-        <table v-else class="table noc-sites-table">
+        <div v-else class="table-responsive">
+        <table class="table noc-sites-table">
           <thead>
             <tr>
               <th>Sitio</th><th>Estado</th><th>Fuel</th><th>Temp</th><th>Mains</th>
@@ -41,6 +42,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </card>
     </div>
   </div>
@@ -122,7 +124,13 @@ export default {
 </script>
 
 <style scoped>
+/* R4 · G7 · 5 — mapa 400px por defecto; en <768px baja a 300px. */
 .noc-map        { height: 400px; width: 100%; }
+@media (max-width: 767.98px) {
+  .noc-map      { height: 300px; }
+}
+/* Tabla scrollea horizontal en mobile (evita colapsar celdas) */
+.table-responsive { overflow-x: auto; }
 .noc-map-card,
 .noc-table-card { height: 100%; }
 .map-legend     { display: flex; gap: 1em; margin-top: 0.5em; font-size: 0.85em; }

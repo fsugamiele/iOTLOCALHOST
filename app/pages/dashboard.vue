@@ -7,25 +7,22 @@
       </div>
     </div>
 
-    <div v-if="loading && !nocData" class="row">
-      <div class="col-12 text-center">
-        <i class="tim-icons icon-refresh-01 spin"></i> Cargando…
-      </div>
-    </div>
+    <!-- R4 · G7 · 7 — layout se renderiza SIEMPRE. Cards muestran esqueleto
+         placeholder mientras nocData es null. loadError arriba de todo si el
+         primer fetch falla, sin ocultar el layout. -->
 
-    <div v-else-if="loadError" class="row">
+    <div v-if="loadError" class="row">
       <div class="col-12">
         <card>
           <div class="text-center text-danger">
             <i class="tim-icons icon-alert-circle-exc"></i>
-            <h4>No se pudo cargar el dashboard</h4>
-            <p>{{ loadError }}</p>
+            <span class="ml-2">{{ loadError }}</span>
           </div>
         </card>
       </div>
     </div>
 
-    <template v-else-if="nocData">
+    <template v-if="nocData">
       <noc-kpi-strip
         :kpis="nocData.kpis"
         scope="red"
@@ -51,12 +48,57 @@
         :is-light="isLight"
       />
     </template>
+
+    <template v-else>
+      <!-- Skeleton KPIs -->
+      <div class="row noc-kpi-strip">
+        <div v-for="i in 4" :key="'k'+i" class="col-xl-3 col-md-6 col-12">
+          <card class="card-stats noc-skeleton-card">
+            <div class="skeleton skeleton-line skeleton-sm"></div>
+            <div class="skeleton skeleton-line skeleton-lg mt-2"></div>
+            <div class="skeleton skeleton-line skeleton-sm mt-2"></div>
+          </card>
+        </div>
+      </div>
+      <!-- Skeleton mapa/tabla -->
+      <div class="row">
+        <div class="col-xl-7 col-12">
+          <card><div class="skeleton skeleton-block skeleton-map"></div></card>
+        </div>
+        <div class="col-xl-5 col-12">
+          <card>
+            <div v-for="i in 4" :key="'r'+i" class="skeleton skeleton-line skeleton-md mt-2"></div>
+          </card>
+        </div>
+      </div>
+      <!-- Skeleton trend -->
+      <div class="row">
+        <div class="col-12">
+          <card><div class="skeleton skeleton-block skeleton-chart"></div></card>
+        </div>
+      </div>
+      <!-- Skeleton alarmas/hist -->
+      <div class="row">
+        <div class="col-xl-6 col-12">
+          <card>
+            <div v-for="i in 5" :key="'a'+i" class="skeleton skeleton-line skeleton-md mt-2"></div>
+          </card>
+        </div>
+        <div class="col-xl-6 col-12">
+          <card><div class="skeleton skeleton-block skeleton-chart"></div></card>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
 <script>
 // Dashboard operador NOC multi-site (DEC-REF-69 · DEC-DASH-1a).
 // Composición de 4 componentes del contrato /dashboard/noc.
+//
+// R4 · G7 · 7 — layout se pinta de inmediato con placeholders; el estado
+// "página en blanco 20s" del R3 se cambió por skeletons por card. loadError
+// aparece como banner encima sin ocultar el resto.
 //
 // Theme-awareness (ajuste 2'): UN MutationObserver sobre document.body en
 // esta página; `isLight` baja como prop a los 4 componentes. Ni
@@ -78,7 +120,6 @@ export default {
   components: { NocKpiStrip, NocSiteBoard, NocTrendChart, NocRecentAlarms },
   data() {
     return {
-      loading: true,
       loadError: null,
       nocData: null,
       pollTimer: null,
@@ -105,7 +146,6 @@ export default {
   },
   methods: {
     async loadNoc({ silent = false } = {}) {
-      if (!silent) this.loading = true;
       const headers = { headers: { token: this.$store.state.auth.token } };
       try {
         const res = await this.$axios.get('/dashboard/noc', headers);
@@ -121,8 +161,6 @@ export default {
         }
         if (!silent) this.loadError = err.message || 'Error inesperado';
         console.warn('[NOC] loadNoc error:', err.message || err);
-      } finally {
-        if (!silent) this.loading = false;
       }
     },
   },
@@ -133,4 +171,20 @@ export default {
 .noc-dashboard  { min-height: 100vh; }
 .spin           { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* R4 · G7 · 7 — skeleton placeholders, sin dependencias.
+   Rectángulos + shimmer, tanto para tema oscuro como claro. */
+.noc-skeleton-card { min-height: 145px; }
+.skeleton          { background: rgba(255, 255, 255, 0.08); border-radius: 4px; position: relative; overflow: hidden; }
+.skeleton::after   { content: ''; position: absolute; inset: 0;
+                     background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+                     animation: skeleton-shine 1.4s infinite; }
+.skeleton-line     { display: block; height: 12px; }
+.skeleton-sm       { width: 40%; }
+.skeleton-md       { width: 80%; }
+.skeleton-lg       { width: 60%; height: 24px; }
+.skeleton-block    { width: 100%; }
+.skeleton-map      { height: 400px; }
+.skeleton-chart    { height: 340px; }
+@keyframes skeleton-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 </style>

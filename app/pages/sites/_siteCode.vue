@@ -8,7 +8,9 @@
           <small class="text-muted ml-2">— {{ siteCode }}</small>
         </h2>
         <p class="text-muted mb-4">
-          <nuxt-link to="/sites"><i class="tim-icons icon-double-left"></i> Volver al mapa</nuxt-link>
+          <!-- R4 · G7 · 9 — volver contextual: al referrer (típicamente
+               Panel o /sites), no siempre al mapa. -->
+          <a href="#" @click.prevent="$router.back()"><i class="tim-icons icon-double-left"></i> Volver</a>
         </p>
       </div>
     </div>
