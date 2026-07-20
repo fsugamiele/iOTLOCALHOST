@@ -26,23 +26,10 @@
         >
         </sidebar-item>
 
-        <sidebar-item
-          :link="{
-            name: 'Reglas',
-            icon: 'tim-icons icon-settings-gear-63',
-            path: '/rules'
-          }"
-        >
-        </sidebar-item>
-
-        <sidebar-item
-          :link="{
-            name: 'Alarmas',
-            icon: 'tim-icons icon-bell-55',
-            path: '/alarms'
-          }"
-        >
-        </sidebar-item>
+        <!-- DEC-REF-70 · #50 — /rules y /alarms retirados (páginas KILL,
+             motor edge/rulepacks las reemplaza). Los routes backend
+             /rule, /alarm-rule, /rule-webhook, /alarm-webhook siguen
+             vivos como interfaz de dispositivos EMQX-legacy. -->
 
         <sidebar-item
           :link="{
