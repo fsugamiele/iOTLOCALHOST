@@ -9,12 +9,12 @@
         <ul v-else class="noc-alarms-list">
           <li v-for="a in recentAlarms" :key="a._id" class="noc-alarm-item">
             <div class="alarm-line-1">
-              <span :class="['noc-badge', 'noc-badge-' + badgeVariant(a.severity)]">{{ a.severity }}</span>
+              <span :class="['noc-badge', 'noc-badge-' + badgeVariant(a.severity)]">{{ severityLabel(a.severity) }}</span>
               <span class="alarm-site">{{ a.siteCode }} · {{ a.siteName }}</span>
               <span v-if="a.kind === 'resolve'" class="noc-badge noc-badge-success ml-1">resuelto</span>
             </div>
             <div class="alarm-line-2">
-              <span class="alarm-msg">{{ a.message }}</span>
+              <span class="alarm-msg">{{ messageLabel(a.message) }}</span>
               <span class="alarm-time text-muted">{{ agoLabel(a.time) }}</span>
             </div>
           </li>
@@ -47,6 +47,40 @@
 // con TZ_OPERACION) — el frontend usa string YYYY-MM-DD como categoría literal,
 // SIN compensación de TZ del navegador (a diferencia del /trend).
 // Theme via prop isLight (patrón G5.4/2').
+//
+// R5 · G8 · 3 — REASON_LABELS: los `reason` emitidos por el edge-engine son
+// slugs técnicos; en la UI operador se muestran en castellano. Cubre todos
+// los reasons emitidos por edge-engine/ruleEngine.js y edge-engine/index.js
+// (verificado por grep 'reason:' 2026-07-20). Si aparece un reason nuevo
+// sin traducción, cae al slug crudo (no rompe).
+const REASON_LABELS = {
+  // ruleEngine — threshold (D)
+  'threshold':                       'Umbral superado',
+  'threshold-cleared':               'Umbral normalizado',
+  // ruleEngine — calibrated / fallback (C)
+  'threshold-calibrated':            'Umbral superado (calibrado)',
+  'threshold-fallback':              'Umbral de respaldo',
+  // ruleEngine — setpoint lifecycle
+  'setpoint-unavailable':            'Setpoint no disponible',
+  'setpoint-unavailable-escalated':  'Setpoint no disponible (escalada)',
+  'setpoint-recovered':              'Setpoint recuperado',
+  // ruleEngine — window
+  'window':                          'Ventana temporal superada',
+  'window-cleared':                  'Ventana temporal normalizada',
+  // ruleEngine — cross-tree (S)
+  'cross-tree-fired':                'Condición compuesta activada',
+  'cross-tree-cleared':              'Condición compuesta normalizada',
+  // index.js — hot-reload de pack cierra episodios abiertos
+  'rule-edited-or-removed':          'Regla editada o eliminada',
+};
+
+// R5 · G8 · 4 — severidad unificada en castellano (badges del feed).
+const SEVERITY_LABELS = {
+  critical: 'Crítico',
+  warning:  'Atención',
+  info:     'Info',
+};
+
 export default {
   name: 'NocRecentAlarms',
   props: {
@@ -74,9 +108,10 @@ export default {
         legend:      { itemStyle: { color: textColor } },
         plotOptions: { column: { stacking: 'normal', borderWidth: 0 } },
         series: [
-          { name: 'critical', color: '#E24B4A', data: buckets.map(b => b.critical || 0) },
-          { name: 'warning',  color: '#EF9F27', data: buckets.map(b => b.warning  || 0) },
-          { name: 'info',     color: '#3aa2ff', data: buckets.map(b => b.info     || 0) },
+          // R5 · G8 · 4 — leyenda del histograma en castellano.
+          { name: 'Crítico',  color: '#E24B4A', data: buckets.map(b => b.critical || 0) },
+          { name: 'Atención', color: '#EF9F27', data: buckets.map(b => b.warning  || 0) },
+          { name: 'Info',     color: '#3aa2ff', data: buckets.map(b => b.info     || 0) },
         ],
       };
     },
@@ -87,6 +122,8 @@ export default {
       if (severity === 'warning')  return 'warning';
       return 'info';
     },
+    severityLabel(severity) { return SEVERITY_LABELS[severity] || severity; },
+    messageLabel(msg)       { return REASON_LABELS[msg] || msg; },
     agoLabel(ms) {
       const diff = Math.max(0, Date.now() - ms);
       if (diff < 60000)    return 'hace unos segundos';

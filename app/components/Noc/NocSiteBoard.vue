@@ -5,7 +5,8 @@
         <div slot="header"><h5 class="card-title mb-0">Mapa de sitios</h5></div>
         <div ref="mapEl" class="noc-map"></div>
         <div class="map-legend">
-          <span class="legend-item"><span class="dot dot-critical"></span> Urgencia</span>
+          <!-- R5 · G8 · 4 — misma clasificación que la tabla (Crítico/Atención/Normal). -->
+          <span class="legend-item"><span class="dot dot-critical"></span> Crítico</span>
           <span class="legend-item"><span class="dot dot-warning"></span> Atención</span>
           <span class="legend-item"><span class="dot dot-ok"></span> Normal</span>
         </div>
@@ -21,7 +22,11 @@
         <table class="table noc-sites-table">
           <thead>
             <tr>
-              <th>Sitio</th><th>Estado</th><th>Fuel</th><th>Temp</th><th>Mains</th>
+              <th>Sitio</th>
+              <th>Estado</th>
+              <th><span v-html="icons.fuel"></span>Combustible</th>
+              <th><span v-html="icons.temp"></span>Temp</th>
+              <th><span v-html="icons.mains"></span>Red</th>
             </tr>
           </thead>
           <tbody>
@@ -36,9 +41,27 @@
                 </span>
                 <div v-if="!s.online" class="text-warning small">offline</div>
               </td>
-              <td>{{ lastValueDisplay(s.lastValues.fuel, '%') }}</td>
-              <td>{{ lastValueDisplay(s.lastValues.temp, '°C') }}</td>
-              <td>{{ lastValueDisplay(s.lastValues.mains, 'V') }}</td>
+              <td>
+                <template v-if="lastValueValue(s.lastValues.fuel) !== null">
+                  <div>{{ lastValueValue(s.lastValues.fuel) }}%</div>
+                  <div class="text-muted small">hace {{ lastValueAge(s.lastValues.fuel) }}</div>
+                </template>
+                <template v-else>—</template>
+              </td>
+              <td>
+                <template v-if="lastValueValue(s.lastValues.temp) !== null">
+                  <div>{{ lastValueValue(s.lastValues.temp) }}°C</div>
+                  <div class="text-muted small">hace {{ lastValueAge(s.lastValues.temp) }}</div>
+                </template>
+                <template v-else>—</template>
+              </td>
+              <td>
+                <template v-if="lastValueValue(s.lastValues.mains) !== null">
+                  <div>{{ lastValueValue(s.lastValues.mains) }}V</div>
+                  <div class="text-muted small">hace {{ lastValueAge(s.lastValues.mains) }}</div>
+                </template>
+                <template v-else>—</template>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -57,6 +80,7 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { iconForStatus } from '@/components/Noc/leafletPin.js';
+import { fuelIcon, tempIcon, mainsIcon } from '@/components/Noc/nocIcons.js';
 
 export default {
   name: 'NocSiteBoard',
@@ -64,7 +88,13 @@ export default {
     sites:   { type: Array,   default: () => [] },
     isLight: { type: Boolean, default: false },
   },
-  data() { return { map: null, markers: [] }; },
+  data() {
+    return {
+      map: null, markers: [],
+      // R5 · G8 · 2 — precomputados: no dependen de props, no re-render por watch.
+      icons: { fuel: fuelIcon(), temp: tempIcon(), mains: mainsIcon() },
+    };
+  },
   mounted() {
     this.initMap();
     this.renderPins();
@@ -105,19 +135,25 @@ export default {
       if (status === 'warning')  return 'warning';
       return 'success';
     },
+    // R5 · G8 · 4 — severidad unificada en castellano en toda la página.
+    // Tabla: Crítico / Atención / Normal.
     statusLabel(status) {
-      if (status === 'critical') return 'Urgencia';
+      if (status === 'critical') return 'Crítico';
       if (status === 'warning')  return 'Atención';
       return 'Normal';
     },
-    lastValueDisplay(lv, unit) {
-      if (!lv || lv.value == null) return '—';
-      const val = Math.round(lv.value * 10) / 10;
+    // R5 · G8 · 1 — separadas en value y age para renderizar en dos líneas
+    // (patrón espejo de la columna "Sitio": código bold + nombre muted).
+    lastValueValue(lv) {
+      if (!lv || lv.value == null) return null;
+      return Math.round(lv.value * 10) / 10;
+    },
+    lastValueAge(lv) {
+      if (!lv) return '';
       const age = lv.ageSec;
-      const ageStr = age < 60 ? age + 's'
-                   : age < 3600 ? Math.floor(age / 60) + 'm'
-                   : Math.floor(age / 3600) + 'h';
-      return `${val}${unit} · hace ${ageStr}`;
+      return age < 60 ? age + 's'
+           : age < 3600 ? Math.floor(age / 60) + 'm'
+           : Math.floor(age / 3600) + 'h';
     },
   },
 };
@@ -141,6 +177,8 @@ export default {
 .dot-ok         { background: #639922; }
 .noc-sites-table tr.clickable         { cursor: pointer; }
 .noc-sites-table tr.clickable:hover   { background: rgba(255, 255, 255, 0.04); }
+/* R5 · G8 · 2 — íconos en headers heredan color del <th>. */
+.noc-sites-table th svg               { opacity: 0.8; }
 
 /* Fallback de badges scoped (ajuste 5') — no dependemos de que el template
    Bootstrap traiga .badge-*. Colores alineados con DEC-REF-27. */

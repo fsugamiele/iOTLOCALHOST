@@ -123,9 +123,12 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
         data: {
           window, generatedAt: now,
           kpis: {
-            sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: 0, total: 0, unit: "sites" },
+            // R5 · G8 · 6 — sitesOnline/activeAlerts sin unidad (el detalle
+            // "de N" / "N críticas · N atención" ya lo dice); diésel y uptime
+            // conservan "%".
+            sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: 0, total: 0, unit: null },
             dieselDelta24h: { label: "Diésel 24h", sublabel: "nivel promedio red", value: null, delta24h: null, sitesWithFuel: 0, unit: "%" },
-            activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: 0, critical: 0, warning: 0, unit: "alerts" },
+            activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: 0, critical: 0, warning: 0, unit: null },
             uptime:         { label: "Uptime", sublabel: "% telemetría esperada recibida · 7d", value: null, received: 0, expected: 0, unit: "%" }
           },
           sites: [],
@@ -406,9 +409,11 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       data: {
         window, generatedAt: now,
         kpis: {
-          sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: sitesOnlineValue, total: sites.length, unit: "sites" },
+          // R5 · G8 · 6 — ver notas del branch empty arriba (unit: null en
+          // sitesOnline/activeAlerts).
+          sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: sitesOnlineValue, total: sites.length, unit: null },
           dieselDelta24h: { label: "Diésel 24h", sublabel: "nivel promedio red", value: dieselLevelValue, delta24h: dieselDeltaValue, sitesWithFuel: levelSites, unit: "%" },
-          activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: activeAlertsValue, critical: activeCritical, warning: activeWarning, unit: "alerts" },
+          activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: activeAlertsValue, critical: activeCritical, warning: activeWarning, unit: null },
           uptime:         { label: "Uptime", sublabel: "% telemetría esperada recibida · 7d", value: uptimeValue, received: uptimeReceived, expected: uptimeExpected, unit: "%" }
         },
         sites: sitesTable,

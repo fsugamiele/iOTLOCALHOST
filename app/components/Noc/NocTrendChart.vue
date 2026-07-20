@@ -2,11 +2,15 @@
   <card>
     <div slot="header" class="noc-trend-header">
       <h5 class="card-title mb-0">Tendencia · red</h5>
-      <div class="noc-trend-controls">
+      <!-- R5 · G8 · 8 — clase condicional para forzar estilos de select
+           en light theme (option nativo hereda mal el tema del padre en
+           browsers). -->
+      <div class="noc-trend-controls" :class="{ 'is-light': isLight }">
         <select v-model="selectedVariable" class="form-control form-control-sm">
           <option value="" disabled>Elegí una variable</option>
+          <!-- R5 · G8 · 5 — solo tv.label (sin aggregation cruda). -->
           <option v-for="tv in trendVariables" :key="tv.variable" :value="tv.variable">
-            {{ tv.label || tv.variable }} ({{ tv.aggregation }})
+            {{ tv.label || tv.variable }}
           </option>
         </select>
         <select v-model="selectedWindow" class="form-control form-control-sm">
@@ -64,6 +68,12 @@
 const DEFAULT_VARIABLE = 'fuel_level';
 const DEFAULT_WINDOW   = '24h';
 
+// R5 · G8 · 5 — paleta explícita de series, 6 colores altos en contraste
+// contra fondo oscuro Y claro. Asignados en orden estable por siteCode
+// alfabético (el backend ya ordena las series por siteCode). Si hay más
+// de 6 sites, se cicla — aceptable para la fase piloto (10 sites Claro).
+const SERIES_PALETTE = ['#4FC3F7', '#FFB74D', '#81C784', '#F06292', '#BA68C8', '#FFD54F'];
+
 export default {
   name: 'NocTrendChart',
   props: {
@@ -98,8 +108,10 @@ export default {
       // Los buckets del contrato vienen en epoch ms UTC; Highcharts xAxis
       // 'datetime' interpreta UTC → offset para mostrar en TZ local.
       const offset = new Date().getTimezoneOffset() * 60 * 1000 * -1;
-      const series = (this.lastData.series || []).map(s => ({
+      // R5 · G8 · 5 — color de serie asignado por índice de siteCode ordenado.
+      const series = (this.lastData.series || []).map((s, i) => ({
         name: s.name,
+        color: SERIES_PALETTE[i % SERIES_PALETTE.length],
         data: (s.points || []).map(p => [p[0] + offset, p[1]]),
       }));
       return {
@@ -177,4 +189,22 @@ export default {
 .noc-trend-card-stat { padding: 0.6em 1em 0; font-size: 0.9em; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 0.5em; }
 .spin                { animation: spin 1s linear infinite; }
 @keyframes spin      { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* R5 · G8 · 8 — fix de contraste en los selects de variable y window.
+   Colores hardcoded (bg del card oscuro es $card-black-background=#27293d en
+   _variables.scss:899; texto del template dark es #d4d2d2). El estilo de
+   <option> tiene soporte limitado en browsers (Chrome muestra el desplegable
+   con estilo del sistema en Windows/Linux); si en la verificación visual el
+   desplegable sigue ilegible, reportar como pendiente — la alternativa es un
+   dropdown custom, fuera de scope de R5. */
+.noc-trend-controls .form-control,
+.noc-trend-controls .form-control option {
+  background-color: #27293d;
+  color: #d4d2d2;
+}
+.noc-trend-controls.is-light .form-control,
+.noc-trend-controls.is-light .form-control option {
+  background-color: #ffffff;
+  color: #525f7f;
+}
 </style>
