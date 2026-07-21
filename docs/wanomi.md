@@ -9992,6 +9992,48 @@ variableLabel/unit/recommendation v2 → GATE 2 · R3 diseño capa de autoría
 por intención (F3) → GATE 3. Pregunta de origen (¿recommendation solo en C?)
 etiquetada HIPÓTESIS hasta evidencia de R1.
 
+### R1 — Recon read-only de la cadena completa (GATE 1 aprobado)
+
+Recon ejecutado sobre disco + Mongo (DB efectiva: `iotix`) sin un solo write.
+Producto: Tabla 1 (campo × schema/evaluador/mini-form/notificación por tipo
+D/C/S/cross) y Tabla 2 (capacidad × schema Template/UI templates/UI devices/
+routes) — íntegras en el reporte R1 del hilo de sesión; acá la síntesis.
+
+**Veredicto de la pregunta de origen:** hipótesis CONFIRMADA en su premisa,
+REFUTADA en el "solo en C". `grep -n "recommendation|variableLabel|unit"
+app/pages/rulepacks/_packId.vue` → **0 hits**: los 3 campos están ausentes de
+los CUATRO mini-forms, sin ramificación por tipo. El motor los rutea para
+todos los tipos (fireAlarm genérico ruleEngine.js:201-238); los valores
+productivos existen solo por seed/Mongo directo y la UI los preserva por copia
+profunda del draft (openEditRule :583 → submitRule :658) sin poder editarlos.
+Se notó en C porque C fue el tipo del E2E de #48 — sesgo de observación, no
+asimetría del motor. Asimetría real hallada: es POR CANAL, no por tipo — el
+MQTT del dashboard (sendMqttNotif, notificationRouter.js:77-89) no transporta
+variableLabel ni recommendation; NOC MQTT, Mongo y Telegram sí.
+
+**Cadena Template→Device→Regla: cortada en cada eslabón.** (i) Sin PUT
+/template (backend solo GET/POST/DELETE); (ii) schema widgets = Array libre,
+datos productivos con shape de 4 keys que la UI no produce; (iii) variable en
+reglas = texto libre sin herencia (templateId ausente de pages/rulepacks/);
+(iv) divergencia psi/Bar viva en producción (template Cummins vs regla A1);
+(v) templates de origen no versionado — ni seed ni UI; (vi) correlationParent
+sin UI. Detalle completo en DEC-REF-71-A. Motor y ruteo SANOS — todo el
+faltante es capa de autoría.
+
+**12 asimetrías/sorpresas registradas** (reporte R1), destacadas: DB efectiva
+`iotix` vs `ioticos_god_level` de CLAUDE.md (→ subitem BACKLOG-OPS-2);
+variableType hardcodeado en configXxx de templates.vue; unit solo existe en el
+widget numberchart; comentario obsoleto _packId.vue:410-415 (describe C/S
+read-only post-R23). **Verificación pendiente trasladada a R2:** cómo consume
+realmente el renderer/sites.js:53-57 los widgets de 4 keys (disyuntiva
+"adaptación in-flight vs otro path" quedó abierta en la sorpresa 2).
+
+**GATE 1 aprobado por Franco (a-d):** registro de R1 + DEC-REF-71-A · subitem
+OPS-2 por la DB · alcance de R2 ampliado (sub-schema de widget, diseño de
+PUT /template, herencia variable como dropdown, resolución de divergencia de
+unidades, verificación sorpresa 2) · correlationParent como subitem del futuro
+backlog de implementación. Abre R2.
+
 
 
 
