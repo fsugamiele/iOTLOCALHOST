@@ -9959,9 +9959,38 @@ DEC-REF-70 (g). Voces: Franco + Área 4.
 
 **Sesión #50 CERRADA (definitivo, post-push).**
 
+---
 
+## Sesión #51 — 2026-07-21 · Transversal (Área 2 eje + Áreas 1 y 4) · Motor de reglas: estudio integral + configurabilidad universal
 
+**Mandato textual de Franco:** "Estudiemos el motor de reglas de punta a punta.
+Quiero entender qué puede hacer hoy, dónde están los pendientes de diseño, y
+cómo lo mostramos visualmente. Como está diseñado hoy, la regla solo la
+entiende backend. Debe intervenir UX para que terminemos de explotar el
+potencial del motor y lleguemos a que cualquier usuario pueda configurar una
+regla — no solo quien la construyó." Ampliado en apertura: la cadena
+Template → Device → Regla es parte del mismo problema — los templates hoy se
+hardcodean por seed cuando deben preconfigurarse en la página de Templates
+(de ahí salen variables, unidades, widgets) y asociarse al device desde la
+página de Devices. Deuda declarada; "interconectar todas las funcionalidades".
 
+**Naturaleza:** RECON + DISEÑO. Sin código en toda la sesión. Implementación
+en fase/sesión posterior con palabra de Franco.
+
+**Registro de apertura:** DEC-STRAT-4 (formalización Camino A) + DEC-REF-71
+(cadena Template→Device→Regla) firmadas por Franco en GATE 0. Bump corpus v0.56.
+
+**Sala aprobada (GATE 0):** Ing. software senior/motor edge (recon F1) ·
+Andrés Ferreiro Backend senior (schema RuleDefinition + Template +
+NotificationRouter) · Lucía Bermúdez Frontend Vue (mini-forms, capa de
+autoría) · Camila UX (lidera F3) · Asesor Telco NOC · Confiabilidad ·
+Arquitecto Marketing Área 4 (convidado, coherencia DEC-REF-70g/UI-11).
+
+**Plan de rondas:** R1 recon read-only cadena completa (motor + mini-forms +
+Template/Device) → GATE 1 · R2 diseño estándar de legibilidad
+variableLabel/unit/recommendation v2 → GATE 2 · R3 diseño capa de autoría
+por intención (F3) → GATE 3. Pregunta de origen (¿recommendation solo en C?)
+etiquetada HIPÓTESIS hasta evidencia de R1.
 
 
 
