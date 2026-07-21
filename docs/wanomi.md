@@ -10034,6 +10034,35 @@ PUT /template, herencia variable como dropdown, resolución de divergencia de
 unidades, verificación sorpresa 2) · correlationParent como subitem del futuro
 backlog de implementación. Abre R2.
 
+### R2 — Diseño del estándar de legibilidad + fuente única de vocabulario (GATE 2 aprobado)
+
+**R2.0 (verificación read-only, cierra sorpresa 2 de R1):** el shape de 4 keys
+alcanza para 11 consumidores sanos (BE-1..7, BE-10/11, FE-1..4), degrada en 4
+(BE-8/9 validación laxa del sim, FE-6 modal casi vacío, FE-8 categoricals sin
+enumValues), rompe silencioso en 1 (FE-5 dashboard-admin: widget.widget
+undefined → ningún renderer dispara + TypeError latente). Disyuntiva cerrada:
+adaptación in-flight EXPLÍCITA Y DOCUMENTADA en el path productivo
+(LiveValue.vue:36-37 comenta el shape pobre; unit se PARSEA del label con
+regex, decimalPlaces se hardcodea por tipo). dashboard-admin es legado del
+template Now-UI nunca adaptado (coherente DEC-REF-70c, KEEP sin link → nadie
+lo abre). Consecuencia: la cadena rota ya generó DOS vocabularios paralelos
+silenciosos (shape pobre del path sitio vs shape rico del path admin); psi/Bar
+es su caso particular. Hallazgo mayor: el sistema productivo YA necesita la
+unidad y la extrae con hack de regex — el campo formal urge, no conviene.
+
+**Mesa de diseño — 5 decisiones (detalle íntegro en DEC-REF-72):** D1
+sub-schema formal de widget + unit formal + backfill mínimo de unit · D2 PUT
+/template que advierte sin bloquear (warnings[]) · D3 selector con herencia
+read-only + fallback con badge para legacy · D4 (decisión de fondo) template
+manda, denormalización en el PUT del pack, edge ciego · D5 recommendation v2
+editable en los 4 forms, estándar por severidad, 200 chars, placeholder
+dinámico (sube DEC-REF-24 a v2).
+
+**GATE 2 aprobado por Franco** (resumen en criollo validado + OK a las 5).
+Toda la ronda es DISEÑO — implementación diferida a bloque propio post-#51.
+FE-5 (dashboard-admin roto) → nota para DEC-DASH-2. Abre R3 (capa de autoría
+por intención, Camila lidera).
+
 
 
 
