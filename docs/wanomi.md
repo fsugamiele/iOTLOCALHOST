@@ -10063,6 +10063,76 @@ Toda la ronda es DISEÑO — implementación diferida a bloque propio post-#51.
 FE-5 (dashboard-admin roto) → nota para DEC-DASH-2. Abre R3 (capa de autoría
 por intención, Camila lidera).
 
+### R3 — Capa de autoría por intención + cierre de diseño (GATE 3 aprobado)
+
+**Dirección de producto de Franco:** el asistente es CAPA DE ENTRADA sobre
+los mini-forms de R23, NO reemplazo. Reusa lo construido de A8; no lo tira.
+Consecuencia: el asistente se suma como "Crear regla guiada" junto al alta
+actual y edita cae directo al mini-form R23 — la intención importa al crear,
+no al editar.
+
+**Insumo de arranque — Asesor Telco NOC:** 8 reglas verbalizadas como las
+piensa un operador de guardia, mapeadas a clase técnica. Cinco caen limpias
+en D/C/S/cross; una es "tanque que baja y no se recupera" — NO tiene tipo
+que la implemente hoy = "la babosa" (destello de reglas de degradación /
+condición, DEFERIDA como sesión propia); dos son transversales: "decime qué
+hacer" mapea a recommendation (D5 de DEC-REF-72) y "no me llenes de mensajes"
+a cooldown/anti-flapping.
+
+**Hallazgo UX que ordena el diseño (Camila):** el operador NUNCA piensa en
+"tipo de regla". Piensa en situaciones. D/C/S/cross no existen en su cabeza.
+El tipo técnico debe ser RESULTADO deducido, jamás pregunta de entrada. Este
+insight ordena el armazón entero.
+
+**Armazón de 4 pasos:** (1) ¿Qué querés vigilar? — equipo + variable
+heredados del template (cablea DEC-REF-72/D3); (2) ¿Qué situación te
+preocupa? — 5 situaciones en criollo que DEDUCEN el tipo (yo pongo el
+límite→D, el equipo lo pone→C, pasa varias veces→S, dos cosas juntas→cross,
+se degrada→babosa "próximamente"); (3) aterrizaje en el mini-form R23 del
+tipo deducido, ya con vocabulario heredado y etiquetas en lenguaje de
+intención; (4) ¿Qué hay que hacer cuando salte? — recommendation con
+placeholder por severidad.
+
+**Simple vs avanzado:** simple = intención pura con defaults sensatos;
+"Ajustes avanzados" colapsable para quien sabe. **`correlationParent` cae
+dentro del avanzado del cross** — cierra la deuda que destapó R1 (cascada
+DEC-REF-53-A sin UI) sin pantalla propia.
+
+**Límites del alcance:** SOLO crear; editar sigue en R23; NO reemplaza
+consola; NO diseña la babosa. Detalle íntegro en DEC-REF-73.
+
+**Dos consultas de Franco que abrieron visión más allá de R3:**
+
+(a) **Motor de sugerencias, 3 niveles** (BACKLOG-INTEL-1). Salto de
+"formulario inteligente" (ayuda a escribir la regla que el operador ya tiene
+en la cabeza) a "sugerencia desde datos" (propone reglas que NO pensó).
+Nivel 1: catálogo base por familia de equipo (sin historia, diseñable
+pronto). Nivel 2 (el objetivo real): umbrales desde el historial ("la
+presión de aceite de este sitio vive entre X e Y → sugerencia en Z") + los
+2225 eventos históricos verificados en #49/R1. Nivel 3: descubrimiento
+automático (ML, horizonte sin promesa). **Dependencia dura del Nivel 2:
+BACKLOG-CHAIN-1 implementado** — sugerir umbrales sobre datos sin unidad
+formal reproduciría exactamente el bug psi/Bar que la cadena vino a matar.
+Disparador: cierre de CHAIN-1.
+
+(b) **Onboarding por autodescubrimiento** (BACKLOG-ONBOARD-1). Premisa: al
+instalar Wanomi por primera vez, el WN-SITE-CORE se engancha al controlador
+existente, descubre qué variables emite, y de ahí nace el BORRADOR del
+template. El instalador confirma en vez de tipear 13 variables. **Corrección
+técnica de la sala (Ing. Hardware) — el descubrimiento da la MITAD:** Modbus
+NO se autodescribe en criollo. Devuelve "registro 40004 = 87", no "presión
+de aceite en Bar". El significado vive en el mapa del fabricante. Tres
+piezas: (1) catálogo de perfiles Modbus por familia — NO depende de fierro,
+se puede adelantar; (2) descubrimiento en el CORE — REQUIERE FIERRO; (3)
+canal CORE→Hub — reusa el hot-reload MQTT (DEC-REF-58/61). **Dependencia
+dura: hardware.** CORE Rev B congelado, existe en Gerbers, no instalado.
+Nota anti-demo (DEC-STRAT-2): simular contra el sim propio NO probaría nada.
+
+**GATE 3 aprobado por Franco.** Sesión #51 CIERRA con DISEÑO FIRMADO
+(DEC-REF-71/-71-A/-72/-73 + DEC-STRAT-4) e IMPLEMENTACIÓN DIFERIDA a
+BACKLOG-CHAIN-1 (post-#51, tamaño A8). Visiones registradas: BACKLOG-INTEL-1
++ BACKLOG-ONBOARD-1.
+
 
 
 
