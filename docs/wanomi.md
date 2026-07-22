@@ -10185,6 +10185,49 @@ caros — no van en la primera tanda. Identidad visual: azul `#1d8cf8`
 **GATE 4 aprobado por Franco.** Alcance de BACKLOG-CHAIN-1 ampliado en
 consecuencia (blockquote en 5i del corpus).
 
+### Cierre — Sesión #51
+
+**Naturaleza cumplida:** RECON + DISEÑO de punta a punta. CERO código de
+`app/` tocado en toda la sesión: ningún build, ningún restart, ninguna
+escritura a Mongo. Cuatro rondas con STOP gate en cada una.
+
+**Balance por ronda:** apertura (DEC-STRAT-4 formaliza Camino A — no tenía
+registro en corpus; DEC-REF-71 cadena Template→Device→Regla) · R1 recon
+read-only con evidencia archivo:línea, pregunta de origen cerrada, 12
+asimetrías, DEC-REF-71-A (el estado real es peor que el declarado) · R2
+DEC-REF-72 (5 decisiones de vocabulario y legibilidad), precedida de R2.0
+que cerró la sorpresa 2 · R3 DEC-REF-73 (asistente por intención como capa
+de entrada) + 3 backlogs nuevos · R4 DEC-REF-74 (catálogo de 11 widgets en
+dos familias) tras el señalamiento de Franco.
+
+**Veredicto de la pregunta que abrió la sesión:** la recomendación NO iba
+"solo en las reglas C" — ningún mini-form la expone (0 hits de
+`recommendation|variableLabel|unit` en `_packId.vue`), el motor la rutea para
+los 4 tipos, y se detectó en C por sesgo de observación del E2E de #48.
+
+**Corpus v0.55 → v0.61.** DEC nuevas: DEC-STRAT-4, DEC-REF-71, -71-A, -72,
+-73, -74, DEC-PROC-3, DEC-PROC-4. Backlogs nuevos: BACKLOG-CHAIN-1,
+BACKLOG-INTEL-1, BACKLOG-ONBOARD-1 (+ subitem de BACKLOG-OPS-2 + ampliación
+de alcance de CHAIN-1). Sub-sección nueva 5l (registro de fallas de proceso).
+
+**Lecciones registradas:** DEC-PROC-3 (auditoría que no rastrea el origen de
+las piezas — señalamiento de Franco, con cita textual) y DEC-PROC-4 (higiene
+de edición y de encadenamiento de pasos, cuatro incidentes).
+
+**Estado del entorno al cierre:** `wanomi-edge Up 2 days · node Up 29 hours
+· emqx Up 2 days (healthy) · mongo Up 2 days (healthy)`. Los 4 contenedores
+vivos, sin cambios de runtime en toda la sesión.
+
+**Mandato para sesión #52 (decidido por Franco al cierre):** abrir
+**BACKLOG-CHAIN-1 por el frente ampliado** — sub-schema formal de widget
+JUNTO con el catálogo de widgets de Familia A (DEC-REF-74: no pueden
+diseñarse en secuencia porque el catálogo define qué metadata debe soportar
+el sub-schema). Incluye la migración de los 42 widgets legacy (backfill de
+`unit` + asignación de tipo de widget). Primera sesión de IMPLEMENTACIÓN tras
+cuatro rondas de diseño.
+
+**Sesión #51 CERRADA.**
+
 
 
 
