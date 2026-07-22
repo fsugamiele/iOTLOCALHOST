@@ -69,4 +69,5 @@ docs/INVENTARIO_AUTO.md
 /session13_wanomi.md
 docs/*.bak
 seeds/_dev/
+app/_dev/
 SECRETS.md

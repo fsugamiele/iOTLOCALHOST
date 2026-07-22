@@ -20,7 +20,7 @@
 export default {
   name: 'LiveValue',
   props: ['config'],
-  // config = { userId, dId, variable, variableType, variableFullName }
+  // config = { userId, dId, variable, variableType, variableFullName, unit }
   data() {
     return { value: null, topic: '' };
   },
@@ -29,10 +29,7 @@ export default {
     isNumeric() { return this.config.variableType === 'float' || this.config.variableType === 'int'; },
     isBool() { return this.config.variableType === 'bool'; },
     mqttConnected() { return this.$store.state.mqttConnected; },
-    unit() {
-      const m = (this.config.variableFullName || '').match(/\(([^)]+)\)/);
-      return m ? m[1] : '';
-    },
+    unit() { return this.config.unit || ''; },
     // Formato por tipo: int = entero, float = 2 decimales. El template no trae
     // decimalPlaces (shape de 4 campos) → regla fija por tipo, no inventada por variable.
     display() {

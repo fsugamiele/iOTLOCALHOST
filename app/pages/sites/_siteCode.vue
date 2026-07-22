@@ -321,6 +321,7 @@ export default {
         variable: widget.variable,
         variableType: widget.variableType,
         variableFullName: widget.variableFullName,
+        unit: widget.unit,
       };
     },
 

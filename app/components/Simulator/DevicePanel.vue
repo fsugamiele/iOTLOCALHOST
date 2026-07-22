@@ -366,8 +366,7 @@ export default {
       const v = this.liveValues[widget.variable];
       if (v === null || v === undefined) return '—';
       const num = Number(v);
-      const m = widget.variableFullName.match(/\(([^)]+)\)/);
-      const unit = m ? m[1] : '';
+      const unit = widget.unit || '';
       return num.toFixed(1) + (unit ? ' ' + unit : '');
     },
 
