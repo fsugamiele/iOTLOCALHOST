@@ -17,7 +17,7 @@ const bitmapEntrySchema = new Schema({
 const widgetSchema = new Schema({
     variable:         { type: String },
     variableFullName: { type: String },
-    variableType:     { type: String, enum: ['float', 'int', 'bool', 'categorical'] },
+    variableType:     { type: String },
     variableSendFreq: { type: Number },
 
     unit:   { type: String, default: '' },
