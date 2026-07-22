@@ -36,6 +36,9 @@ const widgetSchema = new Schema({
     column:        { type: String },
     decimalPlaces: { type: Number },
     tasmotaPath:   { type: String },
+    message:       { type: String },
+    text:          { type: String },
+    chartTimeAgo:  { type: Number },
 
     thresholds: {
         criticalLow:  { type: Number },
