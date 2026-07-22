@@ -10133,6 +10133,58 @@ Nota anti-demo (DEC-STRAT-2): simular contra el sim propio NO probaría nada.
 BACKLOG-CHAIN-1 (post-#51, tamaño A8). Visiones registradas: BACKLOG-INTEL-1
 + BACKLOG-ONBOARD-1.
 
+### R4 — Catálogo de widgets del template (GATE 4 aprobado)
+
+Ronda abierta por Franco tras el cierre de diseño de R3, con un señalamiento
+al equipo: *"solicité una auditoría para que entiendan realmente el
+funcionamiento de la app, toqué en varias sesiones el tema y ninguno advirtió
+de dónde saldrán los widgets necesarios que llenarán el select en template y
+nos permitirán obtener la funcionalidad necesaria para recibir y emitir los
+datos de diferentes equipos existentes en un sitio"*.
+
+**Autocrítica de la sala, sin suavizar.** La evidencia del hueco estaba en el
+propio reporte R1 — sorpresas 4 y 5 (`variableType` hardcodeado en los
+`configXxx` de templates.vue; `unit` presente solo en el widget numberchart) —
+y se clasificó como asimetría menor en lugar de reconocerla como dos síntomas
+de un hueco estructural. No fue falta de datos: fue falta de lectura. Se
+registra como lección en el cierre.
+
+**Distinción que ordena el diseño (precisión de Franco):** las INSTANCIAS de
+widget sí se preconfiguran en el template y viven en Mongo (variable, label,
+unidad, frecuencia); los TIPOS de widget están hardcodeados — 4 opciones fijas
+en el select, heredadas del template IoTiX/Now-UI, cada una con su método de
+configuración escrito a mano. Agregar un tipo no es cargar un dato: es
+construir el componente.
+
+**Catálogo aprobado: 11 widgets en dos familias.** Familia A (widgets de
+variable, encajan en el modelo actual): valor con estado — el de Franco, con
+base en `LiveValue` ya productivo · nivel de tanque · contador acumulado ·
+estado múltiple · alarmas del equipo · mini tendencia · frescura del dato
+(nace de BACKLOG-EDGE-4) · booleano con tiempo en estado. Familia B (widgets
+de sitio, rompen el modelo "un widget = una variable"): autonomía proyectada ·
+recomendación activa · planta DC · cascada de energía del sitio. Detalle
+íntegro y fundamento por widget en DEC-REF-74.
+
+**Alcance real confirmado por Franco:** cada widget son TRES piezas —
+componente + mini-form de configuración en la página de templates + campo de
+sub-schema. Once widgets son once tríos, no once componentes. Se registra
+explícitamente para no subdimensionar el bloque.
+
+**Decisión de Franco sobre los 42 widgets legacy:** los 5 templates
+productivos no tienen el campo de tipo de widget (causa verificada del render
+roto de dashboard-admin en R2.0/FE-5). Se arreglan asignando tipo EN LA
+MIGRACIÓN, no rearmándolos a mano desde la página nueva — rearmar 42 widgets
+es la fricción que la cadena vino a matar.
+
+**Orden de construcción:** Familia A primero (cimiento, desbloquea el
+sub-schema); Familia B después. Nota de Área 4: cascada de energía y
+recomendación activa son los de mayor impacto en demo Claro y también los más
+caros — no van en la primera tanda. Identidad visual: azul `#1d8cf8`
+(DEC-REF-70 g); verde/ámbar/rojo reservados a estado operativo.
+
+**GATE 4 aprobado por Franco.** Alcance de BACKLOG-CHAIN-1 ampliado en
+consecuencia (blockquote en 5i del corpus).
+
 
 
 
