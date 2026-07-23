@@ -800,6 +800,23 @@ export default {
         config.variable = this.makeid(10);
       }
 
+      // Normalización pre-push (smoke: v-model.number sobre input vacío
+      // preserva "" en local state → post-save Mongo lo castea a null sin
+      // error, pero la PREVIEW usa "" directo: `"" != null` es TRUE →
+      // decimalPlaces devuelve "" → toFixed("") colapsa a 0 decimales.
+      // NaN en cambio hace REVENTAR Template.create con Cast to Number
+      // failed). Normalizamos antes del push para que preview y post-save
+      // coincidan.
+      if (isValueStatus) {
+        const toNumOrNull = (v) => (Number.isFinite(v) ? v : null);
+        config.decimalPlaces     = toNumOrNull(config.decimalPlaces);
+        // variableSendFreq: si el usuario borró el default, restauramos 60
+        // (frecuencia null persistida en Mongo dejaría al widget sin ciclo).
+        config.variableSendFreq  = Number.isFinite(config.variableSendFreq)
+          ? config.variableSendFreq
+          : 60;
+      }
+
       this.widgets.push(JSON.parse(JSON.stringify(config)));
 
       // Reset del form: label siempre; en valueStatus además reset de

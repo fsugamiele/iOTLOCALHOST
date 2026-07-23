@@ -49,7 +49,12 @@ export default {
     },
     unit() { return this.config.unit || ''; },
     decimalPlaces() {
-      if (this.config.decimalPlaces != null) return this.config.decimalPlaces;
+      // Defensa en profundidad: Number.isFinite() en vez de `!= null`.
+      // "" != null es TRUE y colapsaría toFixed a 0 decimales; null pasa
+      // el gate correcto, pero un consumidor futuro que preserve "" (v-model
+      // sobre input vacío) rompía la preview. Number.isFinite descarta
+      // "", null, undefined, NaN — todo lo que no es un número real.
+      if (Number.isFinite(this.config.decimalPlaces)) return this.config.decimalPlaces;
       if (this.config.variableType === 'float') return 1;
       if (this.config.variableType === 'int')   return 0;
       return null;
