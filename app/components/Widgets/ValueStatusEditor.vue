@@ -16,7 +16,7 @@ export default {
   name: 'ValueStatusEditor',
   components: { WidgetShell, ValueStatus },
   props: {
-    config: { type: Object, required: true },
+    config: { type: Object, default: () => ({}) },
   },
 };
 </script>

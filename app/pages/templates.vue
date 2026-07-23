@@ -32,6 +32,9 @@
               <el-option value="button" label="Botón — Envío de Comando (salida →)">
                 <i class="fa fa-hand-pointer" style="margin-right:8px"></i>Botón — Envío de Comando (salida →)
               </el-option>
+              <el-option value="valueStatus" label="Valor con Estado — luz por umbral (catálogo)">
+                <i class="fa fa-signal" style="margin-right:8px"></i>Valor con Estado — luz por umbral (catálogo)
+              </el-option>
             </el-select>
 
             <br /><br />
@@ -125,6 +128,48 @@
 
               <label class="control-label">Tamaño del Widget</label>
               <el-select v-model="configButton.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
+                <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
+              </el-select>
+              <br /><br />
+            </div>
+
+            <!-- FORM VALUE STATUS (catálogo · DEC-REF-76 / -76-A / -76-B) -->
+            <div v-if="widgetType == 'valueStatus'">
+              <base-input v-model="valueStatusConfig.variable" label="Variable (nombre técnico del mapa del equipo, ej: oil_pressure)" type="text" />
+              <base-input v-model="valueStatusConfig.variableFullName" label="Nombre de Variable (sin unidad entre paréntesis)" type="text" />
+
+              <label class="control-label">Tipo de dato</label>
+              <el-select v-model="valueStatusConfig.variableType" placeholder="Tipo" style="width:100%; margin-bottom:20px" class="select-primary">
+                <el-option value="float" label="float — número con decimales" />
+                <el-option value="int" label="int — número entero" />
+                <el-option value="bool" label="bool — verdadero/falso" />
+                <el-option value="categorical" label="categorical — estado nombrado" />
+              </el-select>
+
+              <base-input v-model="valueStatusConfig.unit" label="Unidad (opcional, ej: °C, psi, %)" type="text" />
+              <base-input v-model.number="valueStatusConfig.variableSendFreq" label="Frecuencia de Envío (seg)" type="number" />
+              <base-input v-model.number="valueStatusConfig.decimalPlaces" label="Decimales (opcional; vacío = default por tipo)" type="number" />
+
+              <label class="control-label" style="margin-top:8px">Umbrales (opcionales)</label>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px">
+                <base-input v-model.number="valueStatusConfig.thresholds.criticalLow"  label="criticalLow"  type="number" />
+                <base-input v-model.number="valueStatusConfig.thresholds.warningLow"   label="warningLow"   type="number" />
+                <base-input v-model.number="valueStatusConfig.thresholds.warningHigh"  label="warningHigh"  type="number" />
+                <base-input v-model.number="valueStatusConfig.thresholds.criticalHigh" label="criticalHigh" type="number" />
+              </div>
+
+              <label class="control-label">Ícono</label>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
+                <el-select v-model="valueStatusConfig.icon" placeholder="Ícono" style="flex:1" class="select-primary">
+                  <el-option v-for="ic in iconOptions" :key="ic.value" :value="ic.value" :label="ic.label">
+                    <i class="fa" :class="ic.value" style="margin-right:8px; width:16px; text-align:center"></i>{{ ic.label }}
+                  </el-option>
+                </el-select>
+                <i class="fa fa-2x" :class="valueStatusConfig.icon" style="min-width:28px; text-align:center; opacity:0.85"></i>
+              </div>
+
+              <label class="control-label">Tamaño del Widget</label>
+              <el-select v-model="valueStatusConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
                 <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
               </el-select>
               <br /><br />
@@ -526,6 +571,26 @@ export default {
         text: "Enviar",
         tasmotaPath: "",
       },
+
+      // DEC-REF-76-B (iv): 5° config para valueStatus.
+      // NO incluye selectedDevice/userId (DEC-REF-75-B iii).
+      valueStatusConfig: {
+        variable: "",
+        variableFullName: "",
+        variableType: "float",
+        unit: "",
+        variableSendFreq: 60,
+        decimalPlaces: null,
+        thresholds: {
+          criticalLow:  null,
+          warningLow:   null,
+          warningHigh:  null,
+          criticalHigh: null,
+        },
+        icon: "fa-signal",
+        column: "col-4",
+        widget: "valueStatus",
+      },
     };
   },
 
@@ -533,7 +598,12 @@ export default {
     canAddWidget() {
       if (!this.widgetType) return false;
       const config = this.previewConfig;
-      return config && !!config.variableFullName.trim();
+      if (!config || !config.variableFullName || !config.variableFullName.trim()) return false;
+      // DEC-REF-76-B (iii): valueStatus exige `variable` no vacía además.
+      if (this.widgetType === 'valueStatus') {
+        if (!config.variable || !config.variable.trim()) return false;
+      }
+      return true;
     },
     previewConfig() {
       const configs = {
@@ -541,6 +611,7 @@ export default {
         switch:      this.iotSwitchConfig,
         button:      this.configButton,
         indicator:   this.iotIndicatorConfig,
+        valueStatus: this.valueStatusConfig,
       };
       return configs[this.widgetType];
     },
@@ -701,27 +772,46 @@ export default {
     },
 
     addNewWidget() {
-      const configs = {
-        numberchart: this.ncConfig,
-        switch: this.iotSwitchConfig,
-        button: this.configButton,
-        indicator: this.iotIndicatorConfig,
-      };
-      const config = configs[this.widgetType];
-      const varName = config.variableFullName.trim();
+      const config = this.previewConfig;
+      const isValueStatus = this.widgetType === 'valueStatus';
 
-      if (this.widgets.some((w) => w.variableFullName.trim() === varName)) {
-        this.$notify({
-          type: "warning",
-          icon: "tim-icons icon-alert-circle-exc",
-          message: `Ya existe un widget con la variable "${varName}"`,
-        });
-        return;
+      // DEC-REF-76-B (ii): dedupe por `variable` en valueStatus (clave real
+      // de unicidad); en los 4 legacy sigue por variableFullName.trim()
+      // (retrocompatibilidad — el makeid garantiza `variable` único).
+      if (isValueStatus) {
+        const varName = (config.variable || '').trim();
+        if (this.widgets.some((w) => w.variable === varName)) {
+          this.$notify({
+            type: "warning",
+            icon: "tim-icons icon-alert-circle-exc",
+            message: `Ya existe un widget con la variable "${varName}"`,
+          });
+          return;
+        }
+      } else {
+        const label = config.variableFullName.trim();
+        if (this.widgets.some((w) => (w.variableFullName || '').trim() === label)) {
+          this.$notify({
+            type: "warning",
+            icon: "tim-icons icon-alert-circle-exc",
+            message: `Ya existe un widget con la variable "${label}"`,
+          });
+          return;
+        }
       }
 
-      config.variable = this.makeid(10);
+      // DEC-REF-76-B (i): NO pisar `variable` con makeid en valueStatus
+      // (la variable la fija el mapa Modbus del equipo, no la plataforma).
+      if (!isValueStatus) {
+        config.variable = this.makeid(10);
+      }
+
       this.widgets.push(JSON.parse(JSON.stringify(config)));
+
+      // Reset del form: label siempre; variable solo si el usuario la editó
+      // (no queremos que la próxima instancia herede la última variable).
       config.variableFullName = "";
+      if (isValueStatus) config.variable = "";
     },
 
     deleteWidget(index) {

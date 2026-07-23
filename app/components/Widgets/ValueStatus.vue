@@ -32,7 +32,7 @@ export default {
   name: 'ValueStatus',
   props: {
     value:   { default: null },
-    config:  { type: Object, required: true },
+    config:  { type: Object, default: () => ({}) },
     context: { type: String, default: 'live' },  // 'live' | 'editor'
   },
   computed: {

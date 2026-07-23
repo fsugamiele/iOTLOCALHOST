@@ -18,7 +18,7 @@ export default {
   name: 'ValueStatusLive',
   components: { WidgetShell, LiveValue },
   props: {
-    config: { type: Object, required: true },
+    config: { type: Object, default: () => ({}) },
   },
   data() { return { ValueStatus }; },
 };

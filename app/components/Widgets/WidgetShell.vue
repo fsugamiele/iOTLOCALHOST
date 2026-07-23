@@ -19,7 +19,7 @@
 export default {
   name: 'WidgetShell',
   props: {
-    config: { type: Object, required: true },
+    config: { type: Object, default: () => ({}) },
   },
   computed: {
     label() {
