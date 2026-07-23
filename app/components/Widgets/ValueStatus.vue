@@ -1,7 +1,12 @@
 <template>
   <span class="value-status" :class="'value-status--' + status">
     <template v-if="!hasData">
-      <span class="value-status__nodata">sin dato</span>
+      <!-- DEC-REF-76-A (iv): tres estados. "no aplica" (context editor,
+           no hay fuente) → guión neutro; "sin dato" (context live, valor
+           null tras publish) → texto explícito. "esperando" lo maneja el
+           wrapper LiveValue, no ValueStatus. -->
+      <span v-if="context === 'editor'" class="value-status__na">—</span>
+      <span v-else class="value-status__nodata">sin dato</span>
     </template>
     <template v-else-if="isNumeric">
       <span class="value-status__num">{{ display }}</span><small v-if="unit" class="ml-1 value-status__unit">{{ unit }}</small>
@@ -20,12 +25,15 @@
 // Sin MQTT, sin store, sin fetch, sin mounted/beforeDestroy.
 // Recibe value + config y renderiza. LiveValue lo envuelve para el path
 // MQTT del site page; el resolver de widget lo usa como fallback DEC-REF-75 §2.
+// DEC-REF-76-A: prop context distingue 'live' (hay fuente) vs 'editor'
+// (no hay fuente por definición) para no afirmar "sin dato" cuando miente.
 
 export default {
   name: 'ValueStatus',
   props: {
-    value:  { default: null },
-    config: { type: Object, required: true },
+    value:   { default: null },
+    config:  { type: Object, required: true },
+    context: { type: String, default: 'live' },  // 'live' | 'editor'
   },
   computed: {
     hasData() {
@@ -70,7 +78,7 @@ export default {
     //   con umbrales      → críticos primero, warning después, si no cae → ok
     // La luz NO informa frescura (eso es widget 8 dataFreshness).
     status() {
-      if (!this.hasData)         return 'nodata';
+      if (!this.hasData)         return this.context === 'editor' ? 'na' : 'nodata';
       if (!this.isNumeric)       return 'unknown';
       if (!this.hasAnyThreshold) return 'unknown';
       const n = Number(this.value);
@@ -91,6 +99,7 @@ export default {
 .value-status              { color: #1d8cf8; }
 .value-status__unit        { color: #6b7280; }
 .value-status__nodata      { color: #6b7280; opacity: 0.7; font-style: italic; }
+.value-status__na          { color: #6b7280; opacity: 0.7; }
 
 /* Estado operativo — verde/ámbar/rojo reservado a esto (DEC-REF-70 g). */
 .value-status--ok          { color: #00bf9a; }
@@ -100,4 +109,5 @@ export default {
 /* Sin umbrales cargados o valor no evaluable → cromo neutro (azul base). */
 .value-status--unknown     { color: #1d8cf8; }
 .value-status--nodata      { color: #6b7280; }
+.value-status--na          { color: #6b7280; }
 </style>

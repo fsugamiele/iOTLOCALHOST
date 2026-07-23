@@ -32,7 +32,7 @@
         :class="[widget.column]"
       >
         <component
-          :is="resolveWidget(widget.widget)"
+          :is="resolveWidget(widget.widget, { context: 'live' })"
           :config="fixWidget(widget)"
         />
       </div>
@@ -104,6 +104,10 @@ export default {
       widgetCopy.selectedDevice.dId  = this.$store.state.selectedDevice.dId;
       widgetCopy.selectedDevice.name = this.$store.state.selectedDevice.name;
       widgetCopy.userId              = this.$store.state.selectedDevice.userId;
+      // C5.1-BIS · R3: LiveValue lee config.dId (top-level) para armar el
+      // topic MQTT; los 4 legacy leen config.selectedDevice.dId. Setear
+      // ambos: aditivo, no rompe legacy, habilita LiveValue en la grilla.
+      widgetCopy.dId                 = this.$store.state.selectedDevice.dId;
 
       if (widget.widget == "numberchart") {
         widgetCopy.demo = false;

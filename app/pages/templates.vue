@@ -171,7 +171,7 @@
             </div>
             <component
               v-if="widgetType"
-              :is="resolveWidget(widgetType)"
+              :is="resolveWidget(widgetType, { context: 'editor' })"
               :config="previewConfig"
             />
           </div>
@@ -231,7 +231,7 @@
           </base-button>
         </div>
 
-        <component :is="resolveWidget(widget.widget)" :config="widget" />
+        <component :is="resolveWidget(widget.widget, { context: 'editor' })" :config="widget" />
       </div>
     </div>
 
