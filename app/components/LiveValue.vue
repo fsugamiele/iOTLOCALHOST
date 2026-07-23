@@ -1,24 +1,28 @@
 <template>
   <span class="live-value">
-    <!-- Sin valor todavía -->
+    <!-- Sin valor todavía → estado MQTT-específico -->
     <template v-if="!hasValue">
-      <!-- Broker conectado → esperando este dato (spinner) -->
       <i v-if="mqttConnected" class="tim-icons icon-refresh-01 live-value__spin" title="Esperando dato"></i>
-      <!-- Broker caído → sin señal (no va a llegar) -->
       <i v-else class="tim-icons icon-simple-remove live-value__nosignal" title="Sin señal MQTT"></i>
     </template>
-    <!-- Valor recibido -->
+    <!-- Valor recibido → delega presentación en ValueStatus (DEC-REF-76 i) -->
     <template v-else>
-      <template v-if="isNumeric">{{ display }}<small v-if="unit" class="ml-1 text-muted">{{ unit }}</small></template>
-      <template v-else-if="isBool">{{ boolLabel }}</template>
-      <template v-else>{{ value }}</template>
+      <ValueStatus :value="value" :config="config" />
     </template>
   </span>
 </template>
 
 <script>
+// DEC-REF-76 (i) — LiveValue es la fuente MQTT + wrapper. La presentación
+// del dato la resuelve ValueStatus.vue (componente puro, sin bus). Rol
+// exclusivo de LiveValue: suscripción/desuscripción MQTT y estados
+// MQTT-específicos ("esperando dato" / "sin señal MQTT").
+// Contrato de props con _siteCode.vue.liveConfig() intacto.
+import ValueStatus from '@/components/Widgets/ValueStatus.vue';
+
 export default {
   name: 'LiveValue',
+  components: { ValueStatus },
   props: ['config'],
   // config = { userId, dId, variable, variableType, variableFullName, unit }
   data() {
@@ -26,21 +30,7 @@ export default {
   },
   computed: {
     hasValue() { return this.value !== null; },
-    isNumeric() { return this.config.variableType === 'float' || this.config.variableType === 'int'; },
-    isBool() { return this.config.variableType === 'bool'; },
     mqttConnected() { return this.$store.state.mqttConnected; },
-    unit() { return this.config.unit || ''; },
-    // Formato por tipo: int = entero, float = 2 decimales. El template no trae
-    // decimalPlaces (shape de 4 campos) → regla fija por tipo, no inventada por variable.
-    display() {
-      const n = Number(this.value);
-      if (Number.isNaN(n)) return this.value;
-      return this.config.variableType === 'int' ? String(Math.round(n)) : n.toFixed(2);
-    },
-    boolLabel() {
-      const v = this.value;
-      return (v === true || v === 1 || v === '1' || v === 'true') ? 'Activo' : 'Inactivo';
-    },
   },
   mounted() {
     if (!this.config.userId || !this.config.dId || !this.config.variable) return;

@@ -31,25 +31,10 @@
         :key="index"
         :class="[widget.column]"
       >
-        <Rtnumberchart
-          v-if="widget.widget == 'numberchart'"
+        <component
+          :is="resolveWidget(widget.widget)"
           :config="fixWidget(widget)"
-        ></Rtnumberchart>
-
-        <Iotswitch
-          v-if="widget.widget == 'switch'"
-          :config="fixWidget(widget)"
-        ></Iotswitch>
-
-        <Iotbutton
-          v-if="widget.widget == 'button'"
-          :config="fixWidget(widget)"
-        ></Iotbutton>
-
-        <Iotindicator
-          v-if="widget.widget == 'indicator'"
-          :config="fixWidget(widget)"
-        ></Iotindicator>
+        />
       </div>
     </div>
 
@@ -60,6 +45,7 @@
 </template>
 <script>
 import { Select, Option } from "element-ui";
+import { resolveWidget } from "@/components/Widgets/resolver.js";
 
 export default {
   middleware: ['authenticated', 'superadmin'],
@@ -106,8 +92,15 @@ export default {
         .catch(e => { console.log(e); });
     },
 
+    resolveWidget,
+
     fixWidget(widget) {
       var widgetCopy = JSON.parse(JSON.stringify(widget));
+      // Guarda C5.1 · DEC-REF-75-B: los widgets migrados no persisten
+      // selectedDevice/userId (decisión iii). Sin esta guarda, asignar sobre
+      // undefined tira TypeError latente (R2.0/FE-5) al renderizar los 42
+      // legacy vía el resolver.
+      if (!widgetCopy.selectedDevice) widgetCopy.selectedDevice = {};
       widgetCopy.selectedDevice.dId  = this.$store.state.selectedDevice.dId;
       widgetCopy.selectedDevice.name = this.$store.state.selectedDevice.name;
       widgetCopy.userId              = this.$store.state.selectedDevice.userId;

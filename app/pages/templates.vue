@@ -169,10 +169,11 @@
                 <i class="fa fa-eye" style="margin-right:6px"></i>Vista Previa
               </h6>
             </div>
-            <Rtnumberchart v-if="widgetType == 'numberchart'" :config="ncConfig" />
-            <Iotswitch v-if="widgetType == 'switch'" :config="iotSwitchConfig" />
-            <Iotbutton v-if="widgetType == 'button'" :config="configButton" />
-            <Iotindicator v-if="widgetType == 'indicator'" :config="iotIndicatorConfig" />
+            <component
+              v-if="widgetType"
+              :is="resolveWidget(widgetType)"
+              :config="previewConfig"
+            />
           </div>
         </div>
 
@@ -230,10 +231,7 @@
           </base-button>
         </div>
 
-        <Rtnumberchart v-if="widget.widget == 'numberchart'" :config="widget" />
-        <Iotswitch v-if="widget.widget == 'switch'" :config="widget" />
-        <Iotbutton v-if="widget.widget == 'button'" :config="widget" />
-        <Iotindicator v-if="widget.widget == 'indicator'" :config="widget" />
+        <component :is="resolveWidget(widget.widget)" :config="widget" />
       </div>
     </div>
 
@@ -369,6 +367,7 @@
 <script>
 import { Table, TableColumn, Dialog, Tooltip } from "element-ui";
 import { Select, Option, MessageBox } from "element-ui";
+import { resolveWidget } from "@/components/Widgets/resolver.js";
 
 export default {
   middleware: "authenticated",
@@ -533,22 +532,26 @@ export default {
   computed: {
     canAddWidget() {
       if (!this.widgetType) return false;
-      const configs = {
-        numberchart: this.ncConfig,
-        switch: this.iotSwitchConfig,
-        button: this.configButton,
-        indicator: this.iotIndicatorConfig,
-      };
-      const config = configs[this.widgetType];
+      const config = this.previewConfig;
       return config && !!config.variableFullName.trim();
     },
+    previewConfig() {
+      const configs = {
+        numberchart: this.ncConfig,
+        switch:      this.iotSwitchConfig,
+        button:      this.configButton,
+        indicator:   this.iotIndicatorConfig,
+      };
+      return configs[this.widgetType];
+    },
   },
-
   mounted() {
     this.getTemplates();
   },
 
   methods: {
+    resolveWidget,
+
     colorDotStyle(hex) {
       return {
         display: "inline-block",
