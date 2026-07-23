@@ -322,6 +322,9 @@ export default {
         variableType: widget.variableType,
         variableFullName: widget.variableFullName,
         unit: widget.unit,
+        // DEC-REF-76-C (v): pasar decimalPlaces al config. Sin esto
+        // ValueStatus cae al default por tipo aunque el widget lo configure.
+        decimalPlaces: widget.decimalPlaces,
       };
     },
 

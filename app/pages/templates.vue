@@ -150,13 +150,11 @@
               <base-input v-model.number="valueStatusConfig.variableSendFreq" label="Frecuencia de Envío (seg)" type="number" />
               <base-input v-model.number="valueStatusConfig.decimalPlaces" label="Decimales (opcional; vacío = default por tipo)" type="number" />
 
-              <label class="control-label" style="margin-top:8px">Umbrales (opcionales)</label>
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px">
-                <base-input v-model.number="valueStatusConfig.thresholds.criticalLow"  label="criticalLow"  type="number" />
-                <base-input v-model.number="valueStatusConfig.thresholds.warningLow"   label="warningLow"   type="number" />
-                <base-input v-model.number="valueStatusConfig.thresholds.warningHigh"  label="warningHigh"  type="number" />
-                <base-input v-model.number="valueStatusConfig.thresholds.criticalHigh" label="criticalHigh" type="number" />
-              </div>
+              <!-- DEC-REF-76-C: los 4 inputs de umbral se retiran del mini-form
+                   (los umbrales son semántica de alarma; el color de estado se
+                   resuelve en #53 según los 3 caminos registrados). El campo
+                   `thresholds` PERMANECE en el sub-schema — sin datos que lo
+                   populen, ValueStatus renderiza neutro por DEC-REF-76 iii. -->
 
               <label class="control-label">Ícono</label>
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
@@ -574,6 +572,8 @@ export default {
 
       // DEC-REF-76-B (iv): 5° config para valueStatus.
       // NO incluye selectedDevice/userId (DEC-REF-75-B iii).
+      // DEC-REF-76-C: NO incluye thresholds — el color de estado se
+      // resuelve en #53 (fuente única desde el motor, ver 3 caminos).
       valueStatusConfig: {
         variable: "",
         variableFullName: "",
@@ -581,12 +581,6 @@ export default {
         unit: "",
         variableSendFreq: 60,
         decimalPlaces: null,
-        thresholds: {
-          criticalLow:  null,
-          warningLow:   null,
-          warningHigh:  null,
-          criticalHigh: null,
-        },
         icon: "fa-signal",
         column: "col-4",
         widget: "valueStatus",
@@ -808,10 +802,16 @@ export default {
 
       this.widgets.push(JSON.parse(JSON.stringify(config)));
 
-      // Reset del form: label siempre; variable solo si el usuario la editó
-      // (no queremos que la próxima instancia herede la última variable).
+      // Reset del form: label siempre; en valueStatus además reset de
+      // variable/unit/decimalPlaces (DEC-REF-76-C iv) para que el próximo
+      // widget no herede campos del anterior. Se conservan variableType
+      // (default sano), icon y column (defaults del form).
       config.variableFullName = "";
-      if (isValueStatus) config.variable = "";
+      if (isValueStatus) {
+        config.variable      = "";
+        config.unit          = "";
+        config.decimalPlaces = null;
+      }
     },
 
     deleteWidget(index) {
