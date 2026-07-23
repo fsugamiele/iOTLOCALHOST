@@ -10,7 +10,7 @@
           <option value="" disabled>Elegí una variable</option>
           <!-- R5 · G8 · 5 — solo tv.label (sin aggregation cruda). -->
           <option v-for="tv in trendVariables" :key="tv.variable" :value="tv.variable">
-            {{ tv.label || tv.variable }}
+            {{ tv.unit ? ((tv.label || tv.variable) + ' (' + tv.unit + ')') : (tv.label || tv.variable) }}
           </option>
         </select>
         <select v-model="selectedWindow" class="form-control form-control-sm">

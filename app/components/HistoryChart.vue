@@ -28,6 +28,7 @@ export default {
   props: {
     samples:          { type: Array,   default: () => [] },
     variableFullName: { type: String,  default: '' },
+    unit:             { type: String,  default: '' },
     loading:          { type: Boolean, default: false },
     error:            { type: String,  default: null },
   },
@@ -53,7 +54,7 @@ export default {
           series: { label: { connectorAllowed: false } },
         },
         series: [{
-          name: this.variableFullName,
+          name: this.unit ? this.variableFullName + ' (' + this.unit + ')' : this.variableFullName,
           data,
           color: '#e14eca',
         }],

@@ -35,7 +35,7 @@
                    :disabled="!selectedDId">
           <el-option v-for="w in variablesForDevice"
                      :key="w.variable"
-                     :label="w.variableFullName"
+                     :label="w.unit ? (w.variableFullName + ' (' + w.unit + ')') : w.variableFullName"
                      :value="w.variable" />
         </el-select>
       </div>
@@ -55,6 +55,7 @@
       <HistoryChart
         :samples="samples"
         :variableFullName="selectedVariableObj ? selectedVariableObj.variableFullName : ''"
+        :unit="selectedVariableObj ? (selectedVariableObj.unit || '') : ''"
         :loading="loadingHistory"
         :error="error"
       />

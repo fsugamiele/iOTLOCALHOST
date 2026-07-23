@@ -67,6 +67,7 @@ function scopeKeyOf(siteCodes) {
 async function computeTrendVariablesFromTemplates(templates) {
   const declared = new Set();
   const labelByVar = new Map();
+  const unitByVar  = new Map();
   templates.forEach(t => (t.widgets || []).forEach(w => {
     if (!w || !w.variable) return;
     if (w.variableType !== "float" && w.variableType !== "int") return;
@@ -74,6 +75,11 @@ async function computeTrendVariablesFromTemplates(templates) {
     declared.add(w.variable);
     if (!labelByVar.has(w.variable) && w.variableFullName) {
       labelByVar.set(w.variable, w.variableFullName);
+    }
+    // DEC-REF-75-D: unit viaja en el contrato del endpoint. Primer widget que
+    // declara la variable gana (igual criterio que labelByVar).
+    if (!unitByVar.has(w.variable) && w.unit) {
+      unitByVar.set(w.variable, w.unit);
     }
   }));
   if (!declared.size) return [];
@@ -84,6 +90,7 @@ async function computeTrendVariablesFromTemplates(templates) {
     .map(v => ({
       variable:    v,
       label:       labelByVar.get(v) || v,
+      unit:        unitByVar.get(v) || "",
       aggregation: classifyAggregation(v)
     }));
 }
