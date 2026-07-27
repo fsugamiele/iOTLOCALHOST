@@ -535,6 +535,16 @@ export default {
       this.$axios.post("/device", { newDevice: this.newDevice }, axiosHeaders)
         .then(res => {
           if (res.data.status == "success") {
+            // DEC-REF-78: el backend ya no marca selected en Mongo. El
+            // frontend persiste la preferencia en localStorage ANTES de
+            // dispatch getDevices, para que el store al refrescar sincronice
+            // el select al device recién creado (misma UX que hoy).
+            const userId = this.$store.state.auth
+              && this.$store.state.auth.userData
+              && this.$store.state.auth.userData._id;
+            if (userId && res.data.dId) {
+              localStorage.setItem('lastSelectedDId:' + userId, res.data.dId);
+            }
             this.$store.dispatch("getDevices");
 
             if (res.data.firmwareType === "tasmota") {

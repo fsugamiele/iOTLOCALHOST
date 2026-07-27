@@ -1,10 +1,12 @@
 <template>
   <div>
     <!-- DEC-REF-70 (c) · #50 — selector de device migrado del navbar
-         global. Único cliente real de $store.state.selectedDevice
-         (verificado GATE 1). Misma lógica: al cambiar el select
-         se hace PUT /device con `dId` para persistir el flag
-         `selected:true` que consume el store en getDevices. -->
+         global. Único cliente real de $store.state.selectedDevice.
+         DEC-REF-78 (#53) — el cambio de selección no persiste en Mongo:
+         se commitea al store y se guarda en localStorage namespaceado
+         por userId. La selección es preferencia de sesión, no estado
+         del device. El store lee ese localStorage en getDevices y sincroniza
+         el select via `selectedDeviceIndex`. -->
     <div class="row mb-3" v-if="$store.state.devices.length > 0">
       <div class="col-md-6 col-lg-4">
         <el-select
@@ -83,13 +85,17 @@ export default {
 
   methods: {
     selectDevice() {
+      // DEC-REF-78: sin round-trip a Mongo. Commit al store + persistir
+      // la preferencia en localStorage namespaceado por userId.
       const device = this.$store.state.devices[this.selectedDeviceIndex];
       if (!device) return;
-      const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
-      this.$axios
-        .put("/device", { dId: device.dId }, axiosHeaders)
-        .then(() => this.$store.dispatch("getDevices"))
-        .catch(e => { console.log(e); });
+      this.$store.commit('setSelectedDevice', device);
+      const userId = this.$store.state.auth
+        && this.$store.state.auth.userData
+        && this.$store.state.auth.userData._id;
+      if (userId) {
+        localStorage.setItem('lastSelectedDId:' + userId, device.dId);
+      }
     },
 
     resolveWidget,
