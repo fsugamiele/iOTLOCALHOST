@@ -28,7 +28,7 @@
     <div class="row" v-if="$store.state.devices.length > 0 && $store.state.selectedDevice.template">
       <div
         v-for="(widget, index) in $store.state.selectedDevice.template.widgets"
-        :key="index"
+        :key="`${$store.state.selectedDevice.dId}-${widget.variable}`"
         :class="[widget.column]"
       >
         <component
