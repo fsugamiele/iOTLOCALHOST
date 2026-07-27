@@ -10422,5 +10422,32 @@ sitio muerto.
 
 
 
+## FASE 1 del paréntesis pre-reunión Claro (DEC-REF-77) — 2026-07-27 · fix `be9d799` + refactor DEC-REF-78 (selección de device)
+
+**Naturaleza.** No es sesión suelta: es la **Fase 1 del paréntesis** declarado por DEC-REF-77. Se ejecutaron dos piezas: el fix `be9d799` (siembra UI-7 + `:key` compuesto + watcher `LiveValue`) que había quedado pendiente de validación al cierre de #52, y el refactor **DEC-REF-78** (selección de device pasa de flag persistente en Mongo a preferencia de sesión en localStorage) que se destapó como bloqueante durante el test decisivo del propio `be9d799`.
+
+**Qué se ejecutó.** (i) `be9d799` (fix #52/FASE1) — el commit ya venía sellado del cierre de #52 sin ejercitar. (ii) **DEC-REF-78** en cuatro commits atómicos: **`152b06a`** (docs de la DEC + bump v0.72→v0.73), **`5873772`** (backend: eliminar `PUT /device` + helper `selectDevice()` + los 3 llamadores + agregar `.sort({_id:1})` al `GET /device` para orden estable del fallback), **`910177d`** (store `getDevices` lee `lastSelectedDId:<userId>` de localStorage con fallback determinístico al primero por `_id`), **`93ccd27`** (frontend `dashboard-admin.vue` commitea al store + `localStorage.setItem`; `devices.vue` persiste tras el POST del alta para no romper la UX del alta = queda seleccionado).
+
+**Hallazgo del bloque — el bug de tenant tapaba `be9d799`.** El fix `be9d799` cierra un eje del bug de datos cruzados (`:key` compuesto por `dId+variable` + watcher `LiveValue` sobre `topicKey` computed + siembra al montar via `/get-last-data?chartTimeAgo=15`). **Nunca se había podido ejercer** porque `selectDevice(userId, dId)` en `app/api/routes/devices.js:290-308` filtraba por el userId del CALLER: el superadmin desmarcaba los suyos con `updateMany` y NO matcheaba el `updateOne` del ajeno, devolviendo `true` engañosamente. Resultado: ningún device quedaba con `selected:true`, el store no refrescaba `selectedDevice`, y la grilla quedaba pegada al último device del propio admin que sí había persistido (típicamente un ELTEK). **Verificado en Mongo pre-código:** `count({selected:true})` iba de 1 a 0 tras cambios entre los 9 devices ajenos. DEC-REF-78 cierra el eje del schema (la selección deja de ser propiedad del device y pasa a ser preferencia del observador).
+
+**Dos checklists visuales de Franco, los dos verdes.** **Checklist A (selección — bug de tenant):** 14 devices barridos — 5 propios del `admin@wanomi.com` (3 ELTEK + ATS + 1 huérfano `Hk2inNT1`/coolant_temp) + 9 ajenos de `operator-claro@wanomi.platform` (SEC/GEN de CR00015/CR00061/CR00073/CR00203 + CUMMINS de CR00061). **Cada uno muestra SUS widgets, incluyendo los ajenos que quedaban pegados antes del refactor.** **Checklist B (datos cruzados — verifica `be9d799`):** cambios GEN↔CUMMINS del mismo site con variables compartidas (`fuel_level`, `battery_voltage`), siembra al toque via `/get-last-data`, sin dato de un device con unidad de otro, reemplazo limpio del sembrado por el primer publish MQTT sin salto brusco.
+
+**CERO adendas correctivas — primera vez desde DEC-PROC-6.** Método aplicado: **(1)** corpus primero (DEC-REF-78 con 6 puntos y 4 casos raros especificados **antes** del código); **(2)** especificación con casos raros (scope vacío / sin preferencia / device borrado activo / alta); **(3)** grep de alcance exhaustivo (121 hits totales en `app/`, 0 en `edge-engine/`; separación explícita entre usos reales del schema `Device.selected` y falsos positivos como `selectedIndexTemplate`/`selectedVariable`/`selectedTemplate`/mocks); **(4)** código en tres commits atómicos backend→store→frontend, cada uno con la referencia a la sub-cláusula de la DEC que ejecuta. Cero preguntas que la especificación no contestara durante la implementación. Cero adendas post-hoc. **El método (corpus → especificación con casos raros → grep de alcance → código) funcionó.**
+
+**Verificaciones cerradas en el cierre (V1/V2 de Franco).** **V1:** `POST /device` retorna `dId` en `res.data` en ambas ramas (`devices.js:141` tasmota, `devices.js:151` wanomi) — la persistencia de `localStorage` en `devices.vue` tras el alta está garantizada por contrato, DEC-REF-78 §v(d) cerrado. **V2:** `nuxt.config.js:2` declara `ssr: false` explícito → SPA puro → `localStorage` en el store es seguro (no se ejecuta en SSR). El "200.html" del build era señal correcta, confirmada contra el config.
+
+**PENDIENTES QUE NO SE EJECUTARON POR CORTE DE CONTEXTO.** **(1A)** Diagnóstico del ATS — abierto, no se ejecutó. **(1B)** Revival del ATS propiamente dicho — abierto. **(1C)** Verificación de la afirmación E2E que la bitácora de #52 declaró como probada por Franco desde la web — **no se re-verificó** en esta ronda; se declara abierta hasta que se re-ejerza sobre el estado actual. **Se declaran abiertos, no se dan por hechos.** **Fase 2 del paréntesis arranca por el diagnóstico read-only del ATS** (DEC-PROC-6: sin diagnóstico no hay revival).
+
+**Residuos por UI todavía sin borrar** (declarados en el cierre de #52, no cerrados en Fase 1). Device huérfano `Hk2inNT1` bajo `admin@wanomi.com` (`name=Z5tKK1rN`, `template=coolant_temp`). Después de borrar el device: sus templates `coolant_temp` y `TEMPERATURA-*`. Orden: **devices primero, templates después** (dependencia por `templateId`). Se pospone al ejecutor humano.
+
+**Bump de versión: v0.72 → v0.73** (aterrizado en `docsRefactor/WanomiRefactor.md:4` en el commit `152b06a`). **Corpus v0.73.**
+
+**Estado del entorno al cierre de Fase 1.** `wanomi-edge Up 8 days · node Up ~4 min (reiniciado tras rebuild Nuxt) · emqx Up 8 days (healthy) · mongo Up 8 days (healthy)`. Simulador (PID 98358) sigue publicando activamente desde el host WSL con port mapping (no tocado). **5 commits pusheados a `origin/feature/telco-support` con range `e6bc903..93ccd27`** (be9d799 previo + los 4 del refactor). Branch `feature/telco-support` ahead=0.
+
+**Fase 1 del paréntesis CERRADA. Fase 2 (ATS) abre por diagnóstico read-only.**
+
+
+
+
 
 
