@@ -10465,7 +10465,7 @@ sitio muerto.
 
 **Hipótesis (e) de Franco CONFIRMADA.** El `DELETE /device` ejecuta `deleteMqttDeviceCredentials(dId)` — al borrar el device viejo por UI se borró el `emqxauthrule` de `6z4LN2md` (verificado: `db.emqxauthrules.findOne({dId:"6z4LN2md"})` = null; `db.devices.findOne({dId:"6z4LN2md"})` = null). El sim quedó intentando conectar con credenciales inválidas hasta que se actualizó el `devices_state.json` con el `dId` nuevo. **El revival ya había ocurrido** al arrancar el sim con el state file actualizado — no hubo que revivir nada durante Fase 2.
 
-**1A + 1B cerrados** (diagnóstico completo + revival implícito confirmado). **1C pendiente al cierre de este escrito** — Franco corre la comparación visual del widget contra el valor de Mongo `mains_voltage=225.19V` (última muestra 12:57 UTC).
+**1A + 1B cerrados** (diagnóstico completo + revival implícito confirmado). **1C · RAMA-A confirmada por Franco:** widget de `Tensión de red` muestra **225.1 V**, Mongo tenía **225.19 V** a las 12:57 UTC — coincidencia dentro del redondeo del widget (`decimalPlaces=1`). **La cadena Template→Device→widget→dato vivo queda probada íntegra por primera vez en el proyecto** — no en #52 (contaminación de suscripciones daba falso positivo durante el gap del ATS), sino aquí en Fase 1+2 del paréntesis con `be9d799` bajado al bundle y el ATS publicando activamente.
 
 ### Adenda al cierre de la Sesión #52 (registrada en Fase 2, entrada original intacta)
 
@@ -10481,7 +10481,7 @@ Verificado atómicamente en Fase 2: `db.data` guarda `userId` en cada documento 
 
 **Bump de versión: v0.73 → v0.74** (aterrizado en `docsRefactor/WanomiRefactor.md:4`).
 
-**Fase 2 del paréntesis CERRADA (a la espera del reporte visual del 1C). Fase 3 (simulador — ciclo semanal + horas iniciales realistas + transfer_state contra mapa real ComAp) queda declarada abierta.**
+**Fase 2 del paréntesis CERRADA con 1C RAMA-A verde. Fase 3 (simulador — ciclo semanal + horas iniciales realistas + transfer_state contra mapa real ComAp) queda declarada abierta; `transfer_state` bloqueado por spec de Área 1 (DEC-PROC-6), el ciclo semanal + horas iniciales se puede arrancar en paralelo.**
 
 
 
