@@ -53,24 +53,28 @@ export const actions = {
 
     return this.$axios.get("/device", axiosHeader)
     .then(res => {
-      console.log(res.data.data);
+      const devices = res.data.data;
+      this.commit("setDevices", devices);
 
-      res.data.data.forEach((device, index) => {
-        if (device.selected){
-          this.commit("setSelectedDevice", device);
-          $nuxt.$emit('selectedDeviceIndex', index);
-        }
-      });
-
-      //if all devices were removed
-      if (res.data.data.length == 0){
+      // DEC-REF-78: la selección es preferencia de sesión del usuario,
+      // no estado persistente del device. La preferencia vive en
+      // localStorage namespaceada por userId; el fallback es el primer
+      // device de la lista (backend garantiza orden estable por _id).
+      if (devices.length === 0) {
         this.commit("setSelectedDevice", {});
         $nuxt.$emit('selectedDeviceIndex', null);
+        return;
       }
 
-      this.commit("setDevices", res.data.data);
+      const userId = this.state.auth && this.state.auth.userData && this.state.auth.userData._id;
+      const key = userId ? ('lastSelectedDId:' + userId) : null;
+      const savedDId = key ? localStorage.getItem(key) : null;
 
+      let index = savedDId ? devices.findIndex(d => d.dId === savedDId) : -1;
+      if (index === -1) index = 0;  // fallback determinístico al primero
 
+      this.commit("setSelectedDevice", devices[index]);
+      $nuxt.$emit('selectedDeviceIndex', index);
     }).catch(error => {
       console.log(error);
     });
