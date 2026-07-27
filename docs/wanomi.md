@@ -10231,5 +10231,196 @@ cuatro rondas de diseño.
 
 
 
+## Sesión #52 — 2026-07-22/26 · Área 2 · BACKLOG-CHAIN-1 frente ampliado · primera sesión de IMPLEMENTACIÓN tras cuatro rondas de diseño
+
+**Naturaleza.** Primera sesión de implementación en cinco sesiones (#49-#51
+fueron diseño). Nueve bloques ejecutados en cadena, cada uno con recon
+read-only + código atómico + checklist visual: **C1** (sub-schema formal de
+widget), **C1-BIS** (retiro de enum de `variableType` por smoke real con
+keys no declaradas), **C1-TER** (declarar `message/text/chartTimeAgo` en
+sub-schema — write-path del constructor descartaba keys de dominio), **C2**
+(script de migración backfill `unit` + asignación de widget), **C3**
+(consumidores leen `widget.unit` — sin regex, sin fallback), **C4**
+(migración destructiva de labels + `unit` en contrato `/dashboard/noc/trend`
+y `/history`), **C5.1** (widget `valueStatus` + resolver tipo→componente),
+**C5.1-BIS** (cáscara aparte + resolver con contexto live/editor +
+`LiveValue` generalizado con prop `presenter`), **C5.2** (mini-form de
+`valueStatus` con `variable` editable + dedupe + `column` + defensa
+`decimalPlaces`).
+
+**RESULTADO principal — cadena Template→Device→widget→dato vivo PROBADA
+end-to-end por Franco desde la web, sin tocar la base.** Nunca había
+funcionado en el proyecto. El operador crea un widget `valueStatus` con
+variable real, lo asigna a un template, el template se aplica a un device,
+el device publica MQTT y el widget renderiza el valor vivo con la unidad
+correcta. La cadena que #49-#51 diseñaron atada, #52 la puso a funcionar.
+
+**Datos movidos.** 42 widgets legacy migrados con `unit` extraído del label
++ asignación del tipo de widget correspondiente (numberchart/switch/button/
+indicator según la geometría heredada). 22 labels limpios (sufijo `(<unit>)`
+recortado con `.trim()`; DEC-REF-75-C-A precisa que no es cierre de UI-8).
+Dos backups en `seeds/_dev/`: uno para revertir los 42 widgets completos,
+otro solo para C4 (labels). Nombres de archivo en UTC, filesystem opera en
+hora local AR (−3) — anotado para trazabilidad al releer.
+
+**Corpus v0.61 → v0.71.** DEC nuevas: **DEC-REF-74-A** (adenda conteo — 12
+widgets = 36 piezas, no 11), **DEC-REF-75** (diseño sub-schema + migración
++ valueStatus) y sus cuatro adendas **-75-A** (retiro enum
+`variableType`), **-75-B** (write-path del constructor descarta keys no
+declaradas), **-75-C** / **-75-C-A** (unit en `/history` + corrección de
+alcance), **-75-D** (unit en contrato `/dashboard/noc/trend`);
+**DEC-REF-76** (widget `valueStatus` — arquitectura + resolver + regla de
+tipo) y sus tres adendas **-76-A** (resolver con contexto + cáscara aparte
++ LiveValue generalizado), **-76-B** (mini-form: variable editable, dedupe
+por variable, canAddWidget, column, degradación previewConfig, label sin
+paréntesis), **-76-C** (los 4 umbrales SALEN del mini-form por objeción
+Franco); **DEC-PROC-5** (smoke debe ejercer el mismo path que producción).
+Backlogs nuevos: **BACKLOG-RULE-7** (escala numérica umbrales vs. driver),
+**BACKLOG-UI-12** (higiene `unit` Rtnumberchart card + tabla templates).
+
+**Cazados antes de producción — dos hallazgos que habrían roto Claro.**
+**(1) Write-path del constructor Mongoose descartaba keys de dominio del
+widget button.** El smoke original de C1 usó 8 keys todas declaradas — cero
+ejercicio del `strict:true`. El smoke revisado de C1-BIS ejerció el
+read-path (insertOne raw + findById), pasó, y certificó RAMA-1a con un path
+equivocado. Solo el TEST-CREATE de C1-TER (constructor Mongoose real)
+reveló que `message`/`text` se perdían al persistir un `button` — el widget
+button habría nacido MUDO en el primer alta desde la UI. Registrado como
+DEC-REF-75-B + DEC-PROC-5. **(2) `dashboard_noc.js:70-88` alimentaba el
+selector de tendencia del NOC operador con `label` construido como
+`variableFullName` crudo del widget** — habría perdido la unidad en la
+pantalla que ve Claro. Fix C4: `unit` viaja en el contrato del endpoint;
+frontend concatena `label + ' (' + unit + ')'` en el consumidor.
+
+**Corrección de Franco aceptada — DEC-REF-76-C.** Los umbrales son
+semántica de ALARMA, no de presentación. DEC-REF-75 §1 había firmado
+`thresholds` como "presentación" con la salvaguarda "el motor es dueño
+único del disparo". La salvaguarda NO alcanza: si el operador ingresa
+`warningHigh=90` en el widget Y crea una regla `type=D` con `>90` en la
+consola de Reglas, hay dos números para el mismo criterio en dos lugares —
+la enfermedad de `psi/Bar` que BACKLOG-CHAIN-1 vino a curar. Los 4 inputs
+de umbral SALEN del mini-form; el campo `thresholds` PERMANECE en el
+sub-schema (no romper por cambio de dueño de datos); tres caminos para #53
+registrados con recomendación (C) = estado de alarma vigente del motor.
+
+**Cerrado por evidencia — BACKLOG-UI-6.** El select del super-admin nunca
+estuvo trabado; el bug percibido en #51/R1-A6 fue interpretación
+apresurada. Verificación read-only en C5.1-BIS: el rol vive en
+`user.grants[].role` (array de tenancy), no en `user.role` (campo que no
+existe). La lógica del select lee el path correcto. Se registra la
+verificación empírica.
+
+**Abiertos que salieron y se declaran en el corpus.** **(1) Datos cruzados
+al cambiar de device** en la vista de site — preexistente en el código,
+destapado al ejercer la cadena en C5.1; queda como track UI-7 con
+puntero a `_siteCode.vue`. **(2) Residuos de la prueba E2E** en Mongo:
+templates `TEMPERATURA-*` y widgets `coolant_temp` fantasmas de smokes
+tempranos, y un dId huérfano del ATS (**59XYsglM** activo, **6z4LN2md**
+viejo). Franco los borra por UI (devices primero, templates después).
+**(3) El ATS cambió de dId y su histórico quedó bajo el dId anterior** —
+no bloquea la operación pero conviene consolidar antes del piloto.
+
+**Cuatro checklists visuales de Franco, los cuatro verdes.** C3 (site page
+lee `widget.unit` correctamente para los 5 dIds del piloto). C5.1 (grilla
+de `dashboard-admin` renderiza los 42 widgets legacy sin blanco tras
+resolver tipo→componente). C5.1-BIS (site page sin doble card, editor
+muestra guión neutro con `context='editor'`, live muestra "esperando MQTT"
++ valor con umbral neutro). C5.2 (mini-form crea widget `valueStatus` con
+variable real, chequea duplicados por `variable`, `column` seleccionable,
+reset entre altas correcto).
+
+**21 commits pusheables** (`git rev-list --count 8d7bf02..HEAD = 21`;
+conteo manual falló 7 veces en sala — regla: usar el comando, no la vista).
+
+**Estado del entorno al cierre:** `wanomi-edge Up 7 days · node Up 3 days
+· emqx Up 7 days (healthy) · mongo Up 7 days (healthy)`. Cadencia real
+verificada en Mongo (RECON pre-paréntesis · V2): 55.19 días de historia,
+~217 s promedio entre muestras para las 5 variables clave, 3.19M docs en
+`iotix.data`.
+
+**Hallazgo colateral del recon pre-paréntesis — bloqueante para el
+siguiente frente.** El grupo simulado **NUNCA arrancó en 55 días**:
+`genset_running=0` en el 100% de las muestras de TODOS los devices GEN,
+y `run_hours` del CUMMINS de CR00061 (`Z5tKK1rN`) va de 0 a 0.05 (tres
+minutos totales de motor en 55 días). La mayoría de las reglas del
+catálogo sesión #18 vigilan un motor en operación. Sembrar antes de
+arreglar el simulador sería sembrar sobre un sitio muerto. Ordena la
+prioridad del paréntesis pre-reunión Claro (DEC-REF-77).
+
+### Adenda al catálogo sesión #18 (append, entrega original intacta)
+
+**(i) CONTEO.** El título de la sesión #18 dice "43 inferencias"; el
+sumario propio dice "~40"; la enumeración A-I contada uno por uno da
+**46**. La distribución de confianza declarada (`🟢 ~22 · 🟡 ~10 · 🔵 5
+· 🔴 8` = 45) tampoco cierra ni contra 43 ni contra 46. **Familia
+DEC-REF-74-A** (error de conteo). **Conteo real: 46** (A7 · B6 · C6 · D4
+· E6 · F4 · G4 · H4 · I5). El catálogo original queda intacto por
+convención append-only; esta adenda vive en la bitácora de #52.
+
+**(ii) HUECO ESTRUCTURAL DE COBERTURA — 85% robo de cobre, 78% baterías,
+65% vandalismo, 45% intrusión sin cubrir.** Los 9 subsistemas del
+catálogo son TODOS de energía (generación, motor, lubricación,
+mantenimiento, arranque, red/ATS, combustible, cascada energética,
+salud del monitoreo). **33 de 46 inferencias son del grupo electrógeno.
+CERO inferencias de seguridad física, banco de baterías del sitio (VRLA
+DC 48V), planta DC (rectificador Eltek) y ambiente del shelter.** Contra
+el informe de dolor de Claro, eso deja sin cubrir explícitamente el 85%
+(robo de cobre), 78% (baterías), 65% (vandalismo) y 45% (intrusión) del
+espectro operativo del cliente. **No fue omisión** — la sesión #18 tuvo
+foco declarado en el grupo electrógeno; el hueco es estructural del
+catálogo, no error del ejercicio. **Los capítulos faltantes se escriben
+con material que YA EXISTE**: informe de dolor §8.2 para seguridad;
+`WN-SITE-ENV+` de la sesión #9 para ambiente. **Se declaran como trabajo
+pendiente, NO se diseñan en el paréntesis.**
+
+**(iii) CORRECCIÓN — la regla productiva `cummins-G2-fuel-critical` usa
+15%, que es el umbral de G1 del catálogo (G2 = <5%).** Está mal
+etiquetada: el pack `cummins-pcc-v1` (`seeds/cummins_pcc_v1.js:83-99`)
+declara `condition: { op: 'lt', value: 15 }` y `label: 'Nivel de
+combustible crítico (<15%)'` con `inferenceId: 'G2'`. Pero el catálogo
+sesión #18 establece G1=<15% (bajo) y G2=<5% (crítico). **NO se renombra**
+— hay una regla que apunta a otra por nombre (potencial
+`correlationParent`) y el ID productivo es de solo escritura una vez.
+**Se registra para NO sembrar G1 duplicada** — cuando el paréntesis
+siembre reglas del catálogo, G1 queda cubierta por `cummins-G2-fuel-
+critical` con el umbral real 15%; el catálogo pierde G2 (<5%) hasta que
+se decida crear otra regla productiva.
+
+**(iv) COLISIÓN DURA de IDs — `A0` y `M1` no existen en el catálogo;
+`C1` significa cascada en el pack productivo y temperatura de
+refrigerante en el catálogo.** El pack `cummins-pcc-v1` usa `A0`, `A1`,
+`G2`, `M1`, `C1` como `inferenceId` — pero solo `A1` coincide con el
+catálogo (presión de aceite baja). `A0` (warning presión) y `M1`
+(pérdida AC en sitio, madre de cascada) NUNCA existieron en el catálogo:
+son invenciones del pack para cubrir la cascada de DEC-REF-53. `C1` del
+pack = cascada AC→gen (hija de M1). `C1` del catálogo = temperatura de
+refrigerante. **Los ruleId son de sola escritura** — no se renombran.
+DEC-REF-77 (v) decide prefijo `cat-` para toda regla sembrada del
+catálogo, la trazabilidad va en el campo `inferenceId` que ya existe.
+
+**Corpus v0.61 → v0.72.** DEC nuevas de sesión #52 registradas en su
+lugar: **DEC-REF-74-A**, **DEC-REF-75** (+ -A, -B, -C, -C-A, -D),
+**DEC-REF-76** (+ -A, -B, -C), **DEC-PROC-5**, **DEC-PROC-6** (nueva de
+esta apertura de bitácora, arriba), **DEC-REF-77** (paréntesis
+pre-reunión Claro, decidido al cierre por Franco). Adenda al catálogo
+sesión #18 registrada dentro de la propia bitácora de #52 (entrega
+original de #18 intacta por convención append-only). Backlogs nuevos:
+**BACKLOG-RULE-7**, **BACKLOG-UI-12**.
+
+**Mandato para paréntesis pre-reunión Claro (DEC-REF-77):** motor
+(siembra reordenada del catálogo) + panel (cascada agrupada, tipo de
+alarma, eventos por sitio) + simulador (consola + escenarios). Todo es
+backlog ya registrado (CHAIN-1 c/e + UI-10) REORDENADO POR PRIORIDAD, no
+construido para la ocasión. **DEC-STRAT-2 intacto: lo que se muestra a
+Claro es producto funcionando.** Hallazgo que ordena el orden: **el
+simulador va PRIMERO** — sin ciclo de ejercicio semanal y horas
+iniciales realistas, sembrar reglas de motor sería sembrar sobre un
+sitio muerto.
+
+**Sesión #52 CERRADA.**
+
+
+
+
 
 
