@@ -34,8 +34,9 @@ router.get("/device", checkAuth, async (req, res) => {
     const userId = req.userData._id;
     const filter = await buildReadFilter(req, 'Device');
 
-    //get devices
-    var devices = await Device.find(filter);
+    //get devices — sort por _id garantiza orden estable para el fallback
+    //determinístico de selección en el frontend (DEC-REF-78 §v.b)
+    var devices = await Device.find(filter).sort({ _id: 1 });
 
     //mongoose array to js array
     devices = JSON.parse(JSON.stringify(devices));
@@ -116,7 +117,6 @@ router.post("/device", checkAuth, async (req, res) => {
 
     await createSaverRule(userId, newDevice.dId, true);
     const device = await Device.create(newDevice);
-    await selectDevice(userId, newDevice.dId);
 
     if (firmwareType === "tasmota") {
       // Upsert EMQX credentials — handles re-creation with same tasmotaName
@@ -187,28 +187,10 @@ router.delete("/device", checkAuth, async (req, res) => {
     //deleting device
     const result = await Device.deleteOne({ ...writeFilter, dId });
 
-    //devices after deletion
-    const devices = await Device.find({ userId: userId });
-
-    if (devices.length >= 1) {
-      //any selected?
-      var found = false;
-      devices.forEach(devices => {
-        if (devices.selected == true) {
-          found = true;
-        }
-      });
-
-      //if no selected...
-      //we need to selet the first
-      if (!found) {
-        await Device.updateMany({ userId: userId }, { selected: false });
-        await Device.updateOne(
-          { userId: userId, dId: devices[0].dId },
-          { selected: true }
-        );
-      }
-    }
+    // El bloque de "re-seleccionar tras borrado" se retiró en DEC-REF-78:
+    // la selección es preferencia de sesión del usuario (localStorage),
+    // no estado persistente del device. Si el dId borrado era el activo,
+    // el frontend cae al fallback determinístico al próximo mount.
 
     const toSend = {
       status: "success",
@@ -229,29 +211,9 @@ router.delete("/device", checkAuth, async (req, res) => {
   }
 });
 
-//UPDATE DEVICE (SELECTOR)
-router.put("/device", checkAuth, async (req, res) => {
-  try {
-    const dId = req.body.dId;
-    const userId = req.userData._id;
-
-    if (await selectDevice(userId, dId)) {
-      const toSend = {
-        status: "success"
-      };
-
-      return res.json(toSend);
-    } else {
-      const toSend = {
-        status: "error"
-      };
-
-      return res.json(toSend);
-    }
-  } catch (error) {
-    console.log(error);
-  }
-});
+// PUT /device (selector) retirado en DEC-REF-78: la selección de device
+// es preferencia de sesión del usuario (localStorage), no estado del
+// device. El único cliente era dashboard-admin.vue.
 
 //SAVER-RULE STATUS UPDATER
 router.put("/saver-rule", checkAuth, async (req, res) => {
@@ -287,25 +249,8 @@ async function getAlarmRules(dIds) {
   }
 }
 
-async function selectDevice(userId, dId) {
-  try {
-    const result = await Device.updateMany(
-      { userId: userId },
-      { selected: false }
-    );
-
-    const result2 = await Device.updateOne(
-      { dId: dId, userId: userId },
-      { selected: true }
-    );
-
-    return true;
-  } catch (error) {
-    console.log("ERROR IN 'selectDevice' FUNCTION ");
-    console.log(error);
-    return false;
-  }
-}
+// Helper selectDevice() retirado en DEC-REF-78. Filtraba por userId
+// del caller y dejaba superadmin sin poder marcar devices ajenos.
 
 /*
  SAVER RULES FUNCTIONS
