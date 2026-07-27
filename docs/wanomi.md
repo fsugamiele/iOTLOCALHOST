@@ -10449,5 +10449,42 @@ sitio muerto.
 
 
 
+## FASE 2 del paréntesis pre-reunión Claro (DEC-REF-77) — 2026-07-27 · diagnóstico ATS + adenda al cierre de #52 + BACKLOG-OPS-3
+
+**Naturaleza.** Diagnóstico read-only del ATS de CR00061 declarado abierto al cierre de Fase 1 (1A/1B). Fase 2 arranca por diagnóstico según DEC-PROC-6 (sin diagnóstico no hay revival). **El revival se descubrió YA OCURRIDO** al ejercitar los 5 pasos read-only — el ATS está publicando activamente desde hoy 01:42 UTC bajo el `dId` nuevo.
+
+**Diagnóstico completo del ATS — timeline con evidencia dura** (Mongo + logs del sim + `emqxauthrules`):
+
+| Fecha (UTC) | Evento | Evidencia |
+|---|---|---|
+| 2026-06-01 → 2026-07-23 | ATS publicando OK bajo `dId=6z4LN2md` (~12k muestras/día típico, cadencia estable) | `db.data` 162.194 docs, 7 variables (`gen_status`, `transfer_state`, `gen_freq`, `gen_voltage`, `load_kw`, `mains_voltage`, `mains_freq`) |
+| **2026-07-24 02:53** | **Muere el ATS**: último documento bajo `6z4LN2md`; solo 1447 muestras ese día (vs ~12k típico) | timeline día-por-día por dId |
+| 2026-07-24 → 2026-07-26 | **Gap total 3 días** — cero muestras para ATS bajo cualquier dId | `count(dId ∈ {6z4LN2md, 59XYsglM})` = 0 en esa ventana |
+| 2026-07-27 01:42 | Sim relanzado con `devices_state.json` actualizado a `dId=59XYsglM` (dId nuevo tras borrar/recrear device por UI) | `logs/sim-banco.log` head (`Bootstrapping ATS 6z4LN2md`) vs tail (`connected dId=59XYsglM`) |
+| 2026-07-27 (día) | ATS publicando OK bajo `dId=59XYsglM` — última muestra `mains_voltage=225.19V` a las 12:57 UTC | `db.data` 6001+ muestras hoy |
+
+**Hipótesis (e) de Franco CONFIRMADA.** El `DELETE /device` ejecuta `deleteMqttDeviceCredentials(dId)` — al borrar el device viejo por UI se borró el `emqxauthrule` de `6z4LN2md` (verificado: `db.emqxauthrules.findOne({dId:"6z4LN2md"})` = null; `db.devices.findOne({dId:"6z4LN2md"})` = null). El sim quedó intentando conectar con credenciales inválidas hasta que se actualizó el `devices_state.json` con el `dId` nuevo. **El revival ya había ocurrido** al arrancar el sim con el state file actualizado — no hubo que revivir nada durante Fase 2.
+
+**1A + 1B cerrados** (diagnóstico completo + revival implícito confirmado). **1C pendiente al cierre de este escrito** — Franco corre la comparación visual del widget contra el valor de Mongo `mains_voltage=225.19V` (última muestra 12:57 UTC).
+
+### Adenda al cierre de la Sesión #52 (registrada en Fase 2, entrada original intacta)
+
+La afirmación del cierre de #52 (*"cadena Template→Device→widget→dato vivo PROBADA end-to-end por Franco desde la web, sin tocar la base"*) es **PARCIALMENTE FALSA**. **Evidencia por fechas del diagnóstico de Fase 2:** el ATS de CR00061 no publicó **ninguna muestra entre el 24-jul y el 26-jul** bajo ningún dId (gap verificado en `db.data` para `6z4LN2md` y para `59XYsglM`). La prueba visual de Franco al cierre de #52 (2026-07-22/26) ocurrió **DENTRO de ese gap**. El valor que se vio en pantalla provino de la **contaminación de suscripciones** que después cerró `be9d799`: `dashboard-admin.vue:31` tenía `:key="index"` (Vue reutilizaba el `LiveValue` al cambiar de device) + `LiveValue` sin watcher sobre `topicKey` (`$on` del topic nuevo sin `$off` del viejo + sin `value=null` intermedio). El widget mostraba el último dato vivo de OTRO device del mismo owner sobre el `<component>` reutilizado, aparentando ser el del ATS.
+
+**Corrección sin suavizar.** **QUEDA PROBADO** por #52: (i) creación del widget desde la web (mini-form `valueStatus` C5.2); (ii) template en Mongo con el widget nuevo; (iii) template asignado a un device; (iv) el widget RENDERIZA (resolver tipo→componente, C5.1). **NO QUEDABA PROBADO** por #52: (v) el último eslabón — **dato vivo llegando por MQTT desde el device asignado** (no de otro device compartido). Verificado por primera vez en Fase 2 (1C), con el ATS publicando activamente y el fix `be9d799` bajado al bundle.
+
+**Consecuencias.** El bug de tenant (DEC-REF-78) tapaba `be9d799` (Fase 1 lo destapó y cerró); la contaminación de `:key="index"` daba una "prueba" falso-positiva en #52 (Fase 2 lo aclara). La cadena estuvo **atada** en #52 pero **no probada íntegra** — la prueba íntegra ocurrió en Fase 1+2 del paréntesis, no en #52. Corrección registrada por Franco al abrir el diagnóstico de Fase 2. Entrada original de #52 intacta (append-only, misma convención de la Adenda al catálogo #18 registrada dentro de #52).
+
+### BACKLOG-OPS-3 registrado (histórico huérfano del ATS con conflicto de tenencia)
+
+Verificado atómicamente en Fase 2: `db.data` guarda `userId` en cada documento (`printjson(findOne)` sobre `59XYsglM/mains_voltage` = `{userId:"6a32e105be5ca779169754af", dId:"59XYsglM", variable:"mains_voltage", value:225.19..., time:...}`). Los 162.194 documentos bajo `6z4LN2md` tienen `distinct("userId")` con **DOS valores**: (a) `fsugamielecinetiksrl@gmail.com` (`6a1ddc27442190ad13f1da4a`), (b) `operator-claro@wanomi.platform` (`6a3992b435afd807a7f992fe`). El actual `59XYsglM` está bajo (c) `admin@wanomi.com`. **Un `updateMany` ciego rompería `buildReadFilter` en TRES direcciones**, no en una. Refuerza tu decisión de Franco de NO consolidar hoy. **Disparador de la consolidación:** si alguna vista **necesita** continuidad histórica del ATS **Y** se resuelve antes el dueño canónico (decisión de gobernanza, no técnica). **Fundamento del "hoy no":** (i) write destructivo sobre 162k docs; (ii) pregunta de tenencia abierta que no bloquea el miércoles; (iii) el ATS acumula historia propia desde hoy. Ficha completa en `docsRefactor/WanomiRefactor.md` como `BACKLOG-OPS-3`.
+
+**Bump de versión: v0.73 → v0.74** (aterrizado en `docsRefactor/WanomiRefactor.md:4`).
+
+**Fase 2 del paréntesis CERRADA (a la espera del reporte visual del 1C). Fase 3 (simulador — ciclo semanal + horas iniciales realistas + transfer_state contra mapa real ComAp) queda declarada abierta.**
+
+
+
+
 
 
