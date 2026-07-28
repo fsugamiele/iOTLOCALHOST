@@ -475,6 +475,71 @@ const SCENARIOS = {
     ],
   },
 
+  // DEC-REF-77-A + DEC-REF-79-B (a) — ciclo de ejercicio semanal SIN corte
+  // de red. Apuntar al ATS del site: setea gen_status='RUNNING', que se
+  // propaga por sharedState.gen_running (device.js:_syncSharedState). Los
+  // timers del Cummins siguen corriendo → sus variables (rpm, oil_pressure,
+  // coolant_temp, battery_voltage, run_hours, fuel_level) evolucionan
+  // coherentes por evolve() con sharedState.gen_running=true. Al terminar
+  // el cleanup restaura el estado inicial del ATS (gen_status='STOPPED') →
+  // sharedState.gen_running=false → Cummins vuelve al reposo naturalmente.
+  //
+  // Cambios respecto de mains_failure_ats_transfer: NO tocamos mains_voltage
+  // ni mains_freq (esto es lo que evita la alarma de pérdida de red). Ritmo
+  // REAL de fuel (DEC-REF-79-B a): 5 min × 0,02307 %/min = 0,115% invisible,
+  // y es correcto. La demostración de autonomía va por fuel_drawdown.
+  weekly_exercise: {
+    description: 'Ciclo de ejercicio semanal — arranca motor 5 min con red presente',
+    duration_ms: 300000,   // 5 min reales, observables
+    // noCleanup:false — cleanup restaura ATS al initial (gen_status='STOPPED')
+    steps: [
+      { at: 0,      set: { gen_status: 'STARTING' } },
+      { at: 5000,   set: { gen_status: 'RUNNING', gen_voltage: 220.0, gen_freq: 50.0 } },
+      { at: 290000, set: { gen_status: 'STOPPED', gen_voltage: 0, gen_freq: 0 } },
+    ],
+  },
+
+  // DEC-REF-79 (vi) — empuja run_hours cerca del threshold de servicio
+  // (3000 = 12 ciclos × 250 h). Arranca en 2969,1 por FIELD_DATA en cada
+  // reinicio; este escenario mueve el dato al borde del threshold, y el
+  // motor decide si alarma (regla D1/D2 del catálogo).
+  // Apuntar al Cummins del sitio.
+  service_due: {
+    description: 'Empuja run_hours al borde del próximo servicio (2999,5 h; threshold 3000)',
+    duration_ms: 10000,    // el escenario solo mueve el dato, no simula tiempo
+    noCleanup: true,       // el dato queda empujado hasta el próximo restart del sim
+    steps: [
+      { at: 0, set: { run_hours: 2999.5 } },
+    ],
+  },
+
+  // DEC-REF-79-B (b) — RITMO ACELERADO Y DECLARADO. Baja el tanque desde
+  // 70% (por encima del umbral 48h ≈ 66%) hasta 15% (bajo umbral 12h ≈ 17%)
+  // en 5,5 min de wallclock. Pendiente aparente ≈ 10 %/min = 600 %/h ≈ 433×
+  // el consumo real de campo (3,46 L/h). No es maquillaje: el cálculo de
+  // autonomía es correcto sobre la pendiente observada; lo que se comprime
+  // es el TIEMPO — precedente vigente fuel_siphon.
+  // Apuntar al Cummins del sitio.
+  fuel_drawdown: {
+    description: 'Autonomía — baja el tanque cruzando umbrales 48h y 12h en 6 min',
+    duration_ms: 360000,   // 6 min total (12 steps de 30s + 30s de cola)
+    noCleanup: true,       // deja el nivel en 15% para operador
+    steps: [
+      { at: 0,      set: { fuel_level: 70 } },
+      { at: 30000,  set: { fuel_level: 65 } },
+      { at: 60000,  set: { fuel_level: 60 } },
+      { at: 90000,  set: { fuel_level: 55 } },
+      { at: 120000, set: { fuel_level: 50 } },
+      { at: 150000, set: { fuel_level: 45 } },
+      { at: 180000, set: { fuel_level: 40 } },
+      { at: 210000, set: { fuel_level: 35 } },
+      { at: 240000, set: { fuel_level: 30 } },
+      { at: 270000, set: { fuel_level: 25 } },
+      { at: 300000, set: { fuel_level: 20 } },
+      { at: 330000, set: { fuel_level: 15 } },  // cruza el umbral de 12 h
+    ],
+  },
+
 };
 
 module.exports = {
