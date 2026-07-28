@@ -26,8 +26,13 @@ import Template from '../models/template.js';
 
 const checkAuth = require('../middlewares/authentication.js').checkAuth;
 
-// Whitelist de escenarios — debe matchear sensor-engine.js del simulador
+// Whitelist de escenarios — debe matchear sensor-engine.js del simulador.
+// Divergencia con el sim documentada como BACKLOG-SIM-5 (2 mordidas: #7 y
+// #53/Fase 3). La solución real es una sola fuente de verdad; hoy se sincroniza
+// a mano al agregar escenarios. Al agregar/quitar acá, verificar en paralelo
+// contra tools/device_simulator/lib/sensor-engine.js SCENARIOS con grep.
 const VALID_SCENARIOS = [
+  // Existentes desde antes de #53/Fase 3
   'intrusion',
   'copper_theft',
   'fuel_siphon',
@@ -35,6 +40,20 @@ const VALID_SCENARIOS = [
   'genset_vibration_anomaly',
   'battery_degraded',
   'maintenance',
+  // Existentes en el sim pero fuera de la whitelist hasta #53/Fase 3
+  // (7 escenarios del guion del paréntesis pre-reunión Claro que la consola
+  // no podía disparar por UI hasta este commit)
+  'mains_failure_ats_transfer',
+  'mains_failure_gen_no_start',
+  'mains_restore',
+  'cummins_setpoint_lost',
+  'cummins_setpoint_restore',
+  'eltek_load_high',
+  'eltek_load_restore',
+  // Nuevos en #53/Fase 3 (DEC-REF-77-A + DEC-REF-79 vi + DEC-REF-79-B)
+  'weekly_exercise',
+  'service_due',
+  'fuel_drawdown',
 ];
 
 // ────────── Helpers ────────────────────────────────────────────────
