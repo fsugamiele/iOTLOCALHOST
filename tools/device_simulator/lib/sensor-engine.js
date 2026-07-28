@@ -226,8 +226,19 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       return 0;  // sin motor, sin tensión de alternador
     }
 
-    case 'battery_voltage':
-      return clamp(currentValue + jitter(0.05), 12.0, 13.0);
+    case 'battery_voltage': {
+      // DEC-REF-79 (iii) — con el motor corriendo el alternador carga la
+      // batería → tensión sube a ~13,8-14,4 V. En reposo ~12,6 V
+      // (relevamiento #15). La transición reposo→carga habilita las reglas
+      // E4/E5 del catálogo (cargador no recupera / cargador caído), que
+      // miran exactamente ese paso; sin esto no se pueden demostrar.
+      // Drift lento hacia el target (mismo patrón de dc_load_current):
+      // saltar 12,6→14,1 en un solo tick de 60s sería feo; con step 1,0
+      // V/tick llega a régimen en 2-3 min (dentro del ejercicio de 5 min).
+      const target = sharedState.gen_running ? 14.1 : 12.6;
+      const step   = Math.sign(target - currentValue) * Math.min(Math.abs(target - currentValue), 1.0);
+      return clamp(currentValue + step + jitter(0.1), 12.0, 14.4);
+    }
 
     case 'crank_current':
       return 0;  // siempre 0 fuera de eventos de arranque
