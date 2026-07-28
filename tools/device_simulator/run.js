@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const api = require('./lib/api.js');
 const { SimulatedDevice } = require('./lib/device.js');
+const engine = require('./lib/sensor-engine.js');
 
 const STATE_FILE = path.join(__dirname, 'devices_state.json');
 
@@ -103,12 +104,33 @@ async function main() {
   // criterio que el control channel — evita disparo accidental en prod).
   // Se dispara sobre el ATS de cada site; el propio escenario propaga por
   // sharedState.gen_running al Cummins (ver comentario del scenario).
+  //
+  // GUARDA · cadencia >= duración + margen. Si intervalMs <= duration_ms
+  // un nuevo disparo cancela _cancelActiveTimers() del anterior, el step
+  // final (gen_status STOPPED) nunca ejecuta, y el motor no para nunca —
+  // contradice DEC-REF-79 (iii) (grupo de RESPALDO, no continuo).
+  // Margen 1 min mínimo entre ciclos: da al operador un reposo visible.
   if (process.env.SIMULATOR_MODE === 'true') {
     const intervalMin = Number(process.env.WEEKLY_EXERCISE_INTERVAL_MIN) || 30;
     const intervalMs  = intervalMin * 60 * 1000;
-    const atsDevices  = devices.filter(d => d.role === 'ATS');
-    if (atsDevices.length > 0) {
-      console.log(`Weekly exercise scheduler ACTIVE — cadence: ${intervalMin} min · ${atsDevices.length} ATS device(s)\n`);
+    const exerciseDurationMs = engine.SCENARIOS.weekly_exercise.duration_ms;
+    const MIN_MARGIN_MS      = 60 * 1000;  // 1 min de reposo mínimo
+    const minCadenceMs       = exerciseDurationMs + MIN_MARGIN_MS;
+    const minCadenceMin      = Math.ceil(minCadenceMs / 60000);
+    const atsDevices         = devices.filter(d => d.role === 'ATS');
+
+    if (intervalMs < minCadenceMs) {
+      console.error(
+        `Weekly exercise scheduler ABORTED — WEEKLY_EXERCISE_INTERVAL_MIN=${intervalMin} ` +
+        `es menor que el mínimo ${minCadenceMin} min (duración escenario ${exerciseDurationMs/60000} min ` +
+        `+ margen ${MIN_MARGIN_MS/60000} min). Con esa cadencia, cada disparo cancelaría el step de ` +
+        `apagado del ciclo anterior y el motor no pararía. Reiniciar con WEEKLY_EXERCISE_INTERVAL_MIN>=${minCadenceMin}.`
+      );
+    } else if (atsDevices.length > 0) {
+      console.log(
+        `Weekly exercise scheduler ACTIVE — cadence: ${intervalMin} min · ` +
+        `${atsDevices.length} ATS device(s) · duration ${exerciseDurationMs/60000} min\n`
+      );
       setInterval(() => {
         for (const ats of atsDevices) {
           console.log(`${ats.tag} weekly_exercise triggered by scheduler`);
