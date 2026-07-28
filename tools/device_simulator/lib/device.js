@@ -49,7 +49,9 @@ class SimulatedDevice {
     // Verificación de prefix cubre ambos casos: rol exacto o rol-N.
     if (role === 'SEC')                    return engine.initialSecState();
     if (role === 'ATS')                    return engine.initialAtsState();
-    if (role === 'CUMMINS')                return engine.initialCumminsState();
+    // DEC-REF-79 (vi) — siteCode habilita overrides con evidencia de campo
+    // (ej. run_hours=2969.1 del Cummins de CR00061, relevamiento #15).
+    if (role === 'CUMMINS')                return engine.initialCumminsState(this._siteCode);
     if (role === 'ELTEK' || role.startsWith('ELTEK-')) return engine.initialEltekState();  // SF-6 · DEC-REF-65.c
     return engine.initialGenState();  // GEN y legacy
   }

@@ -1,5 +1,7 @@
 'use strict';
 
+const { FIELD_DATA } = require('./field_data.js');
+
 // ════════════════════════════════════════════════════════════════════
 // sensor-engine.js — v2 alineado con pitch de Claro
 //
@@ -51,8 +53,8 @@ function initialAtsState() {
   };
 }
 
-function initialCumminsState() {
-  return {
+function initialCumminsState(siteCode) {
+  const base = {
     deviceType:      'CUMMINS',  // metadata interna — no publicada
     oil_pressure:    0.0,
     coolant_temp:    30.0,
@@ -72,6 +74,10 @@ function initialCumminsState() {
     coolant_temp_setpoint: 95.0,
     oil_pressure_setpoint: 25.0,
   };
+  // DEC-REF-79 (vi) — overrides con evidencia de relevamiento por (siteCode,
+  // role). El motor no inventa el dato; lo aporta field_data.js.
+  const overrides = ((FIELD_DATA[siteCode] || {}).CUMMINS) || {};
+  return { ...base, ...overrides };
 }
 
 // SF-6 · DEC-REF-65.c — Eltek Smartpack S (rectificación telco -48 VDC).
