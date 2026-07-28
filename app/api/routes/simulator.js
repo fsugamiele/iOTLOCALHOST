@@ -25,6 +25,7 @@ import Device from '../models/device.js';
 import Template from '../models/template.js';
 
 const checkAuth = require('../middlewares/authentication.js').checkAuth;
+const { buildWriteFilter } = require('../middlewares/scope.js');
 
 // Whitelist de escenarios — debe matchear sensor-engine.js del simulador.
 // Divergencia con el sim documentada como BACKLOG-SIM-5 (2 mordidas: #7 y
@@ -111,18 +112,22 @@ function publishCommand(dId, command) {
   });
 }
 
-// Resuelve device + template + valida pertenencia al usuario
-// Retorna { device, template } o tira error con statusCode adjunto
-async function resolveDeviceAndTemplate(userId, dId) {
-  const device = await Device.findOne({ userId, dId, firmwareType: 'wanomi-sim' }).lean();
+// Resuelve device + template + valida alcance de escritura (grants) del caller.
+// Retorna { device, template } o tira error con statusCode adjunto.
+// DEC-REF-78-A: filtra por buildWriteFilter en lugar de userId propio del caller.
+// El template NO se filtra por userId (verificado que devices.js:60 y el resto
+// del código productivo usan getTemplates(tplIds) sin filtro por userId).
+async function resolveDeviceAndTemplate(req, dId) {
+  const writeFilter = await buildWriteFilter(req, 'Device');
+  const device = await Device.findOne({ ...writeFilter, dId, firmwareType: 'wanomi-sim' }).lean();
   if (!device) {
-    const err = new Error('Simulated device not found or not owned by user');
+    const err = new Error('Simulated device not found or not writable in scope');
     err.statusCode = 404;
     throw err;
   }
-  const template = await Template.findOne({ _id: device.templateId, userId }).lean();
+  const template = await Template.findOne({ _id: device.templateId }).lean();
   if (!template) {
-    const err = new Error('Template not found or not owned by user');
+    const err = new Error('Template not found');
     err.statusCode = 500;
     throw err;
   }
@@ -133,18 +138,20 @@ async function resolveDeviceAndTemplate(userId, dId) {
 router.get('/simulator/devices', checkAuth, async (req, res) => {
   if (!isApiEnabled()) return notFound(res);
   try {
-    const userId = req.userData._id;
+    // DEC-REF-78-A: alcance por grants (buildWriteFilter), no por userId propio.
+    const writeFilter = await buildWriteFilter(req, 'Device');
 
     // 1. Cargar devices simulados (incluyendo templateId, lo necesitamos para join)
     const devices = await Device.find(
-      { userId, firmwareType: 'wanomi-sim' },
+      { ...writeFilter, firmwareType: 'wanomi-sim' },
       { dId: 1, name: 1, siteId: 1, templateName: 1, templateId: 1, _id: 0 }
     ).lean();
 
-    // 2. Cargar templates únicos en una sola query
+    // 2. Cargar templates únicos en una sola query. Sin filtro userId —
+    // templates no están particionados por userId en el resto del código.
     const templateIds = [...new Set(devices.map(d => d.templateId).filter(Boolean))];
     const templates = await Template.find(
-      { _id: { $in: templateIds }, userId }
+      { _id: { $in: templateIds } }
     ).lean();
     const widgetsByTemplateId = {};
     templates.forEach(t => {
@@ -177,7 +184,6 @@ router.get('/simulator/scenarios', checkAuth, (req, res) => {
 router.post('/simulator/trigger', checkAuth, async (req, res) => {
   if (!isApiEnabled()) return notFound(res);
   try {
-    const userId = req.userData._id;
     const body = req.body || {};
     const { dId, sensor, value, duration_ms } = body;
 
@@ -194,8 +200,8 @@ router.post('/simulator/trigger', checkAuth, async (req, res) => {
       }
     }
 
-    // Resolver device + template
-    const { device, template } = await resolveDeviceAndTemplate(userId, dId);
+    // Resolver device + template (DEC-REF-78-A: por grants)
+    const { device, template } = await resolveDeviceAndTemplate(req, dId);
 
     // Validar que el sensor existe en el template
     const widget = template.widgets.find(w => w.variable === sensor);
@@ -235,7 +241,6 @@ router.post('/simulator/trigger', checkAuth, async (req, res) => {
 router.post('/simulator/set', checkAuth, async (req, res) => {
   if (!isApiEnabled()) return notFound(res);
   try {
-    const userId = req.userData._id;
     const body = req.body || {};
     const { dId, sensor, value } = body;
 
@@ -249,7 +254,7 @@ router.post('/simulator/set', checkAuth, async (req, res) => {
       return badRequest(res, 'value is required for set');
     }
 
-    const { device, template } = await resolveDeviceAndTemplate(userId, dId);
+    const { device, template } = await resolveDeviceAndTemplate(req, dId);
 
     const widget = template.widgets.find(w => w.variable === sensor);
     if (!widget) {
@@ -278,7 +283,6 @@ router.post('/simulator/set', checkAuth, async (req, res) => {
 router.post('/simulator/scenario', checkAuth, async (req, res) => {
   if (!isApiEnabled()) return notFound(res);
   try {
-    const userId = req.userData._id;
     const body = req.body || {};
     const { dId, name } = body;
 
@@ -289,10 +293,11 @@ router.post('/simulator/scenario', checkAuth, async (req, res) => {
       return badRequest(res, `Invalid scenario name. Valid: ${VALID_SCENARIOS.join(', ')}`);
     }
 
-    // Validar que el device existe
-    const device = await Device.findOne({ userId, dId, firmwareType: 'wanomi-sim' }).lean();
+    // DEC-REF-78-A: alcance por grants (buildWriteFilter), no por userId propio.
+    const writeFilter = await buildWriteFilter(req, 'Device');
+    const device = await Device.findOne({ ...writeFilter, dId, firmwareType: 'wanomi-sim' }).lean();
     if (!device) {
-      return res.status(404).json({ status: 'error', error: 'Simulated device not found' });
+      return res.status(404).json({ status: 'error', error: 'Simulated device not found or not writable in scope' });
     }
 
     const command = { command: 'scenario', value: name };
@@ -310,7 +315,6 @@ router.post('/simulator/scenario', checkAuth, async (req, res) => {
 router.post('/simulator/reset', checkAuth, async (req, res) => {
   if (!isApiEnabled()) return notFound(res);
   try {
-    const userId = req.userData._id;
     const body = req.body || {};
     const { dId } = body;
 
@@ -318,9 +322,11 @@ router.post('/simulator/reset', checkAuth, async (req, res) => {
       return badRequest(res, 'Invalid or missing dId');
     }
 
-    const device = await Device.findOne({ userId, dId, firmwareType: 'wanomi-sim' }).lean();
+    // DEC-REF-78-A: alcance por grants (buildWriteFilter), no por userId propio.
+    const writeFilter = await buildWriteFilter(req, 'Device');
+    const device = await Device.findOne({ ...writeFilter, dId, firmwareType: 'wanomi-sim' }).lean();
     if (!device) {
-      return res.status(404).json({ status: 'error', error: 'Simulated device not found' });
+      return res.status(404).json({ status: 'error', error: 'Simulated device not found or not writable in scope' });
     }
 
     const command = { command: 'reset' };
