@@ -60,6 +60,18 @@ class SimulatedDevice {
     return `[${this._siteCode}/${this._role}]`;
   }
 
+  // Accessors públicos para orquestación externa (scheduler en run.js).
+  get role()     { return this._role; }
+  get siteCode() { return this._siteCode; }
+
+  // Fachada pública para disparar un escenario. Usado por el scheduler de
+  // weekly_exercise en run.js. Reusa el pipeline de _runScenario (cancela
+  // timers activos, ejecuta steps, cleanup automático o preservado según
+  // noCleanup del scenario).
+  runScenario(name) {
+    this._runScenario(name);
+  }
+
   connect() {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(

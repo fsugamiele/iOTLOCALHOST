@@ -96,6 +96,30 @@ async function main() {
   console.log(`\n${devices.length} devices online. Publishing started. Ctrl+C to stop.\n`);
   devices.forEach(d => d.startPublishing());
 
+  // DEC-REF-77-A + DEC-REF-79-B (a) — scheduler del ciclo de ejercicio
+  // semanal. Cadencia default 30 min de wallclock (para la demo Claro);
+  // parametrizable via env WEEKLY_EXERCISE_INTERVAL_MIN — DECLARADO en el
+  // config, no escondido. Solo se activa con SIMULATOR_MODE=true (mismo
+  // criterio que el control channel — evita disparo accidental en prod).
+  // Se dispara sobre el ATS de cada site; el propio escenario propaga por
+  // sharedState.gen_running al Cummins (ver comentario del scenario).
+  if (process.env.SIMULATOR_MODE === 'true') {
+    const intervalMin = Number(process.env.WEEKLY_EXERCISE_INTERVAL_MIN) || 30;
+    const intervalMs  = intervalMin * 60 * 1000;
+    const atsDevices  = devices.filter(d => d.role === 'ATS');
+    if (atsDevices.length > 0) {
+      console.log(`Weekly exercise scheduler ACTIVE — cadence: ${intervalMin} min · ${atsDevices.length} ATS device(s)\n`);
+      setInterval(() => {
+        for (const ats of atsDevices) {
+          console.log(`${ats.tag} weekly_exercise triggered by scheduler`);
+          ats.runScenario('weekly_exercise');
+        }
+      }, intervalMs);
+    } else {
+      console.log('Weekly exercise scheduler skipped — no ATS devices in bootstrap.\n');
+    }
+  }
+
   // Shutdown limpio
   async function shutdown() {
     console.log('\nShutting down...');
