@@ -3,6 +3,22 @@
 const { FIELD_DATA } = require('./field_data.js');
 
 // ════════════════════════════════════════════════════════════════════
+// Consumo real de combustible del Cummins de CR00061 — DEC-REF-79 (ii).
+// 3,46 L/h derivado de EVIDENCIA DE CAMPO: CR00070 Ituzaingó consumió
+// 1.410 L en 17 días 24/7 tras perder suministro comercial. Tanque de
+// 250 L rectangular (DEC-REF-79 i) ⇒ lectura lineal por geometría.
+// variableSendFreq del fuel_level = 60 s (seed.js:96) ⇒ 1 tick = 1 min.
+//   1,384 %/h ÷ 60 min/h = 0,02307 %/tick
+// Derivamos explícito para que la procedencia del número sea obvia.
+// weekly_exercise (DEC-REF-79-B a) usa este ritmo real.
+// fuel_drawdown (DEC-REF-79-B b) usa ritmo acelerado y declarado en el
+// config del escenario, NO acá.
+// ════════════════════════════════════════════════════════════════════
+const FUEL_CONSUMPTION_L_PER_H       = 3.46;   // DEC-REF-79 (ii)
+const TANK_CAPACITY_L                = 250;    // DEC-REF-79 (i)
+const FUEL_CONSUMPTION_PCT_PER_TICK  = (FUEL_CONSUMPTION_L_PER_H / TANK_CAPACITY_L) * 100 / 60;
+
+// ════════════════════════════════════════════════════════════════════
 // sensor-engine.js — v2 alineado con pitch de Claro
 //
 // Estados iniciales reflejan el reposo realista de un site.
@@ -178,7 +194,13 @@ function evolve(variable, currentValue, deviceState, sharedState) {
     case 'fuel_level': {
       if (deviceState && deviceState.deviceType === 'CUMMINS') {
         const consuming = sharedState.gen_running || false;
-        return clamp(currentValue - (consuming ? 0.1 : 0) + jitter(0.02), 0, 100);
+        // DEC-REF-79 (ii) — consumo REAL derivado del campo.
+        // Jitter reducido a 25% del consumo cuando consuming, para que el
+        // nivel baje monotónicamente (físicamente el consumo no es negativo).
+        // En reposo el jitter original (0.02) refleja ruido del sensor.
+        const decrement = consuming ? FUEL_CONSUMPTION_PCT_PER_TICK : 0;
+        const noise     = consuming ? jitter(FUEL_CONSUMPTION_PCT_PER_TICK * 0.25) : jitter(0.02);
+        return clamp(currentValue - decrement + noise, 0, 100);
       }
       // legacy GEN
       const consumption = deviceState && deviceState.genset_running ? 0.05 : 0;
