@@ -520,6 +520,20 @@ const SCENARIOS = {
   // autonomía es correcto sobre la pendiente observada; lo que se comprime
   // es el TIEMPO — precedente vigente fuel_siphon.
   // Apuntar al Cummins del sitio.
+  //
+  // DEC-REF-79-B-A — SECUENCIA OBLIGATORIA. fuel_drawdown NO vive solo.
+  // Durante el escenario los timers del Cummins están apagados (_runScenario
+  // llama _cancelActiveTimers al inicio) → solo publica fuel_level; el resto
+  // (rpm, oil_pressure, coolant_temp, run_hours, battery_voltage) queda
+  // congelado en los valores que tenía al disparo. Disparado sobre motor
+  // en reposo, el tanque baja con el motor apagado = firma del SIFONEO,
+  // no del consumo (contradice DEC-REF-79 iii). La consola de la demo
+  // debe disparar la secuencia:
+  //   1) mains_failure_ats_transfer sobre el ATS (noCleanup deja motor
+  //      corriendo por sharedState.gen_running)
+  //   2) esperar 2-3 min para que el Cummins llegue a régimen
+  //   3) fuel_drawdown sobre el Cummins → variables congeladas en valores
+  //      de MOTOR CORRIENDO, que es lo correcto para simular consumo real
   fuel_drawdown: {
     description: 'Autonomía — baja el tanque cruzando umbrales 48h y 12h en 6 min',
     duration_ms: 360000,   // 6 min total (12 steps de 30s + 30s de cola)
