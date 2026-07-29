@@ -25,6 +25,12 @@ var client;
 const alarmTriggerTimes = new Map();
 const ruleTriggerTimes  = new Map();
 
+// F1.c (DEC-REF-81 vi) — techo del dropdown de notificaciones del navbar.
+// El helper `getNotifications` (feed de no-leídas) usa orden natural sin
+// techo; el dropdown puede crecer sin límite si nadie marca como leídas.
+// Alineado con el patrón que ya usa getNotificationsBySite (l.410-421).
+const NOTIFICATIONS_DROPDOWN_LIMIT = 20;
+
 //******************
 //**** A P I *******
 //******************
@@ -399,7 +405,11 @@ function sendMqttNotif(notif) {
 // filtros propios (readed, siteId, time, limit).
 async function getNotifications(filter) {
   try {
-    const res = await Notification.find({ ...filter, readed: false });
+    // F1.c (DEC-REF-81 vi) — sort desc + limit. `readed:false` es la
+    // semántica del dropdown (feed de no-leídas), NO un bug — se conserva.
+    const res = await Notification.find({ ...filter, readed: false })
+      .sort({ time: -1 })
+      .limit(NOTIFICATIONS_DROPDOWN_LIMIT);
     return res;
   } catch (error) {
     console.log(error);
