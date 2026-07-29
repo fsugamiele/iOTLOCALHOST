@@ -3,6 +3,7 @@ const router = express.Router();
 const crypto = require("crypto");
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
+const RulePack     = require("../models/rule_pack.js");
 
 import Site         from "../models/site.js";
 import Device       from "../models/device.js";
@@ -278,9 +279,42 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       { $sort: { _id: 1 } }
     ]);
 
-    // (R4 · G7 · 1a) — recentAlarms find.
-    const recentAlarmsPromise = Notification.find(notifFilter)
-      .sort({ time: -1 }).limit(RECENT_ALARMS_LIMIT).lean();
+    // (F1.a · DEC-REF-81 iv) — Alertas recientes correlacionadas: un ítem por
+    // (ruleId, siteId), con estado resuelto (lastKind==='resolve') y duración.
+    // Espeja el shape de activeEpisodesPromise (l.194-205) pero SIN excluir
+    // resueltos — los INCLUYE marcados. firedAt/resolvedAt/durationSec se
+    // resuelven en app-code por (ruleId, siteId) tras el $group para respetar
+    // el estado del episodio ACTUAL (evitando confundir episodios distintos
+    // de la misma regla — DEC-REF-81 iv).
+    const recentAlarmsPairsPromise = Notification.aggregate([
+      { $match: notifFilter },
+      { $sort:  { time: -1 } },
+      { $group: {
+          _id: { ruleId: "$ruleId", siteId: "$siteId" },
+          lastTime:              { $first: "$time" },
+          lastKind:              { $first: { $ifNull: ["$kind", "fire"] } },
+          lastSeverity:          { $first: "$severity" },
+          lastValue:             { $first: "$value" },
+          lastCorrelationParent: { $first: "$correlationParent" },
+          lastEventId:           { $first: "$_id" },
+          lastMode:              { $first: "$mode" },
+          lastThresholdUsed:     { $first: "$thresholdUsed" },
+          lastMessage:           { $first: "$message" },
+          lastReason:            { $first: "$reason" },
+          lastLabel:             { $first: "$label" },
+          lastVariableFullName:  { $first: "$variableFullName" },
+          lastVariable:          { $first: "$variable" },
+          lastDId:               { $first: "$dId" }
+      } },
+      { $sort:  { lastTime: -1 } },
+      { $limit: RECENT_ALARMS_LIMIT }
+    ]);
+
+    // (DEC-REF-82 v) — join de lectura contra rulepacks para exponer type/
+    // label/recommendation en cada ítem. UNA sola query, indexada en memoria
+    // por ruleId. Regla huérfana ⇒ type=null, label=ruleId crudo,
+    // recommendation=null; el ítem NO se descarta.
+    const rulepacksPromise = RulePack.find({}, { rules: 1 }).lean();
 
     // (R4 · G7 · 1a) — trendVariables reusa templates ya cargados (evita
     // Template.find duplicado). Solo queda el Data.distinct en la promesa.
@@ -294,7 +328,8 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       dieselResults,
       uptimeAgg,
       histAgg,
-      recentAlarmsRaw,
+      recentAlarmsPairs,
+      rulepacksRaw,
       trendVariables
     ] = await Promise.all([
       lastByDidPromise,
@@ -303,7 +338,8 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       dieselResultsPromise,
       uptimeAggPromise,
       histAggPromise,
-      recentAlarmsPromise,
+      recentAlarmsPairsPromise,
+      rulepacksPromise,
       trendVariablesPromise
     ]);
 
@@ -407,17 +443,86 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       buckets: histAgg.map(b => ({ day: b._id, critical: b.critical, warning: b.warning, info: b.info }))
     };
 
-    const siteByCode = new Map(sites.map(s => [s.siteCode, s]));
-    const recentAlarms = recentAlarmsRaw.map(n => ({
-      _id: n._id,
-      siteCode: n.siteId,
-      siteName: siteByCode.get(n.siteId) ? siteByCode.get(n.siteId).nombre : null,
-      severity: n.severity,
-      message: n.message || n.reason || n.label || n.variableFullName || n.variable,
-      ruleId: n.ruleId,
-      kind: n.kind || "fire",
-      time: n.time
+    // (DEC-REF-82) — índice ruleId → RuleDefinition (una sola pasada). Colisión
+    // de ruleId entre packs (no ocurre hoy pero el schema no lo previene):
+    // gana el ÚLTIMO visto — determinístico por el orden de find().
+    const ruleByRuleId = new Map();
+    for (const p of (rulepacksRaw || [])) {
+      for (const r of (p.rules || [])) {
+        if (r && r.ruleId) ruleByRuleId.set(r.ruleId, r);
+      }
+    }
+
+    // (F1.a) — Para cada (ruleId, siteId) del top 10 resolver firedAt/
+    // resolvedAt del EPISODIO ACTUAL (state-machine acotado por el resolve
+    // anterior). 2 findOne × 10 pares = 20 queries, todas en paralelo.
+    // Reglas explícitas (DEC-REF-81 iv):
+    //   · lastKind='resolve' ⇒ episodio cerrado; buscar fires entre el resolve
+    //     inmediatamente ANTERIOR (exclusive) y este resolve (inclusive).
+    //   · lastKind='fire'    ⇒ episodio abierto; buscar fires desde el último
+    //     resolve (exclusive) hasta lastTime (inclusive).
+    //   · Dos fires consecutivos sin resolve intermedio ⇒ firedAt = el más
+    //     ANTIGUO (sort asc, primer resultado).
+    //   · Resolve sin fire en el rango (pack purgado o resolve inicial)
+    //     ⇒ firedAt=null, durationSec=null; el ítem NO se descarta.
+    const enrichedPairs = await Promise.all((recentAlarmsPairs || []).map(async p => {
+      const { ruleId, siteId } = p._id;
+      const isResolve = p.lastKind === 'resolve';
+
+      const prevResolveDoc = await Notification.findOne(
+        { ...notifFilter, ruleId, siteId, kind: 'resolve', time: { $lt: p.lastTime } },
+        { time: 1 }
+      ).sort({ time: -1 }).lean();
+      const prevResolveTime = prevResolveDoc ? prevResolveDoc.time : 0;
+
+      // "fire" = kind='fire' OR kind ausente/null (docs históricos pre-DEC-REF-64
+      // — schema default 'fire'). $ne:'resolve' cubre las tres formas en una.
+      const firstFireDoc = await Notification.findOne(
+        { ...notifFilter, ruleId, siteId,
+          kind: { $ne: 'resolve' },
+          time: { $gt: prevResolveTime, $lte: p.lastTime } },
+        { time: 1 }
+      ).sort({ time: 1 }).lean();
+
+      const firedAt     = firstFireDoc ? firstFireDoc.time : null;
+      const resolvedAt  = isResolve ? p.lastTime : null;
+      const durationSec = (firedAt !== null && resolvedAt !== null)
+        ? Math.round((resolvedAt - firedAt) / 1000)
+        : null;
+
+      return { ...p, firedAt, resolvedAt, durationSec };
     }));
+
+    const siteByCode = new Map(sites.map(s => [s.siteCode, s]));
+    const recentAlarms = enrichedPairs.map(p => {
+      const { ruleId, siteId } = p._id;
+      const rule = ruleByRuleId.get(ruleId) || null;
+      return {
+        // Contrato preservado (l.412-419 original): _id, siteCode, siteName,
+        // severity, message, ruleId, kind, time. _id ahora es el del ÚLTIMO
+        // evento del episodio.
+        _id:               p.lastEventId,
+        siteCode:          siteId,
+        siteName:          siteByCode.get(siteId) ? siteByCode.get(siteId).nombre : null,
+        severity:          p.lastSeverity,
+        message:           p.lastMessage || p.lastReason || p.lastLabel || p.lastVariableFullName || p.lastVariable,
+        ruleId,
+        kind:              p.lastKind,
+        time:              p.lastTime,
+        // (F1.a · DEC-REF-81 iv) — episodio correlacionado
+        resolved:          p.lastKind === 'resolve',
+        firedAt:           p.firedAt,
+        resolvedAt:        p.resolvedAt,
+        durationSec:       p.durationSec,
+        // (F1.b) — correlationParent del último evento (usado por la cascada
+        // en NocRecentAlarms.vue)
+        correlationParent: p.lastCorrelationParent || null,
+        // (DEC-REF-82 v) — join contra RulePack
+        type:              rule ? rule.type : null,
+        label:             rule ? rule.label : ruleId,
+        recommendation:    rule ? rule.recommendation : null
+      };
+    });
 
     const payload = {
       status: "success",
