@@ -46,14 +46,31 @@ const MAINS_PRIORITY = ["mains_voltage"];
 const AVG_VARIABLES = new Set(["fuel_level"]);
 const classifyAggregation = (v) => AVG_VARIABLES.has(v) ? "avg" : "range";
 
-// ── Cache de servidor para /noc (R4 · G7 · 1c) ─────────────────────────
-// Cache in-memory a nivel módulo: mismo scope pega los mismos datos por
-// TTL_MS. El polling del frontend es 60s; TTL_MS=55s → múltiples viewers
-// del mismo scope no re-agregan y las lecturas del intervalo tapan de una.
-// Clave = hash(sorted(siteCodes)) — dos usuarios con idéntico set de sites
-// comparten cache (agnóstico al userId; el filtro ya redujo al scope).
-const NOC_CACHE_TTL_MS = 55 * 1000;
-const nocCache = new Map(); // scopeKey → { at, payload }
+// ── Caché de servidor para /noc — split VIVO/PESADO (DEC-REF-85 v · -85-A) ──
+// El handler compone la respuesta desde DOS tramos:
+//
+//   VIVO  — se recomputa SIEMPRE (nunca se cachea):
+//           recentAlarmsPairs, activeEpisodes, histAgg, rulepacks.
+//           Es lo que la demostración necesita ver rápido; suma ~150 ms.
+//           Los tres primeros consumen notifFilter (dependen del usuario).
+//
+//   PESADO — caché in-memory con TTL 180 s, `?fresh=1` NO lo invalida:
+//           trendVariables, uptimeAgg, lastByDid, lastValues, diesel.
+//           Domina el wall (~12 s en MISS por consultas sobre db.data);
+//           en HIT vale ~0 ms.
+//
+// Clave del tramo PESADO = hash(sorted(siteCodes)) — SIN userId.
+// Es SEGURO agnóstico al usuario porque las 5 queries del tramo PESADO
+// derivan EXCLUSIVAMENTE de `siteCodes` y de `Device.find({siteId:{$in
+// :siteCodes}})` (l.167-170, sin buildReadFilter). Dos usuarios con
+// mismos siteCodes ⇒ mismos allowedDIds ⇒ mismas 5 consultas ⇒ mismo
+// resultado. Verificado etapa por etapa (V-PESADO de F2, sesión #53).
+// El tramo VIVO — que sí depende del usuario vía notifFilter — se
+// recomputa por request, cerrando el defecto histórico donde la key
+// agnóstica al userId servía respuesta cross-tenant por coincidencia
+// empírica (DEC-REF-85-A).
+const HEAVY_TTL_MS = 180 * 1000;
+const nocPesadoCache = new Map(); // scopeKey → { at, payload:heavyBlock }
 function scopeKeyOf(siteCodes) {
   if (!siteCodes.length) return "empty";
   return crypto.createHash("sha1").update(siteCodes.slice().sort().join("|")).digest("hex");
@@ -147,22 +164,11 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       });
     }
 
-    // Cache de servidor (R4 · G7 · 1c) — clave = hash(scope).
-    // NO cachea el caso empty (return arriba); solo respuestas útiles.
-    //
-    // R7 · pedido Franco — soporte de `?fresh=1` para refresh event-driven
-    // (llamado por dashboard.vue al recibir un wanomi:notif MQTT). Bypassa
-    // la lectura de cache y recomputa; DE TODAS FORMAS reescribe el cache
-    // así los pollers regulares y otros viewers heredan el fresco.
-    const bypassCache = req.query.fresh === "1";
+    // Caché servidor (DEC-REF-85 v · -85-A) — key para el tramo PESADO.
+    // `?fresh=1` YA NO invalida (era el mecanismo que hacía que el operador
+    // pagase 12 s por refresh event-driven, DEC-REF-83 ii). El tramo VIVO
+    // se recomputa siempre; el PESADO respeta TTL 180 s.
     const cacheKey = scopeKeyOf(siteCodes);
-    if (!bypassCache) {
-      const cached = nocCache.get(cacheKey);
-      if (cached && (now - cached.at) < NOC_CACHE_TTL_MS) {
-        res.set("X-Cache", "HIT");
-        return res.json(cached.payload);
-      }
-    }
 
     // Devices + templates — necesarios para armar allowedDIds y templateById.
     const devices = await Device.find(
@@ -320,28 +326,55 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     // Template.find duplicado). Solo queda el Data.distinct en la promesa.
     const trendVariablesPromise = computeTrendVariablesFromTemplates(templates);
 
-    // ── Fan-in en un único await ──────────────────────────────────────
-    const [
-      lastByDidPairs,
-      activeEpisodes,
-      lastValuesFlat,
-      dieselResults,
-      uptimeAgg,
-      histAgg,
-      recentAlarmsPairs,
-      rulepacksRaw,
-      trendVariables
-    ] = await Promise.all([
-      lastByDidPromise,
+    // ── Fan-in en DOS tramos, ejecutados en paralelo (DEC-REF-85 v · -85-A) ──
+    //
+    //   PESADO: 5 fuentes que dominan el wall (~12 s en MISS). Cache TTL
+    //           180 s, `?fresh=1` NO invalida. Cuando hay HIT vale ~0 ms.
+    //           Todas las 5 derivan de siteCodes/allowedDIds (V-PESADO
+    //           auditado), por lo que compartir cache entre usuarios de
+    //           igual scope es seguro (DEC-REF-85-A).
+    //
+    //   VIVO:   4 fuentes que suman ~150 ms. NUNCA se cachean. Los tres
+    //           que consumen notifFilter (dependen del usuario) están acá,
+    //           lo que cierra el defecto histórico de la key agnóstica al
+    //           userId.
+    //
+    // Los dos tramos se lanzan en Promise.all: cuando el PESADO es HIT su
+    // promesa resuelve inmediata y el wall del request ≈ wall del VIVO.
+    // Cuando el PESADO es MISS, corren realmente en paralelo, sin serial.
+    let pesadoStatus;
+    let heavyPromise;
+    const heavyCached = nocPesadoCache.get(cacheKey);
+    if (heavyCached && (now - heavyCached.at) < HEAVY_TTL_MS) {
+      heavyPromise = Promise.resolve(heavyCached.payload);
+      pesadoStatus = "HIT";
+    } else {
+      heavyPromise = Promise.all([
+        lastByDidPromise,
+        lastValuesPromise,
+        dieselResultsPromise,
+        uptimeAggPromise,
+        trendVariablesPromise
+      ]).then(([lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg, trendVariables]) => {
+        const heavy = { lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg, trendVariables };
+        nocPesadoCache.set(cacheKey, { at: now, payload: heavy });
+        return heavy;
+      });
+      pesadoStatus = "MISS";
+    }
+
+    const vivoPromise = Promise.all([
       activeEpisodesPromise,
-      lastValuesPromise,
-      dieselResultsPromise,
-      uptimeAggPromise,
       histAggPromise,
       recentAlarmsPairsPromise,
-      rulepacksPromise,
-      trendVariablesPromise
-    ]);
+      rulepacksPromise
+    ]).then(([activeEpisodes, histAgg, recentAlarmsPairs, rulepacksRaw]) =>
+      ({ activeEpisodes, histAgg, recentAlarmsPairs, rulepacksRaw })
+    );
+
+    const [heavy, vivo] = await Promise.all([heavyPromise, vivoPromise]);
+    const { lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg, trendVariables } = heavy;
+    const { activeEpisodes, histAgg, recentAlarmsPairs, rulepacksRaw }               = vivo;
 
     const lastTimeByDid = new Map(lastByDidPairs);
 
@@ -543,11 +576,10 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       }
     };
 
-    // Guarda en cache y devuelve.
-    // R7 — bypassCache (fresh=1) también reescribe: los pollers posteriores
-    // heredan el fresco calculado por este request event-driven.
-    nocCache.set(cacheKey, { at: now, payload });
-    res.set("X-Cache", bypassCache ? "BYPASS" : "MISS");
+    // Header split (DEC-REF-85 v): VIVO se recomputa siempre, PESADO
+    // respeta TTL 180 s. La cache PESADA se escribe en el fan-in (arriba)
+    // solo en MISS, así que acá no hay set adicional.
+    res.set("X-Cache", `vivo=COMPUTE pesado=${pesadoStatus}`);
     res.set("X-Compute-Ms", String(Date.now() - t0));
     return res.json(payload);
   } catch (error) {
