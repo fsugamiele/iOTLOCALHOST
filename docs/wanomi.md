@@ -10583,3 +10583,28 @@ principal. Registro con la disciplina de plantillas/cierre.md.
   Observado al cerrar #54; no es colisión. Registrado sin corregir.
 - `tools/seed_rulepacks_f3/` sigue UNTRACKED — es el seed de DEC-REF-87.
   Decidir al abrir el bloque de siembra.
+
+## Sesión #55 — 2026-08-05 · Área 2 · Bloque documental (ítems 1-4 del carry-over #54)
+
+**Apertura.** Franco abre #55 sobre Área 2 y ordena atacar el carry-over de
+#54 **en el orden registrado**. Este bloque cubre los ítems 1 a 4, todos de
+documentación (§1/§4 de CLAUDE.md · RISK-SEC-4 · plantillas del harness ·
+baja del roadmap multi-dispositivo). Ítems 5-8 quedan declarados, sin abrir.
+
+**Regla aplicada desde la lección de #54:** esta apertura es su propio turno
+y no comparte gate con ninguna escritura posterior. El recon (READ-ONLY) va
+en prompt separado, después de GATE 1.
+
+**Estado al abrir (declarado por la sala, A VERIFICAR en el recon):**
+- Corpus `docsRefactor/WanomiRefactor.md` v0.88 · commit `a8f2b2a`.
+- Branch `feature/telco-support`, 5 commits sin push desde #54.
+- `tools/seed_rulepacks_f3/` UNTRACKED (seed de DEC-REF-87), sin decisión.
+- #53 sin entrada de bitácora (ítem 8, no se abre en este bloque).
+- Hueco de numeración: no existe DEC-REF-86. Registrado, sin corregir.
+
+**Afirmación de #54 que este bloque salda:** la fila 6 del cierre de #54
+—"§1 de CLAUDE.md describe bien el producto"— quedó **DECLARADA — ES FALSA**
+(lidera con anti-intrusión, que DEC-GTM-2 excluye como claim principal).
+El ítem 1 la corrige desde la tabla F10, no desde memoria.
+
+**STOP GATE 1** al final de este append.
