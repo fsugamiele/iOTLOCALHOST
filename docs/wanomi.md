@@ -10488,3 +10488,98 @@ Verificado atómicamente en Fase 2: `db.data` guarda `userId` en cada documento 
 
 
 
+
+## Sesión #54 — 2026-08-04 · Área 2 · Harness (Pasos 0-1) + bloque OPS
+
+**Naturaleza:** sesión de diseño + implementación del harness de proceso.
+Un recon funcional destapó un incidente de ingesta que se volvió trabajo
+principal. Registro con la disciplina de plantillas/cierre.md.
+
+### Qué se construyó — Paso 0 y Paso 1 del harness
+
+- **Paso 0** (`e37cd1f`): 4 plantillas de fase (recon · spec · evidencia ·
+  cierre) + plantilla de fila de costura + `COSTURAS.md` vacío.
+  Familia de IDs `CST-` abierta. Presupuesto de bloque fijado en 6 archivos.
+- **Regla nueva, ganada en la primera corrida:** la apertura es siempre su
+  propio turno; nunca comparte gate con una escritura. El Paso 0 se salteó
+  su propia apertura por un prompt de la sala que encadenaba dos pasos
+  (clase DEC-PROC-4d) — error de la sala, no del agente.
+- **Recon de CLAUDE.md** (`338db91`) y **reescritura** (`080f2f5`):
+  559 → 133 líneas (−76%). Hechos de entorno verificados con comando;
+  changelog, roadmap y 20 DEC de HW cortados (viven en sus corpus);
+  candado que prohíbe arquitectura de software, estado y changelog.
+- **Recon funcional** (`080f2f5`): tabla F10 con 19 capacidades clasificadas
+  VIVO / IMPLEMENTADO / PARCIAL / SOLO-DISEÑO, cada una con evidencia.
+
+### Afirmaciones del cierre — una por fila
+
+| # | Afirmación | Estado | Evidencia |
+|---|---|---|---|
+| 1 | CLAUDE.md reescrito y aplicado | PROBADO | `wc -l` = 133 · `080f2f5` |
+| 2 | Ingesta restaurada | PROBADO | healthcheck 3/3 · +101 docs/30s |
+| 3 | JWT_SECRET y FORENSIC_HMAC_SECRET rotados | PROBADO | len=64 ×2 · md5 difiere del backup · node reiniciado |
+| 4 | Causa raíz de OPS-1 identificada | PARCIALMENTE PROBADO | Hechos de código sí; disparador ABIERTO |
+| 5 | Connect (driver Modbus) no existe en código | PROBADO | F5: solo comentarios del simulador |
+| 6 | §1 de CLAUDE.md describe bien el producto | **DECLARADO — ES FALSO** | Lidera con anti-intrusión, que DEC-GTM-2 excluye como claim. Pendiente de reescritura desde F10 |
+
+### Hallazgos operativos (detalle en BACKLOG-OPS-1 adenda #54 / OPS-4 / OPS-5)
+
+- El comando de arranque del sim que sugiere `healthcheck_demo.sh` NO
+  funciona en frío. Único válido: `USER_EMAIL=$TEST_USER_EMAIL
+  USER_PASSWORD=$TEST_USER_PWD SIMULATOR_MODE=true nohup node
+  tools/device_simulator/run.js >> logs/sim-CR00061.log 2>&1 &`
+  **NO sourcear app/.env** — `MQTT_PORT=8083` es WebSocket, el sim usa TCP.
+- `resource:3920e268` hardcodeado en runbook y `healthcheck_demo.sh:26`:
+  el id rota en cada rebuild de EMQX. Rojo falso garantizado.
+- `docker logs node` congelado desde 2026-06-25 (≈6 semanas sin
+  observabilidad del backend).
+
+### Errores de sala registrados sin suavizar
+
+- Prompt del Paso 0 encadenó apertura + escritura (clase DEC-PROC-4d).
+- La sala prescribió `${VAR:+SET}${VAR:-UNSET}` como idioma seguro leyéndolo
+  del propio corpus: **filtra el valor**. 4 secretos expuestos, 5ª
+  recurrencia de la familia RISK-SEC. El corpus contenía la receta errónea.
+- La sala afirmó que el reloj de WSL2 invalidaba la datación de tres adendas
+  ajenas, sobre inferencia no verificada, y se negó a suavizarlo cuando el
+  agente lo ofreció. Retirado en enmienda #54-A.
+
+### Commits (5, SIN PUSH)
+
+`e37cd1f` · `338db91` · `4fe7fe4` · `080f2f5` · `60ebe85` — corpus en v0.88.
+
+### Carry-over para #55 — EN ORDEN
+
+1. **§1 de CLAUDE.md** reescrito desde la tabla F10 + puntero de estado en §4.
+   Corto. El §1 actual contradice DEC-GTM-2.
+2. **RISK-SEC-4** en corpus: 4 secretos filtrados · idioma corregido (adenda
+   a la lección de RISK-SEC-3, que está MAL escrita) · rotación ejecutada.
+3. **Registro de las plantillas del harness** en corpus (diferido desde Paso 0).
+4. **Baja del roadmap multi-dispositivo** (Zigbee2MQTT, bridges): decisión de
+   Franco en #54, sin fila propia todavía.
+5. **BACKLOG-OPS-5** — `exec node` como PID 1. Barato, criterio de cierre
+   objetivo, destraba todo diagnóstico posterior.
+6. **deviceType del ATS** — 3 reglas tipo D no disparan. Recon obligatorio
+   antes de escribir (DEC-REF-81 iii).
+7. **Paso 2 del harness** — pasar las 19 filas de F10 a `COSTURAS.md`.
+   Costuras ya identificadas y pendientes: fuente de tiempo → cadena forense
+   (NO DECIDIDO, sirve al pilar) · disparador de rotación de EMQX_API_TOKEN y
+   MONGO_PASSWORD · caché de /dashboard/noc sin userId en la key (DEC-REF-85-A).
+
+### Notas de estado
+
+- **#53 NO tiene entrada de bitácora.** Verificado al cerrar #54:
+  `grep "^## Sesión #5[3-9]" docs/wanomi.md` → sin resultado; la última
+  entrada es #52. Pero #53 existe: commit `903dca6` (`docs(#53/F3-pre)`) y
+  `DEC-REF-87` registrada en corpus. **Sesión con commits y con filas, sin
+  relato.** Consecuencia observada: una sesión nueva abierta el 2026-08-05
+  leyó la bitácora, encontró #52 como última entrada y propuso retomar el
+  carry-over de #49 — cinco sesiones atrás. La bitácora es el traspaso; sin
+  entrada, el contexto se pierde aunque el corpus esté al día.
+  Reconstruir #53 desde `git log` + DEC-REF-87 queda como carry-over 8.
+- **`docs/wanomi.md` en el proyecto de Claude web estaba desfasado** (v0.74).
+  Al abrir sesión, re-subir `WanomiRefactor.md` y `wanomi.md` actualizados.
+- **Hueco de numeración:** no existe DEC-REF-86 (salto de 85-A a 87).
+  Observado al cerrar #54; no es colisión. Registrado sin corregir.
+- `tools/seed_rulepacks_f3/` sigue UNTRACKED — es el seed de DEC-REF-87.
+  Decidir al abrir el bloque de siembra.
