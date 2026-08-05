@@ -10608,3 +10608,109 @@ en prompt separado, después de GATE 1.
 El ítem 1 la corrige desde la tabla F10, no desde memoria.
 
 **STOP GATE 1** al final de este append.
+
+### Cierre de #55 — bloque documental (ítems 1-4)
+
+**GATE 1 · GATE 2 · GATE 3 · GATE 4 verdes.** Bloque cerrado sin tocar código,
+docker, EMQX, edge ni simulador.
+
+#### Correcciones a la apertura de #55 (por APPEND — el texto original no se edita)
+
+La apertura de esta sesión contiene **dos afirmaciones falsas**, ambas de la
+sala, ambas por escribir estado de memoria sin verificarlo (DEC-PROC-2):
+
+1. **"Branch `feature/telco-support`, 5 commits sin push desde #54" — FALSO.**
+   Los 5 commits de #54 ya estaban en `origin`: push del 2026-08-05 11:22 UTC,
+   verificado por `reflog@{0}` y `merge-base --is-ancestor`. Al abrir #55 el
+   único commit no pusheado era la propia apertura. Tomado del texto de #54
+   ("Commits (5, SIN PUSH)") y escrito como estado presente.
+2. **"Corpus v0.88 · commit `a8f2b2a`" — IMPRECISO.** `a8f2b2a` es el commit
+   de la *bitácora* de #54; el corpus v0.88 se registró en `60ebe85`.
+
+#### Afirmaciones del cierre — una por fila
+
+| # | Afirmación | Estado | Evidencia |
+|---|---|---|---|
+| 1 | §1 de CLAUDE.md reescrito sin estado, con puntero a F10 en §4 | PROBADO | `f38823a` · `wc -l` 133→144 · §7 CANDADO fuera del diff |
+| 2 | La fila 6 del cierre de #54 queda saldada | PROBADO | §1 ya no lidera con anti-intrusión; alineado a DEC-GTM-2 |
+| 3 | RISK-SEC-5 registrado con alcance declarado sin inferencia | PROBADO | `e40699b` · v0.89 |
+| 4 | Ningún valor de secreto quedó en archivos versionados | PROBADO | F1.3: corpus 0 matches; único match de bitácora = `SIMULATOR_MODE=true`, falso positivo |
+| 5 | Identidad exacta de los 4 secretos de #54 | **NO RECUPERABLE** | Exige leer valores en el transcript, prohibido. Sustituido por superconjunto de 8 nombres |
+| 6 | Plantillas del harness registradas | PROBADO | `c55cff7` · DEC-REF-88 · v0.90 |
+| 7 | Multi-dispositivo fuera de MVP y piloto | DECIDIDO POR FRANCO | DEC-REF-89 · v0.91 |
+| 8 | La exclusión por rama es un límite real del producto | **DECLARADO — NO PROBADO** | Separación organizativa, no técnica. Requiere decisión de código, no tomada |
+
+#### Errores de sala registrados sin suavizar (6)
+
+- **#55-1** — apertura con "5 commits sin push" y corpus atribuido al commit
+  equivocado. DEC-PROC-2. El agente lo levantó; la sala no.
+- **#55-2** — el recon pidió volcar "la fila RISK-SEC-3 del corpus". No existe
+  como fila: RISK-SEC-1 y -3 viven solo en bitácora. Simetría de registro
+  asumida sin verificar.
+- **#55-3** — el ítem 2 del carry-over de #54 asignó `RISK-SEC-4`, ID ya
+  ocupado por #50 (signup público en `/register`). **3ª colisión de ID del
+  proyecto.** RULE-4 la atajó: el agente grepeó antes de asignar. Corregido a
+  RISK-SEC-5.
+- **#55-4** — la sala hizo decir a Área 3 que el sub-nodo estaba resuelto por
+  **LoRa** citando DEC-HW-9. DEC-HW-9 dice lo contrario: LoRa es footprint
+  **DNP fuera de scope**. El enlace vigente de WN-FENCE es **ESP-NOW** (DEC-16).
+  La conclusión se sostenía, el fundamento estaba invertido.
+- **#55-5** — gate auto-bloqueante: F1.3 ordenaba parar ante cualquier
+  conteo > 0 y el mismo prompt prohibía el único comando capaz de resolverlo.
+  Franco tuvo que desbloquearlo a mano. Además el heurístico
+  `^[A-Z_]{4,}=.{16,}` es burdo: matcheó `SIMULATOR_MODE=true` seguido de prosa.
+  **Lección: todo gate de incidente debe traer su propio camino de resolución
+  autorizado, o no es un gate.**
+- **#55-6** — la sala escribió "Franco autoriza esta lectura ACOTADA" sobre el
+  transcript local **sin habérselo preguntado**. La autorización se declaró
+  antes de existir.
+
+#### Lección de método del bloque
+
+**El corpus contenía la receta errónea y la sala la aplicó por confiar en el
+corpus** (RISK-SEC-3 → 5ª recurrencia de la familia en #54). Un corpus
+autoritativo propaga sus errores con la misma eficiencia que sus aciertos.
+Corolario operativo: toda receta de shell que toque variables de entorno se
+verifica contra `CLAUDE.md:37` antes de usarse, **aunque venga del corpus**.
+
+#### Nota de registro — cabecera del corpus
+
+La cabecera decía `#52 cerrada` con versión ya en 0.90: etiqueta clavada desde
+#53, que no dejó bitácora. Corregida a `#55 cerrada` en `v0.91`. Es el mismo
+agujero de #53 manifestándose por segunda vía.
+
+#### Commits de #55 (SIN PUSH)
+
+`4b71dc2` apertura · `f38823a` ítem 1 · `e40699b` ítem 2 (v0.89) ·
+`c55cff7` ítem 3 (v0.90) · `[hash FASE B]` ítem 4 (v0.91) ·
+`[hash de este cierre]`.
+
+#### Carry-over para #56 — EN ORDEN
+
+1. **BACKLOG-OPS-5** — `exec node` como PID 1. Barato, criterio de cierre
+   objetivo, destraba todo diagnóstico posterior.
+2. **`deviceType` del ATS** — 3 reglas tipo D no disparan. Recon obligatorio
+   antes de escribir (DEC-REF-81 iii).
+3. **Paso 2 del harness** — 19 filas de F10 → `COSTURAS.md` (hoy vacío,
+   próximo libre `CST-01`). Costuras ya identificadas: fuente de tiempo →
+   cadena forense · disparador de rotación de `EMQX_API_TOKEN` y
+   `MONGO_PASSWORD` · caché de `/dashboard/noc` sin `userId` en la key
+   (DEC-REF-85-A) · **bridge Tasmota (nueva, DEC-REF-89)**.
+4. **Reconstruir #53** desde `git log` + DEC-REF-87.
+5. **Higiene de untracked (7):** decidir uno por uno. Incluye
+   `docs/hardware/~$nomi_guia_layout_WN-SITE-CORE.docx`, que es un lock
+   temporal de Word — basura, no artefacto. `tools/seed_rulepacks_f3/` sigue
+   sin decisión (seed de DEC-REF-87).
+6. **Normalización de RISK-SEC-1 y -3 como filas de corpus** — diferida en
+   #55 por scope creep declarado. Hoy solo referenciadas por puntero.
+7. **Rotación de los 6 secretos restantes** de RISK-SEC-5 — mismo disparador
+   que RISK-SEC-1/2: pasaje a producción o compartir el repo.
+
+#### Estado al cierre
+
+- Branch `feature/telco-support`, **6 commits ahead** de origin, sin push.
+- Corpus `docsRefactor/WanomiRefactor.md` **v0.91**.
+- `CLAUDE.md` 144 líneas, §7 CANDADO intacto.
+- Sin cambios en código, docker, EMQX, edge ni simulador.
+
+**Sesión #55 CERRADA.** Push con orden explícita de Franco.
