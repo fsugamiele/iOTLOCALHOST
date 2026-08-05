@@ -10714,3 +10714,47 @@ agujero de #53 manifestándose por segunda vía.
 - Sin cambios en código, docker, EMQX, edge ni simulador.
 
 **Sesión #55 CERRADA.** Push con orden explícita de Franco.
+
+#### Adenda #55-A — topología de ramas y provenance del bridge (posterior al cierre)
+
+Verificación posterior al cierre. `master` existe, `feature/telco-support`
+desciende de él, **382 ahead / 0 behind** (merge-base `afd6e92`).
+
+**Dos errores de sala más, ambos detectados por el agente ANTES de que
+llegaran al disco:**
+
+- **#55-7** — la sala escribió que el bridge Tasmota es "herencia de IoTicos
+  GL". FALSO: es feature propia, `e117c1c` (`feat(fase2)`, Franco,
+  2026-04-05), anterior al fork.
+- **#55-8** — la sala afirmó que "el único bridge vive solo en la rama telco".
+  FALSO: `master` tiene el bridge bajo la ruta original
+  `app/api/routes/tasmota_bridge.js`. Telco-only es solo el move `42f30ca`.
+  **Causa raíz:** el test que la sala diseñó en el PROMPT 5
+  (`git cat-file -e` sobre la ruta NUEVA) probaba una ruta, no una capacidad.
+  Sobre esa premisa falsa la sala construyó además un argumento entero
+  (`master` congelado, desarrollo multi-dispositivo requeriría mover código o
+  mergear telco) que queda **retirado**: la cláusula de rama de Franco era
+  viable tal cual.
+
+**Patrón de la sesión, registrado sin suavizar:** cuatro afirmaciones de
+estado escritas sin verificar (#55-1, #55-4, #55-7, #55-8) en un bloque cuyo
+objetivo declarado era corregir una afirmación falsa. Ninguna la produjo el
+agente; las cuatro las produjo la sala. Dos de ellas (#55-4, #55-8) tenían la
+conclusión correcta y el fundamento invertido, que es el modo de falla más
+caro: sobrevive a la revisión porque el resultado "suena bien".
+
+**Corolario de método:** un test de existencia sobre una RUTA no prueba nada
+sobre una CAPACIDAD. Al verificar si una funcionalidad existe en otra rama, se
+verifica por contenido o por historia (`git log --diff-filter=A --follow`),
+nunca por path — los renames rompen el path, no la funcionalidad.
+
+**Hallazgo abierto:** `e117c1c` menciona **ESPHome** además de Tasmota; un
+posible segundo ecosistema de terceros sin registro en ningún corpus. Al recon
+del Paso 2.
+
+Detalle en DEC-REF-89 adenda #55-A · corpus **v0.92**.
+
+**Resolución de placeholders del cierre de #55** (patrón #42/R6):
+`[hash FASE B]` = `c49dc68` · `[hash de este cierre]` = `2197dd4`.
+
+Commits de #55 pasan a **8** (`4b71dc2`..`[hash de esta adenda]`), sin push.
