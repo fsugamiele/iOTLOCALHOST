@@ -2,11 +2,20 @@
 
 ## 1 · Qué es Wanomi 3.0
 Plataforma IoT self-hosted para monitoreo de sites de telecomunicaciones,
-heredera de IoTicos GL. Está en piloto con **Claro Argentina (NEA)** para dos
-dolores del operador: anti-intrusión/anti-robo de shelters y BTS, y monitoreo
-predictivo de grupos electrógenos (lectura del controlador por MODBUS + sensores
-de vibración, combustible, temperatura). El firmware de campo corre en ESP32-S3;
-los datos suben por MQTT a EMQX y se procesan por site en el edge-engine.
+heredera de IoTicos GL. En piloto con **Claro Argentina (NEA)**.
+
+El pilar del producto es **anticipar y recomendar una acción**, no mostrar
+datos. El pitch está anclado en dolor medible del operador (DEC-GTM-2): truck
+rolls evitables, sites caídos por tanque vacío, y la cascada de energía
+(corte de red → ATS → grupo → rectificador) leída como un evento de sitio y
+no como alarmas sueltas. Seguridad física y robo de combustible son capacidad
+latente del diseño, no el claim principal.
+
+Dos modos de captura: **Connect** (leer el equipo que ya está en el sitio) y
+**Sense** (medir los puntos ciegos con sensor propio).
+
+Cadena: telemetría → EMQX → motor de reglas por site → notificación
+(dashboard NOC · Telegram · evento al NOC) + persistencia en Mongo.
 
 ## 2 · Los 4 componentes vivos
 1. **Infra Docker** — MongoDB + EMQX (broker MQTT). `docker_compose_production.yml`.
@@ -37,6 +46,8 @@ los datos suben por MQTT a EMQX y se procesan por site en el edge-engine.
 - **Chequear presencia de una var SIN filtrar su valor:** `[ -n "$VAR" ] && echo "$K=SET" || echo "$K=UNSET"`. NUNCA `${VAR:+SET}${VAR:-UNSET}` — esa construcción imprime el valor cuando la var está definida.
 - **Importar modelos desde un script `node` standalone:** `@babel/register` + `@babel/preset-env` (NO `@nuxt/babel-preset-app`, falla por polyfills core-js) + `NODE_PATH=<app>/node_modules` para resolver dotenv/modelos (registrado en `docs/wanomi.md:1903-1904`). Además la mayoría de modelos son `export default` → `require(...).default`, pero `rule_pack.js` y `rule_definition.js` son `module.exports` → sin `.default`. El seed F3 (`tools/seed_rulepacks_f3/seed.js`) esquiva todo esto: siembra por **HTTP** contra la API con un JWT firmado con `JWT_SECRET`, sin importar modelos.
 - **Alcance de rotación de `JWT_SECRET`:** invalida a la vez los tokens de la app node y del seed F3 (ambos firman/verifican con él). El edge-engine NO usa `JWT_SECRET` (verificado 2026-08-04: usa MONGODB_URI, MQTT_*, SITE_ID, TELEGRAM_*).
+- Estado funcional por capacidad (VIVO / IMPLEMENTADO / PARCIAL / SOLO-DISEÑO):
+  `docsRefactor/harness/recon/funcionalidades.md` (tabla F10). Acá no se copia.
 
 ## 5 · Reglas duras del método (se cita la fila del corpus, no su contenido)
 - Implementar sobre dirección firmada ≠ sobre especificación → `WanomiRefactor.md` · **DEC-PROC-6**.
