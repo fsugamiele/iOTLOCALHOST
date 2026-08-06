@@ -10758,3 +10758,71 @@ Detalle en DEC-REF-89 adenda #55-A · corpus **v0.92**.
 `[hash FASE B]` = `c49dc68` · `[hash de este cierre]` = `2197dd4`.
 
 Commits de #55 pasan a **8** (`4b71dc2`..`[hash de esta adenda]`), sin push.
+
+## Sesión #56 — 2026-08-05 · Área 2 · BACKLOG-OPS-5 (observabilidad de node)
+
+### Resolución de registro pendiente de #55 (por APPEND)
+
+- **Placeholder del cierre:** `[hash de esta adenda]` = **`35d1722`**.
+- **Corrección — error de sala #55-9.** La adenda #55-A declara "Commits de
+  #55 pasan a **8** … sin push". **Ambos datos son falsos.**
+  - **Son 7, no 8.** Verificado con
+    `git rev-list --count 4b71dc2~1..35d1722` = **7**. Los 7: apertura
+    `4b71dc2` · ítem 1 `f38823a` · ítem 2 `e40699b` · ítem 3 `c55cff7` · ítem 4
+    `c49dc68` · cierre `2197dd4` · adenda `35d1722`. Origen del error: la sala
+    sumó mal al redactar el PROMPT 6 y escribió un número sin contarlo. Es el
+    **quinto dato falso de #55** y el único que no fue una afirmación de estado
+    sino una aritmética — pero llegó al disco por la misma vía: escribir sin
+    verificar.
+  - **"sin push" también quedó falso.** Al abrir #56, `git status -sb` no
+    muestra `[ahead]`: la branch está **sincronizada con `origin`**
+    (`git rev-list --count origin/feature/telco-support..HEAD` = **0**). El
+    reflog del ref remoto prueba un `git push` fast-forward de los 7 commits el
+    **2026-08-05 23:36:24 UTC** (~13 min antes de abrir #56). Franco confirmó
+    que el push fue suyo. Git no registra identidad del pusher, sólo que salió
+    de este repo; la confirmación es de Franco, no inferida.
+  - El texto original de la adenda queda como huella (append-only).
+
+### Apertura de #56
+
+Franco abre #56 sobre **Área 2**, ítem 1 del carry-over de #55:
+**BACKLOG-OPS-5 — `docker logs node` ciego desde 2026-06-25 (≈6 semanas)**.
+
+**Por qué primero:** es el único ítem del carry-over con criterio de cierre
+objetivo y verificable ya escrito en corpus (una request distinguible a
+`:3001` aparece en `docker logs node` dentro de 10s, verificado dos veces), y
+destraba el diagnóstico de todo lo demás. Seis semanas sin observabilidad del
+backend encarecen cualquier recon posterior, incluido el del `deviceType` del
+ATS (ítem 2).
+
+**Fix propuesto en corpus (NO ejecutado, sujeto a recon):** `exec node` como
+PID 1 en `docker_compose_production.yml`, sin el wrapper `sh -c npm run start`.
+El árbol de procesos verificado en #54 (PID 1 = `dash` → `npm` → `sh` → `node`)
+explica de una sola vez las tres cosas: log congelado, semántica turbia de
+SIGTERM, y el crash-loop de BACKLOG-OPS-4.
+
+**Advertencia de alcance declarada al abrir:** este bloque toca
+`docker_compose_production.yml` y exige recrear el contenedor `node` — es la
+primera escritura sobre infraestructura productiva desde #54. Recon read-only
+obligatorio antes de cualquier diff (DEC-PROC-2), STOP GATE explícito antes de
+`docker compose up -d` o equivalente, y backup del compose antes de tocarlo.
+El frontend corre en PRODUCCIÓN (`nuxt start`): recrear el contenedor sin
+bundle presente reproduce BACKLOG-OPS-4. Verificar `.nuxt/dist/server/` ANTES.
+
+**Estado al abrir (VERIFICADO en FASE 0, no declarado de memoria):**
+- Corpus `docsRefactor/WanomiRefactor.md` **v0.92** · #55 cerrada.
+- Branch `feature/telco-support`, **7 commits** (`4b71dc2`..`35d1722`), todos
+  de documentación, **ya en `origin`** (push fast-forward 2026-08-05 23:36:24
+  UTC, confirmado por Franco). No hay push pendiente al abrir #56.
+- `CLAUDE.md` 144 líneas, §1 reescrito en #55, §7 CANDADO intacto.
+- `COSTURAS.md` VACÍO, próximo libre `CST-01` (Paso 2 = ítem 3 del carry-over).
+- **7** archivos untracked sin decisión (ítem 5 del carry-over).
+- Sin cambios en código, docker, EMQX, edge ni simulador desde #54.
+
+**Carry-over de #55 vigente, en orden:** (1) BACKLOG-OPS-5 ← este bloque ·
+(2) `deviceType` del ATS · (3) Paso 2 del harness (+ costura Tasmota +
+ESPHome) · (4) reconstruir #53 · (5) higiene de untracked · (6) normalizar
+RISK-SEC-1 y -3 como filas de corpus · (7) rotación de los 6 secretos
+restantes de RISK-SEC-5.
+
+**STOP GATE 1** al final de este append.
