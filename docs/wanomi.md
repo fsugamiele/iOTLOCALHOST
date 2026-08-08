@@ -11132,3 +11132,73 @@ por otro nombre. (5) `createdTime` del ATS `1784861822645` →
 6. **`RISK-SEC-4`** + adenda del idioma que filtra — pendiente desde #54.
 7. **Implementar `tools/verify/`** — spec aprobada como diseño.
 8. **CST-07 y CST-15** — verificaciones escritas, nunca corridas.
+
+### Sesión #57 CERRADA
+
+**Estado medido al cierre (no de memoria).** Corpus `WanomiRefactor.md`
+**v0.94** (`v0.92 → v0.94` en la sesión). Branch `feature/telco-support`,
+`HEAD 70dc728`, working tree **limpio** (0 untracked). **Ahead 2** de
+`origin/feature/telco-support`. Los 4 contenedores arriba: `mongo` Up 4 days
+(healthy) · `emqx` Up 4 days (healthy) · `node` Up 3 days · `wanomi-edge`
+Up 4 days. Simulador `node tools/device_simulator/run.js` (PID 22088, STIME
+Aug04) vivo. **Proceso edge:** `ps -ef | grep edge-engine` en el host → **0
+líneas** (corre dentro del contenedor `wanomi-edge`, no visible al `ps` del
+host); el contenedor está Up. `healthcheck_demo.sh` **exit=0, 3/3 verde**
+(sim vivo · `saver-webhook is_alive=true` · `db.data` **+70 docs/60 s**,
+7 devices CR00061).
+
+**Entregables de la sesión.**
+- **BACKLOG-OPS-5 — CERRADO POR REFUTACIÓN.** El criterio de cierre del propio
+  corpus se cumplió **3×** (probes A/B/C, 1 hit c/u) con el wrapper
+  `sh -c npm run start` puesto. El defecto era el **método de lectura** (`--since`
+  roto en Docker Desktop/WSL2), no el escritor. `exec node` pierde su
+  justificación para OPS-5; el hallazgo del árbol de procesos (SIGTERM +
+  crash-loop) transfiere a **BACKLOG-OPS-4**.
+- **BACKLOG-OPS-6 — ABIERTO** con volumen medido: **1.234 líneas · 38.187 B ·
+  154 POST** en 60 s ⇒ **~55 MB/día** sin techo (driver `json-file`,
+  `Config:{}`). Emisor dominante `console.log(obj)` — 7 de 8 líneas por POST,
+  **~83 % de los bytes**. Caveat: banco de pruebas con simulador, **NO
+  extrapolable al Hub de campo**.
+- **ANOMALÍA-LOGS-1 — ABIERTA, cuantificada.** `docker logs -f` da cero en
+  ventanas <60 s (10 s → 0 · 7 s → 1 · 60 s → 1.234). Regla de método vigente:
+  toda lectura negativa de `docker logs -f` exige ventana **≥ 60 s** contrastada
+  contra delta de `db.data`.
+- **DEC-REF-90 — `deviceType` deriva del template (A1).** Causa raíz cerrada
+  por evidencia temporal: `createdTime` del ATS `59XYsglM` =
+  **Fri Jul 24 02:57:02 UTC 2026**, dentro de la ventana de **BACKLOG-OPS-3**
+  (recreación por UI). El gate `!==` en `ruleEngine.js:46` con `deviceType:""`
+  deja las 2 reglas ATS fuera del motor ⇒ cascada M1→C1 inactiva hoy.
+- **CST-08 — BLOQUEADO**, con la aritmética que lo prueba: el manifest F3
+  declara `ats-inteliats-v1` con 5 reglas en `deviceType: 'ATS'`; sembrar con
+  `""` en el device produce **7 reglas muertas en vez de 2**. Desbloqueo: Paso 1
+  de DEC-REF-90.
+- **Corpus v0.92 → v0.94.** Commits de #57: **4** — 2 pusheados
+  (`fde3462..e7a63ee`), 2 pendientes de push (`1ef3b8f`, `70dc728`).
+
+**Nota de método — patrón de la sesión (sin suavizar).** Ocho errores de sala
+registrados. **Cuatro de los ocho fueron residuo de contexto afirmado en la
+apertura sin verificación:** una sesión #57 previa inexistente, la cifra de
+~1.180 líneas/minuto, el pack `ats-inteliats-v1` (no existe en Mongo), y el
+mecanismo de las reglas cross (mal atribuido). Los cuatro fueron **falsados por
+comando dentro de la misma sesión**. Lección: el harness cumplió su función
+—ningún residuo llegó a disco como hecho—, pero el costo fue de varios turnos.
+La apertura debe declarar el residuo como **no-fuente explícita antes** de
+proponer foco, no después de que un `grep` lo tire.
+
+**Deuda de forma.** CST-16 y CST-08 cambiaron de estado en corpus (DEC-REF-90) y
+bitácora, pero sus filas en `docsRefactor/harness/COSTURAS.md` **no se
+actualizaron** (fuera del presupuesto de 2 archivos del tramo 2). El mapa de
+costuras quedó **desalineado** respecto del corpus. Se salda en #58 (carry-over
+5).
+
+**Carry-over para #58, en orden.**
+1. **Paso 1 de DEC-REF-90** — `updateOne` `deviceType: "ATS"` en `59XYsglM`;
+   gate propio, backup del documento, verificar que M1→C1 revive.
+2. **Leer `app/api/models/template.js`** — define si A1 son 3 o 4 archivos.
+3. **Implementación A1** — `siteState.js:71/73/95` con fallback + campo en el
+   schema de template + migración de los ~5 templates.
+4. **CST-08 seed F3** — desbloqueado tras el Paso 1.
+5. **Sincronizar `COSTURAS.md`** con el estado de CST-16 y CST-08.
+6. **§1 de `CLAUDE.md`** — FALSO desde #54.
+7. **`RISK-SEC-4`** + adenda del idioma que filtra.
+8. **`tools/verify/`**; **CST-07 y CST-15**.
