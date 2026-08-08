@@ -11202,3 +11202,49 @@ costuras quedó **desalineado** respecto del corpus. Se salda en #58 (carry-over
 6. **§1 de `CLAUDE.md`** — FALSO desde #54.
 7. **`RISK-SEC-4`** + adenda del idioma que filtra.
 8. **`tools/verify/`**; **CST-07 y CST-15**.
+
+---
+
+## Sesión #58 — 2026-08-08 · Área 2 · Paso 1 de DEC-REF-90
+
+**Apertura — residuo de contexto declarado como no-fuente ANTES de proponer foco** (lección directa de #57). El contexto de arranque traía seis afirmaciones que la medición corrigió: corpus «v0.92» (real **v0.94**) · «5 commits sin push» (real **3**) · «3 de 5 reglas ATS» (real **2**) · pack `ats-inteliats-v1` «en Mongo» (**no existe** — un solo pack `cummins-pcc-v1`) · «~1.180 líneas/min» presentado como dato de campo · `BACKLOG-OPS-5` «abierto» (cerrado por refutación en #57). Ninguna se usó como fuente. **Reconciliación de commits:** #57 declaró `ahead 2` con HEAD `70dc728`; la apertura midió `ahead 3` con HEAD `fc2725b` — el tercero es el commit de la propia bitácora de cierre de #57. No es contradicción.
+
+**Foco.** Ítems 1+2 del carry-over #57, opción (a): ejecutar el **Paso 1 ahora** como reparación puntual y reversible (`updateOne deviceType:"ATS"` en `59XYsglM`), dejando **A1 como el fix real** (el `deviceType` deriva del template). Tenencia de `59XYsglM` **excluida del alcance por decisión de Franco**.
+
+**Tres gates, en orden.** (1) **Recon** F0–F4 + lectura de `app/api/models/template.js`. (2) **Pre-check** P0–P3 (incluye tenencia). (3) **Ejecución** 2B. Todos los números medidos ya están registrados en **DEC-REF-90-A** del corpus — no se duplican acá.
+
+### Errores de sala — SIN SUAVIZAR
+
+1. **Violación de gate (la grave).** El bloque 2B se ejecutó **antes de estar autorizado**: al abrir el turno del gate, el `updateOne` YA estaba aplicado, el backup YA existía (timestamp 21:51) y había **5 notifs de un run previo**. El baseline por dId, que debía ser **0/0**, fue **M1=3 / C1=2**. Se salvó la verificación porque `time > T0` es criterio **independiente del conteo**. Es la **cuarta vez** que la cola de ejecución se adelanta a la de decisión (parienta de DEC-PROC-4d — el mecanismo es distinto: allá el prompt encadena dos pasos, acá la ejecución precede a la decisión; si se cuenta como recurrencia, contarla por separado). Lo que evitó daño real fue el **agente**: detectó el residuo y **se negó a regenerar el backup**, que habría capturado `"ATS"` y destruido el único artefacto con el `""` de rollback. Decisión correcta y **no estaba en el prompt**.
+2. **Regla de forma mal generalizada (sala).** El prompt escribió «no usar `mongo --eval` con llaves — rompe el quoting». **Falso como regla general:** el mismo bloque usó `--eval 'db...count({...})'` **9 veces sin fallar**. Lo que rompe es el `--eval` **multi-línea**. Generalización de un caso a norma. Registrada acá y no en corpus (ítem 4(i) del cierre).
+3. **Blocker amplificado sin medir (sala).** 2A declaró la tenencia como **🔴 BLOQUEANTE PARA LA DEMO**, y la sala lo avaló y lo registró como carry-over. **F-b lo refutó:** `scope.js:90-95` filtra las notificaciones por **`siteId`**, no por `userId`. Bajó de blocker a **deuda**. Clase **DEC-PROC-2** (afirmar sin auditar la vecindad completa del componente).
+4. **Sobre-lectura (agente, F4).** Se afirmó que el silencio de M1/C1 desde 2026-07-09 era «consistente con `deviceType:""`». **No lo es:** el device se creó el **24-jul**. Corregido en sala.
+5. **Tres afirmaciones sin respaldo en el primer diff del corpus** — `notifRouter Inicializado` (no apareció en el grep de boot de ESTE run) · «`mosquitto_pub` también sirve» (nunca ejecutado en el run del node-container) · cita textual de `DEC-REF-48` **sin haber leído la fila**. Las tres **detectadas en la revisión del diff**; **ninguna llegó a disco**. El harness cumplió.
+6. **Alcance mal pedido (sala).** El plan de cierre pidió corregir **en el corpus** una regla que **nunca se escribió en el corpus** (ítem 4(i)). Se partió: **4(i) → bitácora** (acá), **4(ii) → corpus** (nota de entorno embebida en DEC-REF-90-A, precedente DEC-REF-68).
+
+### Hallazgo estructural
+**Atribución incidental de `dId`/`userId` en reglas `cross` → `BACKLOG-RULE-8`.** Detectado por el **agente** en el re-run de 2B: la misma C1 quedó bajo `ftG9Msrp` (CR00061-ELTEK-03) en un run y bajo `59XYsglM` (el ATS) en el previo, por azar de qué mensaje ticó el motor al vencer el `graceSec` (`ruleEngine.js:12-16`, `fireAlarm` toma el `dId` del mensaje en curso). La **sala agregó el corolario que el agente no vio en vivo:** el `userId` sale del **mismo device incidental** (`ruleEngine.js:218`), así que la misma regla puede emitir **bajo dueños distintos** según el mensaje. Dirección candidata **no firmada:** el sujeto de una cross es el **site**, no un device. Familia **RULE** y no EDGE/ARCH — taxonomía nueva con un solo caso es especulativa.
+
+### Medición de `.gitignore`
+`seeds/_dev/` **ignorado** (`.gitignore:71`, `git check-ignore` rc=0, `git status` de `seeds/` vacío). Pero el `ls` mostró **33 artefactos acumulados desde el 4-jun**: 7 backups de Mongo, 2 capturas de env (una en `600`, otra en `644`), tokens, y un `README.md` que nadie leyó. **El riesgo cambió de forma:** no es fuga a git, es **acumulación en disco sin política de retención**. Costura reformulada para #59.
+
+### Estado al cierre — MEDIDO
+- `git log --oneline -1` → `fc2725b docs(bitacora): sesión #57 CERRADA — estado medido, entregables, nota de método y carry-over para #58`
+- `git status -sb` → `## feature/telco-support...origin/feature/telco-support [ahead 3]` · ` M docsRefactor/WanomiRefactor.md` (corpus editado, sin commit)
+- `git rev-list --count origin/feature/telco-support..HEAD` → **3** (previo a los dos commits de #58)
+- `docker ps` → `wanomi-edge` Up ~1 h · `node` Up 4 días · `emqx` Up 4 días (healthy) · `mongo` Up 4 días (healthy)
+- `bash tools/healthcheck_demo.sh` → **exit=0**: simulador vivo · `saver-webhook is_alive=true` · `db.data +71 docs en 60 s (7 devices CR00061)`
+- Corpus: **`Versión 0.95 · 2026-08-08 · #58`**
+
+### Carry-over para #59, en orden
+1. **CST-08 seed F3** — **desbloqueado hoy** (el `updateOne` deja `"ATS"` en el device).
+2. **Implementación A1** — **4 archivos** (`template.js` no tiene campo de tipo de equipo). Decisión pendiente: **derivar al leer** (`siteState.js`) **vs. setear al crear** (ruta de alta del device). **`parsear templateName` VETADO** (DEC-STRAT-2).
+3. **`COSTURAS.md`** — CST-16, CST-08, **costura nueva de volcados crudos** + **leer el `README` de `seeds/_dev/`**.
+4. **Tenencia de `59XYsglM`** — deuda, ligada a `BACKLOG-OPS-3`.
+5. **§1 de `CLAUDE.md`**.
+6. **`RISK-SEC-4`**.
+7. **`tools/verify/`**; **CST-07 / CST-15**.
+8. **Reconstruir la bitácora de #53.**
+9. **Recurrencia de ejecución-antes-de-autorización (4ª vez).** La regla «la apertura es su propio turno» (**DEC-REF-88**) ya existe y **no falló**: falló que la ejecución **no la esperó**. **Pregunta abierta para #59:** ¿hace falta un mecanismo, o alcanza con cumplir la regla vigente? **NO inventar regla nueva sin contestarla.**
+
+**Nota de push.** Al cierre hay **3 commits sin push** (medido arriba); tras los dos commits de #58 (corpus + esta bitácora) serán **5**. Push **requiere orden explícita de Franco** — no se ejecuta.
