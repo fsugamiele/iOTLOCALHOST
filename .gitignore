@@ -71,3 +71,9 @@ docs/*.bak
 seeds/_dev/
 app/_dev/
 SECRETS.md
+
+# Artefactos temporales y binarios de hardware (sesión #56)
+~$*.docx
+*.bak-*
+docsRefactor/Software/*.PNG
+docsRefactor/Hardware/*.pdf
