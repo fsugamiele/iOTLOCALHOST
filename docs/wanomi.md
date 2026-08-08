@@ -11021,3 +11021,114 @@ sin verificar).
 4. **`RISK-SEC-4`** + adenda del idioma que filtra — pendiente desde #54.
 5. **Implementar `tools/verify/`** — spec aprobada como diseño.
 6. **CST-07 y CST-15** — verificaciones escritas, nunca corridas.
+
+### Tramo 2 — Área 2 · CST-16 (deviceType) — recon y decisión de diseño
+
+Registrado en corpus como **DEC-REF-90** (corpus **v0.94**). Bloque LIGERO
+read-only: sin escrituras en repo ni Mongo durante el recon, sin tocar
+contenedores. La decisión se firma; la ejecución (Paso 1) queda con gate propio.
+
+**Secuencia de recon (4 lecturas, read-only).**
+1. **Gate del motor + packs + devices.** `edge-engine/ruleEngine.js:46`
+   compara `if (rule.deviceType !== deviceType) continue;` con `deviceType =
+   deviceState._deviceType || null` (`:9`). En Mongo hay UN solo pack,
+   `cummins-pcc-v1` (`version 51`), con 5 reglas: 2 apuntan a `deviceType: "ATS"`
+   (`cummins-M1-mains-loss` tipo D · `cummins-C1-mains-loss-gen-no-start` tipo
+   cross). Los devices del sistema valen SEC/GEN/ELTEK/cummins-pcc/`""`.
+2. **Relación device→site.** `db.devices.find({siteId:s._id})` con
+   `s._id = ObjectId(...)` → **0 devices**. El documento crudo de `59XYsglM`
+   trae `"siteId": "CR00061"` como **string** (el `siteCode`), no el ObjectId.
+   El nombre del campo miente.
+3. **Template del ATS crudo.** `templateId 6a1ddc3b442190ad13f1da5e` =
+   `WN-ATS-InteliATS-PWR`, 7 widgets (`transfer_state`, `mains_voltage`,
+   `mains_freq`, `gen_voltage`, `gen_freq`, `load_kw`, `gen_status`). El device
+   ATS `59XYsglM` tiene `deviceType: ""`, `firmwareType: "wanomi-sim"`,
+   `name: "CR00061-ATS"`.
+4. **Punto único de inyección.** `edge-engine/siteState.js:95`
+   `vars._deviceType = deviceInfoMap[dId]?.deviceType || ''`, alimentado en `:71`
+   (`DeviceRO.find(..., {dId,deviceType,userId,name})`) y `:73` (armado del
+   `deviceInfoMap`). Consumidores del mismo dato: `ruleEngine.js:46`,
+   `typeCross.js:31` (y `:45`), `index.js:152`.
+
+**Mecanismo (con file:line).** El gate es igualdad estricta `!==`. Con
+`_deviceType = ""` en el ATS, las 2 reglas ATS **nunca entran al evaluador** —
+ni la tipo D ni la cross, porque `typeCross.js:31` matchea por `_deviceType`
+igual que el gate de tipo D. `cummins-M1-mains-loss` es la **madre** de la
+cascada M1→C1 (DEC-REF-41/50): sin M1 no hay `correlationParent` y la cascada
+validada E2E en #42 está **inactiva hoy**.
+
+**Causa raíz — NO es error de carga, es defecto de PRODUCTO.** (a) la UI nunca
+expone `deviceType` en el alta de device — 15 hits de `deviceType` en frontend,
+todos en `pages/rulepacks/` y `CrossExprNode.vue`; **cero** en `devices.vue`;
+(b) el modelo lo crea vacío (`app/api/models/device.js:22`, `default: ''`);
+(c) ninguna ruta del backend lo escribe — 11 hits en `app/api/` (modelos,
+`ruleValidation.js`, `rulepacks.js`), ninguna de create de device. ⇒ Todo device
+creado por UI nace mudo. Los que tienen valor lo tienen por seed. En Claro, cada
+device dado de alta por un técnico nace sin alarmas y sin síntoma visible.
+**Defecto simétrico** del lado reglas: `deviceType` es texto libre tipeado a
+mano (`pages/rulepacks/_packId.vue:167`, `required: true` en
+`rule_definition.js:24`), sin catálogo ni validación. Ambos extremos sin
+validar, comparados con `!==`.
+
+**Decisión — A1: el `deviceType` vive en el template (catálogo) y el device lo
+hereda.** Alcance: (i) campo de tipo en el schema de template; (ii)
+`siteState.js:71` proyecta `templateId`, `:73` lo carga al `deviceInfoMap`, `:95`
+deriva del template con fallback al `deviceType` del device — la transición NO
+rompe Cummins ni Eltek; (iii) migración de los ~5 templates existentes. Los tres
+consumidores heredan del punto único `:95`. El vocabulario de strings de los
+packs NO se toca. **Alternativas descartadas:** **B** (gate por `templateId`) —
+exige reescribir los packs con ObjectIds, no portables entre entornos ni
+tenants. **C** (`deviceType` obligatorio validado en UI) — exige construir un
+campo que hoy no existe más un catálogo cerrado, e institucionaliza un campo
+fósil de la era Tasmota/Ioticos (convive con `tasmotaName` y `firmwareType`);
+excluida del MVP telco. **Paso 1 (NO ejecutado, gate propio):** `updateOne` sobre
+`59XYsglM` con `deviceType: "ATS"` — desbloqueo táctico reversible, mismo valor
+que un seed pondría; revive M1→C1 y destraba CST-08. **NO VERIFICADO:** no se
+leyó `app/api/models/template.js`; se desconoce si el template ya tiene campo de
+tipo. Define si A1 son 3 o 4 archivos.
+
+**CST-08 (seed F3) BLOQUEADO** por el mismatch: el manifest
+`tools/seed_rulepacks_f3/manifest.js` declara `ats-inteliats-v1` con 5 reglas en
+`deviceType: 'ATS'` (líneas 26, 42, 66, 84, 102, 120). Sembrar hoy produce 5
+reglas nuevas en el mismo silencio (7 muertas en vez de 2). Desbloqueo: Paso 1.
+
+**Hallazgos laterales (verificados, sin fix propuesto).** (1) `devices.siteId`
+guarda string, no ObjectId — candidato a costura. (2) Taxonomía sin criterio
+único: ATS/ELTEK/GEN/SEC son función en mayúsculas, `cummins-pcc` es
+vendor-modelo en minúsculas — mismo campo, dos criterios. (3) `cummins-pcc-v1`
+en `version: 51`; el corpus lo registra en `version 2` al cierre de #42 — 49
+versiones sin explicación; argumento adicional contra borrarlo. (4)
+`grep -rln "templateId"` en `pages/` + `components/` → 0: la UI asigna template
+por otro nombre. (5) `createdTime` del ATS `1784861822645` →
+`date -u -d @1784861822` = **Fri Jul 24 02:57:02 UTC 2026**, cae en la ventana
+24–27 jul ⇒ coherente con BACKLOG-OPS-3 (recreación por UI).
+
+**Errores de sala — tramo 2**
+5. **Descripción falsa del ítem de carry-over.** La sala abrió afirmando "tres
+   de cinco reglas del pack `ats-inteliats-v1` tipo D no disparan". Falso en
+   pack, cantidad y tipo: `ats-inteliats-v1` **no existe en Mongo** (solo
+   `cummins-pcc-v1`); son **2** reglas, una tipo D y una cross. Tercer residuo
+   sin respaldo de la sesión.
+6. **Mecanismo cross mal atribuido.** La sala afirmó que las reglas cross
+   disparan porque su path saltea el gate. Falso: `typeCross.js:31` matchea por
+   `_deviceType` igual que el gate de tipo D ⇒ C1 también está fuera. Cuarta
+   retracción.
+7. **Estimación de costo invertida.** La sala tabuló la opción C como "bajo —
+   parche de UI". Al leer el frontend resultó la **más cara** (el campo no
+   existe, hay que construirlo) y la **peor** (institucionaliza el fósil). La
+   tabla se emitió antes de leer el código que la sustentaba — clase DEC-PROC-2.
+8. **Dos queries con campos adivinados.** `db.devices.find({siteId: s._id})`
+   devolvió 0 (el campo guarda string) y la proyección sobre `templates`
+   devolvió `{ }` (nombres de campo inexistentes). Costó un turno. Corregido
+   leyendo documentos crudos, sin proyectar.
+
+### Carry-over al cierre de #57 (tramo 2)
+1. **Paso 1 de DEC-REF-90** — `updateOne` de `deviceType: "ATS"` en `59XYsglM`,
+   gate propio. Desbloquea M1→C1 y CST-08.
+2. **Leer `app/api/models/template.js`** — define si A1 son 3 o 4 archivos.
+3. **Implementación A1** — `deviceType` heredado del template.
+4. **CST-08 seed F3** — desbloqueado recién tras el Paso 1.
+5. **§1 de `CLAUDE.md`** — registrado como FALSO desde #54.
+6. **`RISK-SEC-4`** + adenda del idioma que filtra — pendiente desde #54.
+7. **Implementar `tools/verify/`** — spec aprobada como diseño.
+8. **CST-07 y CST-15** — verificaciones escritas, nunca corridas.
