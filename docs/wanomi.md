@@ -10826,3 +10826,95 @@ RISK-SEC-1 y -3 como filas de corpus · (7) rotación de los 6 secretos
 restantes de RISK-SEC-5.
 
 **STOP GATE 1** al final de este append.
+
+### Tramo paralelo — Harness (herramientas + mapa de costuras)
+
+**Naturaleza:** tramo LIGERO dentro de #56, ortogonal al concern principal.
+Completa las herramientas del harness y siembra el mapa de costuras.
+
+**Qué se hizo**
+- `481fa1c` — plantillas: campo **tipo de bloque** (LIGERO/NORMAL/PESADO,
+  calibrado por reversibilidad) en `recon.md` y `spec.md`; regla **la apertura
+  es siempre su propio turno** en `recon.md`; falsador opcional en bloques
+  ligeros (`cierre.md`).
+- `4447574` — `tools/apertura.sh` y `tools/secretos.sh` (probados READ-ONLY
+  por diferencial pre/post, no declarados); `COSTURAS.md` con **16 costuras**;
+  `spec/verify.md` (diseño, sin implementar); evidencia y cierre del bloque.
+- `3f9b19f` — `.gitignore`: artefactos temporales y binarios de hardware.
+- `24cab76` — seed F3 de `DEC-REF-87` versionado (manifest + loader HTTP),
+  **sin ejecutar**. Llevaba días untracked.
+- **Push:** `35d1722..24cab76`. Working tree limpio por primera vez en la sesión.
+
+**Estado al abrir el tramo** (declarado en la apertura de #56): 7 archivos
+untracked, `COSTURAS.md` VACÍO. **Al cerrarlo:** 16 costuras sembradas, seed F3
+versionado, working tree limpio, 5 commits pusheados.
+
+**El mapa, primera lectura — 16 costuras**
+4 CONFORME · 4 DESVÍO · 4 NO VERIFICADO · 4 NO DECIDIDO · 0 CONTRADICCIÓN.
+**Solo 4 de 16 en estado conocido-bueno.** Siete de las rotas tocan el pilar
+(anticipación). Dos verificaciones escritas y **nunca corridas** (CST-07, CST-15)
+— y las dos son costuras rotas: el mapa se declaró la enfermedad a sí mismo.
+
+**HALLAZGO PRINCIPAL — el carry-over #2 estaba mal formulado**
+El mapa arbitró entre dos afirmaciones del proyecto y encontró **dos faltas
+EN SERIE sobre la misma capacidad**:
+- **CST-08:** el pack `ats-inteliats-v1` NO existe en Mongo. El seed nunca corrió.
+  Confirmado por Franco en la consola: 5 reglas, todas de `cummins-pcc-v1`.
+- **CST-16:** el ATS `59XYsglM` tiene `deviceType: ""` — **único de 13 devices**.
+  Consecuencia: `cummins-M1-mains-loss` (deviceType ATS, la MADRE de la cascada)
+  no dispara. Y aunque se siembre el pack ATS, tampoco dispararía.
+**El carry-over decía "3 reglas tipo D del ATS no disparan". No disparan porque
+no existen.** El problema real es otro y es doble. Orden correcto: `deviceType`
+PRIMERO, siembra DESPUÉS — sembrar antes es sembrar 5 reglas que tampoco disparan.
+
+**Teoría de Franco sobre la causa (a confirmar por recon):** el mecanismo que
+puebla `deviceType` está en el alta de device por la web, y no lo escribe. Los
+12 devices con el campo poblado vienen del seed del simulador; el ATS es **el
+único creado desde la UI** (recreado en Fase 2 del paréntesis tras el `DELETE`
+que borró sus credenciales). Pregunta de diseño abierta: ¿`deviceType` es campo
+propio del device, o propiedad derivada del template?
+
+**CST-16 nació por omisión detectada:** es el ejemplo de `plantillas/costura.md`
+y no había entrado al sembrado inicial. Se agregó al revisar las 15 contra el
+carry-over.
+
+**Errores de sala registrados sin suavizar**
+- `secretos.sh` emitía la longitud de los secretos POR DEFECTO. La primera
+  redacción de la evidencia iba a versionar en git que `EMQX_API_TOKEN` tiene
+  6 caracteres — fuerza bruta trivial. **6ª instancia RISK-SEC: el filtrado no
+  era del valor sino del metadato.** Corregido: `len` pasa a flag `--len`.
+- **Cuatro gates de la sala con mediciones mal formuladas** en dos bloques:
+  `grep -c 'len='` esperando ocurrencias (cuenta líneas); `grep -c` de estados
+  barriendo la tabla-leyenda; `-B10` sin alcanzar la cabecera del bloque.
+  El agente reformuló la medición en vez de deformar el artefacto. Precedente
+  grave: en #54 un gate mal formulado SÍ deformó `§3` de CLAUDE.md.
+  **Lección incorporada a `spec/verify.md` §6 fila 9** — y se estrenó en el
+  bloque siguiente al que la creó.
+- El prompt HARNESS-2 original usaba **2 de sus 5 plantillas** y no tenía gate
+  de cierre: el bloque que estrena el mapa se salteaba la regla que impide que
+  el mapa se pudra. Detectado al auditar el prompt contra las propias plantillas.
+- **El tramo harness se ejecutó delante del concern declarado de #56**
+  (`BACKLOG-OPS-5`), que quedó parado en su STOP GATE 1 sin que nadie lo
+  tocara. **Tercera vez que trabajo de harness salta la cola del producto.**
+  El saldo fue positivo — el mapa destapó que el carry-over #2 estaba mal
+  formulado — pero el patrón queda registrado sin adornar: la decisión de
+  orden es de Franco, y la sala tiende a empujar el harness por inercia
+  porque cada pieza le parece "corta y habilitante".
+
+### Carry-over — EN ORDEN
+1. **BACKLOG-OPS-5** — retomar desde el STOP GATE 1 de la apertura de #56.
+   Es el concern declarado de la sesión y quedó parado en el gate: el tramo
+   harness se ejecutó antes. Sin observabilidad de node, todo diagnóstico
+   posterior sigue siendo a ciegas.
+2. **Recon de `deviceType`** (CST-16) — read-only. El fix posterior es PESADO.
+3. **Ejecutar el seed F3** (CST-08) — PESADO. Solo DESPUÉS del 2.
+4. **§1 de `CLAUDE.md`** — registrado como FALSO desde #54.
+5. **`RISK-SEC-4`** + adenda del idioma que filtra — pendiente desde #54.
+6. **Implementar `tools/verify/`** — spec aprobada como diseño.
+7. **CST-07 y CST-15** — verificaciones escritas, nunca corridas.
+
+### Nota de estado
+- `.gitignore` quedó con `docsRefactor/Hardware/*.pdf` (patrón amplio):
+  ignora cualquier PDF futuro de esa carpeta. Anotado, sin corregir.
+- Al abrir sesión: **re-subir `WanomiRefactor.md` y `wanomi.md`** al proyecto
+  de Claude web. Este tramo no tocó el corpus, pero la regla vale igual.
