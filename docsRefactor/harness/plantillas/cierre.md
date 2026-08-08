@@ -9,6 +9,11 @@
 > Una afirmación DECLARADA o PARCIAL no puede citarse después como probada.
 
 ## 2 · Veredicto del falsador
+> Obligatorio en bloques NORMAL y PESADO. En bloques LIGERO puede
+> omitirse: la revisión de la sala cumple la función y las afirmaciones
+> son verificables directamente. Si se omite, escribir "no corresponde —
+> bloque ligero" en vez de dejar la sección vacía.
+
 Corre en VENTANA LIMPIA: solo §1 + evidencia cruda. Nunca el transcript.
 
 | # | Ataque | ¿Resistió? | Degradación |

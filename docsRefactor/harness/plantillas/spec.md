@@ -9,6 +9,7 @@ preguntas_abiertas: __
 > Adenda ≠ especificación.
 
 ## 1 · Presupuesto de bloque
+- Tipo de bloque:  LIGERO | NORMAL | PESADO
 - Un concern:              ____
 - Una decisión de diseño:  ____
 - Archivos a tocar (LISTA CERRADA):
