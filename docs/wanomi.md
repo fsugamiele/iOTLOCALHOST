@@ -10918,3 +10918,106 @@ carry-over.
   ignora cualquier PDF futuro de esa carpeta. Anotado, sin corregir.
 - Al abrir sesión: **re-subir `WanomiRefactor.md` y `wanomi.md`** al proyecto
   de Claude web. Este tramo no tocó el corpus, pero la regla vale igual.
+
+## Sesión #57 — 2026-08-08 · Área 2 · BACKLOG-OPS-5 (refutación) + OPS-6
+
+### Apertura y estado verificado
+
+Franco reabre el carry-over #1 de #56: **BACKLOG-OPS-5** (retomar desde el
+STOP GATE 1 de #56). El bloque se ejecutó ENTERO como recon read-only —
+DEC-PROC-2, sin tocar compose, EMQX ni contenedores; única escritura en `/tmp`.
+
+**Estado al abrir (verificado, no de memoria):** corpus **v0.92** · #55 y #56
+cerradas. Branch `feature/telco-support`, working tree limpio, **0 commits
+ahead** de `origin`. Los 4 contenedores arriba (`docker ps`: mongo/emqx healthy,
+node y wanomi-edge up). Simulador `node tools/device_simulator/run.js`
+(PID 22088, STIME Aug04) vivo. `healthcheck_demo.sh` 3/3 verde
+(sim vivo · `saver-webhook is_alive=true` · `db.data` +71 docs/60 s).
+
+**No existió ninguna sesión #57 previa** — `grep "^## Sesión #5[7-9]"` → 0
+líneas; `grep BACKLOG-OPS-6` en corpus y bitácora → 0. Registro construido
+íntegro de comandos de esta sesión (ver Errores de sala, ítem 3).
+
+### Secuencia de recon (read-only)
+
+1. **Árbol de procesos** confirma el wrapper de #56: `PID 1 = sh -c npm run
+   start` → `npm` (PID 8) → `sh -c nuxt start` (PID 19) → `node … nuxt start`
+   (PID 20). El proceso arrancó **Aug04** (STIME) — el restart de #54.
+2. **`docker logs node --tail`** emite output vivo **de hoy**
+   (`2026-08-08T17:12:53Z POST /api/saver-webhook 200`) — el stdout del node
+   atraviesa el wrapper. Contradice de entrada la premisa de OPS-5.
+3. **Contradicción tail↔stream** detectada: `docker logs | tail -1` del stream
+   completo devuelve `2026-06-25T21:29:09Z` (23.289 líneas, todas junio),
+   pero `--tail 5` devuelve `2026-08-08`. Misma flag, dos verdades.
+4. **Separación de streams:** STDOUT last = `GET /api/v1/health 304` (vivo);
+   STDERR last = vacío. El emisor vive en stdout.
+5. **Criterio de cierre del corpus, DESDE ADENTRO del contenedor:** `curl`
+   existe en `node`; probes A, B, C contra `http://127.0.0.1:3001/__probe`
+   (`code=404`) → **1 hit cada uno** en `docker logs` a los ~3 s. Tres
+   verificaciones (el corpus pedía dos). El log NO está ciego.
+6. **Caudal:** driver `json-file` con `Config:{}` (sin rotación). Ventana de
+   60 s: 1.234 líneas · 38.187 bytes · 154 `POST /api/saver-webhook`.
+7. **Anomalía de ventana corta:** el follow a archivo en ventana de 10 s dio
+   **0 líneas / 0 bytes**; en 7 s (probe C durante el follow) dio **1**; en
+   60 s dio 1.234. El cero de ventana corta es artefacto de lectura, no
+   ausencia de tráfico.
+
+### Tres veredictos
+
+- **BACKLOG-OPS-5 — CERRADO POR REFUTACIÓN.** El backend nunca estuvo ciego;
+  el criterio de cierre del propio corpus se cumplió tres veces con el wrapper
+  puesto. El defecto era del **método de lectura** (`--since` roto en Docker
+  Desktop/WSL2), no del escritor. El fix `exec node` pierde su justificación
+  para OPS-5; el hallazgo del árbol de procesos (SIGTERM + crash-loop)
+  transfiere a **BACKLOG-OPS-4**, que se sostiene por mérito propio.
+- **BACKLOG-OPS-6 — NUEVO.** Log de node sin rotación
+  (`LogConfig={"Type":"json-file","Config":{}}`). 1,65 GB/mes medidos en banco,
+  sin techo; ~83 % de los bytes es el volcado `console.log(obj)` (7 de 8,01
+  líneas por POST), con escapes ANSI de color contra destino no-TTY. **CAVEAT:
+  no extrapolable** — banco con simulador, NO Hub de campo. Sin fix propuesto.
+- **ANOMALÍA-LOGS-1 — ABIERTA.** `docker logs -f` da cero en ventanas <60 s.
+  Mecanismo no determinado. **Regla de método vigente ya:** lectura negativa de
+  `docker logs -f` exige ventana ≥ 60 s contrastada contra delta de `db.data`.
+
+### Anomalía docs/POST — resuelta por medición
+
+Se midió el delta real de `db.data` en la misma ventana del caudal:
+`5476763 → 5476975` = **212 docs en 67 s** (t0 `17:22:03Z` → t1 `17:23:10Z`)
+≈ **190 docs/60 s**. Contra **154** `POST /api/saver-webhook` de la misma
+ventana ⇒ **~1,2 docs por POST**. **La hipótesis de "batch de 7 docs por POST"
+queda descartada por medición** — el volcado de 7 líneas del `console.log(obj)`
+es UN solo documento verboso, no siete inserts. **Discrepancia sin explicar,
+registrada sin conjetura:** el `healthcheck_demo.sh` reportó +71 docs/60 s y
+esta medición ~190 docs/60 s — factor **~2,7×**. No se propone mecanismo; queda
+como cabo abierto (posible: ventana/filtro del healthcheck ≠ contador global,
+sin verificar).
+
+### Errores de sala — #57
+
+- **Cifra sin respaldo.** La sala abrió afirmando "~1.180 líneas/minuto por
+  `console.log(obj)`" sin medición. Retractada en sesión. La medición real dio
+  1.234. La proximidad NO la rehabilita: cuando se afirmó no tenía evidencia, y
+  una afirmación sin respaldo que resulta acertada sigue siendo error de método.
+  La cifra válida es la medida hoy, con su ventana y su caveat.
+- **Corte de ingesta inexistente.** La sala afirmó "entre el sim y el backend el
+  flujo se cortó", infiriéndolo de un cero en una ventana de follow de 10 s.
+  Falso: última línea de node `17:12:53Z` contra reloj `17:13:01Z` = 8 s;
+  healthcheck `exit=0`, `is_alive=true`, +71 docs/60 s; sim ejecutando
+  escenarios (`weekly_exercise` completo). Segunda inferencia sin respaldo de la
+  misma sesión, mismo vicio: construir mecanismo sobre observación negativa en
+  vez de medir. Clase DEC-PROC-2.
+- **Residuo de contexto declarado sin respaldo en la apertura.** Se trajo una
+  supuesta sesión #57 previa y hallazgos asociados. `grep "^## Sesión #5[7-9]"`
+  → 0 líneas; `grep BACKLOG-OPS-6` → 0. No existió. Declarado como no-fuente al
+  abrir y no usado como base; el registro salió íntegro de comandos de esta
+  sesión.
+- **Sexta vez que ops le gana la cola al producto.** `deviceType` (CST-16) no
+  arrancó en toda la sesión. Patrón ya registrado en #56 y repetido.
+
+### Carry-over — EN ORDEN
+1. **`deviceType` (CST-16)** — recon read-only. El fix posterior es PESADO.
+2. **Ejecutar el seed F3 (CST-08)** — PESADO. Solo DESPUÉS del 1.
+3. **§1 de `CLAUDE.md`** — registrado como FALSO desde #54.
+4. **`RISK-SEC-4`** + adenda del idioma que filtra — pendiente desde #54.
+5. **Implementar `tools/verify/`** — spec aprobada como diseño.
+6. **CST-07 y CST-15** — verificaciones escritas, nunca corridas.
