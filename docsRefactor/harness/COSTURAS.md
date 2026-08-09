@@ -12,7 +12,7 @@ Lee toda decisión VIGENTE, sin importar su fecha.
 
 ## Allocator
 - Familia: `CST-`
-- Próximo libre: **CST-17**
+- Próximo libre: **CST-19**
 - Retirados (nunca reusar): (ninguno)
 
 ## Estados
@@ -152,6 +152,14 @@ Lee toda decisión VIGENTE, sin importar su fecha.
 | Bloquea                  | cobertura de reglas ATS y ELTEK |
 | Sirve al pilar           | anticipación |
 
+> **Adenda #59 — CST-08 RETIRADA DE CURSO por DEC-REF-91.** La fila queda
+> intacta y su diagnóstico sigue siendo cierto para la base actual. Lo que
+> cambia es que **no se ejecuta**: DEC-REF-91 fija que el pack se recrea desde
+> cero en la base nueva, con identificadores definitivos. Sembrar
+> `ats-inteliats-v1` sobre la base viva ya no es el camino. El "Cómo debería
+> ser" de la fila describe un objetivo **superado**, no incumplido.
+> Estado efectivo: **RETIRADA** (no es DESVÍO — no hay nada que corregir).
+
 ### CST-09 · Forense · flujo de alarma → escritura de cadena
 
 | Campo | Contenido |
@@ -278,3 +286,46 @@ Lee toda decisión VIGENTE, sin importar su fecha.
 > Nota: esta costura es el ejemplo de `plantillas/costura.md` y NO había
 > entrado al inventario del sembrado inicial. Detectada por omisión al
 > revisar las 15 contra el carry-over.
+
+> **Adenda #59 — CST-16 ABSORBIDA por DEC-REF-91.** Dos correcciones. **(i) El
+> "Cómo es" quedó stale el mismo día que se escribió:** #58 (DEC-REF-90-A) hizo
+> `updateOne deviceType:"ATS"` sobre `59XYsglM`; el campo ya no vale `""` y la
+> cascada M1→C1 está viva (E2E verificado, M1 a T0+13 ms, C1 a T0+90,898 s).
+> **(ii) El "Cómo debería ser" ya no está vacío, pero tampoco se llena con esta
+> costura:** DEC-REF-91 retira el `deviceType` como campo que alguien puebla —
+> pasa a ser el **identificador de la ficha de equipo**, entidad que hoy no
+> existe. La costura describe un cruce (`devices` → gate del motor) que sigue
+> existiendo, pero cuyo **origen del dato cambia de entidad**. No se reclasifica
+> a DESVÍO: se declara **ABSORBIDA** por las costuras nuevas de la ficha
+> (CST-17/18), que son las que gobiernan el dato desde ahora. Se conserva como
+> registro del episodio y de su E2E.
+
+### CST-17 · Ficha de equipo → plantilla (referencia, no copia)
+
+| Campo | Contenido |
+|---|---|
+| Costura                  | ficha de equipo (entidad inexistente) → `templates` (Mongo) y su editor (`templates.vue`) |
+| Qué cruza                | el vocabulario de variables, unidades, rangos y cadencias que el fabricante define y la plantilla muestra |
+| Cómo es                  | **la ficha no existe.** La plantilla inventa sus variables a mano (`templates.vue:289-298`); el schema no tiene campo de tipo (`template.js:56-62`); los umbrales viven dentro del widget (`template.js:43-48`) |
+| Verificación             | (VACÍO — no hay entidad que verificar todavía) |
+| Cómo debería ser         | la ficha es madre; la plantilla **referencia** sus variables, no las copia. Una ficha, N plantillas. El límite del fabricante vive en la ficha; el umbral del cliente, en la regla (DEC-REF-91) |
+| Gobernada por            | DEC-REF-91 |
+| Consecuencia del desvío  | cada plantilla reinventa el vocabulario del equipo; dos plantillas del mismo modelo pueden contradecirse y nadie lo detecta |
+| Estado                   | DESVÍO |
+| Bloquea                  | criterio de aceptación de DEC-REF-91 (cadena desde base vacía) |
+| Sirve al pilar           | anticipación |
+
+### CST-18 · Ficha de equipo → identificador de reglas y equipos
+
+| Campo | Contenido |
+|---|---|
+| Costura                  | identificador de la ficha → `deviceType` en `rulepacks` (pack y reglas embebidas) y en `devices` |
+| Qué cruza                | la etiqueta única por la que el motor decide qué reglas le tocan a qué equipo (`ruleEngine.js:46`, igualdad estricta) |
+| Cómo es                  | **texto libre en dos lugares independientes**: el pack (`rulepacks.js:118`, required sin catálogo) y cada regla embebida (`_packId.vue:566`, hereda del pack y es editable). El device lo recibe crudo del payload (`devices.js:92-119`) y nace `""` por la UI. Una letra distinta apaga la regla **sin síntoma** |
+| Verificación             | (VACÍO — no hay catálogo contra el cual validar) |
+| Cómo debería ser         | el identificador **es** la ficha. Pack, regla y plantilla lo **eligen** de un catálogo único con fabricante como campo; el equipo lo **hereda** de su plantilla. Nadie lo escribe (DEC-REF-91) |
+| Gobernada por            | DEC-REF-91 |
+| Consecuencia del desvío  | alarmas mudas sin error visible; hoy latente el desfasaje `CUMMINS` (`sensor-engine.js:74`) vs `cummins-pcc` (base) |
+| Estado                   | DESVÍO |
+| Bloquea                  | criterio de aceptación de DEC-REF-91 · alta de equipo por UI |
+| Sirve al pilar           | anticipación |
