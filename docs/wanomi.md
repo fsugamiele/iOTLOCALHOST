@@ -11361,3 +11361,10 @@ Sigue abierto para #60.
 
 **Nota de push.** Al cierre habrá **3 commits sin push**. Push **requiere orden
 explícita de Franco** — no se ejecuta. Si la orden llega, se registra por append.
+
+> **Push de #59 — registrado por append (2026-08-09).** Orden explícita de
+> Franco tras el cierre. `747968b..baf74e8` → `origin/feature/telco-support`:
+> `f2f7513` (corpus v0.96, DEC-REF-91) · `b142c84` (bitácora #59) · `baf74e8`
+> (costuras CST-08/16 adendas + CST-17/18). Working tree limpio, `ahead 0`.
+> El texto del cierre de #59 no se edita — la orden llegó después de escrito y
+> queda registrada acá, como se hizo con el push de #58.
