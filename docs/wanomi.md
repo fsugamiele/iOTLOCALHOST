@@ -11368,3 +11368,44 @@ explícita de Franco** — no se ejecuta. Si la orden llega, se registra por app
 > (costuras CST-08/16 adendas + CST-17/18). Working tree limpio, `ahead 0`.
 > El texto del cierre de #59 no se edita — la orden llegó después de escrito y
 > queda registrada acá, como se hizo con el push de #58.
+
+## Sesión #60 — 2026-08-09 · Área 2 · Diseño de implementación de DEC-REF-91
+
+Apertura — residuo declarado no-fuente antes de proponer foco. El contexto de arranque traía dos afirmaciones vencidas, corregidas por lectura en disco: corpus «v0.95» (real v0.96) y «A1 pendiente de decisión arquitectónica derive-at-read vs set-at-create» (A1 fue absorbida y retirada por DEC-REF-90-B en #59). Ninguna se usó como fuente.
+
+Foco. Ítems 1 y 2 del carry-over: diseño de implementación de DEC-REF-91 y entorno de prueba. Franco planteó que varios ítems restantes quedaban obsoletos; la sala auditó ítem por ítem y lo aceptó solo parcialmente: ninguno queda obsoleto por completo. El 3 (COSTURAS.md) cambia de forma, el 4 (seeds/_dev/) se agrava con la base aparte, y 5/6/7/8 no dependen de la cadena de tipos.
+
+Nómina. Cinco asientos activos (Ing. SW Senior, Backend Senior, Frontend Vue, Asesor Telco NOC, Confiabilidad); resto convocado con disparador escrito. Área 3 y Área 4 sin sustrato hoy: activarlas antes del modelo firmado sería tirar trabajo.
+
+Decisiones firmadas — ver corpus v0.97: DEC-REF-92 (rebanada fina E2 + coexistencia E3, ficha solo en NOC, versión modelada no implementada, secuencia S0–S7, entorno P2, Camino B, role ≠ deviceType, disparo espontáneo), DEC-STRAT-5 (simulador = producto interno de desarrollo), DEC-PROC-7 (el registro guarda las alternativas descartadas), más adendas #60 a DEC-REF-91 y DEC-REF-90.
+
+STOP de Franco a mitad de bloque. Con los tres primeros puntos ya firmados, Franco frenó y pidió alternativas de diseño distintas antes de seguir. La reapertura no pudo ser recuperación: DEC-REF-91 dice «opción A de tres evaluadas» y ni corpus ni bitácora #59 registran las otras dos. Origen de DEC-PROC-7. El bloque resultante produjo los tres forks, que no estaban sobre la mesa.
+
+Medido en recon (dos bloques read-only + un cierre): el edge no lee templates (Fork II confirmado por evidencia, no por criterio) · ruleEngine.js:46-47 descarta por dos comparaciones de texto, no una — rule.variable tiene el mismo defecto que deviceType y no estaba nombrado · tercera superficie de texto libre (CrossExprNode.vue) · RELOAD_TOPIC_ALL es broadcast literal sin SITE_ID, publicado por rulepacks.js:37 (único publisher) — razón decisiva de P2 · wanomi-edge sin puertos y 100% por env_file · rule_pack.js ya versiona · destino del simulador totalmente configurable (MQTT_HOST/PORT, API_HOST/PORT) · run.js no invoca seed.js — el contrato es devices_state.json, lo que hace viable S7 · seed.js:164 pone firmwareType:'wanomi-sim' y por DEC-44 el ACL del canal de control se extiende solo a ese firmwareType.
+
+Franco confirmó que todo el parque es simulado, lo que desempató Camino A vs B a favor de B — el desempate lo resolvió un dato, no una discusión, y Confiabilidad levantó su abstención por esa vía.
+
+Errores de sala — sin suavizar. (1) El bloque de recon pidió index.js:160-195 para medir la recarga, pero las constantes de tópico se definen antes de la 160: el dato que gobernaba P1/P2 quedó sin medir y hubo que pedir un cierre de recon. (2) El grep de baseURL se diseñó de una línea para un valor de dos; el fallback de nuxt.config.js:75 quedó sin medir — el agente lo declaró en vez de taparlo. (3) run.js se acotó a la línea 40 y la respuesta sobre re-consulta de credenciales vive después. (4) La sala llegó a tres decisiones consecutivas sin disenso, lo declaró señal débil y ofreció reabrir; el único disenso real fue Ing. Software sobre versionar en la rebanada fina, absorbido —no resuelto— en «modelar el lugar, no implementar». Desvíos del agente: F5/F6 y W7 entregaron interpretación donde se pidió salida cruda; en ambos casos el contenido era correcto y sumó, se registra por ser la clase que en #59 produjo conclusión sobre salida truncada.
+
+Ítem 9 — sigue sin validar. El baseline bloqueante se ejercitó dos veces más en #60 (gate del recon del simulador y W0 del bloque de escritura). Las dos en verde. Con las dos de #59 son cuatro acumuladas; nunca se le pidió frenar ⇒ el mecanismo no está probado y no se documenta en corpus. Abierto para #61.
+
+Observación sobre la orden de push — tercera recurrencia. #58 y #59 cerraron diciendo «push requiere orden explícita — no se ejecuta» y en ambos casos el push ocurrió, registrado por append. En #60 la orden llegó durante la sesión, tras d8db500, por lo que se registra acá como hecho y no requiere append. Se nombra el patrón —escribir en cada cierre una predicción que se falsea— sin firmar regla nueva: tres casos habilitan nombrarlo, no todavía a decidir la forma.
+
+Estado al cierre — MEDIDO. Baseline del bloque de escritura: rama feature/telco-support · 0 modificados · 0 sin push · corpus v0.96 · los tres IDs nuevos con conteo 0/0 en ambos archivos. Commit d8db500 — corpus v0.96 → v0.97, 6 inserciones / 1 deleción (línea 4, cabecera); ninguna fila vigente tocada; grep -c "DEC-REF-92" = 4, coincidente con lo esperado. Push ejecutado por orden explícita de Franco: 4dfcf42..d8db500. Contenedores al abrir: wanomi-edge 19 h · node 4 d · emqx 5 d healthy · mongo 5 d healthy; healthcheck exit=0, sim VIVO, db.data +71 docs/60 s, 7 devices CR00061. Sin escrituras sobre base, contenedores, edge, frontend ni simulador. Sesión enteramente de diseño + documentación.
+
+Carry-over para #61, en orden.
+
+S0 — levantar el entorno P2. Primero de todo. Requiere leer el bloque networks de docker_compose_production.yml (sin medir) para resolver cómo llega edge-test al mongo del otro proyecto.
+S1–S6 — implementación de la rebanada fina.
+S7 — primer disparo; se corre el criterio binario de Franco.
+Sesión del select del simulador — destino por UI, firmwareType, canal de control. No bloquea S0.
+Migración Camino B — frente propio, posterior a que la prueba pase.
+COSTURAS.md — realineación tras DEC-REF-92.
+seeds/_dev/ — política de retención (33 artefactos, 2 con credenciales).
+BACKLOG-OPS-3 · BACKLOG-RULE-8.
+§1 de CLAUDE.md · RISK-SEC-4 · tools/verify/ · CST-07 / CST-15 · bitácora de #53.
+Ítem 9 — mecanismo sin validar, cuatro verdes acumuladas.
+
+Sin resolver: bloque networks del compose · si run.js re-consulta credenciales al backend o las toma de devices_state.json · fallback de baseURL en nuxt.config.js:75 · ausencia de telemetría de orden de prompts · trampa CUMMINS (sensor-engine.js) vs cummins-pcc (base).
+
+Nota de push. Al cierre habrá 1 commit sin push (la bitácora). Push requiere orden explícita de Franco.
