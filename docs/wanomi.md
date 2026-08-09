@@ -11248,3 +11248,116 @@ costuras quedó **desalineado** respecto del corpus. Se salda en #58 (carry-over
 9. **Recurrencia de ejecución-antes-de-autorización (4ª vez).** La regla «la apertura es su propio turno» (**DEC-REF-88**) ya existe y **no falló**: falló que la ejecución **no la esperó**. **Pregunta abierta para #59:** ¿hace falta un mecanismo, o alcanza con cumplir la regla vigente? **NO inventar regla nueva sin contestarla.**
 
 **Nota de push.** Al cierre hay **3 commits sin push** (medido arriba); tras los dos commits de #58 (corpus + esta bitácora) serán **5**. Push **requiere orden explícita de Franco** — no se ejecuta.
+
+---
+
+## Sesión #59 — 2026-08-09 · Área 2 · DEC-REF-91 (ficha de equipo)
+
+**Apertura — residuo declarado no-fuente ANTES de proponer foco.** El contexto
+de arranque traía siete afirmaciones vencidas, todas corregidas por medición:
+corpus «v0.92» (real **v0.95**) · «5 commits sin push» (real **0**) · «3 de 5
+reglas ATS» (real **2**) · pack `ats-inteliats-v1` «en Mongo» (**no existe**) ·
+`BACKLOG-OPS-5` «abierto» (cerrado por refutación en #57) · «~1.180 líneas/min»
+(medido: 1.234/60 s en banco) · «#57 en curso» (**#58 cerrada**, HEAD `747968b`).
+Ninguna se usó como fuente.
+
+**Push de #58 — hueco de registro saldado por append.** El cierre de #58 dice
+«push requiere orden explícita — no se ejecuta»; la apertura de #59 midió
+**0 sin push**. Franco confirmó que **ordenó el push al cerrar #58**, después de
+escrito ese párrafo. No es anomalía: es la orden llegando fuera del texto. El
+texto de #58 **no se edita**; queda registrado acá.
+
+**Foco.** Opción B del carry-over: implementación A1 antes de CST-08. El recon
+dio vuelta la premisa y el frente terminó siendo otro — ver DEC-REF-91.
+
+### Cadena medida — siete eslabones
+
+(1) tipo de equipo **no existe** · (2) sitio OK · (3) plantilla sin campo de tipo
+(`template.js:56-62`) · (4) alta de equipo **provisiona bien** (credenciales EMQX
+vía `webhooks.js:297` al pedir `/getdevicecredentials`; el wizard «Provision
+Device» de `devices.vue:415-484` es carga WiFi al ESP32 por HTTP directo), falta
+solo la etiqueta · (5) pack exige tipo, texto libre (`rulepacks.js:118`) ·
+(6) reglas heredan del pack, editable, texto libre (`_packId.vue:566`) ·
+(7) motor recarga solo por MQTT (`index.js:169-182`). **Un eslabón inexistente,
+dos con texto libre, cuatro sanos.**
+
+**Anatomía del pack (hallazgo del agente, no pedido).** Las reglas viven
+**embebidas** en el documento del pack, y cada regla lleva su propio
+`deviceType`, que **no tiene por qué coincidir** con el del pack: `cummins-pcc-v1`
+contiene 3 reglas `cummins-pcc` y 2 `ATS` (M1 y C1). Por eso `B4` devolvió una
+sola etiqueta habiendo dos. El agente encontró la causa sin que se la pidieran.
+
+### Errores de sala — SIN SUAVIZAR
+
+1. **Dos sobre-lecturas del mismo recon.** (i) Se afirmó que el alta de equipo
+   **no provisiona MQTT**, mirando una sola ruta (`devices.js`) y generalizando
+   a todo el sistema; falsado por `P4` — la provisión ocurre en `webhooks.js:297`
+   al conectarse el device. **La intuición de Franco («se podría hacer una vez
+   que se conecta») era exactamente la implementación vigente.** (ii) `B3` se
+   rotuló «¿coincide la etiqueta del device con la de su plantilla?» cuando la
+   plantilla **no tiene etiqueta**: control redundante presentado como nuevo, y
+   el agente reportó la coincidencia que el rótulo inducía. **La falla es del
+   rótulo, no del agente.**
+2. **`B4` apuntado a colección equivocada** (`ruledefinitions`, vacía). El dato
+   que gobernaba el frente quedó sin medir un turno.
+3. **`F9` truncado con `| head -40`.** Se emitió conclusión sobre salida cortada;
+   la conclusión resultó correcta pero **la evidencia no la sostenía**. Corregido
+   en `G3` sobre todo el repo, sin `head`.
+4. **Recomendación de lista cerrada (hardcodeo) — retirada por Franco.** La sala
+   propuso enum en código «porque es reversible». Franco la rechazó invocando
+   DEC-STRAT-2. El argumento de reversibilidad es el que se usa para justificar
+   deuda que después no se paga. **Retirada.**
+5. **Restricción de compatibilidad autoimpuesta y luego disuelta.** La sala
+   insistió en que el catálogo debía adoptar `ATS`/`cummins-pcc` «para no apagar
+   reglas vivas». El criterio de base-desde-cero de Franco la vuelve vacía: el
+   pack se recrea. Retirada en DEC-REF-91.
+
+### Ítem 9 — mecanismo NO probado
+
+Franco declaró **no tener el dato** de atribución (¿prompt adelantado por la sala
+o pegado adelantado?) ⇒ la 4ª recurrencia queda **NO ATRIBUIBLE**. Se registra
+sin dueño. **Hallazgo lateral:** no existe telemetría del orden de los prompts;
+sin ella, toda atribución futura de esta familia será igual de imposible.
+
+El baseline bloqueante se ejercitó **dos veces en #59** (bloqueantes B1-B3 del
+recon, y baseline del bloque documental). **Las dos dieron verde.** Nunca se le
+pidió frenar ⇒ **el mecanismo no está validado** y **no se documenta en corpus**.
+Sigue abierto para #60.
+
+### Cambios de estado
+
+- **CST-08 — SALE del carry-over, no se siembra.** Con DEC-REF-91 el pack se
+  recrea desde cero en la base nueva; sembrar el pack viejo pierde sentido.
+- **A1 — ABSORBIDA Y RETIRADA** (DEC-REF-90-B).
+- **Umbrales del widget** — deuda que se cierra por diseño en DEC-REF-91.
+
+### Estado al cierre — MEDIDO
+
+- Baseline del bloque documental: branch limpio · `ahead 0` · corpus v0.95 ·
+  `DEC-REF-91` count 0/0 en ambos archivos. Los cuatro coincidieron.
+- Commit 1: `f2f7513` — corpus **v0.95 → v0.96**, `DEC-REF-91` + `DEC-REF-90-B`.
+  Diff verificado: 3 añadidas / 1 eliminada, ninguna fila vigente tocada.
+- Contenedores al abrir: `wanomi-edge` ~1 h · `node` 4 d · `emqx` 4 d (healthy) ·
+  `mongo` 4 d (healthy). `healthcheck_demo.sh` **exit=0**, sim VIVO,
+  `db.data` **+68 docs/60 s**, 7 devices CR00061.
+- **Sin escrituras sobre base, contenedores, edge, frontend ni simulador.**
+  Sesión enteramente de diseño + documentación.
+
+### Carry-over para #60, en orden
+
+1. **Diseño de implementación de DEC-REF-91** — secuencia ficha → plantilla →
+   equipo → reglas → extracción. Primero de todo.
+2. **Levantar la base aparte** para la prueba desde cero.
+3. **`COSTURAS.md`** (commit 3 de esta sesión — verificar que quedó alineado).
+4. **`seeds/_dev/`** — política de retención (33 artefactos, 2 con credenciales).
+5. **BACKLOG-OPS-3** — tenencia del ATS.
+6. **BACKLOG-RULE-8** — atribución incidental en reglas cross.
+7. **§1 de `CLAUDE.md`** · **`RISK-SEC-4`** · **`tools/verify/`** ·
+   **CST-07 / CST-15** · **bitácora de #53**.
+8. **Ítem 9** — mecanismo sin validar; sigue abierto.
+
+**Sin resolver:** ausencia de telemetría de orden de prompts · trampa
+`CUMMINS` (`sensor-engine.js`) vs `cummins-pcc` (base).
+
+**Nota de push.** Al cierre habrá **3 commits sin push**. Push **requiere orden
+explícita de Franco** — no se ejecuta. Si la orden llega, se registra por append.
