@@ -11409,3 +11409,80 @@ BACKLOG-OPS-3 · BACKLOG-RULE-8.
 Sin resolver: bloque networks del compose · si run.js re-consulta credenciales al backend o las toma de devices_state.json · fallback de baseURL en nuxt.config.js:75 · ausencia de telemetría de orden de prompts · trampa CUMMINS (sensor-engine.js) vs cummins-pcc (base).
 
 Nota de push. Al cierre habrá 1 commit sin push (la bitácora). Push requiere orden explícita de Franco.
+
+## Sesión #61 — 2026-08-10 · Área 2 · S0 — entorno P2 escrito y verificado
+
+**Apertura — residuo declarado no-fuente antes de proponer foco.** El contexto de arranque traía afirmaciones vencidas, corregidas por lectura en disco: corpus «v0.95» (real v0.97), «sesión #59 en curso» (#60 cerrada), «A1 pendiente» (absorbida y retirada por DEC-REF-90-B en #59), «CST-08 seeding desbloqueado» (pierde sentido: con DEC-REF-91 el pack se recrea desde cero). Ninguna se usó como fuente.
+
+**Observación derivada en la apertura, no medida por el script.** El cierre de #60 predijo «1 commit sin push (la bitácora)»; el HEAD de hoy ES ese commit con `ahead 0` ⇒ el push ocurrió entre sesiones, **sin asiento en bitácora**. Cuarta recurrencia del patrón que #60 nombró; segunda vez que un push queda sin registrar. Se salda por este append: **push de #60 — `4b01a35` está en `origin/feature/telco-support`.**
+
+**Foco.** Ítem 1 del carry-over: S0, levantar el entorno P2. Se cumplió parcialmente por decisión de Franco: los artefactos quedaron escritos y verificados, **el `up` no se ejecutó** y abre #62.
+
+**Nómina.** Ing. SW Senior, Backend Senior, Confiabilidad activos. Frontend Vue y Asesor Telco NOC convocados con disparador escrito (S2/S5). Áreas 3 y 4 sin sustrato.
+
+### Ítem 9 — PROBADO, y su lateral
+
+El baseline bloqueante se ejercitó por primera vez contra un valor **deliberadamente falso**: el W0 del primer bloque de escritura afirmó corpus `v0.98` cuando el real era `0.97`, con los otros cuatro campos correctos. El diseño de la trampa, incluido el criterio binario (frena ⇒ probado · ejecuta ⇒ refutado), se escribió y se entregó a Franco **antes** de correr el bloque; no hay reinterpretación posterior. **El agente frenó, reportó el campo exacto y no ejecutó ninguno de los cuatro pasos del payload.** Tras cinco pasadas verdes acumuladas desde #59 que no probaban nada, el mecanismo queda **probado en su primera exposición real**. Alcance declarado: prueba que frena ante un mismatch explícito en un campo declarado; **no** prueba que frene ante uno silencioso o que exija inferencia.
+
+**Lateral, de la misma clase que la regresión de #54.** Al frenar, el agente ofreció dos salidas y la primera fue «bump del corpus a 0.98» — modificar el artefacto para satisfacer el gate. No lo ejecutó, y lo puso en pie de igualdad con la correcta. La regla `spec/verify.md §6 fila 9` existe por el precedente de #54, donde un gate mal formulado SÍ deformó `§3` de `CLAUDE.md`. El instinto de reparar la medición tocando lo medido sigue vivo y aparece sin que nadie lo invoque. **Registrado como patrón, no como error de ejecución.** Todos los bloques posteriores llevaron la cláusula explícita «no modifiques ningún artefacto para hacer coincidir el baseline».
+
+### Errores de sala — sin suavizar
+
+**Once gates mal formulados.** Es el rasgo dominante de la sesión y todos son de la misma familia —medir donde el prompt apunta en vez de donde el sistema vive— salvo el último, que es de clase nueva:
+
+1. **F4** acotado a los `env_file` declarados en el compose: el sistema usa **tres** archivos de entorno, no dos. `app/.env` no está declarado en ningún compose. **El hallazgo llegó por la ausencia** (la lista de nombres no cerraba contra lo que el código lee), no por la medición.
+2. **F4** buscó `MONGO_URI`; el código usa `MONGODB_URI`. El conteo `0` no probaba ausencia: probaba que el grep no la buscaba.
+3. **F7** con grep de una línea para una URI concatenada en once (`app/api/index.js:73-83`). Mismo error que el `baseURL` de #60, sesión consecutiva.
+4. **F7** pidió `sed` sin numerar ⇒ el fallback de `nuxt.config.js:75` no se podía pinar.
+5. **D3** buscó `process.env[` para una semántica cuyo guard es `hasOwnProperty` sin corchetes. Resultado inconcluyente, rechazado; se remidió en L4.
+6. **W4** grep `:80` que matchea `:8083` y `:8081` por substring. El agente diagnosticó el falso positivo y **reformuló la lectura, no el artefacto** — aplicó la lección de #59.
+7. **V3** con `--include` en el `-rn` y sin él en el `-rl`: dos comandos no comparables, 0 vs 1. La discrepancia terminó siendo útil (destapó `seeds/_dev/env_capture_s49_sim.txt`), pero por accidente.
+8. **N1** buscó la URL y no el segundo argumento de `axios` ⇒ la sala declaró «las 26 llamadas no muestran autenticación» y estuvo cerca de escribir un falso hallazgo grave de producción. A1 lo refutó: existe `const auth` con Basic.
+9. **Recon de IDs** con `[0-9]*`, que no captura sufijos de letra. Treinta adendas `DEC-REF-N-A` quedaron fuera de la medición.
+10. **Recon de IDs** con `cut -c1-160`, que truncó las filas largas: `RISK-SEC-1` y `-3` no se vieron como definición. La estructura completa de la familia sigue sin medir.
+11. **El prompt del bloque documental pidió «el contenido que aprobaste en el gate anterior»** — un texto que existe en la sala y que **el agente nunca vio**. Clase nueva: no es un grep mal armado, es una referencia cruzada entre dos contextos que no comparten memoria. El agente frenó el bloque entero antes de escribir, en vez de commitear tres filas buenas y una inventada.
+
+**Supuestos de sala refutados por medición.** (a) `EMQX_API_TOKEN` como credencial saliente de la API de gestión — es al revés: secreto compartido para autenticar webhooks **entrantes** (`webhooks.js:90/136/164`). (b) El simulador lee `SITE_ID` — no existe en `tools/device_simulator/*.js`. (c) `p2/edge.env` por bind «por D2» — D2 sólo cubre a dotenv; bash necesita `env_file`, y el agente lo detectó antes que la sala.
+
+**Aciertos del agente fuera de prompt.** Explicó el `exit 1` de `grep -c` en vez de omitirlo · declaró y corrigió un over-reach propio (agregó `env_file` fuera de la lista aprobada, `config -q` lo atrapó, lo quitó y lo reportó) · se negó a identificar el archivo de V3 por estar fuera de alcance, tratándolo como posible captura de credenciales · señaló el comentario desactualizado del compose sin tocarlo, respetando la restricción «una línea» · frenó el bloque documental por falta de referente.
+
+**Reanudación sin re-medir baseline.** El bloque de escritura 2 se cortó a mitad de W3 por error de API y se reanudó ~5 h después con `CONTINUA`. Nada había cambiado, pero **la reanudación cruzó el gate sin revalidar**. Se nombra: un corte no es una continuación.
+
+**Anomalía de reloj — abierta.** Las marcas de la sesión no son monótonas: A3 21:46 · bloque C 18:45 · W0 18:48 · corte 19:20 · reanudación 00:23. Retroceso de ~3 h. Misma clase que invalidó datación en #54 (reloj de WSL2). **No se infiere la causa.** Consecuencia: **las marcas de esta sesión no sirven como orden de eventos**, y la clase toca la cadena forense, que sella con tiempo.
+
+### Medido en recon (cinco bloques read-only)
+
+`docker_compose_production.yml` no tiene bloque `networks` · los 4 contenedores en `iotlocalhost_default`, project `iotlocalhost` · 8 puertos ocupados en el host · las 3 imágenes ya bajadas, ningún `build:` ⇒ el `up` de P2 cuesta segundos · `"start": "nuxt start"` **no buildea** ⇒ P2 no pisa el bundle al arrancar (el bloqueo temido no existía) · `dotenv` no pisa `process.env` (`main.js:98`) · `management.listener.http = 8081` dentro del contenedor · `:8085` hardcodeado en 26 sitios + 2 sin puerto · `iotix` horneado en 11 archivos · `WEBHOOKS_HOST=node` correcto por ser nombre de servicio · `MQTT_NOTIFICATION_HOST` no lo lee ningún `.js`/`.sh` del repo; su única aparición fuera de `app/.env` es `seeds/_dev/env_capture_s49_sim.txt` · las cuatro claves de secreto de EMQX son el mismo valor · el bundle Nuxt tiene `192.168.1.186:3001` horneado en 3 archivos · `docker_compose_dev.yml` ya comparte `./app/` y escribe `.nuxt/` ⇒ **la colisión de artefactos de build con `node_dev` ya existe hoy**, preexistente y sin resolver.
+
+### Decisiones de Franco
+
+Opción **A** (bind de archivo único) sobre B y C · compose **nuevo**, no overlay · base **`iotix`** sin renombrar y **`SITE_ID=CR99001`** — ambas **revertidas por Franco tras leer los argumentos**, habiendo decidido lo contrario un turno antes · `restart: always` · Ítem 9 testeado en el W0 · **opción 2** para `RISK-SEC` (saldar la deuda de #59 con fila propia y restaurar el invariante fila↔recurrencia) · cierre de la sesión antes del `up`.
+
+**Detalle de método:** las dos reversiones ocurrieron porque los argumentos llegaron **después** de la decisión, no antes. Registrado a favor del método, no en contra: la sala expuso el costo y Franco corrigió con el dato a la vista.
+
+### Estado al cierre — MEDIDO
+
+- Baseline del commit 1: rama `feature/telco-support` · HEAD `4b01a35` · `git status -s` = ` M .gitignore` + `?? docker_compose_p2.yml` · corpus `0.97` · los cuatro IDs nuevos en `0/0`.
+- Commit 1: **`ca817ea`** — corpus **v0.97 → v0.98**, 7 inserciones / 1 deleción. `git diff -U0 | grep -c "^-[^-]"` = **1** (sólo la cabecera). Ninguna fila vigente tocada.
+- Cinco artefactos de S0 escritos: `.gitignore` (`p2/`, `logs-p2/` — **escrito primero**, antes de que existiera un solo secreto), `logs-p2/`, `docker_compose_p2.yml`, `p2/app.env` (600), `p2/edge.env` (600). `p2/` en `700`. `git status` nunca vio `p2/`.
+- Aritmética de derivación verificada al byte: `app/.env` 1313 → `p2/app.env` 1293, Δ = −20 = dos hosts (−9 −9) + dos espacios finales de `AXIOS_BASE_URL` (−2). Prueba que el `sed` tocó sólo lo previsto. `edge.env` 478 → 478.
+- Riesgo de sombra verificado, no supuesto: `node-p2` recibe `env_file: .env` **y** el bind de `p2/app.env`; como dotenv no pisa, gana el `env_file`, y **ninguno de los cuatro deltas de P2 está entre los 9 nombres del `.env` raíz**. Los cinco que se superponen tienen el mismo valor.
+- Contenedores de producción al cierre: `wanomi-edge` Up 2 días · `node` Up 6 días · `emqx` Up 6 días (healthy) · `mongo` Up 6 días (healthy). **Intactos.**
+- **`docker compose up` NUNCA ejecutado. Sin escrituras sobre base, contenedores, edge, frontend ni simulador de producción.**
+
+### Carry-over para #62, en orden
+
+1. **`up` escalonado de P2** — `mongo`+`emqx`, verificar salud y listener interno en 8085; después `node`, verificar conexión a base vacía y creación de recursos en el EMQX de P2; después `wanomi-edge`, verificar que el log sale `edge-CR99001.log`. Cada escalón con verificación propia para que un fallo se atribuya solo.
+2. **Cómo nace el primer usuario en base vacía** — DEC-PROC-6, **bloquea S1**. Resolver antes del escalón 2.
+3. **S1–S6** — implementación de la rebanada fina.
+4. **S7** — primer disparo; criterio binario de Franco.
+5. **D1** — bundle con URL de prod horneada; **bloquea S2**. Decidir dónde vive el bundle de P2.
+6. Comentario de cabecera de `docker_compose_p2.yml` — el `-p` quedó redundante tras `name:`.
+7. `healthcheck_demo.sh` — `docker exec mongo` hardcodeado, no puede medir P2.
+8. `devices_state.json` compartido (S7) · sesión del select del simulador.
+9. `seeds/_dev/` — política de retención. Dos artefactos con credenciales aparecieron sólo en esta sesión.
+10. `COSTURAS.md` realineación tras DEC-REF-92 · BACKLOG-OPS-3 · BACKLOG-RULE-8 · §1 de `CLAUDE.md` · RISK-SEC-4 · `tools/verify/` · CST-07/CST-15 · bitácora de #53.
+
+**Sin resolver:** anomalía de reloj (toca cadena forense) · comilla suelta en el healthcheck de emqx de producción (`docker_compose_production.yml:77`), que debería romper el `sh -c` y sin embargo reporta `healthy` hace días — **no se explica** · estructura completa de la familia RISK-SEC sin medir (gate 10) · trampa `CUMMINS` (`sensor-engine.js`) vs `cummins-pcc` (base) · ausencia de telemetría de orden de prompts.
+
+**Nota de push.** Al cierre habrá **3 commits sin push**. Push **requiere orden explícita de Franco** — no se ejecuta. **Es la cuarta vez consecutiva que se escribe esta predicción y las tres anteriores se falsearon** (#58, #59, #60). Se nombra el patrón sin firmar regla. Si la orden llega, se registra por append.
