@@ -1,0 +1,179 @@
+# Entorno P2 (DEC-REF-92) — segundo entorno de coexistencia sobre el mismo host.
+# Aislamiento por proyecto: correr con
+#   docker compose -p wanomi-p2 -f docker_compose_p2.yml up -d
+# Los nombres de servicio (mongo/emqx/node/wanomi-edge) NO cambian a propósito:
+# la app y el edge resuelven a sus vecinos por hostname de servicio dentro de la
+# red del proyecto P2, sin tocar configuración. Los container_name sí llevan
+# sufijo -p2 para no colisionar con prod. Secretos y SITE_ID viven en
+# p2/app.env y p2/edge.env (binds :ro), NUNCA en este archivo.
+
+name: wanomi-p2
+
+volumes:
+  wanomi-p2-mongo-data:
+    name: wanomi-p2-mongo-data
+  wanomi-p2-emqx-data:
+    name: wanomi-p2-emqx-data
+  wanomi-p2-emqx-log:
+    name: wanomi-p2-emqx-log
+
+
+services:
+
+  node:
+    container_name: node-p2
+    image: "node:14"
+    restart: always
+    working_dir: /home/node/app
+    volumes:
+      - ./app/:/home/node/app
+      - ./p2/app.env:/home/node/app/.env:ro
+    ports:
+      # Solo la API publicada (host 3101 -> API 3001). Nuxt y HTTP plano NO se publican en P2.
+      - "3101:3001"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+    command: sh -c "npm run start"
+
+  mongo:
+    container_name: mongo-p2
+    image: mongo:4.4
+    restart: always
+    logging:
+      driver: "none"
+    environment:
+      TZ: "${TZ}"
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_USERNAME}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_PASSWORD}"
+    volumes:
+      - wanomi-p2-mongo-data:/data/db
+    ports:
+      - "27018:27017"
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  emqx:
+    container_name: emqx-p2
+    image: emqx/emqx:4.2.3
+    restart: always
+
+    ports:
+      - "18084:18083"
+      - "1884:1883"
+      - "8084:8083"
+      - "8086:8085"
+
+    volumes:
+      - wanomi-p2-emqx-data:/opt/emqx/data
+      - wanomi-p2-emqx-log:/opt/emqx/log
+
+    links:
+      - mongo
+
+    extra_hosts:
+      - "localhost:127.0.0.1"
+
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/emqx/bin/emqx_ctl status | grep -q running"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    environment:
+      EMQX_NAME: emqx
+      EMQX_HOST: 127.0.0.1
+
+      TZ: "${TZ}"
+
+      # DEFAULT DASH PASS
+      EMQX_DASHBOARD__DEFAULT_USER__PASSWORD: "${EMQX_NODE_SUPERUSER_USER}"
+
+      # DEFAULT APP SECRET
+      EMQX_MANAGEMENT__DEFAULT_APPLICATION__SECRET: "${EMQX_NODE_SUPERUSER_PASSWORD}"
+
+      # El backend de P2 pega a EMQX_API_HOST:8085 (puerto hardcodeado en app/),
+      # así que dentro de la red el listener HTTP del management escucha en 8085
+      # (mapeado al host en 8086).
+      EMQX_MANAGEMENT__LISTENER__HTTP: 8085
+
+      EMQX_ALLOW_ANONYMOUS: "false"
+      EMQX_NOMATCH: "deny"
+
+      # MONGO CONNECTION — SERVER literal: el mongo de P2 escucha 27017 dentro de
+      # la red del proyecto (el 27018 es solo el mapeo al host).
+      EMQX_AUTH__MONGO__TYPE: single
+      EMQX_AUTH__MONGO__TOPOLOGY__POOL_SIZE: 1
+      EMQX_AUTH__MONGO__TOPOLOGY__MAX_OVERFLOW: 0
+
+      EMQX_AUTH__MONGO__SERVER: "mongo:27017"
+      EMQX_AUTH__MONGO__POOL: 8
+
+      EMQX_AUTH__MONGO__LOGIN: "${MONGO_USERNAME}"
+      EMQX_AUTH__MONGO__PASSWORD: "${MONGO_PASSWORD}"
+      EMQX_AUTH__MONGO__AUTH_SOURCE: admin
+
+      EMQX_AUTH__MONGO__DATABASE: "iotix"
+      EMQX_AUTH__MONGO__AUTH_QUERY__COLLECTION: "emqxauthrules"
+
+      EMQX_AUTH__MONGO__SUPER_QUERY__COLLECTION: "emqxauthrules"
+      EMQX_AUTH__MONGO__SUPER_QUERY__SUPER_FIELD: "is_superuser"
+      EMQX_AUTH__MONGO__SUPER_QUERY__SELECTOR: "username=%u"
+      EMQX_AUTH__MONGO__SUPER_QUERY: "off"
+
+      EMQX_AUTH__MONGO__AUTH_QUERY__PASSWORD_HASH: sha256
+      EMQX_AUTH__MONGO__AUTH_QUERY__PASSWORD_FIELD: "password"
+      EMQX_AUTH__MONGO__AUTH_QUERY__SELECTOR: "username=%u"
+
+      ## Enable ACL query.
+      #Access control list
+      EMQX_AUTH__MONGO__ACL_QUERY: "on"
+      EMQX_AUTH__MONGO__ACL_QUERY__COLLECTION: "emqxauthrules"
+      EMQX_AUTH__MONGO__ACL_QUERY__SELECTOR: "username=%u"
+
+      EMQX_LOADED_PLUGINS: "emqx_recon,emqx_retainer,emqx_management,emqx_dashboard,emqx_auth_mongo"
+
+      EMQX_LISTENER__TCP__EXTERNAL__MAX_CONNECTIONS: 1000
+
+  # DEC-REF-68 (b) — arranque autónomo del edge, crash-only. SITE_ID de P2 vive
+  # en p2/edge.env (CR99001): `env_file` lo inyecta al env del container para que
+  # bash resuelva $${SITE_ID} en el nombre del log, y el bind :ro deja el mismo
+  # archivo donde dotenv (path absoluto vía __dirname) lo lee. Ambos apuntan al
+  # mismo p2/edge.env; dotenv no pisa lo que env_file ya cargó, así que coexisten.
+  wanomi-edge:
+    container_name: wanomi-edge-p2
+    image: "node:14"
+    restart: always
+
+    env_file:
+      - ./p2/edge.env
+
+    environment:
+      NODE_PATH: /home/edge/app/node_modules
+
+    working_dir: /home/edge/app
+
+    volumes:
+      - ./app/:/home/edge/app
+      - ./edge-engine/:/home/edge/edge-engine
+      - ./p2/app.env:/home/edge/app/.env:ro
+      - ./p2/edge.env:/home/edge/edge-engine/.env.edge:ro
+      - ./logs-p2/:/home/edge/logs
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+
+    command: >
+      bash -c "set -o pipefail;
+      node /home/edge/edge-engine/index.js 2>&1
+      | tee -a /home/edge/logs/edge-$${SITE_ID}.log"
