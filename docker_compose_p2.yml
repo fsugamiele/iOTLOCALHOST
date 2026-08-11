@@ -24,6 +24,11 @@ services:
     container_name: node-p2
     image: "node:14"
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     working_dir: /home/node/app
     volumes:
       - ./app/:/home/node/app
@@ -42,8 +47,15 @@ services:
     container_name: mongo-p2
     image: mongo:4.4
     restart: always
+    # DELTA DELIBERADO vs produccion (ver corpus DEC-REF-92-A adenda #62):
+    # prod silencia mongo con driver "none". P2 existe para que la evidencia
+    # sea atribuible y con restart:always un mongod que no arranca seria un
+    # crash-loop mudo. NO realinear con produccion.
     logging:
-      driver: "none"
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       TZ: "${TZ}"
       MONGO_INITDB_ROOT_USERNAME: "${MONGO_USERNAME}"
@@ -63,6 +75,11 @@ services:
     container_name: emqx-p2
     image: emqx/emqx:4.2.3
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     ports:
       - "18084:18083"
@@ -151,6 +168,11 @@ services:
     container_name: wanomi-edge-p2
     image: "node:14"
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     env_file:
       - ./p2/edge.env
