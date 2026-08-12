@@ -11488,3 +11488,62 @@ Opción **A** (bind de archivo único) sobre B y C · compose **nuevo**, no over
 **Nota de push.** Al cierre habrá **3 commits sin push**. Push **requiere orden explícita de Franco** — no se ejecuta. **Es la cuarta vez consecutiva que se escribe esta predicción y las tres anteriores se falsearon** (#58, #59, #60). Se nombra el patrón sin firmar regla. Si la orden llega, se registra por append.
 
 **Append post-cierre — push ejecutado (2026-08-10).** Franco dio la orden explícita y se pushearon los tres commits: `git push origin feature/telco-support`, rango `4b01a35..e82f9cf` (`ca817ea` corpus v0.98 · `e847566` bitácora #61 · `e82f9cf` infra P2). Post-push verificado: `origin/feature/telco-support..HEAD` = `0`, working tree limpio. Los secretos de P2 (`p2/app.env`, `p2/edge.env`) NO viajaron — `.gitignore` los retuvo. **Rompe la racha:** por primera vez desde #57 la predicción "commits sin push" se cumplió y se saldó con orden explícita en la misma sesión, contra los tres falseos consecutivos de #58/#59/#60. Este mismo asiento queda como un cuarto commit local sin push hasta nueva orden.
+
+## Sesión #62 — 2026-08-11 · Área 2 · P2 arriba: escalones 1 y 2
+
+**Apertura — residuo declarado no-fuente.** Cuatro afirmaciones vencidas por #61, corregidas por lectura en disco y ninguna usada como fuente: `p2/*.env` «bloqueados» (escritos y verificados en #61), tres artefactos «en cola» (los cinco escritos), corpus «v0.97+» (v0.98), ítem 9 «sin validar» (PROBADO en #61).
+
+**Foco.** Ítem 1 del carry-over: `up` escalonado de P2. Cumplido: escalones 1 y 2 arriba y verificados. `wanomi-edge-p2` NO levantado — sin device que lo justifique.
+
+**Nómina.** Ing. SW Senior, Backend Senior, Confiabilidad activos.
+
+### Lo ejecutado
+
+- **F0** verificó que `docker_compose_p2.yml` sí resuelve los dos compartidos destructivos: `mongo-p2` con volumen propio (NO bind `./mongodata`), `emqx-p2` con `wanomi-p2-emqx-*` (NO `foo-emqx-*` de `name:` fijo). El corpus estaba incompleto, el archivo no.
+- **R1** midió producción: `logging: none` solo en `mongo` (l.38-39), `command: sh -c "npm run start"` idéntico en prod (l.33) y P2 (l.39), cruce `EMQX_DASHBOARD__DEFAULT_USER__PASSWORD` idéntico (l.90 vs l.97). Paridad: NO son defectos de P2. Default del daemon `json-file` SIN tope y `/etc/docker/daemon.json` INEXISTENTE.
+- **W1-bis** — dos commits: `252e045` (corpus v0.98→v0.99) y `ce19200` (logging `json-file` 10m×3 en los cuatro servicios de P2). Aritméticas exactas 2/1 y 23/1, una sola deleción cada una.
+- **Escalón 1** — `auth_ok=1` (el healthcheck usa `ping`, que Mongo responde SIN autenticar, y por eso no prueba nada), `colecciones=0`, `/data/db` en `wanomi-p2-mongo-data`, broker `is running`, `emqx_auth_mongo active=true`, management 8085 interno → 8086 host `http=401` (control: 18083 de prod = 200), red `wanomi-p2_default`. `LogConfig=json-file 10m×3`: contenedores creados 17:13, posteriores al commit `ce19200` de 17:09 — el commit está realizado en el contenedor vivo.
+- **Escalón 2** — `node-p2` `up exit=0`, sin restarting, cero errores. Conectó a `mongo:27017/iotix` dentro de la red de P2, API viva en 3101 (`/api/login` con body vacío → 400), y creó los tres webhooks **en `emqx-p2`** (`is_alive=true`, a `http://node:3001/*`). Producción quedó con 3 recursos, sin cambio.
+- **Producción intacta en las tres comparaciones**: los cuatro `Id` y `StartedAt` idénticos de punta a punta. Ingesta viva (6.123.023 → 6.176.234).
+
+### Hallazgos nuevos
+
+- **RISK-SEC-8** — `POST /api/register` anónimo sin rate-limit en producción. Severidad BAJA-MEDIA. Mitigado por diseño: el handler crea el usuario con solo `name`/`email`/`password`, el modelo tiene `grants: {default: []}` y `scope.js:52` solo devuelve `{}` con grant `superadmin` ⇒ no hay camino de `/register` a superadmin; el registrado cosecha 0-match en todo endpoint tenant-scoped. Residual: pollution/DoS de `users` y enumeración. Agravante: `console.log(error)` en el catch + log de `node` sin tope ⇒ dos vectores de crecimiento del mismo request anónimo.
+- **BACKLOG-OPS-8** — rotación de logs en producción, con número: `docker logs emqx` pesa 425 MB con `opts=map[]` tras 7 días (~60 MB/día, creciendo). `node` y `wanomi-edge` de prod igual, sin medir. Espacio libre del host NO medible (WSL2: `DockerRootDir=/var/lib/docker` no existe en este namespace). Emparentado con BACKLOG-OPS-6.
+- **DEC-PROC-8** — un tripwire de keyword sin capa de adjudicación es un generador de purgas. C1 capturó el arranque de `mongo-p2`; el `grep 'password|passwd|secret'` dio 1 sobre 3617 líneas y la sala local frenó correctamente y NO purgó. La adjudicación por VALOR (¿aparece el valor real de `.env`?) resolvió: 0 ocurrencias del password, el match era el token `digestPassword`, nombre de campo del `createUser` que Mongo emite con el digest redactado. FALSO POSITIVO. Regla firmada: un tripwire por palabra se adjudica preguntando por el VALOR, nunca por la palabra; y la purga preventiva de evidencia irreproducible queda prohibida (`initdb` no vuelve a correr sobre un volumen ya escrito).
+- **Deuda del primer grant — el asterisco del criterio binario.** F1/F2 midieron: `/register` existe y está abierto, pero crea usuarios con `grants: []` — identidad sin capacidad. NO existe endpoint que asigne grants (F1-6 vacío; `user.js` declara la autorización por DB como sub-paso 28.x, cuya LECTURA se implementó en `scope.js` y cuya ESCRITURA nunca). Camino A firmado por Franco: el usuario lo crea el producto por `/register`, el grant se inyecta una única vez por `updateOne`, y el criterio binario de DEC-REF-91 se cumple CON ASTERISCO DECLARADO. Condición de Confiabilidad: nunca crear el documento entero a mano. Opción B (bootstrap de primer arranque) DIFERIDA con nombre: es la remediación correcta y sirve a producción, al Hub de campo y al segundo operador; sus siete preguntas de especificación quedaron enumeradas en sala.
+- **Rotación 10m×3 insuficiente para `mongo-p2`** — medido: 785.703 bytes en 31 min ≈ 36 MB/día contra techo de 30 MB ⇒ retención < 1 día. El churn viene del pool de auth de `emqx-p2`. Relectura: el `logging: none` de producción probablemente fue respuesta racional al mismo caudal, no descuido. No se corrige ahora: exigiría recrear el contenedor y destruir el volumen con la base sellada.
+- **Cross-wire latente** — `p2/app.env:28` `MQTT_HOST=192.168.1.186` + `MQTT_PORT=8083` apuntan al WS de producción. Exclusivamente browser-facing (`app/nuxt.config.js`, único uso en `app/`) y el front de P2 no se publica. Ligado a D1.
+- **Punto de partida de P2, con precisión** — NO es «base vacía»: el boot de `node-p2` creó 8 colecciones de andamiaje y `emqxauthrules=1` (superuser MQTT). Documentos de producto: `devices=0 sites=0 rulepacks=0 users=0 zones=0 operators=0 forensicevents=0`.
+
+### Errores de sala — sin suavizar
+
+1. **Afirmación de estado sin medir.** La sala escribió «`up` de P2 NO ejecutado» infiriéndolo de que Franco no había pegado salida. Ausencia de salida no es ausencia de ejecución. Peor: re-emitió un bloque que contenía un `up`. Salió barato (no-op sobre contenedores ya corriendo con la misma config), pero el riesgo lo introdujo la sala.
+2. **Bloqueante falso del escalón 3 — amplificación prematura.** Se declaró que `wanomi-edge-p2` se conectaría al broker de producción y que eso «destruiría el propósito del entorno». Medido: el edge lee `p2/edge.env:6` = `mqtt://emqx:1883` vía `dotenv` sobre `.env.edge` con path absoluto por `__dirname` (`index.js:7`), NUNCA `app/.env`. Contraste: el edge de producción vivo tiene el mismo valor exacto. El dato estaba en DEC-REF-68 y en el propio contexto de la sala, y no se usó. Se retira la afirmación; el análisis del riesgo hipotético sigue siendo correcto, la premisa era falsa.
+3. **Cuatro criterios de medición mal formulados, misma clase.** `grep -c container_name` sin ancla (contaba el comentario del archivo), tripwire `password` sin adjudicación por valor, criterio de aborto de `MQTT_HOST` que no cubrió el valor real, y `grep -c 'adenda #62'` esperado 1 cuando la cabecera de versión también lleva la frase. Patrón único: contar la INTENCIÓN en vez de contar lo que el comando busca. En los cuatro casos la corrección fue reemplazar la MEDICIÓN, nunca el valor esperado.
+4. **Ítem 9 ejercitado tres veces más, todas sin diseño.** El W0 de W1-bis, el tripwire de C1 y el Z0 del cierre frenaron ante criterios propios mal escritos. La sala local frenó, reportó y no acomodó en los tres casos. Se suma un cuarto freno correcto: el bloque Z1 llegó truncado por transporte (heredoc sin `EOF`) y el agente se negó a completarlo, que era exactamente lo prohibido.
+5. **Veredictos emitidos por el ejecutor.** Dos veces se pidió salida cruda sin interpretar y volvió con veredicto («escalón 1 SELLADO»). Ambos correctos; sellar no es tarea del ejecutor. Además el agente extendió por su cuenta un bloque de recon (R1-4bis), lo que produjo un dato valioso —el `DockerRootDir` inexistente— con un precedente que no corresponde.
+
+### Estado al cierre — MEDIDO
+
+- HEAD `ce19200` · corpus v0.99 · 2 commits pendientes al abrir el bloque de cierre · tree limpio.
+- 7 contenedores corriendo: producción (`mongo`, `emqx`, `node`, `wanomi-edge`) + P2 (`mongo-p2`, `emqx-p2`, `node-p2`). `wanomi-edge-p2` NO creado.
+- 3 volúmenes `wanomi-p2-*`. Proyecto `wanomi-p2 running(3)`.
+- **Decisión de Franco: los contenedores de P2 quedan CORRIENDO** al cerrar. `restart: always` los sostiene; techo de log 120 MB; se retoma sin bring-up.
+- Artefacto retenido: `logs-p2/mongo-p2-arranque-20260811T174501Z.log`, modo 600, en directorio git-ignorado, sin valor de secreto adentro (adjudicado).
+- Producción intacta y viva en las tres comparaciones.
+
+### Carry-over para #63, en orden
+
+1. **Alta del primer usuario de P2** — camino A: `POST /api/register` → `updateOne` de grants → `login` → verificación con un GET tenant-scoped que devuelva 200 y no DENY. Destraba S1.
+2. **S1–S6** rebanada fina. **S7** primer disparo, criterio binario.
+3. **D1** — dónde vive el bundle de P2; bloquea S2. Arrastra el cross-wire latente del par MQTT del navegador.
+4. **Escalón 3** — `wanomi-edge-p2`, despejado por medición; sin device que lo justifique todavía.
+5. **Opción B — bootstrap de primer arranque**, frente propio de producto, siete preguntas ya enumeradas.
+6. **RISK-SEC-8** · **BACKLOG-OPS-8** · RISK-SEC-7 · BACKLOG-OPS-7.
+7. Rotación de `mongo-p2` (10m×3 insuficiente) — se resuelve en el próximo `down` legítimo.
+8. Cabecera de `docker_compose_p2.yml` (`-p` redundante) · `healthcheck_demo.sh` con `docker exec mongo` hardcodeado · `devices_state.json` compartido · select del simulador · `seeds/_dev/` retención · COSTURAS · BACKLOG-OPS-3/RULE-8 · §1 de `CLAUDE.md` · RISK-SEC-4 · CST-07/CST-15 · bitácora de #53.
+
+**Sin resolver:** por qué la ingesta pasó de +68 a +155 docs/60 s en dieciséis horas con el mismo parque · `TZ` no llega a `node-p2` (corre en UTC mientras `mongo-p2`/`emqx-p2` toman la del `.env` raíz), sin medir si algo lo consume · peso real de los logs no medible en WSL2 · anomalía de reloj · trampa `CUMMINS` vs `cummins-pcc`.
+
+**Nota de push.** Franco dio la orden explícita DENTRO de la sesión. Se pushean los cuatro commits: `252e045`, `ce19200`, este asiento y el cierre de corpus. El rango exacto se verifica post-push y se agrega por append acá mismo — se rompe así el patrón de cinco recurrencias en que el push del asiento quedaba sin registrar hasta la sesión siguiente.
