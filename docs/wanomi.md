@@ -11547,3 +11547,85 @@ Opción **A** (bind de archivo único) sobre B y C · compose **nuevo**, no over
 **Sin resolver:** por qué la ingesta pasó de +68 a +155 docs/60 s en dieciséis horas con el mismo parque · `TZ` no llega a `node-p2` (corre en UTC mientras `mongo-p2`/`emqx-p2` toman la del `.env` raíz), sin medir si algo lo consume · peso real de los logs no medible en WSL2 · anomalía de reloj · trampa `CUMMINS` vs `cummins-pcc`.
 
 **Nota de push.** Franco dio la orden explícita DENTRO de la sesión. Se pushean los cuatro commits: `252e045`, `ce19200`, este asiento y el cierre de corpus. El rango exacto se verifica post-push y se agrega por append acá mismo — se rompe así el patrón de cinco recurrencias en que el push del asiento quedaba sin registrar hasta la sesión siguiente.
+
+## Sesión #63 — 2026-08-12 · Área 2 · Camino A ejecutado: P2 operable
+
+**Apertura y corrección de premisa.** El bloque de apertura reportó `emqx Restarting (1)` y tres FALLA de ingesta. La sala encuadró el incidente como crash-loop y montó tres hipótesis sobre colisión con P2. **F0 lo refutó:** `RestartCount=1`, `exit=0`, recuperado en el segundo intento. Franco aportó la causa: corte de energía. Cold boot, no colisión. Las hipótesis H1/H2 quedaron descartadas por evidencia, no por olvido.
+
+**Foco.** Ítem 1 del carry-over de #62: alta del primer usuario de P2 por camino A, que destraba S1.
+
+**Nómina.** Ing. SW Senior, Backend Senior, Confiabilidad, Asesor Telco NOC, Integración OSS/BSS. Franco decisor.
+
+### Recon — cuatro bloques read-only antes de una sola escritura
+
+**F0** — cold boot confirmado; los seis recursos web_hook de ambos brokers con `is_alive=false`.
+**F1** — las 14 reglas SAVER de producción están `enabled='true'`, no deshabilitadas. P2 con 0 reglas, base en cero absoluto salvo `emqxauthrules=1`. `/register` exige name+email+password y crea con `grants:[]`.
+**F1.b** — discriminación cerrada: DNS sano en ambos brokers, destino responde HTTP 200. El pool del resource está muerto, no el destino.
+**F2** — la SAVER-RULE se crea **inline** en el alta (`devices.js:118`); el guard es `if (!global.saverResource)`, que no mira `is_alive` ⇒ S4 no necesita restart. `Zone` tiene endpoint (`zones.js:26`), `Operator` no. `Site` exige `operatorCode`/`zoneCode` required.
+
+### Decisiones de Franco
+
+- **Dos usuarios, no uno** (disenso de Ing. SW adoptado): `superadmin` no ejercita la autorización (`scope.js:52` retorna `{}`).
+- **`wanomi`/`arg`, no `claro`/`nea`** — elimina la ambigüedad de dos bases con codes idénticos. Opción A: codes en minúscula, legible en `displayName`.
+- **Lectura 1**: el seed opera el producto por HTTP, no hace INSERT de usuarios. La condición de Confiabilidad de #62 queda intacta.
+- **`Zone` por producto**: corrección de la sala sobre su propia recomendación previa. El endpoint existe; sembrarla habría violado DEC-STRAT-2.
+- **Re-init de resources: después.** No se ejecutó.
+
+### Ejecución
+
+Corpus **v1.00 → v1.01**, commit `f9a43d4`: DEC-REF-93, BACKLOG-TENANT-11 (con la regla de método adentro), BACKLOG-API-2, adenda #63 a BACKLOG-OPS-1. Cinco escrituras, 2 deleciones (cabecera + OPS-1 crecida por append, probada por prefijo exacto).
+
+Script `seeds/seed_p2_bootstrap.js`, commit `661eafa`, 181 líneas.
+
+**S1.c — primera corrida, SEED VERDE a la primera.** Ocho pasos, cero abortos: Operator sembrado · U1 creado por `/register` + grant · login · **Zone creada por HTTP 200, no INSERT** · U2 + grant · verificación `/me` de ambos · conteos `operators=1 zones=1 users=2 sites=0 devices=0`.
+
+**Alcance de lo probado, sin inflar:** el criterio verifica que los grants **existen**, no que autoricen. Con base en cero, un GET tenant-scoped no distingue autorizado-y-vacío de filtrado-a-cero. La autorización se prueba en S1, cuando haya un Site que ver.
+
+### Errores de sala — sin suavizar
+
+Cinco autoerrores de la misma familia: **afirmar estado sin consultar la fuente**.
+
+1. «crash-loop» inferido de `Up About a minute` sin leer `RestartCount`.
+2. «11 reglas apagadas» inferido del log sin consultar `emqx_ctl`. Estaban todas `enabled='true'`.
+3. «F1.b resuelve la causa raíz» — la adenda #54 de BACKLOG-OPS-1 ya la tenía completa (mecanismo, carácter determinista, fix propuesto, criterio de cierre). Fue redescubrimiento presentado como hallazgo. Se leyó el runbook y no la fila que lo gobierna.
+4. Ancla de TENANT-11 «tras -10» — `-10` nunca fue fila; vive como mención dentro de DEC-REF-81. Habría entrado a una spec firmada.
+5. Criterio `deleciones = 1` incompatible con el Punto 4 de la propia spec (append in-line). El check de C1.d lo contradecía en la línea siguiente.
+
+**Los cinco los atrapó el método, no la sala.** Los gates de recon, el candado «medir, no asumir» y la verificación pre-commit funcionaron cinco de cinco. El agente frenó correctamente en cada uno y en ningún caso arregló encima.
+
+**Desvío del agente, registrado:** arrastró tres veces decisiones ya firmadas (Zone por Mongo directo, orden re-init/seed, «no me diste el contenido»). Cada arrastre se corrigió en sala antes de llegar al disco. El tercero habría entrado al texto de DEC-REF-93.
+
+### Deuda de registro — dos casos en una sesión
+
+- **Siete preguntas de la Opción B**: contabilizadas en el asiento de #62, nunca transcriptas. Barrido completo de `docs/` y `docsRefactor/`: el número aparece dos veces, el contenido cero. **No se reconstruyeron** — heredar el número falsearía la procedencia. Se re-enumeran en la sesión propia del frente.
+- **BACKLOG-TENANT-10**: ID asignado dentro del texto de DEC-REF-81, fila nunca materializada en §5a. No se tocó.
+
+Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-11.
+
+### Hallazgos laterales
+
+- **`iotix` es el nombre de base en AMBOS stacks** (DEC-REF-92: renombrar rompería 11 archivos). El nombre no distingue nada; lo que separa los mundos es el puerto. La guarda del seed falla en dirección segura: si el regex no matchea, retiene `:27017` y aborta.
+- **El patrón `chk`/`FAIL` de los bloques W0 cubre solo el baseline git**; los chequeos de destino vivo quedan fuera y pueden fallar sin bajar el veredicto. S1.a dio VERDE con la API en `000`.
+- **`docker` no es invocable pelado en ese shell**, solo `docker.exe`. Afecta cualquier snippet del corpus que asuma `docker …` (ej. `docker restart node`).
+- **Port-forwarding de WSL2 intermitente** — S1.a leyó `000` en 3101 y 401 al reintentar. Riesgo declarado: si un seed muere a mitad, primera hipótesis.
+
+### Estado al cierre — MEDIDO
+
+- HEAD `661eafa` · corpus v1.01 · **2 commits sin push** · tree limpio.
+- P2: `operators=1 zones=1 users=2 sites=0 devices=0`. Dos identidades operables.
+- **Los 6 resources EMQX siguen `is_alive=false`. No se tocaron.** Producción sigue sin persistir ingesta.
+- Simulador NO arrancado, en ninguno de los dos stacks.
+- `/tmp/.p2_pw` eliminado al cierre.
+
+### Carry-over para #64, en orden
+
+1. **S1–S6** rebanada fina — ahora desbloqueada. **S7** primer disparo, criterio binario.
+2. **Re-init de los 6 resources** (BACKLOG-OPS-1) — write pendiente de gate propio. Producción muda hasta entonces.
+3. **D1** — dónde vive el bundle de P2; bloquea S2.
+4. **BACKLOG-TENANT-11** — Opción B, con re-enumeración de sus preguntas desde cero.
+5. Escalón 3 (`wanomi-edge-p2`) · RISK-SEC-7/8 · BACKLOG-OPS-7/8 · rotación de `mongo-p2`.
+6. `seeds/_dev/` retención · COSTURAS · BACKLOG-RULE-8 · §1 de `CLAUDE.md` · RISK-SEC-4 · CST-07/CST-15 · bitácora de #53.
+
+**Sin resolver:** por qué el port-forwarding de WSL2 dio `000` y luego 401 · el estado en memoria del proceso `node` respecto de `global.saverResource` (deducido del código, no medido) · los ítems sin resolver heredados de #62.
+
+**Nota de push.** Al cierre hay 2 commits sin push (`f9a43d4`, `661eafa`) más el de este asiento. **Push requiere orden explícita de Franco.**
