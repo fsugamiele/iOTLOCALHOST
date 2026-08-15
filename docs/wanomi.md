@@ -11629,3 +11629,5 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 **Sin resolver:** por qué el port-forwarding de WSL2 dio `000` y luego 401 · el estado en memoria del proceso `node` respecto de `global.saverResource` (deducido del código, no medido) · los ítems sin resolver heredados de #62.
 
 **Nota de push.** Al cierre hay 2 commits sin push (`f9a43d4`, `661eafa`) más el de este asiento. **Push requiere orden explícita de Franco.**
+
+**Reconciliación de rango (append post-cierre #63).** Medido contra `origin/feature/telco-support` (upstream en `fc8617b` = "v0.99 → v1.00, cierre de #62"): el push empuja **exactamente 3 commits**, en orden — `f9a43d4` (corpus v1.00→v1.01) · `661eafa` (seed bootstrap P2) · `5097c07` (este asiento). `HEAD..@{u}` = 0 ⇒ fast-forward limpio, sin rebase. **Corrección**: la primera "Nota de push" de la sesión listaba "cuatro commits: `252e045`, `ce19200`, …" — arrastre erróneo: `252e045` y `ce19200` **ya están en upstream** (ancestros de `fc8617b`), no se empujan. El número correcto es 3, no 4. La cola de este asiento ("2 commits sin push más el de este asiento" = 3) ya era la buena.
