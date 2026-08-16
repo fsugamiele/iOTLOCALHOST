@@ -11631,3 +11631,40 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 **Nota de push.** Al cierre hay 2 commits sin push (`f9a43d4`, `661eafa`) más el de este asiento. **Push requiere orden explícita de Franco.**
 
 **Reconciliación de rango (append post-cierre #63).** Medido contra `origin/feature/telco-support` (upstream en `fc8617b` = "v0.99 → v1.00, cierre de #62"): el push empuja **exactamente 3 commits**, en orden — `f9a43d4` (corpus v1.00→v1.01) · `661eafa` (seed bootstrap P2) · `5097c07` (este asiento). `HEAD..@{u}` = 0 ⇒ fast-forward limpio, sin rebase. **Corrección**: la primera "Nota de push" de la sesión listaba "cuatro commits: `252e045`, `ce19200`, …" — arrastre erróneo: `252e045` y `ce19200` **ya están en upstream** (ancestros de `fc8617b`), no se empujan. El número correcto es 3, no 4. La cola de este asiento ("2 commits sin push más el de este asiento" = 3) ya era la buena.
+
+## Sesión #64 — 2026-08-15 · Área 2 · S1 firmado + diagnóstico F0
+
+**Apertura — residuo declarado no-fuente.** Carry-over corregido contra disco: corpus `1.00` (real **1.01**) · *"seed de P2 escrito pero no corrido"* **falsado** (#63 lo ejecutó) · conteo de commits de #63 errado. Ninguna se usó como fuente.
+
+**Foco.** Área 2 · S1–S7, declarado por Franco. F0 se ejecutó como línea de base, no como precondición.
+
+**F0 — diagnóstico (read-only, cinco bloques).** Seis recursos de EMQX `is_alive=false` en ambos brokers, con IDs medidos. `emqx_ctl resources list` es vía de inspección **sin credenciales**; no existe verbo de reconexión (create/list/show/delete) ⇒ la recuperación exige el POST del runbook, que cubre **1 de 3** y hornea el ID de producción. **Gap de 91 h:** `db.data.last = 2026-08-12T05:02:49Z`. Tras el restart de las 16:08Z hubo ráfaga (`matched` 9–28 por device) con **`success:0 / failed:N`** — el tráfico llegó y el recurso lo tiró. Después, **flatline: 0 matched en 150 s** ⇒ segunda falla independiente, el sim mudo desde la tarde. **Dos fallas apiladas; orden de recuperación (b) y después (a)**, para que cada paso tenga verificación propia.
+
+**Guarda de atribución de P2 — VERIFICADA.** `emqx → 172.18.0.3 = /node`, `emqx-p2 → 172.19.0.4 = /node-p2`. Subredes distintas; la URL literal idéntica en los seis recursos es segura porque el aislamiento lo da la red.
+
+**Piso de S1 medido.** P2: `operators=1 zones=1 users=2 sites=0 devices=0` — los cinco conteos del criterio E3 de DEC-REF-93, intactos. `equipmentsheets` **ausente** por `getCollectionNames()`, no por `count()=0`, que no distingue ausente de vacía.
+
+**Hallazgos sin fila propia.** `healthcheck_demo.sh` declaró `sim: VIVO` con el sim en flatline — **el criterio mide proceso, no publicación**; se suma al `docker exec mongo` horneado que impide medir P2. `EMQX_API_HOST=192.168.1.186`: **IP de LAN horneada en producción**, misma clase que `MONGO_EXT_PORT` usado para conexión interna ⇒ **adenda a BACKLOG-OPS-2**. `node-p2` tiene **0** nombres EMQX/MONGO en el entorno del contenedor contra 7 en `node`: depende enteramente de dotenv — cierra el punto ciego de #62, sin efecto funcional.
+
+**Desorden estructural del corpus, detectado y NO corregido.** `RISK-SEC-8` (L288 pre-#64), `BACKLOG-OPS-8` y `DEC-PROC-8` están colgados al pie de la tabla DEC-REF pese a existir sus secciones propias (§5f, §5l). Los tres son del **2026-08-11 — sesión #62**: se volcaron los IDs nuevos al final de la tabla en la que se estaba escribiendo. **La familia RISK-SEC queda escrita en dos formatos incompatibles**: blockquote (2/4/5/6/7) y fila de tabla (8). Se registra el hallazgo; **no se migra nada** — editar filas vigentes en documento append-only es gate propio. `RISK-SEC-9` se escribió como blockquote junto a la mayoría: **recomendación de la sala adoptada por defecto, sin firma explícita de Franco.**
+
+**Errores de sala — cinco, sin suavizar.** (1) `F0-B` formulado con `EMQX_DEFAULT_APPLICATION_ID`, **variable inexistente**: habría dado 401 en P2 y un rojo inatribuible fabricado por el comando. (2) Hipótesis *"el bootstrap creó recursos nuevos contra brokers caídos"* **refutada** — el saver de producción es `3920e268`, el mismo de antes ⇒ los recursos **persistieron** al reinicio; lo que no ocurre nunca es la renegociación. (3) Hipótesis de **fuga cruzada de `node`** entre stacks, refutada por medición. (4) El chequeo de anclas de W1 usó `grep -cE` con `|` sin escapar — alternancia, matcheaba las 497 líneas: **falso positivo que abortó el gate antes de escribir**. Corrección: se cambió la **medición** a `grep -cF`, no el valor esperado. (5) Sospecha de sangría en las filas insertadas por los heredocs, **refutada** — las cuatro arrancan en columna 0, indistinguibles de la vecina no tocada; el `sed` de corrección NO se corrió.
+
+**Errores del agente local — dos.** `661eafa` y *"rulepacks viene del seed F3"* presentados como medidos sin aparecer en ningún output. Segunda ocurrencia del patrón *afirmación con forma de evidencia*.
+
+**Diagnóstico invertido, corregido antes de entrar al corpus.** El cierre de F0 propuso el sim caído como causa aguas arriba del gap de 91 h. Refutado por `failed:21` y por `matched>0` sobre métricas reseteadas ese mismo día. **La versión invertida no se registró.**
+
+**Método de inserción — cambio registrado.** Las cuatro entradas se anclaron por **texto de la fila anterior** (`sed '/patrón/r'`), no por número de línea: insertar por número desplaza las anclas pendientes y la última inserción cae dentro de la fila vecina. Aplica a todo bloque futuro con más de una inserción en el mismo archivo.
+
+**Decisiones firmadas — ver corpus v1.02:** DEC-REF-94 · RISK-SEC-9 · BACKLOG-TENANT-12 · BACKLOG-UI-13.
+
+**Estado al cierre.** Branch `feature/telco-support`, HEAD previo `7370936`. **Cero código de implementación escrito** (DEC-PROC-6: el registro va antes). Ningún contenedor tocado; los seis recursos muertos **sin tocar** — recuperación de producción diferida a gate propio junto con la rotación de RISK-SEC-9.
+
+**Carry-over para #65, en orden.**
+1. **S1 — código**: modelo `equipment_sheet.js` + ruta + enganche en `app/api/index.js`, `restart node-p2`, verificación `1 en P2 / 0 en producción`.
+2. **S2** — bloqueada por D1 (bundle con URL de prod horneada).
+3. **Recuperación de producción** — 3 recursos y después relanzar el sim, en ese orden; más rotación del token de RISK-SEC-9.
+4. **S3–S7**.
+5. `seeds/_dev/` retención · BACKLOG-OPS-3 · BACKLOG-RULE-8 · `COSTURAS.md`.
+
+**Nota de push.** Al cierre habrá **2 commits sin push**. Push requiere orden explícita de Franco.
