@@ -11668,3 +11668,5 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 5. `seeds/_dev/` retención · BACKLOG-OPS-3 · BACKLOG-RULE-8 · `COSTURAS.md`.
 
 **Nota de push.** Al cierre habrá **2 commits sin push**. Push requiere orden explícita de Franco.
+
+> **Push de #64 — registrado por append (2026-08-15).** Orden explícita de Franco tras el cierre. `7370936..f5225f2` → `origin/feature/telco-support`, fast-forward limpio sin rebase: `0f0229f` (corpus v1.01→v1.02: DEC-REF-94 · RISK-SEC-9 · BACKLOG-TENANT-12 · BACKLOG-UI-13) · `f5225f2` (asiento #64). **Exactamente 2 commits**, medido con `git rev-list --count @{u}..HEAD` = 0 post-push; local y upstream en `f5225f2`. **La misma orden de Franco cubre el push de este propio asiento** — su hash no se transcribe porque no existe al momento de escribir esta línea; se corta acá la regresión de registrar el push del registro. El texto del cierre de #64 no se edita: la orden llegó después de escrito y queda registrada acá, como se hizo con los push de #58, #60 y #63.
