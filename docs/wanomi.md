@@ -11670,3 +11670,46 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 **Nota de push.** Al cierre habrá **2 commits sin push**. Push requiere orden explícita de Franco.
 
 > **Push de #64 — registrado por append (2026-08-15).** Orden explícita de Franco tras el cierre. `7370936..f5225f2` → `origin/feature/telco-support`, fast-forward limpio sin rebase: `0f0229f` (corpus v1.01→v1.02: DEC-REF-94 · RISK-SEC-9 · BACKLOG-TENANT-12 · BACKLOG-UI-13) · `f5225f2` (asiento #64). **Exactamente 2 commits**, medido con `git rev-list --count @{u}..HEAD` = 0 post-push; local y upstream en `f5225f2`. **La misma orden de Franco cubre el push de este propio asiento** — su hash no se transcribe porque no existe al momento de escribir esta línea; se corta acá la regresión de registrar el push del registro. El texto del cierre de #64 no se edita: la orden llegó después de escrito y queda registrada acá, como se hizo con los push de #58, #60 y #63.
+
+## Sesión #65 — 2026-08-18 · Área 2 · S1 de DEC-REF-94 IMPLEMENTADO
+
+**Apertura — sin drift.** Primera apertura en varias sesiones donde el carry-over no necesitó corrección: git, corpus y bitácora coincidieron con disco. Las tres FALLAS de ingesta (sim caído, saver-webhook `is_alive=false`, `db.data` sin crecimiento) eran el carry-over 3 de #64, diferido a gate propio; **ninguna se tocó**. Nota de lectura: el healthcheck mide 1 de los 6 recursos muertos, y su tap de 60 s está bajo el piso de #61 ⇒ ese rojo no es evidencia independiente.
+
+**Foco.** Área 2 · S1, declarado por Franco. F0 read-only por decisión suya antes de cualquier escritura.
+
+**Cuatro commits.** `8cf731a` (corpus v1.02→v1.03: DEC-REF-95 · BACKLOG-API-3) · `7dde619` (D-3: `OPERATORS`/`OPERATOR_LABELS` fuente única) · `9db49ae` (modelo + ruta) · `95038ff` (corpus v1.03→v1.04: BACKLOG-API-4 · BACKLOG-OPS-9). **El corpus registró en dos momentos y se declara así en la cabecera:** el primero antes del código, el segundo con lo que el código encontró.
+
+**Decisiones firmadas por Franco.** Opción **C** (interruptor efímero con `require` ADENTRO del condicional) · **Lectura 1** (nace y muere en la sesión) · **Forma 2** de D-3 (propiedad sobre el schema exportado; `rule_pack.js` intacto) · **variante B** del borrado (4 a 1 en sala) · `limits.op` atado a `OPERATORS` · GET+POST únicamente · `BACKLOG-API-4` sobre `BACKLOG-DEP-1`.
+
+**S1 verificado en vivo, no por inspección.** D-1 probado por **ambas mitades** — superadmin lee `200`, cellowner escribe `403`. La mitad negativa exigió corrección de la sala: el check original usaba el **mismo** `deviceType` del POST previo, y como el chequeo de rol va antes del `findOne`, un RBAC roto habría devuelto `409` y se habría leído como éxito. Con `deviceType` distinto los dos resultados son inequívocos. D-2: `409` desde el `findOne`. Ficha inicial **real** (`cummins-pcc`, medido contra `db.rulepacks` y `devices`), no basura de test — pero **real en identidad y vacía en contenido**: `variables: []` y `manual` nulo. S3 la llena; que no se la encuentre y se la crea cargada.
+
+**Variante B — probada por prueba byte.** `git diff -- app/api/index.js` **vacío**: producción byte-idéntica. Ruta desmontada (`404`, con control `/api/me` → `401` en el mismo comando, que es lo que hace válido ese 404). Dato persiste: `count=1`. Producción sin la colección por `getCollectionNames()`. **B desmonta la puerta sin borrar lo guardado.** El montaje permanente se difiere a S2 — D-4 no se anula, se posterga.
+
+**M3 — la medición que movió un voto.** `autoIndex` default `true` en mongoose 5.13.15: registrar un modelo con `unique:true` crea colección e índice con cero inserts. **D-4 anticipó el alta**; lo que -94 no podía saber es que colisiona con el invariante de presencia nacido en #64/F0-C. Backend movió su voto de A a B al confirmarse. Confiabilidad sostuvo A y su disenso quedó escrito.
+
+**Incidente en GATE 3 — producción a salvo.** El `sed -i` de la orden V3 dejó `node-p2` en `Exited (127)`; `docker start` reprodujo el fallo con el error del daemon (`no such file or directory` sobre el bind-mount). Recuperado con `up -d --no-deps --force-recreate node`; `mongo-p2`, `emqx-p2` y `node` conservaron el `StartedAt` del baseline. **La prueba byte de B ya estaba verde antes del incidente y no dependía del contenedor.** Registrado en BACKLOG-OPS-9.
+
+**Siete instrumentos rotos contra UN defecto de código.** Sondas: path `app/models/` inventado (sala) · `s.path('op')` mal apuntada (sala) · *"el mismo array"* (agente, **refutado por él mismo** en M1: mongoose copia) · `$API_PORT` inexistente en el shell (sala) · check contra producción tautológico (sala) · escape `\x27` que `grep` sin `-P` no interpreta (compartido) · `node --check` babel-ciego (sala). **Defecto real, uno:** el plugin `uniqueValidator`, puesto por la sala **contradiciendo a D-2 en la misma fila que lo firmaba** ⇒ BACKLOG-API-4. **Lección:** una sonda es código sin testear y merece la misma desconfianza que el código que mide. Dos veces una sonda mal apuntada estuvo a punto de descartar trabajo correcto con explicación plausible.
+
+**Errores de sala — seis, sin suavizar.** (1) Path inventado. (2) Sonda anidada. (3) Atribuir sus dos errores al ritmo de aprobación de Franco — **Franco lo corrigió**: aprueba análisis, y el análisis venía con el error adentro. (4) El plugin. (5) La orden V3 con `sed -i`, que tiró el contenedor — el agente corrió exactamente lo pedido. (6) Afirmar que *"un mount roto no produce 127"* para exigir el log: falso, `runc` sale con 127. **La exigencia de medir era correcta; la razón dada para exigirla, no.** Ninguno llegó a producción.
+
+**Errores del agente — dos, ambos corregidos por él o por método.** Afirmación sin medir en M1, refutada por su propia medición. Salteó M3 y ejecutó P4-a cancelada en el mismo bloque. También reintrodujo un puerto horneado en su propio check (clase BACKLOG-OPS-2), corregido a puerto derivado.
+
+**Cambio de método firmado (Franco, #65).** Las órdenes de construcción van a Claude Code, que mide y propone; la sala analiza con disenso nombrado; Franco firma. **Corolario:** cada opción viaja con el output que la sostiene — afirmación sin comando no entra a análisis. **Y toda decisión firmada en sala viaja al agente antes de pedirle ejecución** — en #65 el agente razonó dos veces sobre frentes ya cerrados por no habérselos pasado. El arreglo funcionó: el agente **frenó correctamente ante instrucciones mal escritas de la sala** en tres ocasiones (check 4 con orden de `git checkout` que no distinguía rojo de código de rojo de sonda; `node --check`; texto de `BACKLOG-API-4` que nunca llegó y se negó a redactar por su cuenta).
+
+**Degradación de texto en el canal sala → Franco → agente: cuatro veces.** El comentario obligatorio de D-3 (dos), los backticks del hallazgo (ii), y una fila entera de corpus que no cruzó. **Regla: todo texto destinado al disco viaja en bloque de código y solo, sin instrucciones alrededor.** Necesaria pero no suficiente — el texto también se pierde entero en el traspaso.
+
+**Observaciones sin ID.** `node --check` reda en **todos** los modelos ES del proyecto, incluidos los que corren en producción ⇒ ningún modelo se valida sin arrancar la app entera; contexto para BACKLOG-OPS-4; la sonda correcta es parse babel con `sourceType:'module'` sin ejecutar. `jq` ausente en el host ⇒ los checks corren en `python3`. `wanomi-edge-p2` está **definido y no instanciado**, no ausente (corrección al texto de DEC-REF-95, aplicada antes del commit). `TEST_USER_EMAIL` de `p2/app.env` no matchea ninguno de los 2 usuarios de P2.
+
+**K1 — aviso a S3.** DEC-REF-90 firmó que `deviceType` **deriva del template**. Que `templates.deviceType` venga vacío confirma el hueco que -90-A registró (`template.js` sin campo de tipo), **no** que el dato viva en el device. No arrastrar la lectura invertida.
+
+**K2 — discrepancia corpus↔base, parada sin investigar.** DEC-REF-87 registró 3 packs (2 nuevos); producción tiene **1** (`cummins-pcc-v1`) y `ATS` aparece en `rulepacks.rules.deviceType` sin pack propio. No se concluye nada: puede ser siembra no ejecutada, revertida, o decisión registrada sin ejecución. Chequeo propio. No bloqueó S1.
+
+**Carry-over para #66, en orden.**
+1. **Recuperación de producción** — 6 recursos EMQX, después el sim, más rotación de RISK-SEC-9.
+2. **S2** — sigue bloqueada por D1 (bundle con URL de prod horneada); trae consigo el montaje permanente de la ruta (D-4 diferido).
+3. **S3–S7** — con el aviso de K1 y la advertencia de BACKLOG-API-4 sobre `template.js`.
+4. **K2** — discrepancia de packs.
+5. `wanomi-edge-p2` a `up` (gate propio) · `TEST_USER_EMAIL` · BACKLOG-TENANT-11 (Opción B, re-enumerar desde cero) · `seeds/_dev/` retención · BACKLOG-OPS-3 · BACKLOG-RULE-8 · `COSTURAS.md`.
+
+**Nota de push.** Al cierre hay **4 commits sin push** más el de este asiento. **Push requiere orden explícita de Franco.**
