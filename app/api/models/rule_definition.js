@@ -1,8 +1,26 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+// DEC-REF-94 D-3 — comparadores como FUENTE ÚNICA. Antes vivían horneados en el
+// enum de `op` (abajo); se extraen a const para que cualquier consumidor los
+// importe en vez de re-listarlos (una segunda lista sería una segunda fuente de
+// verdad). Los seis valores internos NO se renombran: están grabados en db.rulepacks
+// y en las SAVER-RULE de producción, y ruleEngine.js:46-47 compara strings —
+// renombrar no da error, da SILENCIO (la alarma no dispara y nadie se entera).
+// La legibilidad va por capa de presentación: el mapa OPERATOR_LABELS (abajo),
+// no por cambio de identidad acá.
+const OPERATORS = ['lt', 'lte', 'gt', 'gte', 'eq', 'neq'];
+
+// Mapa a idioma de usuario — nace junto al enum (DEC-REF-94 D-3), fuente única
+// para toda pantalla (BACKLOG-UI-13 es la pantalla, no el dato).
+const OPERATOR_LABELS = {
+  gt: 'mayor que', gte: 'mayor o igual que',
+  lt: 'menor que', lte: 'menor o igual que',
+  eq: 'igual a',   neq: 'distinto de',
+};
+
 const ConditionSchema = new Schema({
-  op:    { type: String, enum: ['lt', 'lte', 'gt', 'gte', 'eq', 'neq'], required: true },
+  op:    { type: String, enum: OPERATORS, required: true },
   value: { type: Schema.Types.Mixed, required: true },
 }, { _id: false });
 
@@ -49,3 +67,5 @@ const RuleDefinitionSchema = new Schema({
 }, { _id: false });
 
 module.exports = RuleDefinitionSchema;
+module.exports.OPERATORS = OPERATORS;
+module.exports.OPERATOR_LABELS = OPERATOR_LABELS;
