@@ -11713,3 +11713,5 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 5. `wanomi-edge-p2` a `up` (gate propio) · `TEST_USER_EMAIL` · BACKLOG-TENANT-11 (Opción B, re-enumerar desde cero) · `seeds/_dev/` retención · BACKLOG-OPS-3 · BACKLOG-RULE-8 · `COSTURAS.md`.
 
 **Nota de push.** Al cierre hay **4 commits sin push** más el de este asiento. **Push requiere orden explícita de Franco.**
+
+> **Push de #65 — registrado por append (2026-08-18).** Orden explícita de Franco tras el cierre. `7d1026b..566a28e` → `origin/feature/telco-support`, fast-forward. **Cinco commits:** `8cf731a` (corpus v1.02→v1.03) · `7dde619` (D-3) · `9db49ae` (modelo+ruta) · `95038ff` (corpus v1.03→v1.04) · `566a28e` (asiento #65). `git rev-list --count @{u}..HEAD` = **0** post-push; local y upstream en `566a28e`. Auth por `gh auth login` (HTTPS; no había PAT ni SSH): primer intento falló por auth, segundo por credencial no legible, tercero OK con la red ya verde. El asiento #65 no se edita: su "Nota de push" queda cerrada acá, como con #58/#60/#63/#64. La misma orden de push cubre esta línea; no se registra el push de este registro.
