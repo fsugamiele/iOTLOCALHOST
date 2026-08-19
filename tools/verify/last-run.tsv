@@ -1,0 +1,19 @@
+# timestamp	check_id	estado	razon
+2026-08-19T13:14:30Z	CST-01	PASS	
+2026-08-19T13:14:31Z	CST-02	PASS	
+2026-08-19T13:14:31Z	CST-03	SIN_VERIFICAR	sin comando corrible: emisor silencioso en éxito
+2026-08-19T13:14:31Z	CST-04	SIN_VERIFICAR	ausencia ambigua: grep=0 no prueba ausencia
+2026-08-19T13:14:32Z	CST-05	PASS	
+2026-08-19T13:14:32Z	CST-06	PASS	
+2026-08-19T13:14:32Z	CST-07	SIN_VERIFICAR	PENDIENTE: requiere publicar en tópico reload y observar reloadState
+2026-08-19T13:14:32Z	CST-08	SIN_VERIFICAR	RETIRADA por DEC-REF-91: el pack se recrea desde cero en base nueva
+2026-08-19T13:14:32Z	CST-09	SIN_VERIFICAR	ausencia no positiva: forensicevents=0 no prueba que el dispatcher no exista
+2026-08-19T13:14:32Z	CST-10	SIN_VERIFICAR	ausencia no positiva: grep solo encuentra comentarios del simulador
+2026-08-19T13:14:32Z	CST-11	SIN_VERIFICAR	ausencia no positiva: grep vacío no prueba que no exista productor
+2026-08-19T13:14:34Z	CST-12	PASS	
+2026-08-19T13:14:34Z	CST-13	SIN_VERIFICAR	sin comando corrible: no hay verificación positiva de la fuente de tiempo
+2026-08-19T13:14:34Z	CST-14	PASS	
+2026-08-19T13:14:34Z	CST-15	SIN_VERIFICAR	V-PESADO pendiente: verificación compleja de DEC-REF-85-A no implementada
+2026-08-19T13:14:34Z	CST-16	SIN_VERIFICAR	ABSORBIDA por CST-17/18 (DEC-REF-91): el origen del dato cambia de entidad
+2026-08-19T13:14:34Z	CST-17	SIN_VERIFICAR	sin entidad que verificar: la ficha de equipo no existe todavía
+2026-08-19T13:14:34Z	CST-18	SIN_VERIFICAR	sin catálogo contra el cual validar: la ficha de equipo no existe todavía

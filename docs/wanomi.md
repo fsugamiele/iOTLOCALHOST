@@ -11745,3 +11745,33 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 **Nota de push.** Al cierre hay **0 commits sin push**. Push requiere orden explícita de Franco.
 
 > **Push de #66 — registrado por append (2026-08-19).** Orden explícita de Franco tras el cierre. `e5208e3..ae7661b` → `origin/feature/telco-support`, fast-forward. **Dos commits:** `66656ed` (asiento #66 + adenda RISK-SEC-9) · `ae7661b` (corpus v1.04→v1.05, línea de versión). `git rev-list --count @{u}..HEAD` = **0** post-push; local y upstream en `ae7661b`. La misma orden de push cubre esta línea; no se registra el push de este registro.
+
+## Sesión #67 — 2026-08-19 · Área 2 · tools/verify implementado + adendas COSTURAS
+
+**Apertura.** Git en `5f6f3e4`, 0 sin push, `backups/` sin trackear a propósito (contiene `.env` con secretos de la rotación RISK-SEC-9 — NO versionar). Ingesta sana: simulador vivo, `saver-webhook is_alive=true`, `db.data` +52 docs/60 s, healthcheck exit=0. Herencia de #66: carry-over 5 (actualizar `COSTURAS.md`) y la decisión de Franco "Opción A" — runner de verificación de costuras + actualización manual asistida del mapa en cada sesión.
+
+**Foco.** Materializar `docsRefactor/harness/spec/verify.md` (spec aprobada en bloque previo, DEC-PROC-6): implementar `tools/verify/` y cerrar el bloque con las adendas pendientes del mapa de costuras.
+
+**Implementado.** `tools/verify/checks.sh` — manifiesto único ejecutable: 18 funciones `check_CST-01..18` + registro; 6 checks con comando positivo (CST-01, -02, -05, -06, -12, -14), 12 placeholders que se delatan solos. `tools/verify/run.sh` — runner: aborta ante `CHECK_ID` duplicado, gating docker/secrets, timeout por check → SIN_VERIFICAR (nunca FAIL), ledger `last-run.tsv` generado (no se edita a mano), `--only`/`--no-secrets`, exit 1 solo si hay FAIL. La spec fue escrita para 15 costuras; el mapa creció a 18 (CST-16/17/18 de DEC-REF-91) y el manifiesto cubre las 18 — extensión de los IDs reservados de §9, declarada.
+
+**Resultado de la primera corrida.** `bash tools/verify/run.sh` → **6 PASS · 0 FAIL · 12 SIN VERIFICAR · exit=0**. PASS: CST-01, -02, -05, -06, -12, -14. Re-corrida tras las adendas: idéntica.
+
+**Desviación declarada contra la aceptación de la spec (§10).** La spec pedía SIN VERIFICAR == NO DECIDIDO ∪ NO VERIFICADO y ~4 FAIL (las DESVÍO con target verificable). La implementación diverge en dos direcciones, ambas por la misma postura: **PASS exige evidencia positiva; FAIL exige medición positiva de contradicción**:
+- (i) **CST-12 y CST-14 (NO DECIDIDO) salen PASS**: corre el comando de la celda "Verificación" (healthcheck 3/3 · presencia de secretos) como chequeo de vivacidad, no como target. El PASS **no mueve la fila** — ambas quedan NO DECIDIDO porque el "Cómo debería ser" (watchdog runtime BACKLOG-OPS-1 · disparador de rotación) sigue sin decisión firmada.
+- (ii) **Las DESVÍO/RETIRADA cuya verificación es un grep/count de ausencia** (CST-08 retirada por DEC-REF-91, -09, -10, -11, -15 V-PESADO no implementado, -16 absorbida, -17/-18 sin entidad) **nacen SIN VERIFICAR en vez de FAIL**: un grep vacío es la "ausencia ambigua" del caso raro #2; el runner no acepta esa medición para PASS y, por simetría, tampoco grita FAIL con ella.
+Consecuencia: §10 queda **incumplido tal cual está escrito** (0 FAIL ≠ ~4; SIN VERIFICAR ⊋ NO DECIDIDO ∪ NO VERIFICADO). Sincronizar spec y runner es **deuda declarada con gate propio** (carry-over 2).
+
+**Errores de método — uno, sin suavizar.** La tensión §10↔caso raro #2 era candidata al candado de §0 de la spec ("si aparece una pregunta que la spec no contesta: SE FRENA EL BLOQUE"). Se resolvió implementando con postura conservadora en vez de frenar y consultar. Remediación: la desviación queda declarada arriba, con gate propio y decisión pendiente de Franco — no se edita la spec por adenda (adenda ≠ especificación).
+
+**Defectos de implementación encontrados y corregidos** (todos medidos): `countDocuments()` sin filtro es rechazado por este Mongo → `countDocuments({})`; `SCRIPT_DIR` sin `export` no llegaba al subshell de `timeout`; la extracción de `TIMEOUT` por `declare -f` arrastraba el `;` → `tr -d ' ;'`; `secretos.sh` imprime `VAR: SET` (dos puntos), no `VAR=SET`.
+
+**Adendas en COSTURAS.md (append-only, filas intactas).** **CST-12**: costura viva reconfirmada tras la recuperación de #66 — `is_alive=True`, +154 docs/60 s, healthcheck con ID dinámico por descripción; el estado **NO DECIDIDO se mantiene** — el carry-over 5 de #66 sugería CONFORME, pero el watchdog runtime sigue sin firma. **CST-14**: rotación de `EMQX_API_TOKEN` ejecutada el 2026-08-18 (RISK-SEC-9), manual y por incidente — el mismo patrón que la fila critica; el disparador programado sigue sin existir, NO DECIDIDO se mantiene.
+
+**Carry-over para #68, en orden.**
+1. Los pendientes vivos de #66: **S2** (bloqueada por D1), **S3–S7** (aviso K1 · BACKLOG-API-4 sobre `template.js`), **K2**, `wanomi-edge-p2` a `up` (gate propio), `TEST_USER_EMAIL`, BACKLOG-TENANT-11 (Opción B), `seeds/_dev/` retención, BACKLOG-OPS-3, BACKLOG-RULE-8.
+2. **Sincronización spec↔runner** (deuda declarada): enmendar `spec/verify.md` en bloque nuevo o ajustar `checks.sh` — decisión de Franco.
+3. **Decisión pendiente de Franco:** CST-12 → CONFORME (carry-over 5 de #66) requiere firma sobre BACKLOG-OPS-1.
+4. Integrar `run.sh` a `tools/apertura.sh` (opcional, previsto en §3 de la spec — hoy fuera de alcance).
+5. `backups/`: definir retención junto a `seeds/_dev/`; mientras tanto queda local sin versionar.
+
+**Nota de push.** Al cierre hay **1 commit sin push** (el asiento de esta sesión). Push requiere orden explícita de Franco.

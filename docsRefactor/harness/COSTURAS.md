@@ -223,6 +223,19 @@ Lee toda decisión VIGENTE, sin importar su fecha.
 | Bloquea                  | ingesta en vivo |
 | Sirve al pilar           | anticipación |
 
+> **Adenda #67 — costura viva reconfirmada tras la recuperación de #66.**
+> Registrada en sesión #67 sobre eventos del 2026-08-18 (#66): se recrearon
+> los 6 recursos EMQX caídos (saver/alarm/rules en producción :8081 y P2
+> :8085) y el estado se verificó de nuevo:
+> `saver-webhook is_alive=True`, `db.data +154 docs/60 s`, healthcheck 3/3 OK.
+> `tools/healthcheck_demo.sh` ya no usa `resource:3920e268` hardcodeado: busca
+> el recurso por `description=="saver-webhook"` y toma el ID dinámico. El
+> verificador automático CST-12 (`tools/verify/checks.sh`, sesión #67) corre
+> este camino y reporta PASS como chequeo de vivacidad. El estado de la fila
+> sigue **NO DECIDIDO**: el carry-over 5 de #66 sugería moverla a CONFORME,
+> pero el watchdog runtime (BACKLOG-OPS-1) continúa sin decisión firmada y no
+> se mueve a CONFORME sin firma de Franco.
+
 ### CST-13 · Forense · fuente de tiempo → cadena firmada
 
 | Campo | Contenido |
@@ -252,6 +265,15 @@ Lee toda decisión VIGENTE, sin importar su fecha.
 | Estado                   | NO DECIDIDO |
 | Bloquea                  | higiene de credenciales post-incidente |
 | Sirve al pilar           | ninguno |
+
+> **Adenda #67 — rotación ejecutada una vez, disparador sigue sin existir.**
+> Registrada en sesión #67 sobre eventos del 2026-08-18 (#66): se rotó
+> `EMQX_API_TOKEN` por incidente RISK-SEC-9 (cerrado): valores nuevos de
+> 64 hex, distintos por stack (producción y P2), escritos solo en
+> `.env`/`.env.edge` locales. Fue rotación manual disparada por incidente —
+> el mismo patrón que la fila critica — así que el estado sigue
+> **NO DECIDIDO**: no hay disparador firmado que programe la próxima
+> rotación.
 
 ### CST-15 · Panel NOC · caché → buildReadFilter (aislamiento de tenencia)
 
