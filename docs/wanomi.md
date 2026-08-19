@@ -11743,3 +11743,5 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 5. **Actualizar `COSTURAS.md`** — CST-12 (ingesta) puede mover de NO DECIDIDO a CONFORME con la verificación de hoy.
 
 **Nota de push.** Al cierre hay **0 commits sin push**. Push requiere orden explícita de Franco.
+
+> **Push de #66 — registrado por append (2026-08-19).** Orden explícita de Franco tras el cierre. `e5208e3..ae7661b` → `origin/feature/telco-support`, fast-forward. **Dos commits:** `66656ed` (asiento #66 + adenda RISK-SEC-9) · `ae7661b` (corpus v1.04→v1.05, línea de versión). `git rev-list --count @{u}..HEAD` = **0** post-push; local y upstream en `ae7661b`. La misma orden de push cubre esta línea; no se registra el push de este registro.
