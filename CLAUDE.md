@@ -55,6 +55,7 @@ Cadena: telemetría → EMQX → motor de reglas por site → notificación
 - Procedencia de cada pieza: ¿configurable o hardcodeada? Toda "hardcodeada" es hallazgo estructural → **DEC-PROC-3**.
 - Verificar contra el path productivo real, no un atajo (`insertOne` ≠ `.save()`) → **DEC-PROC-5**.
 - No predecir donde no hay evidencia → **DEC-PRED-1**.
+- Cierre de sesión: bitácora → corpus → versión → commit → push → verificación con `tools/apertura.sh` → **DEC-PROC-8**.
 
 > El contenido de cada regla vive en el corpus. Acá solo el puntero: si se copia,
 > se pudre y termina contradiciendo la fuente.
