@@ -11715,3 +11715,31 @@ Ambos son el mismo fenómeno y motivan la regla de método registrada en TENANT-
 **Nota de push.** Al cierre hay **4 commits sin push** más el de este asiento. **Push requiere orden explícita de Franco.**
 
 > **Push de #65 — registrado por append (2026-08-18).** Orden explícita de Franco tras el cierre. `7d1026b..566a28e` → `origin/feature/telco-support`, fast-forward. **Cinco commits:** `8cf731a` (corpus v1.02→v1.03) · `7dde619` (D-3) · `9db49ae` (modelo+ruta) · `95038ff` (corpus v1.03→v1.04) · `566a28e` (asiento #65). `git rev-list --count @{u}..HEAD` = **0** post-push; local y upstream en `566a28e`. Auth por `gh auth login` (HTTPS; no había PAT ni SSH): primer intento falló por auth, segundo por credencial no legible, tercero OK con la red ya verde. El asiento #65 no se edita: su "Nota de push" queda cerrada acá, como con #58/#60/#63/#64. La misma orden de push cubre esta línea; no se registra el push de este registro.
+
+## Sesión #66 — 2026-08-18 · Área 2 · Recuperación de producción + RISK-SEC-9
+
+**Apertura — tres FALLAS de ingesta.** Simulador caído, `saver-webhook` con `is_alive=False`, `db.data` sin crecimiento en 60 s. Carry-over 1 de #65 ejecutado en sesión propia. Git limpio, 0 commits sin push.
+
+**Foco.** Recuperación de producción: 6 recursos EMQX (3 producción + 3 P2), después el sim, más rotación de RISK-SEC-9. Declarado por carry-over de #65.
+
+**Diagnóstico.** Los 6 recursos confirmados `is_alive=False`:
+- Producción (`emqx`, API :8081): saver `3920e268`, alarm `64486419`, rule `3573dbfe`.
+- P2 (`emqx-p2`, API :8085): saver `0298d320`, alarm `70be37b7`, rule `66f18378`.
+- Todos con header `token: 121212` (RISK-SEC-9 medido en #64).
+
+**Recuperación — dos etapas.** **Etapa 1 (sin rotación):** POST forzado a los 6 recursos → los 6 quedaron `is_alive=True`. Simulador arrancado con comando único válido (sin sourcear `app/.env`). Healthcheck 3/3 OK, `db.data` +71 docs/60 s. **Etapa 2 (rotación RISK-SEC-9):** tokens fuertes generados (`openssl rand -hex 32`), distintos por stack. Backup de `.env` previo. DELETE de los 6 resources y de las 13 SAVER-RULE de producción (el saver no se podía borrar por dependencia de rules). Reinicio de `node` (OK) y `node-p2` (falló por bind-mount roto — `sed -i` sobre `.env`, BACKLOG-OPS-9 reproducido; recuperado con `up -d --no-deps --force-recreate node`). Self-heal recreó los 6 resources con tokens nuevos; `reconcileSaverRules` recreó las 13 rules enabled=True.
+
+**Verificación.** Healthcheck 3/3 OK · `db.data` +154 docs/60 s · edge-engine suscrito y procesando · P2 sin rules (no había antes). Token viejo `121212` no aparece en código. Tokens nuevos: producción `90f12d2d...` · P2 `e99686ac...` (primeros 8 chars, distintos).
+
+**Defecto encontrado y corregido en caliente.** `healthcheck_demo.sh:26` tenía `resource:3920e268` hardcodeado — el ID rota en cada rebuild/recreación de EMQX. Corregido para buscar por `description == "saver-webhook"` y consultar el status individual por ID dinámico. `docs/runbook_emqx_saver.md` actualizado con el mismo criterio.
+
+**Errores de método — uno, sin suavizar.** El `sed -i` sobre `p2/app.env` rompió el bind-mount de `node-p2` (mismo incidente que #65). Recuperado con `--force-recreate`. La regla operativa de BACKLOG-OPS-9 se aplica: **truncar en el mismo archivo o asumir recreate**, nunca `sed -i` sobre `.env` bind-mounteado.
+
+**Carry-over para #67, en orden.**
+1. **S2** — sigue bloqueada por D1 (bundle con URL de prod horneada); trae consigo el montaje permanente de la ruta (D-4 diferido).
+2. **S3–S7** — con el aviso de K1 y la advertencia de BACKLOG-API-4 sobre `template.js`.
+3. **K2** — discrepancia de packs.
+4. `wanomi-edge-p2` a `up` (gate propio) · `TEST_USER_EMAIL` · BACKLOG-TENANT-11 (Opción B, re-enumerar desde cero) · `seeds/_dev/` retención · BACKLOG-OPS-3 · BACKLOG-RULE-8 · `COSTURAS.md`.
+5. **Actualizar `COSTURAS.md`** — CST-12 (ingesta) puede mover de NO DECIDIDO a CONFORME con la verificación de hoy.
+
+**Nota de push.** Al cierre hay **0 commits sin push**. Push requiere orden explícita de Franco.

@@ -35,9 +35,13 @@ borrar nada:
 
 ```bash
 SEC=$(grep '^EMQX_DEFAULT_APPLICATION_SECRET' .env | cut -d= -f2 | tr -d '\r\n')
-docker exec emqx curl -s -X POST -u "admin:${SEC}" \
-  'http://localhost:8081/api/v4/resources/resource:3920e268'
+RID=$(docker exec emqx curl -s -u "admin:${SEC}" 'http://localhost:8081/api/v4/resources' \
+  | python3 -c 'import json,sys;d=json.load(sys.stdin);r=[x for x in d.get("data",[]) if x.get("description")=="saver-webhook"];print(r[0].get("id","") if r else "")')
+docker exec emqx curl -s -X POST -u "admin:${SEC}" "http://localhost:8081/api/v4/resources/${RID}"
 ```
+
+> Nota: el ID del resource rota en cada rebuild/recreación de EMQX. No hardcodear
+> `resource:3920e268`; buscar siempre por `description == "saver-webhook"`.
 
 Respuesta esperada: `{"code":0}` (HTTP 200).
 

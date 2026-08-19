@@ -23,8 +23,13 @@ if [ -z "${SEC}" ]; then
   R2=1
 else
   ALIVE="$(docker exec emqx curl -s -u "admin:${SEC}" \
-    'http://localhost:8081/api/v4/resources/resource:3920e268' 2>/dev/null \
-    | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["data"]["status"][0]["is_alive"])' 2>/dev/null)"
+    'http://localhost:8081/api/v4/resources' 2>/dev/null \
+    | python3 -c 'import json,sys;d=json.load(sys.stdin);r=[x for x in d.get("data",[]) if x.get("description")=="saver-webhook"];print(r[0].get("id","") if r else "")' 2>/dev/null)"
+  if [ -n "${ALIVE}" ]; then
+    ALIVE="$(docker exec emqx curl -s -u "admin:${SEC}" \
+      "http://localhost:8081/api/v4/resources/${ALIVE}" 2>/dev/null \
+      | python3 -c 'import json,sys;d=json.load(sys.stdin);s=d.get("data",{}).get("status",[]);print(s[0].get("is_alive") if s else "")' 2>/dev/null)"
+  fi
   if [ "${ALIVE}" = "True" ]; then
     L2="OK  · resource saver-webhook is_alive=true"
     R2=0
