@@ -11775,3 +11775,50 @@ Consecuencia: §10 queda **incumplido tal cual está escrito** (0 FAIL ≠ ~4; S
 5. `backups/`: definir retención junto a `seeds/_dev/`; mientras tanto queda local sin versionar.
 
 **Nota de push.** Al cierre hay **1 commit sin push** (el asiento de esta sesión). Push requiere orden explícita de Franco.
+
+## Sesión #68 — 2026-08-19/20 · Área 2 · D1 resuelto (runtime config) + D-4 montado + S3/S4 verificados
+
+**Apertura — tres FALLAS de ingesta, recuperadas por runbook.** Simulador caído (arranque canónico, sin sourcear `app/.env`), `saver-webhook is_alive=False` (POST forzado al resource `resource:10b781a3`, buscado por descripción), `db.data` sin crecimiento. Healthcheck 3/3 OK, +57 docs/60 s. Git: HEAD `5f6f3e4`, 0 sin push, 3 modificados + `tools/verify/` sin trackear.
+
+**Cierre adeudado de #67 — desviación declarada.** El asiento de #67 (bitácora + corpus v1.07 + adendas CST-12/-14 + `tools/verify/`) estaba escrito en el árbol pero **nunca se commiteó**: la propia bitácora de #67 declaraba "1 commit sin push" que no existía. Se materializó en esta sesión como commit `47e4f21`, sin tocar una línea. El árbol sucio de la apertura era exactamente eso.
+
+**Foco.** Carry-over de #67, ítem 1 (S3–S7). Decisión de Franco en sesión: **D1 primero**, después S3+S4; validación de referencia en `POST /template` (rechazar inválida, permitir vacío); exposición directa al árbol compartido sin interruptor.
+
+### D1 — RESUELTO. Opción A: runtime config (firma Franco)
+
+**Medición previa (todo verificado antes de tocar):** `npm run start` = `nuxt start`, no buildea · prod `node` sirve SPA :3000 y API :3001 **en el mismo proceso** (`api/index.js:45` hace `listen(API_PORT)` al cargarse como serverMiddleware) · la URL se horneaba en build-time en 6 archivos (`.nuxt` + `dist`) **y** el trío MQTT vía `env:{}` (`default.vue:231-232,273`, 4 usos en `devices.vue`) · `docker_nuxt_build.yml` no declara env — el horneado dependía del shell que corrió el build · Nuxt **2.14.7** + `@nuxtjs/axios` **5.12.2** soportan `publicRuntimeConfig` sin dependencias nuevas · el `.env` raíz (env_file de ambos `node`) contiene **10 nombres, ninguno browser-facing** ⇒ `require('dotenv').config()` al tope de `nuxt.config.js` carga el `.env` per-stack (prod: `app/.env` por mount; P2: `p2/app.env` por bind `:ro`) sin colisión con env_file, porque dotenv no pisa lo que ya existe y nada de eso existe.
+
+**Implementado.** `nuxt.config.js`: dotenv al tope + `publicRuntimeConfig {axios.baseURL, mqtt_prefix, mqtt_host, mqtt_port}` (el bloque `axios.baseURL` queda como fallback build-time) · `default.vue` ×3 y `devices.vue` ×4 migrados a `this.$config.*` · `p2/app.env` `MQTT_PORT` 8083→**8084** (cross-wire medido en #62: el WS de P2 es `8084:8083`; backend no consume `MQTT_*`, grep=0) — edición por truncate-in-place, nunca `sed -i` (BACKLOG-OPS-9) · `docker_compose_p2.yml`: `node-p2` publica **`3100:3000`** (el 3000 de P2 dejaba de ser peligroso al deshornearse la URL).
+
+**Verificación runtime (el bundle conserva la IP como default inerte — lo que manda es lo servido).** Rebuild por `docker_nuxt_build.yml` (dotenv hace el build determinista) · restart de `node` prod → `window.__NUXT__.config` sirve `baseURL ...:3001/api`, `mqtt_port: 8083` (los suyos) · recreate de `node-p2` → sirve `...:3101/api`, `mqtt_port: 8084` (los suyos) · UI P2 en :3100 → 200 · API P2 :3101 → 400 en login vacío (vivo) · **healthcheck prod 3/3 OK post-restart, +70 docs/60 s**.
+
+**Dato contra BACKLOG-OPS-1:** el restart de `node` con EMQX activo **NO** tumbó el saver esta vez (`is_alive=true` post-restart). La hipótesis "restart de node ⇒ saver cae" queda refutada como determinista; el disparador real sigue sin identificar.
+
+### D-4 — montaje permanente de la ruta equipmentsheets (firma Franco)
+
+`app.use("/api", require("./routes/equipmentsheets.js"))` en `index.js`, sin interruptor (la Guarda de DEC-REF-95 cumplió su ciclo). **Estado por stack, medido:** P2 la sirve (401 sin token, control); prod sigue **404** — el restart de D1 fue anterior al montaje y el código nuevo solo entra en el próximo restart de `node`. Declarado: producción ya corre el código de S3/S4 (verificado inerte: las plantillas pre-ficha no llevan `deviceType` y la UI nunca lo envía) y levantará la ruta en su próximo reinicio.
+
+### S3 y S4 — implementados y verificados E2E en P2 por API
+
+**S3** (`template.js` +1 campo): `deviceType: {type: String, default: ''}` — referencia a la ficha (`equipmentsheets.deviceType` ES el identificador, DEC-REF-91); la plantilla referencia, no copia (K1). Sin `uniqueValidator` (regla BACKLOG-API-4: `template.js` tiene subdocumentos con enums). `POST /template` valida la referencia cuando viene no vacía (400 si no existe en `equipmentsheets`, 400 si no es string — guarda contra operador `$` en el body), permite vacío (compat pre-ficha).
+**S4** (`devices.js` POST /device): el alta materializa `devices.deviceType` desde la ficha vía template — la única escritura que el edge necesita (Fork II de -92: el edge nunca lee templates). `delete newDevice.deviceType` previo: **el body no es autor del campo** (K1 / -91). Guarda `ObjectId.isValid(templateId)`: un id basura conserva el comportamiento anterior (nace con `''`) en vez de morir con CastError→500.
+
+**Verificación (todo medido en P2, base `iotix` de `mongo-p2`).** Login superadmin-p2 200 · `POST /equipmentsheet` ficha `test-s3-gen` → success (ruta montada, D-1 mitad superadmin re-verificado) · template con deviceType válido → success · con `no-existe` → **400 "deviceType does not reference an existing equipment sheet"** · sin deviceType → success · device sobre template referenciada con `deviceType:"TEXTO-LIBRE-HOSTIL"` en el body → creado `2IJsssVy` con **`deviceType:"test-s3-gen"`** (hostil descartado) · device sobre template sin ficha → `FfFNltRO` con **`deviceType:""`**. La mitad cellowner de D-1 (403) no se re-ejecutó: el password de `cellowner-p2` murió con `/tmp/.p2_pw`; D-1 queda apoyado en la medición de ambas mitades de #64.
+
+**Hallazgo lateral — era el pendiente "TEST_USER_EMAIL" del carry-over.** `TEST_USER_EMAIL/PWD` de `p2/app.env` apuntan a `cellowner-nea@wanomi.test`, usuario **inexistente** en la base de P2 (los únicos dos son los de DEC-REF-93). Login medido: falla. Queda como ítem: reapuntar a `cellowner-p2` o retirar el par.
+
+**Datos de prueba que quedan en P2 (declarados, sirven a S5–S7):** ficha `test-s3-gen` (1 variable `test_var`), plantillas `tpl-s3-ok` / `tpl-s3-bad` (rechazada, no existe) / `tpl-s3-sin`, devices `2IJsssVy` y `FfFNltRO`.
+
+### Errores de método — uno, menor
+
+Primer intento de alta de device sin `templateName` → `ValidationError` del modelo (required). El error era de mi payload de prueba, no del código S4; corregido y re-ejecutado. Se declara por honestidad del registro, no por peso.
+
+### Carry-over para #69, en orden
+
+1. **S5** — selector de ficha en pack (`rulepacks/index.vue:79-81`) + validadores que pasan de "existe" a "referencia válida" (`rulepacks.js:118`, `ruleValidation.js:45-61`). Con D1 resuelto, la UI de P2 (:3100) ya es usable.
+2. **S6** — regla con variable desde la lista de la ficha (`_packId.vue`).
+3. **S7** — primer disparo: telemetría espontánea en P2 (segunda instancia del sim apuntada al stack de prueba, `api.js:11-12`), regla tipo D sobre variable de ciclo normal.
+4. **TEST_USER_EMAIL de `p2/app.env`** — reapuntar a `cellowner-p2@wanomi.test` o retirar (medido inexistente).
+5. Deudas con gate propio que siguen: **sincronización spec↔runner** (#67 ítem 2) · **CST-12 → CONFORME** requiere firma sobre BACKLOG-OPS-1, con dato nuevo a favor (esta sesión: restart de node no tumbó el saver) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 (discrepancia de packs) · `wanomi-edge-p2` a `up` · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
+
+**Nota de push.** Al cierre hay **2 commits sin push**: `47e4f21` (asiento de #67, materializado en esta sesión) y el asiento de #68. Push requiere orden explícita de Franco.

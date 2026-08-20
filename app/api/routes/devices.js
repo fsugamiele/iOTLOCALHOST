@@ -99,6 +99,18 @@ router.post("/device", checkAuth, async (req, res) => {
       return res.status(400).json({ status: "error", error: "templateId is required" });
     }
 
+    // S4 (DEC-REF-92, "enchufe de E3"): el alta materializa devices.deviceType
+    // desde la ficha referenciada por el template. El body NO es autor del
+    // campo (K1 / DEC-REF-91: la ficha es la única autora de la cadena de
+    // texto que compara el motor en ruleEngine.js:46).
+    delete newDevice.deviceType;
+    if (mongoose.Types.ObjectId.isValid(newDevice.templateId)) {
+      const deviceTemplate = await Template.findOne({ userId: userId, _id: newDevice.templateId });
+      if (deviceTemplate && deviceTemplate.deviceType) {
+        newDevice.deviceType = deviceTemplate.deviceType;
+      }
+    }
+
     const firmwareType = newDevice.firmwareType || "wanomi";
 
     if (firmwareType === "tasmota") {

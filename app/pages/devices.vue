@@ -372,7 +372,7 @@ export default {
       // Tasmota MQTT credentials modal
       tasmotaMqttModal: false,
       tasmotaMqttData: {
-        broker: process.env.mqtt_host || "",
+        broker: this.$config.mqtt_host || "",
         username: "",
         password: "",
         topicPrefix: ""
@@ -384,7 +384,7 @@ export default {
       provisionForm: {
         ssid: "",
         wifiPassword: "",
-        serverIP: process.env.mqtt_host || "",
+        serverIP: this.$config.mqtt_host || "",
         deviceIP: "192.168.4.1"
       },
       provisionSending: false,
@@ -415,7 +415,7 @@ export default {
     openProvisionModal(device) {
       if (device.firmwareType === "tasmota") {
         this.tasmotaMqttData = {
-          broker: process.env.mqtt_host || "",
+          broker: this.$config.mqtt_host || "",
           username: device.tasmotaName,
           password: "", // not stored after initial display
           topicPrefix: device.tasmotaName
@@ -550,7 +550,7 @@ export default {
             if (res.data.firmwareType === "tasmota") {
               // Show MQTT credentials modal
               this.tasmotaMqttData = {
-                broker: process.env.mqtt_host || "",
+                broker: this.$config.mqtt_host || "",
                 username: res.data.mqttUsername,
                 password: res.data.mqttPassword,
                 topicPrefix: res.data.tasmotaName

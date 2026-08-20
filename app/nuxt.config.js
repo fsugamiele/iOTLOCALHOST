@@ -1,3 +1,5 @@
+require('dotenv').config();  // D1: carga /home/node/app/.env (prod) o p2/app.env (bind :ro) ANTES de evaluar publicRuntimeConfig; dotenv no pisa env ya inyectado
+
 export default {
   ssr: false,
   /*
@@ -71,12 +73,18 @@ export default {
 
   // Axios module configuration (https://go.nuxtjs.dev/config-axios)
   axios: {
-    baseURL: process.env.AXIOS_BASE_URL 
+    baseURL: process.env.AXIOS_BASE_URL   // fallback build-time; en runtime lo pisa publicRuntimeConfig.axios
   },
-  env:{
-   mqtt_prefix: process.env.MQTT_PREFIX,
-   mqtt_host: process.env.MQTT_HOST,
-   mqtt_port: process.env.MQTT_PORT
+  // D1 — runtime config: la URL de la API y el trío MQTT del navegador se
+  // inyectan al arrancar `nuxt start` desde el env de cada contenedor.
+  // Un solo bundle sirve todos los stacks; nada de red queda horneado.
+  publicRuntimeConfig: {
+    axios: {
+      baseURL: process.env.AXIOS_BASE_URL
+    },
+    mqtt_prefix: process.env.MQTT_PREFIX,
+    mqtt_host: process.env.MQTT_HOST,
+    mqtt_port: process.env.MQTT_PORT
   },
 
   server: {

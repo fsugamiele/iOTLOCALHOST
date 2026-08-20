@@ -57,6 +57,7 @@ const templateSchema = new Schema({
     userId:      { type: String, required: [true] },
     name:        { type: String, required: [true] },
     description: { type: String },
+    deviceType:  { type: String, default: '' },  // S3 (DEC-REF-91/-92): referencia a la ficha (equipmentsheets.deviceType); '' = sin ficha, compat con plantillas pre-ficha. NO copia: la ficha es madre
     createdTime: { type: Number, required: [true] },
     widgets:     { type: [widgetSchema], default: [] },
 });

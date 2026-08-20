@@ -6,6 +6,7 @@ const { buildReadFilter } = require('../middlewares/scope.js');
 //models import
 import Template from '../models/template.js';
 import Device from '../models/device.js';
+import EquipmentSheet from '../models/equipment_sheet.js';
 
 //get templates
 router.get('/template', checkAuth, async (req, res) => {
@@ -54,6 +55,19 @@ router.post('/template', checkAuth, async (req, res) => {
 
         if (!newTemplate.widgets || !Array.isArray(newTemplate.widgets) || newTemplate.widgets.length === 0) {
             return res.status(400).json({ status: "error", error: "Template must have at least one widget" });
+        }
+
+        // S3 (decisión Franco): si la plantilla referencia una ficha, la
+        // referencia debe ser válida — se rechaza texto libre desde el
+        // nacimiento del campo. '' sigue permitido (compat pre-ficha).
+        if (newTemplate.deviceType) {
+            if (typeof newTemplate.deviceType !== 'string') {
+                return res.status(400).json({ status: "error", error: "deviceType must be a string" });
+            }
+            const sheet = await EquipmentSheet.findOne({ deviceType: newTemplate.deviceType });
+            if (!sheet) {
+                return res.status(400).json({ status: "error", error: "deviceType does not reference an existing equipment sheet" });
+            }
         }
 
         newTemplate.userId = userId;

@@ -228,8 +228,8 @@ export default {
         if (credentials.data.status == "success") {
           this.options.username = credentials.data.username;
           this.options.password = credentials.data.password;
-          this.options.host = process.env.mqtt_host;
-          this.options.port = process.env.mqtt_port;
+          this.options.host = this.$config.mqtt_host;
+          this.options.port = this.$config.mqtt_port;
         }
       } catch (error) {
         console.log(error);
@@ -270,7 +270,7 @@ export default {
       await this.getMqttCredentials();
 
       const connectUrl =
-        process.env.mqtt_prefix +
+        this.$config.mqtt_prefix +
         this.options.host +
         ":" +
         this.options.port +

@@ -34,8 +34,11 @@ services:
       - ./app/:/home/node/app
       - ./p2/app.env:/home/node/app/.env:ro
     ports:
-      # Solo la API publicada (host 3101 -> API 3001). Nuxt y HTTP plano NO se publican en P2.
+      # API (host 3101 -> 3001) y Nuxt (host 3100 -> 3000). El front de P2 se
+      # publica desde D1 (opción A): el bundle ya no hornea URL — nuxt start
+      # inyecta AXIOS_BASE_URL/MQTT_* desde p2/app.env en runtime.
       - "3101:3001"
+      - "3100:3000"
     depends_on:
       mongo:
         condition: service_healthy

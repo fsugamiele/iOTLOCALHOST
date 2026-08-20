@@ -38,6 +38,7 @@ app.use("/api", require("./routes/rules.js"));
 app.use("/api", require("./routes/rulepacks.js"));
 app.use("/api", require("./routes/dataprovider.js"));
 app.use("/api", require("./routes/dashboard_noc.js"));
+app.use("/api", require("./routes/equipmentsheets.js"));  // D-4 montaje permanente (Franco, #68). Sin interruptor: exposición directa firmada junto a S3/S4
  
 module.exports = app;
 
