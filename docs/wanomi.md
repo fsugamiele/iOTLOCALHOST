@@ -11854,3 +11854,28 @@ Primer PUT de `s5-cross` sin `inferenceId` → `ValidationError` del schema (req
 5. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · `wanomi-edge-p2` a `up` · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
 
 **Nota de push.** Al cierre hay 4 commits sin push (3 previos + asiento de #69). Push requiere orden explícita de Franco.
+
+## Sesión #70 — 2026-08-26 · Área 2 · S6 implementado y verificado en P2
+
+**Foco.** Carry-over de #69 ítem 1: regla con variable desde la lista de la ficha (`_packId.vue`).
+
+**Decisión de Franco en sesión — alcance y dureza:** el selector cubre **deviceType Y variable** de la regla (no solo variable como decía el carry-over — cierra la 2ª superficie de texto libre de DEC-REF-91 adenda #60; la 3ª, CrossExprNode, sigue fuera de la rebanada por alcance firmado) + **estricto con fallback**: cuando la ficha declara variables el selector no admite texto libre; cuando no declara (caso `cummins-pcc`, `variables:[]`), texto libre con aviso ámbar — espejo del criterio de warnings del backend (rulepacks.js: una ficha sin variables no tiene contra qué validar).
+
+**Implementado (solo UI, `app/pages/rulepacks/_packId.vue`; backend intacto).** `sheets[]` por `GET /equipmentsheet` (lectura global D-1, mismo patrón que `index.vue` en S5) · deviceType: `base-input` → `el-select` filterable de fichas, default la del pack (`emptyRule`) · variable: `el-select` estricto alimentado por `draftVariables` (computed sobre la ficha del deviceType elegido EN LA REGLA — una regla cross puede apuntar a otro equipo del sitio), label `name — label`; fallback `base-input` + aviso si la ficha no declara variables · watcher `ruleDraft.deviceType`: resetea variable solo si la ficha nueva declara variables y la actual no está entre ellas, con guard contra la apertura del modal (draft null→objeto) · `setpointSource.variable` de typeC NO tocado (es key de siteState, no variable de equipo).
+
+**Verificación en P2.** Build por `docker_nuxt_build.yml` exit 0 (×2 — el primero dejó un mensaje impreciso para el caso catálogo vacío, que ES el estado de prod; corregido a "No hay fichas de equipo cargadas (o no se pudieron cargar)" y rebuildeado) · chunk `32361ad.js` con los strings nuevos medido en `dist/_nuxt`, chunk viejo reemplazado · restart `node-p2` → UI :3100 **200**, API :3101 **401** sin token (control) · login superadmin-p2 200 · fuente del selector medida: `cummins-pcc` (0 vars → fallback texto libre) y `test-s3-gen` (1 var `test_var` → selector estricto) — ambos caminos ejercitables en P2 con los datos ya declarados de #68/#69.
+
+**Declarado — efecto en prod del próximo restart de `node`:** el bundle nuevo y la ruta `equipmentsheets` (D-4) llegan juntos al mismo restart; prod no tiene fichas ⇒ el selector de deviceType de regla queda deshabilitado con aviso hasta sembrar la primera ficha (mismo ítem que carry-over #69.3 — sembrar `cummins-pcc`). No es regresión: el PUT de pack en prod ya daba 400 desde S5.
+
+### Errores de método — uno, menor
+
+Primer login de verificación leyó `/tmp/.p2_pw` entero (2 líneas) como password → 401. El archivo guarda una credencial por línea; con la línea 1 entra. Se declara por honestidad del registro.
+
+### Carry-over para #71, en orden
+
+1. **S7** — primer disparo: telemetría espontánea en P2 (segunda instancia del sim apuntada al stack de prueba, `api.js:11-12`), regla tipo D sobre variable de ciclo normal. Con S6, la regla se compone entera desde la ficha.
+2. **Sembrar ficha `cummins-pcc` en prod** (de #69) — antes o junto al próximo restart de `node`, o la consola de packs en prod queda de solo-lectura de facto.
+3. **TEST_USER_EMAIL de `p2/app.env`** — reapuntar a `cellowner-p2@wanomi.test` o retirar (sigue de #68).
+4. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · `wanomi-edge-p2` a `up` · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
+
+**Nota de push.** Al cierre hay 5 commits sin push (4 previos + asiento de #70). Push requiere orden explícita de Franco.

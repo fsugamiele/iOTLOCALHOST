@@ -164,11 +164,55 @@
           </div>
           <div class="col-md-3">
             <label>deviceType <span class="text-danger">*</span></label>
-            <base-input v-model="ruleDraft.deviceType" placeholder="cummins-pcc" />
+            <!-- S6 — el deviceType de la REGLA también es referencia a ficha
+                 (DEC-REF-91 adenda #60: 2ª superficie de texto libre; la 3ª,
+                 CrossExprNode, sigue fuera de la rebanada). Default: la ficha
+                 del pack (emptyRule). Mismo patrón que el selector de pack
+                 (index.vue, S5). -->
+            <el-select
+              v-model="ruleDraft.deviceType"
+              class="select-primary"
+              style="width:100%"
+              filterable
+              :disabled="sheets.length === 0"
+            >
+              <el-option
+                v-for="s in sheets"
+                :key="s.deviceType"
+                :label="s.manufacturer ? `${s.deviceType} — ${s.manufacturer} ${s.model || ''}`.trim() : s.deviceType"
+                :value="s.deviceType"
+              />
+            </el-select>
+            <small v-if="sheets.length === 0" class="text-warning">
+              No hay fichas de equipo cargadas (o no se pudieron cargar).
+            </small>
           </div>
           <div class="col-md-3">
             <label>variable <span class="text-danger">*</span></label>
-            <base-input v-model="ruleDraft.variable" placeholder="oil_pressure" />
+            <!-- S6 — variables de la ficha del deviceType elegido en la regla.
+                 Estricto cuando la ficha declara variables (decisión Franco,
+                 #70); texto libre cuando no — espejo del criterio de warnings
+                 del backend (rulepacks.js: una ficha con variables:[] no
+                 tiene contra qué validar). -->
+            <el-select
+              v-if="draftVariables.length > 0"
+              v-model="ruleDraft.variable"
+              placeholder="Elegir variable de la ficha"
+              class="select-primary"
+              style="width:100%"
+              filterable
+            >
+              <el-option
+                v-for="v in draftVariables"
+                :key="v.name"
+                :label="v.label ? `${v.name} — ${v.label}` : v.name"
+                :value="v.name"
+              />
+            </el-select>
+            <base-input v-else v-model="ruleDraft.variable" placeholder="oil_pressure" />
+            <small v-if="ruleSheet && draftVariables.length === 0" class="text-warning">
+              La ficha {{ ruleDraft.deviceType }} no declara variables — texto libre.
+            </small>
           </div>
         </div>
 
@@ -413,6 +457,13 @@ import CrossExprNode, { stripEditorKeys } from '@/components/CrossExprNode.vue';
 // con durationSec/countThreshold/matchCondition para S) que amerita
 // mini-forms propios; se defiere a roadmap futuro. Registrado como
 // decisión tomada, no silenciado.
+//
+// S6 (#70) — los campos deviceType y variable de la regla dejan de ser
+// texto libre: deviceType es selector de fichas (DEC-REF-91 adenda #60)
+// y variable es selector estricto de las variables declaradas por la
+// ficha elegida, con fallback a texto libre cuando la ficha no declara
+// variables (decisión Franco, espejo del criterio de warnings del
+// backend). CrossExprNode sigue fuera de la rebanada (alcance -91).
 
 export default {
   middleware: ['authenticated', 'superadmin'],
@@ -434,7 +485,11 @@ export default {
       // backend devuelve en el 200 del PUT (validateC ADVERTENCIAS de
       // config semánticamente muerta). Se muestran como banner ámbar
       // in-form; no bloquean el save.
-      saveWarnings: []
+      saveWarnings: [],
+      // S6 — catálogo de fichas (lectura global D-1) para los selectores
+      // de deviceType y variable del editor de reglas. Misma fuente que
+      // el selector de pack (index.vue, S5).
+      sheets: []
     };
   },
   computed: {
@@ -449,6 +504,24 @@ export default {
       if (this.deleteRuleTargetIndex === null || !this.pack) return '';
       const r = this.pack.rules[this.deleteRuleTargetIndex];
       return r ? r.ruleId : '';
+    },
+    // S6 — índice de fichas por deviceType para el editor de reglas.
+    sheetByType() {
+      const m = {};
+      for (const s of this.sheets) m[s.deviceType] = s;
+      return m;
+    },
+    // Ficha del deviceType elegido EN LA REGLA (no necesariamente la del
+    // pack: una regla cross puede apuntar a otro equipo del sitio).
+    ruleSheet() {
+      if (!this.ruleDraft) return null;
+      return this.sheetByType[this.ruleDraft.deviceType] || null;
+    },
+    // Variables declaradas por esa ficha. Vacío ⇒ el editor cae a texto
+    // libre (una ficha con variables:[] no tiene contra qué validar —
+    // mismo criterio que los warnings del backend, rulepacks.js).
+    draftVariables() {
+      return (this.ruleSheet && this.ruleSheet.variables) || [];
     },
     isRuleReady() {
       const r = this.ruleDraft;
@@ -490,8 +563,27 @@ export default {
     const ok = await this.revalidateSuperadmin();
     if (!ok) return;
     await this.loadPack();
+    this.loadSheets();
   },
   methods: {
+    // S6 — catálogo de fichas para los selectores del editor. Lectura
+    // global (D-1). Si falla, deviceType queda deshabilitado y variable
+    // cae a texto libre (draftVariables = []), con aviso visible.
+    async loadSheets() {
+      try {
+        const res = await this.$axios.get('/equipmentsheet', {
+          headers: { token: this.$store.state.auth.token }
+        });
+        this.sheets = res.data?.data || [];
+      } catch (e) {
+        this.sheets = [];
+        this.$notify({
+          type: 'warning',
+          icon: 'tim-icons icon-alert-circle-exc',
+          message: e.response?.data?.error || 'Error cargando fichas de equipo'
+        });
+      }
+    },
     async revalidateSuperadmin() {
       try {
         const res = await this.$axios.get('/me', {
@@ -743,6 +835,19 @@ export default {
     }
   },
   watch: {
+    // S6 — al cambiar el deviceType de la regla, la variable elegida puede
+    // quedar fuera de la ficha nueva: se resetea SOLO si la ficha nueva
+    // declara variables y la actual no está entre ellas (si no declara,
+    // el campo es texto libre y cualquier valor es válido). El guard de
+    // oldType evita disparar en la apertura del modal (draft null→objeto).
+    'ruleDraft.deviceType'(newType, oldType) {
+      if (!this.ruleDraft || newType === oldType) return;
+      if (oldType === undefined || oldType === '') return;
+      const vars = this.draftVariables;
+      if (vars.length > 0 && !vars.some(v => v.name === this.ruleDraft.variable)) {
+        this.ruleDraft.variable = '';
+      }
+    },
     // Cuando el usuario cambia type en el form, ajustar shape del
     // draft para que los inputs relevantes tengan defaults.
     'ruleDraft.type'(newType, oldType) {
