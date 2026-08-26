@@ -11879,3 +11879,5 @@ Primer login de verificación leyó `/tmp/.p2_pw` entero (2 líneas) como passwo
 4. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · `wanomi-edge-p2` a `up` · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
 
 **Nota de push.** Al cierre hay 5 commits sin push (4 previos + asiento de #70). Push requiere orden explícita de Franco.
+
+> **Append post-cierre — push ejecutado (2026-08-26).** Franco dio la orden explícita ("push de los 5 commits acumulados"). Medido al ejecutar: `origin` ya estaba en `691d9db` — los 4 commits que la nota de #69 y la nota de esta sesión declaraban sin push **ya habían sido pusheados** antes de la apertura (la apertura misma medía "sin push: 0"; ambas notas se escribieron contra el dato viejo de #69). El push real fue `691d9db..d72e744` — solo el asiento de #70. Post-push verificado: `origin/feature/telco-support..HEAD` = 0. Este append corrige el registro sin editar las filas (append-only). El commit de este registro queda local hasta nueva orden, siguiendo la convención de #66.
