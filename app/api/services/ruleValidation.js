@@ -168,12 +168,45 @@ function validateRule(rule) {
   }
 }
 
+// ─── Referencias de hojas cross · S5 ──────────────────────────────────
+// Recorre los crossExpr de las reglas type:'cross' y devuelve las refs
+// { ruleId, deviceType, variable } de cada hoja (equipo o término sum).
+// Puro: la comparación contra equipmentsheets (async, DB) vive en la
+// ruta — shape y referencia son dos validaciones de naturaleza distinta.
+function collectCrossLeafRefs(pack) {
+  const refs = [];
+  const rules = Array.isArray(pack?.rules) ? pack.rules : [];
+  const walk = (node, ruleId) => {
+    if (node == null || typeof node !== 'object') return;
+    if (node.op === 'AND' || node.op === 'OR') {
+      for (const child of node.children || []) walk(child, ruleId);
+      return;
+    }
+    if (Array.isArray(node.sum)) {
+      for (const term of node.sum) {
+        if (term && term.deviceType && term.variable) {
+          refs.push({ ruleId, deviceType: term.deviceType, variable: term.variable });
+        }
+      }
+      return;
+    }
+    if (node.deviceType && node.variable) {
+      refs.push({ ruleId, deviceType: node.deviceType, variable: node.variable });
+    }
+  };
+  for (const r of rules) {
+    if (r && r.type === 'cross') walk(r.crossExpr, r.ruleId);
+  }
+  return refs;
+}
+
 module.exports = {
   validateCrossTree,
   validateD,
   validateC,
   validateS,
   validateRule,
+  collectCrossLeafRefs,
   ALL_OPS,
   ARITHMETIC_OPS,
 };

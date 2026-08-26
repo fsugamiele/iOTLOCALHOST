@@ -77,10 +77,27 @@
       </div>
       <div class="form-group">
         <label>deviceType <span class="text-danger">*</span></label>
-        <base-input
+        <!-- S5 — selector de ficha: el deviceType del pack ES una referencia
+             a equipmentsheets (DEC-REF-91) y el backend la exige (400 si no
+             existe). Sin texto libre. -->
+        <el-select
           v-model="newPack.deviceType"
-          placeholder="ej. cummins-pcc"
-        />
+          placeholder="Elegir ficha de equipo"
+          class="select-primary"
+          style="width:100%"
+          filterable
+          :disabled="sheets.length === 0"
+        >
+          <el-option
+            v-for="s in sheets"
+            :key="s.deviceType"
+            :label="s.manufacturer ? `${s.deviceType} — ${s.manufacturer} ${s.model || ''}`.trim() : s.deviceType"
+            :value="s.deviceType"
+          />
+        </el-select>
+        <small v-if="sheets.length === 0" class="text-warning">
+          No hay fichas de equipo cargadas — el pack no se puede crear sin una.
+        </small>
       </div>
       <div class="form-group">
         <label>Descripción</label>
@@ -154,6 +171,7 @@ export default {
     return {
       loading: true,
       packs: [],
+      sheets: [],
       createModal: false,
       creating: false,
       newPack: this.emptyPack(),
@@ -173,6 +191,7 @@ export default {
     const revalidated = await this.revalidateSuperadmin();
     if (!revalidated) return;
     await this.loadPacks();
+    await this.loadSheets();
   },
   methods: {
     async revalidateSuperadmin() {
@@ -213,6 +232,23 @@ export default {
         });
       } finally {
         this.loading = false;
+      }
+    },
+    async loadSheets() {
+      // S5 — catálogo de fichas para el selector de deviceType. Lectura
+      // global (D-1). Si falla, el selector queda vacío y el modal avisa.
+      try {
+        const res = await this.$axios.get('/equipmentsheet', {
+          headers: { token: this.$store.state.auth.token }
+        });
+        this.sheets = res.data?.data || [];
+      } catch (e) {
+        this.sheets = [];
+        this.$notify({
+          type: 'warning',
+          icon: 'tim-icons icon-alert-circle-exc',
+          message: e.response?.data?.error || 'Error cargando fichas de equipo'
+        });
       }
     },
     formatDate(value) {

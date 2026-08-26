@@ -11824,3 +11824,33 @@ Primer intento de alta de device sin `templateName` → `ValidationError` del mo
 **Nota de push.** Al cierre hay **2 commits sin push**: `47e4f21` (asiento de #67, materializado en esta sesión) y el asiento de #68. Push requiere orden explícita de Franco.
 
 > **Append post-cierre de #68 — D-1 re-verificado por ambas mitades (2026-08-20).** Franco aportó el password de `cellowner-p2`. Sobre la ruta ya montada (D-4): login cellowner 200 · `GET /equipmentsheet` → **200** (lectura global, D-1) · `POST /equipmentsheet` con `test-no-debe-escribir` → **403 "forbidden: superadmin only"** y la colección queda intacta (`cummins-pcc` de #64 + `test-s3-gen`; el intento no escribió). La frase del cuerpo de #68 ("no se re-ejecutó… queda apoyado en #64") queda superada por esta medición — la fila no se edita, se registra acá (append-only).
+
+## Sesión #69 — 2026-08-26 · Área 2 · S5 implementado y verificado E2E en P2
+
+**Foco.** Carry-over de #68 ítem 1: selector de ficha en pack + validadores que pasan de "existe" a "referencia válida" (`rulepacks.js`, `ruleValidation.js`).
+
+**Medición previa (condiciona el diseño).** Fichas en P2: `cummins-pcc` (**0 variables**), `test-s3-gen` (1 var) · prod: **0 fichas**, pack `cummins-pcc-v1` → `cummins-pcc` · las hojas `ATS` de M1/C1 (cascada DEC-REF-53 D4, transitoria en pack cummins) no tienen ficha en ninguna base.
+
+**Decisión de Franco en sesión — nivel de validación:** **estricto a nivel pack** (400 si `deviceType` no referencia ficha) + **warning no bloqueante en hojas cross** (patrón SF-7/DEC-REF-66 ya existente). Estricto en hojas brickearía la próxima edición del pack productivo.
+
+**Implementado.** `rulepacks.js` PUT: guarda `typeof string` (anti-operador `$`, espejo S3) + `EquipmentSheet.findOne` → **400 "deviceType does not reference an existing equipment sheet"** (mensaje espejo de templates.js, S3) · `ruleValidation.js`: `collectCrossLeafRefs(pack)` nuevo — puro, recorre crossExpr (hojas equipo + términos sum); shape y referencia son validaciones de distinta naturaleza (la ref es async/DB, vive en la ruta) · warnings por hoja: `deviceType sin ficha` / `variable no declarada en la ficha` — la variable solo se chequea **cuando la ficha declara variables** (una ficha con `variables:[]` no tiene contra qué validar; hoy es el caso de `cummins-pcc`) · `rulepacks/index.vue`: `base-input` libre → `el-select` filterable alimentado por `GET /equipmentsheet` (lectura global D-1), sin texto libre, aviso si no hay fichas.
+
+**Verificación E2E en P2 (base `iotix` de `mongo-p2`, API :3101).** `/tmp/.p2_pw` recreado por Franco · login superadmin-p2 200 · PUT `s5-ok` con `test-s3-gen` → **200** · PUT con `no-existe` → **400 referencia** · PUT con `{"$gt":""}` → **400 string** · PUT `s5-cross` (1 regla cross, 4 hojas) → **200 con los 2 warnings exactos**: `ATS/mains_voltage` sin ficha y `test-s3-gen/var_inventada` no declarada; `cummins-pcc/var_inventada` **sin** warning (ficha sin variables, por diseño) y `test-s3-gen/test_var` limpio · RBAC: cellowner-p2 → **403** · SF-3: `Reload publicado` en ambos writes (log node-p2) · rebuild por `docker_nuxt_build.yml` exit 0, chunk con el selector medido en `dist/_nuxt` · restart `node-p2` → UI :3100 **200**, API viva. Prod corre el bundle anterior en memoria: levanta código y bundle nuevos en su próximo restart (criterio D-4 de #68).
+
+**Declarado — efecto en prod del próximo restart de `node`:** la ruta rulepacks ya está montada en prod y prod **no tiene fichas** ⇒ desde ese restart, todo PUT de pack en prod da 400 hasta sembrar la primera ficha (`cummins-pcc`). No es regresión: es la validación haciendo su trabajo; queda como ítem de carry-over.
+
+**Datos de prueba que quedan en P2 (declarados, sirven a S6/S7):** packs `s5-ok` (0 reglas) y `s5-cross` (1 regla cross de 4 hojas), ambos `canary:true` (excluidos del motor edge).
+
+### Errores de método — uno, menor
+
+Primer PUT de `s5-cross` sin `inferenceId` → `ValidationError` del schema (required). Error de mi payload de prueba, no del código S5; corregido y re-ejecutado. Se declara por honestidad del registro.
+
+### Carry-over para #70, en orden
+
+1. **S6** — regla con variable desde la lista de la ficha (`_packId.vue`): el editor de reglas debe ofrecer las variables de la ficha del pack.
+2. **S7** — primer disparo: telemetría espontánea en P2 (segunda instancia del sim, `api.js:11-12`), regla tipo D sobre variable de ciclo normal.
+3. **Sembrar ficha `cummins-pcc` en prod** (nuevo, de esta sesión) — antes o junto al próximo restart de `node`, o la consola de packs en prod queda de solo-lectura de facto.
+4. **TEST_USER_EMAIL de `p2/app.env`** — reapuntar a `cellowner-p2@wanomi.test` o retirar (sigue de #68).
+5. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · `wanomi-edge-p2` a `up` · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
+
+**Nota de push.** Al cierre hay 4 commits sin push (3 previos + asiento de #69). Push requiere orden explícita de Franco.

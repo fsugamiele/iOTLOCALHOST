@@ -22,9 +22,10 @@ const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
-const { validateRule } = require("../services/ruleValidation.js");
+const { validateRule, collectCrossLeafRefs } = require("../services/ruleValidation.js");
 
 const RulePack = require("../models/rule_pack.js");
+import EquipmentSheet from "../models/equipment_sheet.js";
 
 // SF-3 (DEC-REF-58, DEC-REF-61.b, DEC-REF-61-A). Auto-publish al canal
 // de reload tras escritura exitosa. Broadcast: writer NO sabe qué sites
@@ -118,6 +119,15 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
     if (!body.deviceType) {
       return res.status(400).json({ status: "error", error: "deviceType is required" });
     }
+    // S5 — el deviceType del pack pasa de "presente" a "referencia válida"
+    // (espejo de templates.js:63-70, S3). Estricto a nivel pack: 400.
+    if (typeof body.deviceType !== 'string') {
+      return res.status(400).json({ status: "error", error: "deviceType must be a string" });
+    }
+    const packSheet = await EquipmentSheet.findOne({ deviceType: body.deviceType }).lean();
+    if (!packSheet) {
+      return res.status(400).json({ status: "error", error: "deviceType does not reference an existing equipment sheet" });
+    }
     if (body.packId && body.packId !== packId) {
       return res.status(400).json({ status: "error", error: "packId in body must match URL" });
     }
@@ -131,6 +141,25 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
         status: "error",
         error: `regla ${v.ruleId} inválida: ${v.reason}`,
       });
+    }
+
+    // S5 — referencias de hojas cross contra equipmentsheets: WARNING no
+    // bloqueante (decisión de sesión #69). Estricto acá brickearía el pack
+    // productivo cummins-pcc-v1 (hojas ATS sin ficha — cascada DEC-REF-53
+    // D4 transitoria). La variable solo se chequea cuando la ficha declara
+    // variables (una ficha con variables:[] no tiene contra qué validar).
+    const refs = collectCrossLeafRefs(doc);
+    if (refs.length) {
+      const sheets = await EquipmentSheet.find({}).lean();
+      const byType = new Map(sheets.map(s => [s.deviceType, new Set((s.variables || []).map(vb => vb.name))]));
+      for (const ref of refs) {
+        const vars = byType.get(ref.deviceType);
+        if (!vars) {
+          v.warnings.push(`[${ref.ruleId}] hoja ${ref.deviceType}/${ref.variable}: deviceType sin ficha en equipmentsheets`);
+        } else if (vars.size > 0 && !vars.has(ref.variable)) {
+          v.warnings.push(`[${ref.ruleId}] hoja ${ref.deviceType}/${ref.variable}: variable no declarada en la ficha`);
+        }
+      }
     }
 
     const result = await RulePack.findOneAndUpdate(
