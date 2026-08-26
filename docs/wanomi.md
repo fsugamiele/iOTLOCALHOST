@@ -11881,3 +11881,41 @@ Primer login de verificación leyó `/tmp/.p2_pw` entero (2 líneas) como passwo
 **Nota de push.** Al cierre hay 5 commits sin push (4 previos + asiento de #70). Push requiere orden explícita de Franco.
 
 > **Append post-cierre — push ejecutado (2026-08-26).** Franco dio la orden explícita ("push de los 5 commits acumulados"). Medido al ejecutar: `origin` ya estaba en `691d9db` — los 4 commits que la nota de #69 y la nota de esta sesión declaraban sin push **ya habían sido pusheados** antes de la apertura (la apertura misma medía "sin push: 0"; ambas notas se escribieron contra el dato viejo de #69). El push real fue `691d9db..d72e744` — solo el asiento de #70. Post-push verificado: `origin/feature/telco-support..HEAD` = 0. Este append corrige el registro sin editar las filas (append-only). El commit de este registro queda local hasta nueva orden, siguiendo la convención de #66.
+
+## Sesión #71 — 2026-08-26 · Área 2 · S7 VERIFICADO — primer disparo E2E en P2, cadena DEC-REF-91 cerrada
+
+**Foco.** Carry-over de #70 ítem 1: S7 — primer disparo por telemetría espontánea en P2 (segunda instancia del sim, `api.js:11-12`), regla tipo D sobre variable de ciclo normal, compuesta desde la ficha.
+
+**Medición previa.** P2: `sites=0 devices=2 packs=2 (canary) fichas=2 notifications=0 data=0`. `wanomi-edge-p2` caído (gate propio desde #66) — **Franco autorizó subirlo en sesión como parte de S7**: sin él no hay motor en P2 y el criterio binario no es alcanzable. Hallazgo de diseño del sim: `_tick` (`device.js:148`) ignora variables ausentes del estado inicial del rol ⇒ `test_var` de la ficha `test-s3-gen` NUNCA se publica; la spec exige "variable de ciclo normal" ⇒ ficha nueva con UNA variable del estado GEN (`battery_voltage`: reposo 12.6 ± jitter 0.1, clamp [12.0, 14.4]).
+
+**Ejecutado — todo por API del producto (:3101, superadmin-p2), cero errores, todo 200 a la primera.** Ficha `s7-gen` (1 variable `battery_voltage`) → template `tpl-s7` (deviceType `s7-gen`, widget `battery_voltage` @10 s) → device `dev-s7` dId `4MFGpNpx` (**`deviceType:"s7-gen"` materializado por S4, medido en mongo-p2**; `firmwareType:"wanomi"` — equipo del producto, no del sim) → site `CR99001` (= `SITE_ID` de `p2/edge.env`; `wanomi`/`arg`) → bind → pack `s7-disparo` **NO-canary**, UNA regla tipo D: `battery_voltage gt 12.65` (umbral dentro del rango habitual ⇒ disparo espontáneo), cooldown 60 s.
+
+**Segunda instancia del sim — "no requiere tocar el simulador" (DEC-REF-92) cumplido literal.** Copia de `run.js`+`lib/` a `/tmp/sim-p2` con `node_modules` por symlink (`STATE_FILE` es por `__dirname`); `devices_state.json` propio (modo 600) con el device creado POR EL PRODUCTO — la guarda de Confiabilidad de -92 ("si el equipo lo crea seed.js, la prueba pasa sin probar") queda honrada. Apuntado env-only: `API_PORT=3101 MQTT_PORT=1884`, SIN `SIMULATOR_MODE` (telemetría espontánea, control channel apagado — coherente con DEC-44: el ACL de `simulator/{dId}/control` no cubre `firmwareType:'wanomi'`). Bootstrap OK vía `getdevicecredentials` contra :3101; conectado a emqx-p2 (`:1884`).
+
+**`wanomi-edge-p2` up** (`docker compose -p wanomi-p2 -f docker_compose_p2.yml up -d wanomi-edge`). Boot limpio: `Reconstruct: 0/1` (device nuevo sin historia, registrado igual — SF-6) · **`Packs cargados: s7-disparo`** (los dos canary excluidos, verificado en vivo) · suscripción `+/+/+/sdata` OK.
+
+**Disparo — CRITERIO BINARIO CUMPLIDO.** Dos ciclos completos fire/resolve medidos en `db.notifications` de mongo-p2:
+- **fire** 15:46Z: `value=12.6704 > 12.65`, `mode:"direct"`, `reason:"threshold"`, `thresholdUsed:12.65` propagado, `deviceName:"dev-s7"`.
+- **resolve** +11 s: `resolve-by-condition` / `threshold-cleared` (camino SF-4 typeD ejercitado en P2).
+- Segundo ciclo 15:48Z (cooldown 60 s respetado). Sim frenado tras el segundo ciclo (SIGTERM limpio) para acotar ruido; count estable en 4 medido 65 s post-freno.
+
+**Consecuencia mayor: la cadena de aceptación de DEC-REF-91/-92 queda CERRADA** — desde base vacía: ficha → plantilla → equipo → pack → **el motor dispara**. S1–S7 completos.
+
+**Declarado — efectos colaterales.**
+1. **Telegram ON en P2**: `p2/edge.env` tiene `TELEGRAM_BOT_TOKEN` ⇒ los dos ciclos fire/resolve llegaron al chat real. Ítem nuevo: decidir si P2 corre sin token.
+2. **Ingesta de P2 rota (lateral, NO tocado — gate BACKLOG-OPS-1)**: los 3 recursos web_hook de emqx-p2 (saver/alarm/rule, re-iniciados en #66) están `is_alive=false` otra vez, y `rules list` viene **vacío** (sin SAVER-RULE para `4MFGpNpx`) ⇒ `db.data` de P2 = 0 pese a la telemetría viva. El motor no depende del saver (consume MQTT directo); S7 no lo necesitó. Dato nuevo para OPS-1.
+3. **El pack `s7-disparo` queda ACTIVO** (`canary:false`) cargado en el motor de P2 — con el sim frenado no recibe mensajes. Datos de prueba que quedan en P2 (declarados): ficha `s7-gen`, template `tpl-s7`, device `dev-s7` (`4MFGpNpx`), site `CR99001`, pack `s7-disparo`. Credencial del device en `/tmp/sim-p2/devices_state.json` (600, efímero). `wanomi-edge-p2` queda **up** (`restart:always`) — cierra el carry-over viejo.
+
+### Errores de método — uno, menor
+
+`pkill -f 'sim-p2/run.js'` se auto-matcheó contra la línea de comando del propio shell wrapper y lo mató (exit -1) sin tocar al sim; el sim se frenó después por PID directo con shutdown limpio. Se declara por honestidad del registro.
+
+### Carry-over para #72, en orden
+
+1. **Sembrar ficha `cummins-pcc` en prod** (de #69/#70) — antes o junto al próximo restart de `node`, o la consola de packs en prod queda de solo-lectura de facto.
+2. **TEST_USER_EMAIL de `p2/app.env`** — reapuntar a `cellowner-p2@wanomi.test` o retirar (sigue de #68).
+3. **NUEVO — recursos EMQX de P2 muertos** (`is_alive=false` ×3, sin SAVER-RULE): cae bajo BACKLOG-OPS-1; P2 sin persistencia de `data`.
+4. **NUEVO — Telegram ON en P2** — decidir si se retira el token de `p2/edge.env`.
+5. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
+
+**Nota de push.** Al cierre hay 2 commits sin push (el append de #70 + el asiento de esta sesión). Push requiere orden explícita de Franco.
