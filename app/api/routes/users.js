@@ -71,9 +71,16 @@ router.post("/login", async (req, res) => {
   }
 });
 
-//REGISTER
-router.post("/register", async (req, res) => {
+//REGISTER — DEC-REF-97 D-2 (#72): el registro PÚBLICO queda cerrado (mitiga
+// RISK-SEC-8, #62). El alta canónica de usuarios es POST /user con grants,
+// desde la consola de administración. Este endpoint queda gated a superadmin
+// para no romper el contrato de forma del body.
+router.post("/register", checkAuth, async (req, res) => {
   try {
+    const grants = req.userData.grants || [];
+    if (!grants.some(g => g.role === 'superadmin')) {
+      return res.status(403).json({ status: "error", error: "forbidden: registro público deshabilitado — el alta de usuarios es por consola de administración (POST /user)" });
+    }
     const name = req.body.name;
     const email = req.body.email;
     const password = req.body.password;
@@ -180,6 +187,138 @@ router.get("/me", checkAuth, (req, res) => {
       grants: req.userData.grants
     }
   });
+});
+
+//****************** CONSOLA DE USUARIOS (DEC-REF-97 D-2, #72) ******************
+// Todo superadmin only, grants frescos de DB (authentication.js:22-26), SIN
+// fallback — idiom equipmentsheets.js:20-23. El alta canónica con grants vive
+// acá; /register queda gated (arriba).
+
+const USER_ROLES = ['superadmin', 'noc', 'manager', 'cellowner'];  // espejo del enum user.js:20
+
+function isSuperadminReq(req) {
+  const grants = req.userData?.grants || [];
+  return grants.some(g => g.role === 'superadmin');
+}
+
+// Validación de forma de grants: role del enum + scope opcional con
+// operatorCode/zoneCode/siteCode strings (shape de user.js:23-27).
+function validateGrants(grants) {
+  if (!Array.isArray(grants)) return 'grants debe ser un array';
+  for (const g of grants) {
+    if (!g || typeof g !== 'object') return 'grant no-objeto';
+    if (!USER_ROLES.includes(g.role)) return `role inválido '${g.role}' (esperado uno de ${USER_ROLES.join('/')})`;
+    if (g.scope !== undefined && g.scope !== null) {
+      if (typeof g.scope !== 'object' || Array.isArray(g.scope)) return 'scope debe ser un objeto';
+      for (const k of Object.keys(g.scope)) {
+        if (!['operatorCode', 'zoneCode', 'siteCode'].includes(k)) return `scope con clave desconocida '${k}'`;
+        if (typeof g.scope[k] !== 'string') return `scope.${k} debe ser string`;
+      }
+    }
+  }
+  return null;
+}
+
+//GET USERS — lista sin password.
+router.get("/user", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadminReq(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
+    }
+    const users = await User.find({}, { password: 0 }).lean();
+    return res.json({ status: "success", data: users });
+  } catch (error) {
+    console.log("ERROR GETTING USERS");
+    console.log(error);
+    return res.status(500).json({ status: "error", error });
+  }
+});
+
+//POST USER — alta con grants. 409 por findOne previo (patrón D-2, BACKLOG-API-2).
+router.post("/user", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadminReq(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
+    }
+    const newUser = req.body.newUser;                           // wrapper con clave nombrada (patrón de la casa)
+    if (!newUser || !newUser.name || !newUser.email || !newUser.password) {
+      return res.status(400).json({ status: "error", error: "name, email y password son requeridos" });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newUser.email)) {
+      return res.status(400).json({ status: "error", error: "Invalid email format" });
+    }
+    if (newUser.password.length < 6) {
+      return res.status(400).json({ status: "error", error: "Password must be at least 6 characters" });
+    }
+    const grants = newUser.grants || [];
+    const grantError = validateGrants(grants);
+    if (grantError) {
+      return res.status(400).json({ status: "error", error: grantError });
+    }
+    const existing = await User.findOne({ email: newUser.email });
+    if (existing) {
+      return res.status(409).json({ status: "error", error: `user '${newUser.email}' ya existe` });
+    }
+    await User.create({
+      name: newUser.name,
+      email: newUser.email,
+      password: bcrypt.hashSync(newUser.password, 10),
+      grants,
+    });
+    return res.json({ status: "success", email: newUser.email });
+  } catch (error) {
+    console.log("ERROR CREATING USER");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+//PUT GRANTS — reemplazo total validado. La autorización lee grants frescos de
+// DB en cada request ⇒ el cambio aplica en el próximo request, sin re-login.
+router.put("/user/:userId/grants", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadminReq(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
+    }
+    const grants = req.body.grants;
+    const grantError = validateGrants(grants);
+    if (grantError) {
+      return res.status(400).json({ status: "error", error: grantError });
+    }
+    const result = await User.updateOne({ _id: req.params.userId }, { $set: { grants } });
+    const matched = (result.matchedCount != null) ? result.matchedCount : result.n;
+    if (matched === 0) {
+      return res.status(404).json({ status: "error", error: "user not found" });
+    }
+    return res.json({ status: "success" });
+  } catch (error) {
+    console.log("ERROR UPDATING GRANTS");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+//DELETE USER — 400 en self-delete (un superadmin no puede dejar el sistema sin
+// admin por un click mal apuntado).
+router.delete("/user/:userId", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadminReq(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
+    }
+    if (String(req.userData._id) === String(req.params.userId)) {
+      return res.status(400).json({ status: "error", error: "no podés borrar tu propio usuario" });
+    }
+    const result = await User.deleteOne({ _id: req.params.userId });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ status: "error", error: "user not found" });
+    }
+    return res.json({ status: "success" });
+  } catch (error) {
+    console.log("ERROR DELETING USER");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
 });
 
 //**********************

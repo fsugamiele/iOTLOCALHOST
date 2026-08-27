@@ -109,6 +109,12 @@ router.post("/device", checkAuth, async (req, res) => {
       if (deviceTemplate && deviceTemplate.deviceType) {
         newDevice.deviceType = deviceTemplate.deviceType;
       }
+      // DEC-REF-97 (#72) — templateName es required en el schema (device.js) pero
+      // el endpoint no lo validaba: body sin templateName → ValidationError → 500
+      // (medido en #68). Se resuelve desde la template, fuente autoritativa.
+      if (!newDevice.templateName && deviceTemplate) {
+        newDevice.templateName = deviceTemplate.name;
+      }
     }
 
     const firmwareType = newDevice.firmwareType || "wanomi";
