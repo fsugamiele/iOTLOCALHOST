@@ -11919,3 +11919,38 @@ Primer login de verificación leyó `/tmp/.p2_pw` entero (2 líneas) como passwo
 5. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
 
 **Nota de push.** Al cierre hay 2 commits sin push (el append de #70 + el asiento de esta sesión). Push requiere orden explícita de Franco.
+
+## Sesión #72 — 2026-09-02 · Área 2 · DEC-REF-97 implementado — flujo producto 100% por UI
+
+**Foco.** Pedido de Franco en sesión: "diseñar producto, no demo" — todo el flujo ficha → template → device → site → usuarios operable por UI, **nada hardcodeado ni aplicado por API manual**, con correlación entre páginas (el Panel muestra lo que se cargó por el sistema). Registrado como **DEC-REF-97** en el corpus (F9a, antes del código). Plan de 9 fases aprobado por Franco.
+
+**Decisiones de Franco firmadas en sesión (no reabrir).** **D-1: la ficha no se edita** (alta + lista + detalle + borrado con guarda; sin PUT — Fork III de DEC-REF-92 sigue diferido) · **D-2: `/register` cerrado al público** (gate superadmin en el endpoint; el alta canónica de usuarios es la consola `/admin`) · subir `wanomi-edge-p2` quedó autorizado desde #71 (sigue up).
+
+**Implementado — 5 commits, backend primero, UI después, verificación al final.**
+
+- **F1 — backend** (`76e1f7a`, 29/29 PASS medido en P2): `operators.js` NUEVO (GET autenticado; POST/DELETE superadmin con 409 colisión y 409 integridad zone/site) · `equipmentsheets.js`: GET uno + DELETE con guarda 409 por referencias (templates y rulepacks, con conteos — medido: `s7-gen` da "1 template(s) y 1 pack(s)") · `users.js`: `/register` con `checkAuth` + gate superadmin (403), y consola de usuarios: GET `/user` (sin password), POST `/user` con grants validados (rol contra enum + shape de scope), PUT `/user/:id/grants` (reemplazo total; grants frescos de DB en cada request ⇒ aplica sin re-login), DELETE `/user/:id` (400 self-delete) · `devices.js`: POST /device resuelve `templateName` desde la Template si falta (curaba un 500 latente).
+- **F2 — `/fichas`** (`ca57815`): tabla + alta con editor de variables y límites + detalle + borrado con fricción (escribir el deviceType para confirmar); escritura gated superadmin en UI (el backend ya la exige, D-1).
+- **F3 — `/templates`** (`ca57815`): selector de ficha en el configurador; con ficha elegida, picker de variable **estricto** desde el catálogo de la ficha (fija `variable` técnica, autocompleta label/unidad/tipo; NO makeid; dedupe por variable); sin ficha o ficha sin variables → flujo libre legacy intacto (compat pre-ficha); aviso ámbar si widgets acumulados quedan fuera de la ficha (no se borran); confirm al guardar con variables fuera de ficha; `deviceType` viaja en POST /template; columna Ficha en la tabla.
+- **F4 — `/sites`** (`b83f258`): bajo el mapa, tabla de gestión — alta (siteCode/nombre/tipo enum/operador/zona filtrada/geo), edición (PUT /site), borrado con fricción y **force confirmado** cuando tiene devices (409 → cascada explícita).
+- **F5 — `/devices`** (`b83f258`): columna Sitio + acción por fila asociar / reasignar / quitar (POST/DELETE `/site/devices`); la reasignación confirma y desvincula del sitio previo antes de bindear (el backend da 409 si no — guarda medida en el smoke).
+- **F6 — `/admin`** (`3c4cc0f`): consola superadmin (revalida `/me` al montar, redirect si no) con tabs **Usuarios** (alta con editor de grants rol + scope por selectores operador/zona/sitio; edición de grants; delete), **Operadores** (alta/borrado, 409 con conteo de zones+sites) y **Zonas** (alta, edición de displayName, borrado con 409 por sites vivos).
+- **F7** (`3c4cc0f`): `/register` deja de ser formulario — informa y redirige a `/login` (la ruta se conserva por bookmarks; el endpoint ya exige superadmin desde F1); `login.vue` sin link "Create Account"; sidebar: **Fichas de equipo** para todos los autenticados y **Administración** con `v-if="isSuperadmin"` (patrón SF-5 Capa 1 ya usado por Reglas).
+
+**Verificación (F8, todo en P2).** Build por `docker_nuxt_build.yml` exit 0 · rutas `/admin` y `/fichas` generadas · strings nuevos medidos en chunks de `dist/_nuxt` (Administración, Fichas de equipo, Nuevo sitio, Asociar a sitio, Variable de la ficha, Grants) · restart `node-p2` → UI :3100 **200** en las 6 rutas tocadas, API :3101 **401** sin token (control) · **smoke E2E por API de TODO lo que las pantallas invocan: 32/32 PASS** — login superadmin+cellowner, fichas (GET/POST/DELETE), template con deviceType válido (200) e inexistente (400), operadores/zonas/sites CRUD completo, bind device ocupado → **409**, ciclo reasignación unbind→bind→restore (el setup de S7 quedó intacto: `4MFGpNpx` de vuelta en CR99001), usuarios (alta con grants, PUT grants, rol inválido → 400, delete), `/register` superadmin permitido / cellowner **403**, GET /user cellowner **403** · limpieza de todos los datos de smoke (ficha `ui-gen`, template `tpl-ui-f8`, sitio `UITEST01`, operador `UIF8`, zona `uif8-z1`, usuarios de prueba) · **prod intacto**: `node` Up 3 days, sin restart ni writes — levanta rutas + bundle nuevos en su próximo restart (criterio D-4).
+
+**Declarado — efecto en prod del próximo restart de `node`:** llegan juntos la consola `/admin`, `/fichas`, el cierre de `/register` y las rutas nuevas de API. El registro público queda cerrado en prod desde ese momento (403 para no-superadmin); el alta de usuarios pasa a ser por consola. No es regresión: es DEC-REF-97 D-2 haciendo su trabajo.
+
+### Errores de método — uno, menor
+
+Primera corrida del smoke F8 mandó el alta de ficha con wrapper `newSheet` en vez de `newEquipmentSheet` (patrón de la casa) → 3 FAIL encadenados (alta, template que la referenciaba, limpieza). El error era de mi script, no del código — `fichas.vue` ya enviaba el wrapper correcto; corregido y re-ejecutado: 32/32. Se declara por honestidad del registro.
+
+### Carry-over para #73, en orden
+
+1. **Sembrar ficha `cummins-pcc` en prod** (de #69/#70) — antes o junto al próximo restart de `node`; ahora puede hacerse **por UI** en `/fichas` (cierra también el "de solo-lectura de facto" de la consola de packs).
+2. **TEST_USER_EMAIL de `p2/app.env`** — reapuntar a `cellowner-p2@wanomi.test` o retirar (sigue de #68).
+3. Recursos EMQX de P2 muertos (`is_alive=false` ×3, sin SAVER-RULE) — bajo BACKLOG-OPS-1; P2 sin persistencia de `data` (sigue de #71).
+4. Telegram ON en P2 — decidir si se retira el token de `p2/edge.env` (sigue de #71).
+5. **NUEVO — click-through visual de las pantallas nuevas**: F8 verificó por API todo lo que la UI invoca y las rutas 200, pero no se ejercitó el render en browser (sin headless en el host).
+6. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
+
+**Nota de push.** Al cierre hay 7 commits sin push (`861e4fd` #71, `76e1f7a` F1, `ca57815` F2+F3, `b83f258` F4+F5, `3c4cc0f` F6+F7, el append previo de #70 y el asiento de esta sesión). Push requiere orden explícita de Franco.
