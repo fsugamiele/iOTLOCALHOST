@@ -1,18 +1,21 @@
 <template>
   <div>
-    <!-- FORM ADD DEVICE -->
+    <!-- FORM ADD DEVICE — DEC-REF-98 D-2 (#73): alta Wanomi 3.0.
+         Retirados el wizard Provision y el alta Tasmota (legacy IoTiX —
+         la rama backend queda para los equipos en campo). El alta es:
+         nombre + template (con su ficha) + sitio + guardar-en-BD. -->
     <div class="row">
       <card>
         <div slot="header">
-          <h4 class="card-title">Add new Device</h4>
+          <h4 class="card-title">Nuevo dispositivo</h4>
         </div>
 
         <div class="row">
           <div class="col-6">
             <base-input
-              label="Device Name"
+              label="Nombre del dispositivo"
               type="text"
-              placeholder="Ex: Home, Office..."
+              placeholder="Ej: Grupo electrógeno principal"
               v-model="newDevice.name"
             ></base-input>
           </div>
@@ -23,7 +26,7 @@
             </slot>
             <el-select
               v-model="selectedIndexTemplate"
-              placeholder="Select Template"
+              placeholder="Elegir template"
               class="select-primary"
               style="width:100%"
             >
@@ -32,7 +35,7 @@
                 :key="template._id"
                 class="text-dark"
                 :value="index"
-                :label="template.name"
+                :label="template.deviceType ? template.name + ' (' + template.deviceType + ')' : template.name"
               ></el-option>
             </el-select>
           </div>
@@ -41,32 +44,43 @@
         <div class="row">
           <div class="col-6">
             <slot name="label">
-              <label>Firmware Type</label>
+              <label>Sitio (opcional)</label>
             </slot>
             <el-select
-              v-model="newDevice.firmwareType"
+              v-model="newDevice.siteCode"
+              placeholder="Sin sitio — se asocia después"
               class="select-primary"
               style="width:100%"
+              filterable
+              clearable
             >
-              <el-option value="wanomi" label="Wanomi (ESP8266 custom)"></el-option>
-              <el-option value="tasmota" label="Tasmota / ESPHome"></el-option>
+              <el-option
+                v-for="s in sites"
+                :key="s.siteCode"
+                :value="s.siteCode"
+                :label="(s.nombre || s.siteCode) + ' (' + s.siteCode + ')'"
+              ></el-option>
             </el-select>
           </div>
 
-          <div class="col-6" v-if="newDevice.firmwareType === 'tasmota'">
-            <base-input
-              label="Tasmota Device Name (MQTT topic prefix)"
-              type="text"
-              placeholder="Ex: tasmota_kitchen, sonoff_01..."
-              v-model="newDevice.tasmotaName"
-            ></base-input>
+          <div class="col-6">
+            <slot name="label">
+              <label>Guardar datos en BD</label>
+            </slot>
+            <div style="padding-top:8px">
+              <base-switch v-model="newDevice.saverRule" type="primary" on-text="On" off-text="Off"></base-switch>
+              <span class="text-muted" style="margin-left:10px; font-size:12px">
+                histórico para gráficos, dwell y frescura
+              </span>
+            </div>
           </div>
         </div>
 
         <div class="row pull-right">
           <div class="col-12">
-            <base-button @click="createNewDevice()" type="primary" class="mb-3" size="lg">
-              Add
+            <base-button @click="createNewDevice()" type="primary" class="mb-3" size="lg" :disabled="creating">
+              <i class="fa" :class="creating ? 'fa-spinner fa-spin' : 'fa-plus'" style="margin-right:6px"></i>
+              {{ creating ? 'Creando...' : 'Agregar' }}
             </base-button>
           </div>
         </div>
@@ -95,28 +109,18 @@
               <span v-else class="text-muted" style="font-size:12px">—</span>
             </template>
           </el-table-column>
+          <!-- Legacy: devices tasmota creados antes de DEC-REF-98 D-2 se
+               siguen mostrando como lo que son; ya no se crean nuevos. -->
           <el-table-column label="Type" width="110">
             <template slot-scope="{ row }">
-              <span v-if="row.firmwareType === 'tasmota'" style="background:#1d8cf8;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Tasmota</span>
+              <span v-if="row.firmwareType === 'tasmota'" style="background:#1d8cf8;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Tasmota (legacy)</span>
               <span v-else style="background:#00f2c3;color:#1a1a2e;border-radius:8px;padding:2px 8px;font-size:11px">Wanomi</span>
             </template>
           </el-table-column>
 
           <el-table-column label="Actions">
             <div slot-scope="{ row }">
-              <el-tooltip :content="row.firmwareType === 'tasmota' ? 'MQTT Config' : 'Provision Device'" style="margin-right:10px">
-                <base-button
-                  type="info"
-                  icon
-                  size="sm"
-                  class="btn-link"
-                  @click="openProvisionModal(row)"
-                >
-                  <i :class="row.firmwareType === 'tasmota' ? 'fas fa-network-wired' : 'fas fa-wifi'"></i>
-                </base-button>
-              </el-tooltip>
-
-              <el-tooltip content="Saver Status Indicator" style="margin-right:10px">
+              <el-tooltip content="Guardar datos en BD" style="margin-right:10px">
                 <i
                   class="fas fa-database"
                   :class="{
@@ -126,7 +130,7 @@
                 ></i>
               </el-tooltip>
 
-              <el-tooltip content="Database Saver">
+              <el-tooltip content="Guardar datos en BD (on/off)">
                 <base-switch
                   @click="updateSaverRuleStatus(row.saverRule)"
                   :value="row.saverRule && row.saverRule.status"
@@ -136,7 +140,7 @@
                 ></base-switch>
               </el-tooltip>
 
-              <el-tooltip :content="row.siteId ? 'Cambiar / quitar sitio' : 'Asociar a sitio'" effect="light" :open-delay="300" placement="top" style="margin-right:10px">
+              <el-tooltip :content="row.siteId ? 'Cambiar / quitar sitio' : 'Asociar a sitio'" effect="light" :open-delay="300" placement="top" style="margin-left:10px">
                 <base-button
                   type="warning"
                   icon
@@ -165,194 +169,42 @@
       </card>
     </div>
 
-    <!-- TASMOTA MQTT CREDENTIALS MODAL -->
+    <!-- CREDENCIALES DEL DEVICE CREADO (DEC-REF-98 D-2): reemplazo honesto
+         del wizard — dId + password se muestran UNA vez; la provisión
+         física del equipo es manual (fuera de la plataforma). -->
     <el-dialog
-      title="Tasmota / ESPHome — MQTT Configuration"
-      :visible.sync="tasmotaMqttModal"
+      title="Dispositivo creado — credenciales"
+      :visible.sync="credentialsModal"
       width="520px"
       :close-on-click-modal="false"
     >
       <p class="text-muted mb-3">
-        Configure these settings in your device's MQTT setup (Tasmota → Configuration → MQTT).
+        Guardá estas credenciales — la contraseña no se vuelve a mostrar.
+        Se configuran en el equipo junto con la red WiFi.
       </p>
 
       <div class="provision-field">
-        <label>Broker (Server)</label>
+        <label>Device ID</label>
         <div class="provision-value">
-          <code>{{ tasmotaMqttData.broker }}</code>
-          <base-button type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.broker)">
+          <code>{{ createdCredentials.dId }}</code>
+          <base-button type="info" size="sm" @click="copyToClipboard(createdCredentials.dId)">
             <i class="fas fa-copy"></i>
           </base-button>
         </div>
       </div>
 
       <div class="provision-field">
-        <label>Port</label>
+        <label>Device Password</label>
         <div class="provision-value">
-          <code>1883</code>
-          <base-button type="info" size="sm" @click="copyToClipboard('1883')">
+          <code>{{ createdCredentials.password }}</code>
+          <base-button type="info" size="sm" @click="copyToClipboard(createdCredentials.password)">
             <i class="fas fa-copy"></i>
           </base-button>
-        </div>
-      </div>
-
-      <div class="provision-field">
-        <label>Username</label>
-        <div class="provision-value">
-          <code>{{ tasmotaMqttData.username }}</code>
-          <base-button type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.username)">
-            <i class="fas fa-copy"></i>
-          </base-button>
-        </div>
-      </div>
-
-      <div class="provision-field">
-        <label>Password</label>
-        <div class="provision-value">
-          <code v-if="tasmotaMqttData.password">{{ tasmotaMqttData.password }}</code>
-          <em v-else class="text-muted" style="font-size:0.85em">Shown only at creation. Delete &amp; re-add to reset.</em>
-          <base-button v-if="tasmotaMqttData.password" type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.password)">
-            <i class="fas fa-copy"></i>
-          </base-button>
-        </div>
-      </div>
-
-      <div class="provision-field">
-        <label>Topic (Tasmota "Topic" field)</label>
-        <div class="provision-value">
-          <code>{{ tasmotaMqttData.topicPrefix }}</code>
-          <base-button type="info" size="sm" @click="copyToClipboard(tasmotaMqttData.topicPrefix)">
-            <i class="fas fa-copy"></i>
-          </base-button>
-        </div>
-      </div>
-
-      <div class="alert alert-info mt-3" style="border-radius:8px;padding:10px 14px;font-size:0.85em">
-        <i class="fas fa-info-circle mr-2"></i>
-        In Tasmota: set <strong>Topic</strong> to <code>{{ tasmotaMqttData.topicPrefix }}</code> and <strong>Full Topic</strong> to <code>%prefix%/%topic%/</code>
-      </div>
-
-      <span slot="footer">
-        <base-button type="primary" @click="tasmotaMqttModal = false">Close</base-button>
-      </span>
-    </el-dialog>
-
-    <!-- PROVISION WIZARD MODAL -->
-    <el-dialog
-      title="Provision Device"
-      :visible.sync="provisionModal"
-      width="600px"
-      :close-on-click-modal="false"
-    >
-      <el-steps :active="provisionStep" finish-status="success" align-center class="mb-4">
-        <el-step title="Credentials"></el-step>
-        <el-step title="WiFi Config"></el-step>
-        <el-step title="Send"></el-step>
-      </el-steps>
-
-      <!-- STEP 0: Generated credentials -->
-      <div v-if="provisionStep === 0">
-        <p class="text-muted mb-3">
-          Device created. Save these credentials — the password won't be shown again.
-        </p>
-        <div class="provision-field">
-          <label>Device ID</label>
-          <div class="provision-value">
-            <code>{{ provisionData.dId }}</code>
-            <base-button type="info" size="sm" @click="copyToClipboard(provisionData.dId)">
-              <i class="fas fa-copy"></i>
-            </base-button>
-          </div>
-        </div>
-        <div class="provision-field">
-          <label>Device Password</label>
-          <div class="provision-value">
-            <code>{{ provisionData.password }}</code>
-            <base-button type="info" size="sm" @click="copyToClipboard(provisionData.password)">
-              <i class="fas fa-copy"></i>
-            </base-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- STEP 1: WiFi config -->
-      <div v-if="provisionStep === 1">
-        <div class="alert alert-info mb-3" style="border-radius:8px; padding:12px 16px;">
-          <i class="fas fa-wifi mr-2"></i>
-          <strong>Before continuing:</strong> connect this computer to the device's WiFi AP.<br>
-          <span class="text-muted" style="font-size:0.85em;">
-            The ESP8266 creates a network like <strong>Wanomi-Config-XXXXXX</strong> when unconfigured.
-          </span>
-        </div>
-        <base-input
-          label="Your WiFi Network (SSID)"
-          placeholder="Ex: HomeNetwork"
-          v-model="provisionForm.ssid"
-        ></base-input>
-        <base-input
-          label="WiFi Password"
-          type="password"
-          placeholder="Your WiFi password"
-          v-model="provisionForm.wifiPassword"
-        ></base-input>
-        <base-input
-          label="Platform Server IP"
-          placeholder="Ex: 192.168.1.100"
-          v-model="provisionForm.serverIP"
-        ></base-input>
-        <base-input
-          label="Device AP IP (default: 192.168.4.1)"
-          placeholder="192.168.4.1"
-          v-model="provisionForm.deviceIP"
-        ></base-input>
-      </div>
-
-      <!-- STEP 2: Send -->
-      <div v-if="provisionStep === 2">
-        <div v-if="!provisionSent">
-          <p class="text-muted mb-3">Ready to send configuration to the device.</p>
-          <div class="provision-field">
-            <label>Target</label>
-            <code>http://{{ provisionForm.deviceIP }}/provision</code>
-          </div>
-          <div class="provision-field mt-2">
-            <label>Payload</label>
-            <pre class="provision-payload">{{ provisionPayloadPreview }}</pre>
-          </div>
-        </div>
-
-        <div v-if="provisionSent && provisionSuccess" class="text-center">
-          <i class="fas fa-check-circle text-success" style="font-size:48px"></i>
-          <h4 class="mt-3 text-success">Device Configured!</h4>
-          <p class="text-muted">The device will reboot and connect to your WiFi.<br>Switch back to your home network — it will appear in the dashboard shortly.</p>
-        </div>
-
-        <div v-if="provisionSent && !provisionSuccess" class="text-center">
-          <i class="fas fa-times-circle text-danger" style="font-size:48px"></i>
-          <h4 class="mt-3 text-danger">Could not reach device</h4>
-          <p class="text-muted">{{ provisionError }}</p>
-          <p class="text-muted" style="font-size:0.85em">Make sure your computer is connected to the device's WiFi AP and the device IP is correct.</p>
         </div>
       </div>
 
       <span slot="footer">
-        <base-button type="secondary" @click="provisionModal = false">Close</base-button>
-        <base-button
-          v-if="provisionStep > 0 && !provisionSent"
-          type="default"
-          @click="provisionStep--"
-        >Back</base-button>
-        <base-button
-          v-if="provisionStep < 2"
-          type="primary"
-          @click="provisionNextStep()"
-        >Next</base-button>
-        <base-button
-          v-if="provisionStep === 2 && !provisionSent"
-          type="success"
-          :loading="provisionSending"
-          @click="sendProvision()"
-        >Send to Device</base-button>
+        <base-button type="primary" @click="credentialsModal = false">Listo</base-button>
       </span>
     </el-dialog>
 
@@ -412,7 +264,7 @@
 <script>
 import { Table, TableColumn } from "element-ui";
 import { Select, Option } from "element-ui";
-import { Dialog, Steps, Step, MessageBox } from "element-ui";
+import { Dialog, MessageBox } from "element-ui";
 
 export default {
   middleware: "authenticated",
@@ -422,42 +274,22 @@ export default {
     [Option.name]: Option,
     [Select.name]: Select,
     [Dialog.name]: Dialog,
-    [Steps.name]: Steps,
-    [Step.name]: Step,
   },
   data() {
     return {
       templates: [],
       selectedIndexTemplate: null,
+      creating: false,
       newDevice: {
         name: "",
         templateId: "",
         templateName: "",
-        firmwareType: "wanomi",
-        tasmotaName: ""
+        siteCode: "",
+        saverRule: true
       },
-      // Tasmota MQTT credentials modal
-      tasmotaMqttModal: false,
-      tasmotaMqttData: {
-        broker: this.$config.mqtt_host || "",
-        username: "",
-        password: "",
-        topicPrefix: ""
-      },
-      // Provision wizard
-      provisionModal: false,
-      provisionStep: 0,
-      provisionData: { dId: "", password: "" },
-      provisionForm: {
-        ssid: "",
-        wifiPassword: "",
-        serverIP: this.$config.mqtt_host || "",
-        deviceIP: "192.168.4.1"
-      },
-      provisionSending: false,
-      provisionSent: false,
-      provisionSuccess: false,
-      provisionError: "",
+      // Credenciales post-alta (DEC-REF-98 D-2)
+      credentialsModal: false,
+      createdCredentials: { dId: "", password: "" },
 
       // DEC-REF-97 — bind device ↔ site
       sites: [],
@@ -466,18 +298,6 @@ export default {
       bindSiteCode: "",
       bindLoading: false
     };
-  },
-  computed: {
-    provisionPayloadPreview() {
-      return JSON.stringify({
-        ssid: this.provisionForm.ssid,
-        wifiPassword: "••••••••",
-        dId: this.provisionData.dId,
-        devicePassword: this.provisionData.password,
-        serverIP: this.provisionForm.serverIP,
-        serverPort: "3001"
-      }, null, 2);
-    }
   },
   mounted() {
     this.getTemplates();
@@ -573,84 +393,9 @@ export default {
       }
     },
 
-    // ── Provision wizard ──────────────────────────────────────────
-
-    openProvisionModal(device) {
-      if (device.firmwareType === "tasmota") {
-        this.tasmotaMqttData = {
-          broker: this.$config.mqtt_host || "",
-          username: device.tasmotaName,
-          password: "", // not stored after initial display
-          topicPrefix: device.tasmotaName
-        };
-        this.tasmotaMqttModal = true;
-        return;
-      }
-      this.provisionData = { dId: device.dId, password: device.password };
-      this.resetProvisionWizard();
-      this.provisionStep = 1; // skip step 0 (credentials already exist)
-      this.provisionModal = true;
-    },
-
-    resetProvisionWizard() {
-      this.provisionStep = 0;
-      this.provisionSent = false;
-      this.provisionSuccess = false;
-      this.provisionError = "";
-      this.provisionSending = false;
-    },
-
-    provisionNextStep() {
-      if (this.provisionStep === 1) {
-        if (!this.provisionForm.ssid) {
-          this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "WiFi SSID is required" });
-          return;
-        }
-        if (!this.provisionForm.serverIP) {
-          this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Server IP is required" });
-          return;
-        }
-      }
-      this.provisionStep++;
-    },
-
-    async sendProvision() {
-      this.provisionSending = true;
-      const payload = {
-        ssid: this.provisionForm.ssid,
-        wifiPassword: this.provisionForm.wifiPassword,
-        dId: this.provisionData.dId,
-        devicePassword: this.provisionData.password,
-        serverIP: this.provisionForm.serverIP,
-        serverPort: "3001"
-      };
-
-      try {
-        const res = await fetch(`http://${this.provisionForm.deviceIP}/provision`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(8000)
-        });
-
-        if (res.ok) {
-          this.provisionSuccess = true;
-        } else {
-          this.provisionError = `Device responded with HTTP ${res.status}`;
-          this.provisionSuccess = false;
-        }
-      } catch (err) {
-        this.provisionSuccess = false;
-        this.provisionError = err.message || "Connection timed out";
-      } finally {
-        this.provisionSending = false;
-        this.provisionSent = true;
-      }
-    },
-
     copyToClipboard(text) {
       navigator.clipboard.writeText(text).then(() => {
-        this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Copied to clipboard" });
+        this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Copiado" });
       });
     },
 
@@ -667,76 +412,82 @@ export default {
         .then(res => {
           if (res.data.status == "success") {
             this.$store.dispatch("getDevices");
-            this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Device Saver Status Updated" });
+            this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Guardado en BD actualizado" });
           }
         })
         .catch(e => {
           console.log(e);
-          this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error updating saver rule status" });
+          this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error actualizando el guardado en BD" });
         });
     },
 
-    createNewDevice() {
+    async createNewDevice() {
+      if (this.creating) return;
       if (!this.newDevice.name) {
-        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Device Name is Empty :(" });
+        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Falta el nombre del dispositivo" });
         return;
       }
       if (this.selectedIndexTemplate == null) {
-        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Template must be selected" });
-        return;
-      }
-      if (this.newDevice.firmwareType === "tasmota" && !this.newDevice.tasmotaName) {
-        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Tasmota Device Name is required" });
+        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: "Hay que elegir un template" });
         return;
       }
 
       this.newDevice.templateId = this.templates[this.selectedIndexTemplate]._id;
       this.newDevice.templateName = this.templates[this.selectedIndexTemplate].name;
 
+      this.creating = true;
       const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
 
-      this.$axios.post("/device", { newDevice: this.newDevice }, axiosHeaders)
-        .then(res => {
-          if (res.data.status == "success") {
-            // DEC-REF-78: el backend ya no marca selected en Mongo. El
-            // frontend persiste la preferencia en localStorage ANTES de
-            // dispatch getDevices, para que el store al refrescar sincronice
-            // el select al device recién creado (misma UX que hoy).
-            const userId = this.$store.state.auth
-              && this.$store.state.auth.userData
-              && this.$store.state.auth.userData._id;
-            if (userId && res.data.dId) {
-              localStorage.setItem('lastSelectedDId:' + userId, res.data.dId);
-            }
-            this.$store.dispatch("getDevices");
+      try {
+        const res = await this.$axios.post("/device", { newDevice: {
+          name: this.newDevice.name,
+          templateId: this.newDevice.templateId,
+          templateName: this.newDevice.templateName,
+          saverRule: this.newDevice.saverRule,
+        } }, axiosHeaders);
 
-            if (res.data.firmwareType === "tasmota") {
-              // Show MQTT credentials modal
-              this.tasmotaMqttData = {
-                broker: this.$config.mqtt_host || "",
-                username: res.data.mqttUsername,
-                password: res.data.mqttPassword,
-                topicPrefix: res.data.tasmotaName
-              };
-              this.tasmotaMqttModal = true;
-            } else {
-              // Open provision wizard with generated credentials
-              this.provisionData = { dId: res.data.dId, password: res.data.password };
-              this.resetProvisionWizard();
-              this.provisionModal = true;
-            }
+        if (res.data.status != "success") return;
 
-            this.newDevice.name = "";
-            this.newDevice.tasmotaName = "";
-            this.selectedIndexTemplate = null;
+        const dId = res.data.dId;
 
-            this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Device added — configure it now!" });
+        // DEC-REF-78: selección del device recién creado por preferencia
+        // de sesión (localStorage), no por estado en Mongo.
+        const userId = this.$store.state.auth
+          && this.$store.state.auth.userData
+          && this.$store.state.auth.userData._id;
+        if (userId && dId) {
+          localStorage.setItem('lastSelectedDId:' + userId, dId);
+        }
+
+        // Bind al sitio elegido (opcional). Fallo parcial explícito: el
+        // device YA existe — se informa y queda para asociar por la tabla.
+        if (this.newDevice.siteCode) {
+          try {
+            await this.$axios.post("/site/devices", { siteCode: this.newDevice.siteCode, dId }, axiosHeaders);
+          } catch (e) {
+            const msg = (e.response && e.response.data && e.response.data.error) || "error desconocido";
+            this.$notify({
+              type: "warning",
+              icon: "tim-icons icon-alert-circle-exc",
+              message: `Dispositivo creado pero NO se pudo asociar a ${this.newDevice.siteCode} (${msg}). Asocialo desde la tabla.`,
+            });
           }
-        })
-        .catch(e => {
-          console.log(e);
-          this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error adding device" });
-        });
+        }
+
+        this.createdCredentials = { dId, password: res.data.password };
+        this.credentialsModal = true;
+
+        this.$store.dispatch("getDevices");
+        this.newDevice.name = "";
+        this.newDevice.siteCode = "";
+        this.newDevice.saverRule = true;
+        this.selectedIndexTemplate = null;
+      } catch (e) {
+        console.log(e);
+        this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error al crear el dispositivo" });
+      } finally {
+        this.creating = false;
+      }
     },
 
     async getTemplates() {
@@ -747,7 +498,7 @@ export default {
           this.templates = res.data.data;
         }
       } catch (error) {
-        this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error getting templates..." });
+        this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error obteniendo templates" });
         console.log(error);
       }
     },
@@ -760,13 +511,13 @@ export default {
       this.$axios.delete("/device", axiosHeaders)
         .then(res => {
           if (res.data.status == "success") {
-            this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: device.name + " deleted!" });
+            this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: device.name + " eliminado" });
             this.$store.dispatch("getDevices");
           }
         })
         .catch(e => {
           console.log(e);
-          this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error deleting " + device.name });
+          this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: "Error eliminando " + device.name });
         });
     }
   }
@@ -794,13 +545,5 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.provision-payload {
-  font-size: 0.8em;
-  background: rgba(255,255,255,0.06);
-  border-radius: 6px;
-  padding: 10px;
-  color: #ccc;
-  margin: 0;
 }
 </style>

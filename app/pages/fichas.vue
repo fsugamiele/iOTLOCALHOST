@@ -5,9 +5,25 @@
         <card>
           <div slot="header" class="d-flex justify-content-between align-items-center">
             <h3 class="card-title mb-0">Fichas de equipo</h3>
-            <base-button v-if="isSuperadmin" type="primary" size="sm" @click="openCreateModal">
-              <i class="tim-icons icon-simple-add"></i> Nueva ficha
-            </base-button>
+            <div v-if="isSuperadmin">
+              <!-- DEC-REF-98 D-1 (#73): alta asistida desde el PDF del
+                   fabricante — el extractor propone un draft que se REVISA
+                   en el modal antes de guardar (nada persiste solo). -->
+              <base-button type="info" size="sm" @click="$refs.pdfInput.click()" :disabled="extracting">
+                <i class="fa" :class="extracting ? 'fa-spinner fa-spin' : 'fa-file-pdf-o'"></i>
+                {{ extracting ? ' Extrayendo...' : ' Cargar desde PDF' }}
+              </base-button>
+              <input
+                ref="pdfInput"
+                type="file"
+                accept="application/pdf"
+                style="display:none"
+                @change="onPdfSelected"
+              />
+              <base-button type="primary" size="sm" @click="openCreateModal">
+                <i class="tim-icons icon-simple-add"></i> Nueva ficha
+              </base-button>
+            </div>
           </div>
 
           <p class="text-muted">
@@ -67,6 +83,14 @@
       width="720px"
       :close-on-click-modal="false"
     >
+      <!-- Banner de draft (DEC-REF-98): visible solo cuando el contenido
+           vino del PDF — la revisión humana es parte del flujo firmado. -->
+      <div v-if="pdfDraftName" class="alert alert-info" style="font-size:13px">
+        <i class="fa fa-file-pdf-o" style="margin-right:6px"></i>
+        Draft propuesto desde <b>{{ pdfDraftName }}</b> por extracción automática.
+        <b>Revisá y corregí antes de guardar</b> — la extracción es best-effort.
+      </div>
+
       <div class="row">
         <div class="col-md-6 form-group">
           <label>deviceType <span class="text-danger">*</span> (identificador, no se edita)</label>
@@ -98,6 +122,20 @@
           <i class="tim-icons icon-simple-add"></i> Variable
         </base-button>
       </div>
+
+      <!-- Candidatos no resueltos del PDF (DEC-REF-98): líneas que parecen
+           variable pero no cerraron la forma. Se listan para que el humano
+           decida — la extracción no descarta mudo. -->
+      <div v-if="rawCandidates.length" class="alert alert-warning" style="font-size:12px">
+        <b>{{ rawCandidates.length }} línea(s) del PDF parecen variables pero no se pudieron resolver solas:</b>
+        <div v-for="(c, ci) in rawCandidates" :key="ci" class="d-flex justify-content-between align-items-center mt-1">
+          <code style="font-size:11px">{{ c }}</code>
+          <base-button type="primary" size="sm" @click="addCandidateAsVariable(ci)">
+            <i class="tim-icons icon-simple-add"></i> Agregar
+          </base-button>
+        </div>
+      </div>
+
       <p v-if="newSheet.variables.length === 0" class="text-muted">
         Sin variables declaradas, las reglas y templates que referencien esta ficha
         usarán texto libre con aviso (fallback firmado en S6).
@@ -123,6 +161,13 @@
           <div class="col-md-4 form-group">
             <label>Tipo</label>
             <select v-model="v.type" class="form-control">
+              <!-- float/int/bool/categorical: los que entienden los widgets
+                   del catálogo (valueStatus et al). number/string/boolean:
+                   valores históricos de fichas cargadas a mano. -->
+              <option value="float">float</option>
+              <option value="int">int</option>
+              <option value="bool">bool</option>
+              <option value="categorical">categorical</option>
               <option value="number">number</option>
               <option value="string">string</option>
               <option value="boolean">boolean</option>
@@ -291,6 +336,11 @@ export default {
       deleteTarget: '',
       deleteConfirmInput: '',
       deleting: false,
+
+      // DEC-REF-98 — extracción desde PDF
+      extracting: false,
+      pdfDraftName: '',
+      rawCandidates: [],
     };
   },
   computed: {
@@ -339,7 +389,80 @@ export default {
     },
     openCreateModal() {
       this.newSheet = this.emptySheet();
+      this.pdfDraftName = '';
+      this.rawCandidates = [];
       this.createModal = true;
+    },
+
+    // DEC-REF-98 D-1 — PDF → extract → draft precargado en el modal.
+    // El modal se abre SIEMPRE (aunque el draft salga vacío): la revisión
+    // humana es parte del flujo, no un fallback.
+    onPdfSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = '';  // permite re-elegir el mismo archivo
+      if (!file) return;
+      if (file.size > 15 * 1024 * 1024) {
+        this.$notify({
+          type: 'warning',
+          icon: 'tim-icons icon-alert-circle-exc',
+          message: 'El PDF supera 15 MB — dividilo o cargá la ficha a mano.',
+        });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = String(reader.result || '');
+        const base64 = dataUrl.split(',')[1] || '';
+        this.extracting = true;
+        try {
+          const res = await this.$axios.post(
+            '/equipmentsheet/extract',
+            { pdfBase64: base64 },
+            this.headers()
+          );
+          const draft = res.data && res.data.draft;
+          if (!draft) throw new Error('respuesta sin draft');
+          this.newSheet = {
+            ...this.emptySheet(),
+            manufacturer: draft.manufacturer || '',
+            model: draft.model || '',
+            variables: (draft.variables || []).map(v => ({
+              name: v.name || '',
+              label: v.label || '',
+              type: v.type || 'float',
+              unit: v.unit || '',
+              factoryRange: v.factoryRange || '',
+              cadence: v.cadence || '',
+              limits: v.limits || [],
+            })),
+          };
+          this.rawCandidates = draft.rawCandidates || [];
+          this.pdfDraftName = file.name;
+          this.createModal = true;
+          this.$notify({
+            type: 'info',
+            icon: 'tim-icons icon-check-2',
+            message: `Draft extraído: ${(draft.variables || []).length} variable(s) propuesta(s). Revisá antes de guardar.`,
+          });
+        } catch (e) {
+          this.$notify({
+            type: 'danger',
+            icon: 'tim-icons icon-alert-circle-exc',
+            message: e.response?.data?.error || 'No se pudo extraer el PDF',
+          });
+        } finally {
+          this.extracting = false;
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+
+    addCandidateAsVariable(index) {
+      const text = this.rawCandidates[index];
+      this.rawCandidates.splice(index, 1);
+      this.newSheet.variables.push({
+        name: '', label: text.slice(0, 80), type: 'float', unit: '', factoryRange: '', cadence: '', limits: [],
+      });
     },
     addVariable() {
       this.newSheet.variables.push({
