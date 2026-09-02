@@ -56,6 +56,17 @@
         >
         </sidebar-item>
 
+        <!-- DEC-REF-97 (#72) — fichas de equipo: catálogo madre de
+             variables; las templates se atan a una ficha. -->
+        <sidebar-item
+          :link="{
+            name: 'Fichas de equipo',
+            icon: 'tim-icons icon-paper',
+            path: '/fichas'
+          }"
+        >
+        </sidebar-item>
+
         <!-- SF-5 Capa 1 (DEC-REF-62.c) — primer patrón de visibilidad
              por rol en el layout. Solo superadmin ve este item. -->
         <sidebar-item
@@ -64,6 +75,18 @@
             name: 'Reglas de monitoreo',
             icon: 'tim-icons icon-book-bookmark',
             path: '/rulepacks'
+          }"
+        >
+        </sidebar-item>
+
+        <!-- DEC-REF-97 D-2 (#72) — consola de administración:
+             usuarios (alta + grants), operadores y zonas. -->
+        <sidebar-item
+          v-if="isSuperadmin"
+          :link="{
+            name: 'Administración',
+            icon: 'tim-icons icon-badge',
+            path: '/admin'
           }"
         >
         </sidebar-item>

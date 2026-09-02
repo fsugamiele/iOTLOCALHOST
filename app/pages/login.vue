@@ -38,11 +38,8 @@
             Login
           </base-button>
           <div class="pull-left">
-            <h6>
-              <nuxt-link class="link footer-link" to="/register">
-                Create Account
-              </nuxt-link>
-            </h6>
+            <!-- DEC-REF-97 D-2 (#72): registro público cerrado — el alta
+                 de usuarios es por consola de administración (/admin). -->
           </div>
 
           <div class="pull-right">
