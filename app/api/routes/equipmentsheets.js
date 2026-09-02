@@ -4,6 +4,7 @@ const { checkAuth } = require("../middlewares/authentication.js");
 import EquipmentSheet from "../models/equipment_sheet.js";
 import Template from "../models/template.js";
 const RulePack = require("../models/rule_pack.js");
+const { extractFromPdf } = require("../services/sheetExtractor.js");
 
 // GET — catálogo global (D-1). SIN buildReadFilter: excepción de tenencia deliberada.
 router.get("/equipmentsheet", checkAuth, async (req, res) => {
@@ -40,7 +41,39 @@ router.post("/equipmentsheet", checkAuth, async (req, res) => {
   }
 });
 
-// GET uno — misma excepción de tenencia que la lista (D-1).
+// POST /equipmentsheet/extract — DEC-REF-98 D-1 (#73). Recibe el PDF del
+// fabricante (base64) y devuelve un DRAFT propuesto por el extractor
+// heurístico (sheetExtractor.js). NO PERSISTE: la ficha se guarda por el
+// POST /equipmentsheet normal tras revisión humana en la UI. Superadmin
+// only — misma guarda D-1 que el alta (proponer una ficha es escribir,
+// aunque el write real quede para después).
+// El body grande se habilita en index.js (parser de 25mb solo para esta
+// ruta, registrado ANTES del express.json() global de 100kb).
+router.post("/equipmentsheet/extract", checkAuth, async (req, res) => {
+  try {
+    const grants = req.userData.grants || [];
+    if (!grants.some(g => g.role === 'superadmin')) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
+    }
+    const pdfBase64 = req.body && req.body.pdfBase64;
+    if (!pdfBase64 || typeof pdfBase64 !== 'string') {
+      return res.status(400).json({ status: "error", error: "pdfBase64 es requerido" });
+    }
+    const buffer = Buffer.from(pdfBase64, 'base64');
+    // Un PDF real empieza con %PDF — guarda contra base64 de otra cosa.
+    if (buffer.length < 5 || buffer.toString('latin1', 0, 5) !== '%PDF-') {
+      return res.status(400).json({ status: "error", error: "el archivo no es un PDF válido" });
+    }
+    const draft = await extractFromPdf(buffer);
+    return res.json({ status: "success", draft });
+  } catch (error) {
+    console.log("ERROR EXTRACTING EQUIPMENT SHEET FROM PDF");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+
 router.get("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
   try {
     const sheet = await EquipmentSheet.findOne({ deviceType: req.params.deviceType }).lean();

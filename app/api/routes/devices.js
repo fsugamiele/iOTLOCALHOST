@@ -133,7 +133,9 @@ router.post("/device", checkAuth, async (req, res) => {
     const plainPassword = makeid(12);
     newDevice.password = plainPassword;
 
-    await createSaverRule(userId, newDevice.dId, true);
+    // DEC-REF-98 D-2 (#73): el alta permite nacer con el guardado en BD
+    // apagado (`saverRule: false` en el body). Default ON retrocompatible.
+    await createSaverRule(userId, newDevice.dId, newDevice.saverRule !== false);
     const device = await Device.create(newDevice);
 
     if (firmwareType === "tasmota") {

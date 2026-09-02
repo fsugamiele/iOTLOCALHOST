@@ -14,6 +14,10 @@ const app = express();
 
 //express config
 app.use(morgan("tiny"));
+// DEC-REF-98 (#73): el upload de PDF (base64) de /equipmentsheet/extract
+// supera el default de 100kb. Parser de 25mb SOLO para esa ruta, antes del
+// global (body-parser salta requests ya parseados: el global no lo retoca).
+app.use("/api/equipmentsheet/extract", express.json({ limit: "25mb" }));
 app.use(express.json());
 app.use(
   express.urlencoded({
