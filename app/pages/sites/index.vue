@@ -48,18 +48,181 @@
         </card>
       </div>
     </div>
+
+    <!-- GESTIÓN DE SITIOS (DEC-REF-97): alta/edición/borrado por UI.
+         La escritura la autoriza el backend (grants); si el usuario no
+         tiene grant que cubra el operador/zona, el 403 se muestra claro. -->
+    <div class="row">
+      <div class="col-12">
+        <card>
+          <div slot="header" style="display:flex; justify-content:space-between; align-items:center">
+            <h4 class="card-title" style="margin:0">Gestión de sitios</h4>
+            <base-button type="primary" size="sm" @click="openCreate">
+              <i class="fa fa-plus" style="margin-right:6px"></i>Nuevo sitio
+            </base-button>
+          </div>
+
+          <el-table :data="sitesAdmin" size="small">
+            <el-table-column prop="siteCode" label="Código" width="110">
+              <template slot-scope="{ row }">
+                <code style="font-size:11px">{{ row.siteCode }}</code>
+              </template>
+            </el-table-column>
+            <el-table-column prop="nombre" label="Nombre" min-width="140" />
+            <el-table-column prop="tipo" label="Tipo" width="100" />
+            <el-table-column label="Operador / Zona" min-width="150">
+              <template slot-scope="{ row }">
+                {{ operatorLabel(row.operatorCode) }} · {{ zoneLabel(row.operatorCode, row.zoneCode) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="Dispositivos" width="110" align="center">
+              <template slot-scope="{ row }">
+                <span style="background:#1d8cf8; color:#fff; border-radius:10px; padding:2px 10px; font-size:12px">
+                  {{ (row.devices || []).length }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column header-align="right" align="right" label="Acciones" width="130">
+              <div slot-scope="{ row }" class="text-right table-actions">
+                <el-tooltip content="Ver detalle" effect="light" :open-delay="300" placement="top">
+                  <base-button @click="$router.push('/sites/' + row.siteCode)" type="info" icon size="sm" class="btn-link">
+                    <i class="tim-icons icon-zoom-split"></i>
+                  </base-button>
+                </el-tooltip>
+                <el-tooltip content="Editar" effect="light" :open-delay="300" placement="top">
+                  <base-button @click="openEdit(row)" type="warning" icon size="sm" class="btn-link">
+                    <i class="tim-icons icon-pencil"></i>
+                  </base-button>
+                </el-tooltip>
+                <el-tooltip content="Eliminar" effect="light" :open-delay="300" placement="top">
+                  <base-button @click="deleteSite(row)" type="danger" icon size="sm" class="btn-link">
+                    <i class="fa fa-trash"></i>
+                  </base-button>
+                </el-tooltip>
+              </div>
+            </el-table-column>
+          </el-table>
+        </card>
+      </div>
+    </div>
+
+    <!-- MODAL CREAR / EDITAR SITIO -->
+    <el-dialog
+      :title="editing ? 'Editar sitio ' + siteForm.siteCode : 'Nuevo sitio'"
+      :visible.sync="siteModal"
+      width="60%"
+      append-to-body
+    >
+      <div class="row">
+        <base-input
+          class="col-4"
+          v-model="siteForm.siteCode"
+          label="Código de sitio (identidad, inmutable)"
+          placeholder="ej. CR99001"
+          :disabled="editing"
+        />
+        <base-input class="col-8" v-model="siteForm.nombre" label="Nombre" placeholder="ej. Torre Corrientes Capital" />
+      </div>
+      <div class="row">
+        <div class="col-4">
+          <label class="control-label">Tipo</label>
+          <el-select v-model="siteForm.tipo" placeholder="Tipo" style="width:100%" class="select-primary">
+            <el-option value="BTS" label="BTS" />
+            <el-option value="shelter" label="Shelter" />
+            <el-option value="repeater" label="Repetidor" />
+          </el-select>
+        </div>
+        <div class="col-4">
+          <label class="control-label">Operador</label>
+          <el-select
+            v-model="siteForm.operatorCode"
+            placeholder="Operador"
+            style="width:100%"
+            class="select-primary"
+            filterable
+            @change="siteForm.zoneCode = ''"
+          >
+            <el-option
+              v-for="op in operators"
+              :key="op.operatorCode"
+              :value="op.operatorCode"
+              :label="(op.displayName || op.operatorCode) + ' (' + op.operatorCode + ')'"
+            />
+          </el-select>
+        </div>
+        <div class="col-4">
+          <label class="control-label">Zona</label>
+          <el-select
+            v-model="siteForm.zoneCode"
+            placeholder="Zona"
+            style="width:100%"
+            class="select-primary"
+            filterable
+            :disabled="!siteForm.operatorCode"
+          >
+            <el-option
+              v-for="z in zonesForOperator"
+              :key="z.zoneCode"
+              :value="z.zoneCode"
+              :label="(z.displayName || z.zoneCode) + ' (' + z.zoneCode + ')'"
+            />
+          </el-select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <base-input class="col-3" v-model.number="siteForm.lat" label="Latitud" type="number" placeholder="-28.4691" />
+        <base-input class="col-3" v-model.number="siteForm.lng" label="Longitud" type="number" placeholder="-57.8342" />
+        <base-input class="col-6" v-model="siteForm.direccion" label="Dirección" placeholder="calle y número" />
+      </div>
+      <div class="row">
+        <base-input class="col-4" v-model="siteForm.provincia" label="Provincia" />
+        <base-input class="col-4" v-model="siteForm.localidad" label="Localidad" />
+        <base-input class="col-4" v-model="siteForm.notes" label="Notas (opcional)" />
+      </div>
+      <span slot="footer">
+        <base-button type="secondary" @click="siteModal = false">Cancelar</base-button>
+        <base-button type="primary" @click="saveSite" :disabled="!canSaveSite || saving">
+          <i class="fa" :class="saving ? 'fa-spinner fa-spin' : 'fa-save'" style="margin-right:6px"></i>
+          {{ saving ? 'Guardando...' : (editing ? 'Guardar cambios' : 'Crear sitio') }}
+        </base-button>
+      </span>
+    </el-dialog>
+
   </div>
 </template>
 
 <script>
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { Table, TableColumn, Dialog, Select, Option, Tooltip, MessageBox } from 'element-ui';
 // DEC-REF-27 · fuente única del pin — extraído en R3 de #49 (ajuste 3'/2').
 import { iconForStatus } from '@/components/Noc/leafletPin.js';
+
+const EMPTY_SITE_FORM = () => ({
+  siteCode: '',
+  nombre: '',
+  tipo: '',
+  operatorCode: '',
+  zoneCode: '',
+  lat: null,
+  lng: null,
+  direccion: '',
+  provincia: '',
+  localidad: '',
+  notes: '',
+});
 
 export default {
   name: 'SitesMap',
   middleware: 'authenticated',
+  components: {
+    [Table.name]: Table,
+    [TableColumn.name]: TableColumn,
+    [Dialog.name]: Dialog,
+    [Select.name]: Select,
+    [Option.name]: Option,
+    [Tooltip.name]: Tooltip,
+  },
 
   data() {
     return {
@@ -68,12 +231,32 @@ export default {
       sites: [],
       map: null,
       markers: [],
+
+      // DEC-REF-97 — gestión CRUD
+      sitesAdmin: [],
+      operators: [],
+      zones: [],
+      siteModal: false,
+      editing: false,
+      siteForm: EMPTY_SITE_FORM(),
+      saving: false,
     };
+  },
+
+  computed: {
+    zonesForOperator() {
+      return this.zones.filter((z) => z.operatorCode === this.siteForm.operatorCode);
+    },
+    canSaveSite() {
+      const f = this.siteForm;
+      return !!(f.siteCode && f.nombre && f.tipo && f.operatorCode && f.zoneCode);
+    },
   },
 
   async mounted() {
     this.initMap();
     await this.loadSites();
+    this.loadAdminData();
 
     // SF-4 · DEC-REF-64-A (ii) + R13 — real-time-lite del pin, SILENCIOSO.
     // Al llegar una notif del bus, refrescamos SOLO los pins que cambiaron
@@ -222,6 +405,150 @@ export default {
       // Actualizar el array reactivo — se conserva por si algún consumer
       // futuro depende de él (leyenda, contadores).
       this.sites = nextSites;
+    },
+
+    // DEC-REF-97 — gestión CRUD ------------------------------------------
+
+    async loadAdminData() {
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const [sitesRes, opsRes, zonesRes] = await Promise.all([
+          this.$axios.get('/site', headers),
+          this.$axios.get('/operator', headers),
+          this.$axios.get('/zone', headers),
+        ]);
+        if (sitesRes.data.status === 'success') this.sitesAdmin = sitesRes.data.data || [];
+        if (opsRes.data.status === 'success') this.operators = opsRes.data.data || [];
+        if (zonesRes.data.status === 'success') this.zones = zonesRes.data.data || [];
+      } catch (err) {
+        console.warn('[Sites] loadAdminData error:', err.message || err);
+      }
+    },
+
+    operatorLabel(code) {
+      const op = this.operators.find((o) => o.operatorCode === code);
+      return op ? op.displayName || op.operatorCode : code;
+    },
+
+    zoneLabel(operatorCode, zoneCode) {
+      const z = this.zones.find((x) => x.operatorCode === operatorCode && x.zoneCode === zoneCode);
+      return z ? z.displayName || z.zoneCode : zoneCode;
+    },
+
+    openCreate() {
+      this.editing = false;
+      this.siteForm = EMPTY_SITE_FORM();
+      this.siteModal = true;
+    },
+
+    openEdit(row) {
+      this.editing = true;
+      this.siteForm = {
+        siteCode: row.siteCode,
+        nombre: row.nombre || '',
+        tipo: row.tipo || '',
+        operatorCode: row.operatorCode || '',
+        zoneCode: row.zoneCode || '',
+        lat: row.lat != null ? row.lat : null,
+        lng: row.lng != null ? row.lng : null,
+        direccion: row.direccion || '',
+        provincia: row.provincia || '',
+        localidad: row.localidad || '',
+        notes: row.notes || '',
+      };
+      this.siteModal = true;
+    },
+
+    async saveSite() {
+      if (this.saving) return;
+      this.saving = true;
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      const f = this.siteForm;
+      try {
+        let res;
+        if (this.editing) {
+          // PUT /site: siteCode identifica; solo campos editables viajan.
+          res = await this.$axios.put('/site', {
+            site: {
+              siteCode: f.siteCode,
+              nombre: f.nombre,
+              tipo: f.tipo,
+              operatorCode: f.operatorCode,
+              zoneCode: f.zoneCode,
+              lat: f.lat,
+              lng: f.lng,
+              direccion: f.direccion,
+              provincia: f.provincia,
+              localidad: f.localidad,
+              notes: f.notes,
+            },
+          }, headers);
+        } else {
+          res = await this.$axios.post('/site', { newSite: { ...f } }, headers);
+        }
+        if (res.data.status === 'success') {
+          this.$notify({
+            type: 'success',
+            icon: 'tim-icons icon-check-2',
+            message: this.editing ? 'Sitio actualizado' : `Sitio ${f.siteCode} creado`,
+          });
+          this.siteModal = false;
+          await Promise.all([this.loadAdminData(), this.refreshSitesSilently()]);
+        }
+      } catch (err) {
+        const msg = (err.response && err.response.data && err.response.data.error) || 'Error al guardar el sitio';
+        this.$notify({ type: 'danger', icon: 'tim-icons icon-alert-circle-exc', message: String(msg) });
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async deleteSite(row) {
+      // Fricción de escritura (patrón rulepacks): confirm explícito; si el
+      // backend responde 409 (sitio con devices), segundo confirm para
+      // forzar (desvincula los devices en cascada, sites.js:359-361).
+      try {
+        await MessageBox.confirm(
+          `¿Eliminar el sitio "${row.nombre || row.siteCode}" (${row.siteCode})? Esta acción no se puede deshacer.`,
+          'Confirmar eliminación',
+          { confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar', type: 'warning' }
+        );
+      } catch {
+        return;
+      }
+
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      let params = { siteCode: row.siteCode };
+      try {
+        await this.$axios.delete('/site', { ...headers, params });
+      } catch (err) {
+        if (err.response && err.response.status === 409) {
+          try {
+            await MessageBox.confirm(
+              `El sitio tiene ${(row.devices || []).length} dispositivo(s) asociados. ¿Forzar el borrado? Los dispositivos quedarán desvinculados.`,
+              'Sitio con dispositivos',
+              { confirmButtonText: 'Forzar borrado', cancelButtonText: 'Cancelar', type: 'warning' }
+            );
+          } catch {
+            return;
+          }
+          params = { siteCode: row.siteCode, force: 'true' };
+          try {
+            await this.$axios.delete('/site', { ...headers, params });
+          } catch (err2) {
+            const msg2 = (err2.response && err2.response.data && err2.response.data.error) || 'Error al eliminar el sitio';
+            this.$notify({ type: 'danger', icon: 'tim-icons icon-alert-circle-exc', message: String(msg2) });
+            return;
+          }
+        } else {
+          const msg = (err.response && err.response.data && err.response.data.error) || 'Error al eliminar el sitio';
+          this.$notify({ type: 'danger', icon: 'tim-icons icon-alert-circle-exc', message: String(msg) });
+          return;
+        }
+      }
+
+      this.$notify({ type: 'success', icon: 'tim-icons icon-check-2', message: `Sitio ${row.siteCode} eliminado` });
+      await Promise.all([this.loadAdminData(), this.refreshSitesSilently()]);
     },
   },
 };

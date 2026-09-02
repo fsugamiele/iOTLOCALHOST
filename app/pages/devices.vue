@@ -89,6 +89,12 @@
           <el-table-column prop="dId" label="Device Id"></el-table-column>
           <el-table-column prop="password" label="Password"></el-table-column>
           <el-table-column prop="templateName" label="Template"></el-table-column>
+          <el-table-column label="Sitio" width="130">
+            <template slot-scope="{ row }">
+              <code v-if="row.siteId" style="font-size:11px">{{ row.siteId }}</code>
+              <span v-else class="text-muted" style="font-size:12px">—</span>
+            </template>
+          </el-table-column>
           <el-table-column label="Type" width="110">
             <template slot-scope="{ row }">
               <span v-if="row.firmwareType === 'tasmota'" style="background:#1d8cf8;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Tasmota</span>
@@ -128,6 +134,18 @@
                   on-text="On"
                   off-text="Off"
                 ></base-switch>
+              </el-tooltip>
+
+              <el-tooltip :content="row.siteId ? 'Cambiar / quitar sitio' : 'Asociar a sitio'" effect="light" :open-delay="300" placement="top" style="margin-right:10px">
+                <base-button
+                  type="warning"
+                  icon
+                  size="sm"
+                  class="btn-link"
+                  @click="openBindModal(row)"
+                >
+                  <i class="tim-icons icon-pin-3"></i>
+                </base-button>
               </el-tooltip>
 
               <el-tooltip content="Delete" effect="light" :open-delay="300" placement="top">
@@ -338,6 +356,55 @@
       </span>
     </el-dialog>
 
+    <!-- BIND DEVICE ↔ SITE MODAL (DEC-REF-97) -->
+    <el-dialog
+      :title="bindDevice ? 'Sitio de ' + bindDevice.name + ' (' + bindDevice.dId + ')' : ''"
+      :visible.sync="bindModal"
+      width="480px"
+      append-to-body
+    >
+      <div v-if="bindDevice">
+        <p v-if="bindDevice.siteId" class="text-muted" style="font-size:12px">
+          Actualmente asociado a <code style="font-size:11px">{{ bindDevice.siteId }}</code>.
+          Elegir otro sitio lo reasigna; "Quitar del sitio" lo deja sin sitio.
+        </p>
+        <label class="control-label">Sitio</label>
+        <el-select
+          v-model="bindSiteCode"
+          class="select-primary"
+          placeholder="Elegir sitio"
+          style="width:100%"
+          filterable
+        >
+          <el-option
+            v-for="s in sites"
+            :key="s.siteCode"
+            :value="s.siteCode"
+            :label="(s.nombre || s.siteCode) + ' (' + s.siteCode + ')'"
+          />
+        </el-select>
+      </div>
+      <span slot="footer">
+        <base-button type="secondary" @click="bindModal = false">Cancelar</base-button>
+        <base-button
+          v-if="bindDevice && bindDevice.siteId"
+          type="danger"
+          @click="unbindSite"
+          :disabled="bindLoading"
+        >
+          Quitar del sitio
+        </base-button>
+        <base-button
+          type="primary"
+          @click="bindSite"
+          :disabled="!bindSiteCode || bindSiteCode === (bindDevice && bindDevice.siteId) || bindLoading"
+        >
+          <i class="fa" :class="bindLoading ? 'fa-spinner fa-spin' : 'fa-link'" style="margin-right:6px"></i>
+          Asociar
+        </base-button>
+      </span>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -345,7 +412,7 @@
 <script>
 import { Table, TableColumn } from "element-ui";
 import { Select, Option } from "element-ui";
-import { Dialog, Steps, Step } from "element-ui";
+import { Dialog, Steps, Step, MessageBox } from "element-ui";
 
 export default {
   middleware: "authenticated",
@@ -390,7 +457,14 @@ export default {
       provisionSending: false,
       provisionSent: false,
       provisionSuccess: false,
-      provisionError: ""
+      provisionError: "",
+
+      // DEC-REF-97 — bind device ↔ site
+      sites: [],
+      bindModal: false,
+      bindDevice: null,
+      bindSiteCode: "",
+      bindLoading: false
     };
   },
   computed: {
@@ -407,8 +481,97 @@ export default {
   },
   mounted() {
     this.getTemplates();
+    this.getSites();
   },
   methods: {
+
+    // ── Bind device ↔ site (DEC-REF-97) ───────────────────────────
+
+    async getSites() {
+      // Los sitios son dato de referencia para el selector; si falla, el
+      // resto de la página sigue operando.
+      const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.get("/site", axiosHeaders);
+        if (res.data.status == "success") {
+          this.sites = res.data.data;
+        }
+      } catch (error) {
+        console.log("[Devices] getSites error:", error);
+      }
+    },
+
+    openBindModal(device) {
+      this.bindDevice = device;
+      this.bindSiteCode = device.siteId || "";
+      this.bindModal = true;
+    },
+
+    async bindSite() {
+      if (this.bindLoading || !this.bindDevice || !this.bindSiteCode) return;
+      const dId = this.bindDevice.dId;
+      const prevSite = this.bindDevice.siteId;
+
+      // Reasignación: el backend rechaza bind sobre sitio ajeno (409),
+      // así que se desvincula primero del sitio previo (con confirm).
+      if (prevSite && prevSite !== this.bindSiteCode) {
+        try {
+          await MessageBox.confirm(
+            `El dispositivo está asociado a ${prevSite}. ¿Reasignarlo a ${this.bindSiteCode}?`,
+            "Reasignar sitio",
+            { confirmButtonText: "Reasignar", cancelButtonText: "Cancelar", type: "warning" }
+          );
+        } catch {
+          return;
+        }
+      }
+
+      this.bindLoading = true;
+      const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
+      try {
+        if (prevSite && prevSite !== this.bindSiteCode) {
+          await this.$axios.delete("/site/devices", {
+            ...axiosHeaders,
+            params: { siteCode: prevSite, dId },
+          });
+        }
+        const res = await this.$axios.post("/site/devices", { siteCode: this.bindSiteCode, dId }, axiosHeaders);
+        if (res.data.status == "success") {
+          this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId} asociado a ${this.bindSiteCode}` });
+          this.bindModal = false;
+          this.$store.dispatch("getDevices");
+        }
+      } catch (e) {
+        const msg = (e.response && e.response.data && e.response.data.error) || "Error al asociar el dispositivo";
+        this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: String(msg) });
+      } finally {
+        this.bindLoading = false;
+      }
+    },
+
+    async unbindSite() {
+      if (this.bindLoading || !this.bindDevice || !this.bindDevice.siteId) return;
+      const dId = this.bindDevice.dId;
+      const siteCode = this.bindDevice.siteId;
+      this.bindLoading = true;
+      const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.delete("/site/devices", {
+          ...axiosHeaders,
+          params: { siteCode, dId },
+        });
+        if (res.data.status == "success") {
+          this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId} desvinculado de ${siteCode}` });
+          this.bindModal = false;
+          this.$store.dispatch("getDevices");
+        }
+      } catch (e) {
+        const msg = (e.response && e.response.data && e.response.data.error) || "Error al desvincular el dispositivo";
+        this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: String(msg) });
+      } finally {
+        this.bindLoading = false;
+      }
+    },
 
     // ── Provision wizard ──────────────────────────────────────────
 
