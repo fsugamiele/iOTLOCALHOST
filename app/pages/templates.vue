@@ -12,6 +12,38 @@
           <!-- WIDGET SELECTOR AND FORMS -->
           <div class="col-6">
 
+            <!-- FICHA DE EQUIPO (DEC-REF-97): la plantilla nace atada a una
+                 ficha. Si la ficha declara variables, la variable técnica del
+                 widget se elige del catálogo de la ficha (estricto); si la
+                 ficha no declara variables (o no hay ficha), el flujo queda
+                 libre como antes (compat pre-ficha). -->
+            <label class="control-label" style="margin-top:18px">Ficha de equipo</label>
+            <el-select
+              v-model="templateDeviceType"
+              class="select-info"
+              placeholder="Sin ficha (compat legacy)"
+              style="width: 100%;"
+              filterable
+              clearable
+            >
+              <el-option
+                v-for="s in sheets"
+                :key="s.deviceType"
+                :value="s.deviceType"
+                :label="sheetLabel(s)"
+              />
+            </el-select>
+            <div
+              v-if="templateDeviceType && !sheetVariables.length"
+              class="alert alert-warning"
+              style="margin-top:10px; padding:8px 12px; font-size:12px"
+            >
+              <i class="fa fa-exclamation-triangle" style="margin-right:6px"></i>
+              La ficha <b>{{ templateDeviceType }}</b> no declara variables — la carga del widget queda libre.
+            </div>
+
+            <br />
+
             <!-- WIDGET TYPE SELECTOR -->
             <label class="control-label">Widget</label>
             <el-select
@@ -38,6 +70,34 @@
             </el-select>
 
             <br /><br />
+
+            <!-- SELECTOR DE VARIABLE DESDE LA FICHA (DEC-REF-97):
+                 visible solo si hay ficha elegida CON variables. Aplica al
+                 config del widget activo: fija `variable` (técnica, viaja en
+                 el topic MQTT) y autocompleta label/unidad/tipo. -->
+            <div v-if="widgetType && sheetVariables.length">
+              <label class="control-label">
+                Variable de la ficha <code style="font-size:11px">{{ templateDeviceType }}</code>
+              </label>
+              <el-select
+                v-model="sheetVarPick"
+                class="select-info"
+                placeholder="Elegir variable del catálogo de la ficha"
+                style="width: 100%; margin-bottom: 6px"
+                filterable
+                @change="applySheetVariable"
+              >
+                <el-option
+                  v-for="v in sheetVariables"
+                  :key="v.name"
+                  :value="v.name"
+                  :label="sheetVarLabel(v)"
+                />
+              </el-select>
+              <p class="text-muted" style="font-size:11px; margin-bottom:16px">
+                La variable técnica queda atada a la ficha; el nombre visible se puede ajustar abajo.
+              </p>
+            </div>
 
             <!-- FORM NUMBER CHART -->
             <div v-if="widgetType == 'numberchart'">
@@ -135,7 +195,21 @@
 
             <!-- FORM VALUE STATUS (catálogo · DEC-REF-76 / -76-A / -76-B) -->
             <div v-if="widgetType == 'valueStatus'">
-              <base-input v-model="valueStatusConfig.variable" label="Variable (nombre técnico del mapa del equipo, ej: oil_pressure)" type="text" />
+              <!-- DEC-REF-97: con ficha elegida, la variable técnica sale del
+                   picker de arriba (estricto); sin ficha, texto libre. -->
+              <base-input
+                v-if="!sheetVariables.length"
+                v-model="valueStatusConfig.variable"
+                label="Variable (nombre técnico del mapa del equipo, ej: oil_pressure)"
+                type="text"
+              />
+              <base-input
+                v-else
+                :value="valueStatusConfig.variable"
+                label="Variable (técnica — se fija desde la ficha, arriba)"
+                type="text"
+                disabled
+              />
               <base-input v-model="valueStatusConfig.variableFullName" label="Nombre de Variable (sin unidad entre paréntesis)" type="text" />
 
               <label class="control-label">Tipo de dato</label>
@@ -290,6 +364,17 @@
           <base-input class="col-8" v-model="templateDescription" label="Descripción" type="text" />
         </div>
 
+        <div class="row" v-if="templateDeviceType">
+          <div class="col-12">
+            <p class="text-muted" style="font-size:12px; margin-bottom:10px">
+              <i class="fa fa-link" style="margin-right:6px"></i>
+              La plantilla quedará asociada a la ficha
+              <code style="font-size:11px">{{ templateDeviceType }}</code>
+              (elegida arriba, en el configurador de widgets).
+            </p>
+          </div>
+        </div>
+
         <div class="row">
           <div class="col-12" style="text-align:right">
             <base-button
@@ -325,6 +410,13 @@
 
             <el-table-column prop="name" label="Nombre" />
             <el-table-column prop="description" label="Descripción" />
+
+            <el-table-column label="Ficha" width="160">
+              <template slot-scope="{ row }">
+                <code v-if="row.deviceType" style="font-size:11px">{{ row.deviceType }}</code>
+                <span v-else class="text-muted" style="font-size:12px">sin ficha</span>
+              </template>
+            </el-table-column>
 
             <el-table-column label="Widgets" align="center" width="90">
               <template slot-scope="{ row }">
@@ -433,6 +525,12 @@ export default {
       deleteLoadingId: null,
       showDetailModal: false,
       selectedTemplate: null,
+
+      // DEC-REF-97: fichas de equipo disponibles y ficha elegida para la
+      // plantilla en construcción ('' = sin ficha, compat pre-ficha).
+      sheets: [],
+      templateDeviceType: "",
+      sheetVarPick: "",
 
       iconOptions: [
         // Ambiente / Sensores
@@ -609,9 +707,37 @@ export default {
       };
       return configs[this.widgetType];
     },
+    // DEC-REF-97: ficha elegida y su catálogo de variables.
+    selectedSheet() {
+      return this.sheets.find((s) => s.deviceType === this.templateDeviceType) || null;
+    },
+    sheetVariables() {
+      return this.selectedSheet ? this.selectedSheet.variables || [] : [];
+    },
+    sheetVariableNames() {
+      return this.sheetVariables.map((v) => v.name);
+    },
+  },
+  watch: {
+    // DEC-REF-97: al cambiar la ficha, los widgets ya acumulados cuya
+    // variable técnica queda fuera del catálogo nuevo se avisan (ámbar),
+    // NO se borran — el usuario decide.
+    templateDeviceType() {
+      this.sheetVarPick = "";
+      if (!this.templateDeviceType || !this.sheetVariables.length || !this.widgets.length) return;
+      const fuera = this.widgets.filter((w) => !this.sheetVariableNames.includes(w.variable));
+      if (fuera.length) {
+        this.$notify({
+          type: "warning",
+          icon: "tim-icons icon-alert-circle-exc",
+          message: `${fuera.length} widget(s) usan variables fuera de la ficha ${this.templateDeviceType}. Se conservan, pero la plantilla puede quedar inconsistente.`,
+        });
+      }
+    },
   },
   mounted() {
     this.getTemplates();
+    this.getSheets();
   },
 
   methods: {
@@ -650,6 +776,56 @@ export default {
       this.showDetailModal = true;
     },
 
+    // DEC-REF-97: helpers de ficha -------------------------------------
+    sheetLabel(s) {
+      const fab = [s.manufacturer, s.model].filter(Boolean).join(" ");
+      return fab ? `${s.deviceType} — ${fab}` : s.deviceType;
+    },
+
+    sheetVarLabel(v) {
+      const unit = v.unit ? ` [${v.unit}]` : "";
+      return `${v.label || v.name} (${v.name})${unit}`;
+    },
+
+    async getSheets() {
+      // La ficha es opcional: si el endpoint falla, la página sigue
+      // operando en modo legacy sin bloquear al usuario.
+      const axiosHeaders = {
+        headers: { token: this.$store.state.auth.token },
+      };
+      try {
+        const res = await this.$axios.get("/equipmentsheet", axiosHeaders);
+        if (res.data.status == "success") {
+          this.sheets = res.data.data;
+        }
+      } catch (error) {
+        this.$notify({
+          type: "warning",
+          icon: "tim-icons icon-alert-circle-exc",
+          message: "No se pudieron cargar las fichas de equipo",
+        });
+      }
+    },
+
+    applySheetVariable(varName) {
+      const v = this.sheetVariables.find((x) => x.name === varName);
+      const cfg = this.previewConfig;
+      if (!v || !cfg) return;
+      // La variable TÉCNICA es la de la ficha (es la que viaja en el topic
+      // MQTT y la que compara el motor de reglas — DEC-REF-91).
+      cfg.variable = v.name;
+      cfg.variableFullName = v.label || v.name;
+      if ("unit" in cfg) cfg.unit = v.unit || "";
+      // valueStatus declara variableType propio: se adopta el de la ficha
+      // solo si es uno de los 4 que el widget entiende.
+      if (
+        this.widgetType === "valueStatus" &&
+        ["float", "int", "bool", "categorical"].includes(v.type)
+      ) {
+        cfg.variableType = v.type;
+      }
+    },
+
     moveWidget(index, direction) {
       const newIndex = index + direction;
       if (newIndex < 0 || newIndex >= this.widgets.length) return;
@@ -682,12 +858,37 @@ export default {
 
     async saveTemplate() {
       if (this.saveLoading) return;
+
+      // DEC-REF-97: con ficha elegida, los widgets cuya variable técnica
+      // queda fuera del catálogo se confirman explícitamente (la plantilla
+      // puede guardarse igual — la ficha puede crecer después — pero el
+      // usuario queda avisado).
+      if (this.templateDeviceType && this.sheetVariables.length) {
+        const fuera = this.widgets.filter((w) => !this.sheetVariableNames.includes(w.variable));
+        if (fuera.length) {
+          try {
+            await MessageBox.confirm(
+              `${fuera.length} widget(s) usan variables que no están en la ficha "${this.templateDeviceType}". ¿Guardar la plantilla de todas formas?`,
+              "Variables fuera de la ficha",
+              {
+                confirmButtonText: "Guardar igual",
+                cancelButtonText: "Revisar",
+                type: "warning",
+              }
+            );
+          } catch {
+            return;
+          }
+        }
+      }
+
       this.saveLoading = true;
       const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
       const toSend = {
         template: {
           name: this.templateName,
           description: this.templateDescription,
+          deviceType: this.templateDeviceType || "",
           widgets: this.widgets,
         },
       };
@@ -703,6 +904,8 @@ export default {
           this.widgets = [];
           this.templateName = "";
           this.templateDescription = "";
+          this.templateDeviceType = "";
+          this.sheetVarPick = "";
           this.widgetType = "";
         }
       } catch (error) {
@@ -768,11 +971,16 @@ export default {
     addNewWidget() {
       const config = this.previewConfig;
       const isValueStatus = this.widgetType === 'valueStatus';
+      // DEC-REF-97: la variable vino del catálogo de la ficha → es la clave
+      // real (técnica) y NO se pisa con makeid.
+      const fromSheet = this.sheetVariableNames.includes(config.variable);
 
       // DEC-REF-76-B (ii): dedupe por `variable` en valueStatus (clave real
       // de unicidad); en los 4 legacy sigue por variableFullName.trim()
       // (retrocompatibilidad — el makeid garantiza `variable` único).
-      if (isValueStatus) {
+      // DEC-REF-97: si vino de la ficha, dedupe por variable técnica en
+      // todos los tipos (es la clave real contra el equipo).
+      if (isValueStatus || fromSheet) {
         const varName = (config.variable || '').trim();
         if (this.widgets.some((w) => w.variable === varName)) {
           this.$notify({
@@ -796,7 +1004,8 @@ export default {
 
       // DEC-REF-76-B (i): NO pisar `variable` con makeid en valueStatus
       // (la variable la fija el mapa Modbus del equipo, no la plataforma).
-      if (!isValueStatus) {
+      // DEC-REF-97: tampoco si vino de la ficha (la fija el catálogo).
+      if (!isValueStatus && !fromSheet) {
         config.variable = this.makeid(10);
       }
 
@@ -824,6 +1033,7 @@ export default {
       // widget no herede campos del anterior. Se conservan variableType
       // (default sano), icon y column (defaults del form).
       config.variableFullName = "";
+      this.sheetVarPick = "";
       if (isValueStatus) {
         config.variable      = "";
         config.unit          = "";
