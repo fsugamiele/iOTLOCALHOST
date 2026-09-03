@@ -11954,3 +11954,36 @@ Primera corrida del smoke F8 mandó el alta de ficha con wrapper `newSheet` en v
 6. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME (firma BACKLOG-OPS-1) · integrar `run.sh` a `apertura.sh` · `backups/` + `seeds/_dev/` retención · K2 · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
 
 **Nota de push.** Al cierre hay 7 commits sin push (`861e4fd` #71, `76e1f7a` F1, `ca57815` F2+F3, `b83f258` F4+F5, `3c4cc0f` F6+F7, el append previo de #70 y el asiento de esta sesión). Push requiere orden explícita de Franco.
+
+## Sesión #73 — 2026-09-02 · Área 2 · DEC-REF-98 implementado — ficha desde PDF + Devices Wanomi 3.0 + 6 widgets
+
+**Foco.** Pedido de Franco: (1) la ficha se carga desde el **PDF de especificaciones del fabricante** y un script extrae las variables automáticamente; (2) `/devices` depurada a Wanomi 3.0 — afuera el wizard "Provision Device" y el alta Tasmota, y el alta permite elegir **sitio** y **guardar-en-BD on/off**; (3) templates con **widgets específicos Wanomi 3.0** funcionales. Registrado como **DEC-REF-98** en el corpus (antes del código).
+
+**Decisiones de Franco firmadas en sesión (no reabrir).** **D-1:** el origen de la ficha es el PDF del fabricante con **revisión humana obligatoria** — el extractor propone un draft que precarga el modal de alta; nada persiste sin confirmación (el guardado sigue siendo POST /equipmentsheet, DEC-REF-94/-97). **D-2:** se retiran de la UI el wizard Provision y el alta Tasmota (el alta canónica es Wanomi 3.0: nombre + template + sitio + saver). **D-3:** se construyen 6 widgets: `tankLevel`, `multiState`, `equipmentAlarms`, `dataFreshness`, `projectedAutonomy`, `booleanDwell`.
+
+**Implementado — 3 commits.**
+
+- **W1 — backend** (`e0beba5`): `services/sheetExtractor.js` NUEVO (pdfjs-dist 2.16.105 legacy; líneas reconstruidas por coordenada Y; unidades como token con bordes — sin bordes la "V" se comía letras, medido "Voltage"→"oltage"; keywords de dominio; devuelve `{manufacturer, model, variables[], rawCandidates[], pages}` sin persistir) · `POST /equipmentsheet/extract` (superadmin, `{pdfBase64}`, guarda `%PDF-`, parser de 25mb registrado ANTES del global en `index.js`) · `devices.js`: `POST /device` honra `saverRule:false` (nace con la regla EMQX deshabilitada; default ON retrocompatible).
+- **W2+W3 — UI** (`995e8b0`): `/fichas` con botón "Cargar desde PDF" (superadmin; FileReader→base64→extract→modal precargado; banner de draft; `rawCandidates` listados con botón Agregar; tipos float/int/bool/categorical en el editor) · `/devices` REESCRITA: retirados wizard Provision, modal Tasmota, selector firmwareType y botón provision; alta = nombre + template + **sitio** (el-select) + **saver** (base-switch default ON); modal simple de credenciales post-alta; conserva bind/saver-switch/delete de #72.
+- **W4+W5 — widgets** (`72b7c39`): 6 presenters puros + composiciones Live/Editor + registro en `resolver.js` (el fallback DEC-REF-75 §2 ya no los toca) · `LiveValue` ganó prop `time` aditiva (la frescura ES el dato de `dataFreshness`) · `booleanDwell` y `equipmentAlarms` son **Live custom**: el primero deriva "desde cuándo" del historial (`/get-small-charts-data`, ventana `dwellWindowHours`, "al menos {ventana}" si no se observó el cambio — nunca afirma permanencia mayor a la observada); el segundo no es widget de variable — su fuente es el feed `/site/:siteCode/alarms` filtrado por dId, activa = último evento por ruleId ≠ resolve, refresh en `wanomi:notif` · `widgetSchema` ganó `dwellWindowHours` (strict:true lo habría descartado mudo) · `templates.vue`: grupo "Wanomi 3.0" en el selector + 6 mini-forms (catálogo de estados con severidad para multiState; umbrales bajos para tankLevel/autonomy; cadencia para freshness; ventana para dwell; equipmentAlarms sin variable, dedupe por tipo — uno por plantilla) · `_siteCode.vue`: la fila label+valor con `<live-value>` se reemplazó por el resolver — cada widget renderiza su composición Live con shell propia y recibe el config COMPLETO + `siteCode`.
+
+**Verificación (W6, todo en P2).** Build por `docker_nuxt_build.yml` exit 0 · strings nuevos medidos en chunks (`TankLevel`, `autonomía`, `Nuevo dispositivo`, `Cargar desde PDF`, `Permanencia Booleana`, `dwellWindowHours`) · restart `node-p2` → UI :3100 **200** en /fichas /devices /templates /sites, API **401** sin token (control) · **smoke E2E 27/27 PASS**: extract del PDF sintético → 8/8 variables con unidades y tipos correctos · alta de ficha desde el draft · template con los 6 widgets + valueStatus persistiendo todos los campos nuevos (tankCapacity, thresholds, enumValues, cadenceExpected, dwellWindowHours) · device con `saverRule:false` → medido en mongo-p2: **SaverRule nace con status=false**, `siteId=SMK73` y bind bidireccional (site.devices) · toggle PUT /saver-rule → **true** persistido (mongo + EMQX `rule:e7897780`) · limpieza completa (device, template, sitio, ficha).
+
+**Declarado — cambio de estado P2:** el recurso saver de EMQX-p2 está **vivo** esta sesión (regla creada y toggled real) — el carry-over 3 de #72 ("recursos EMQX muertos") queda superado para saver; BACKLOG-OPS-1 debe releerse contra esto. Y se declara la **regeneración de la credencial de `superadmin-p2@wanomi.test`** en mongo-p2 (bcrypt por updateOne directo): `/tmp/.p2_pw` se había perdido con el reinicio del host; la de cellowner-p2 sigue perdida (no se necesitó).
+
+### Errores de método — tres, menores
+
+1. **pdf-parse@1.1.1 descartado tras medirlo**: su pdf.js 1.x interno no traga xref de generadores comunes ("bad XRef entry" sobre un PDF de pdfkit válido para pdftotext). Se fue a pdfjs-dist directo. Perdió ~20 min la insistencia inicial.
+2. Primera corrida del smoke W6 asumió `dId` en `data.dId` (el route lo devuelve a nivel raíz) y `saverRule` como array (es objeto único, `filter(...)[0]`): 6 FAIL de script, no del código. Corregido → 27/27.
+3. `/tmp/.p2_pw` volvió a perderse durante la sesión (tmpfs del host); se recreó desde la credencial regenerada. La dependencia de `/tmp` para credenciales de trabajo es frágil — candidata a carry-over.
+
+### Carry-over para #74, en orden
+
+1. **Click-through visual en browser** de todo DEC-REF-97 + DEC-REF-98 (sigue de #72; la verificación es por API + chunks, sin headless en el host).
+2. **booleanDwell/equipmentAlarms con datos reales**: la mecánica está verificada por API; falta verlos renderizar con un equipo publicando y alarmas vivas (con saver vivo en P2, la frescura ya tiene datos reales que morder).
+3. Credenciales de trabajo fuera de `/tmp` (ver error de método 3); password cellowner-p2 sigue perdido.
+4. Sembrar ficha `cummins-pcc` en prod (sigue de #72; ahora además puede probarse el camino PDF→draft con el datasheet real).
+5. `backups/`, `seeds/_dev/`, fotos `.jfif` sin trackear — retención/limpieza pendiente.
+6. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME · integrar `run.sh` a `apertura.sh` · K2 · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
+
+**Nota de push.** Al cierre hay 10 commits sin push (7 de #72 + `e0beba5` W1 + `995e8b0` W2+W3 + `72b7c39` W4+W5 + el asiento de esta sesión). Push requiere orden explícita de Franco.
