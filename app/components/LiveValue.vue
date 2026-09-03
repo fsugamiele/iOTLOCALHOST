@@ -7,8 +7,11 @@
     </template>
     <!-- Valor recibido → delega presentación en el componente presentacional
          puro pasado por prop (DEC-REF-76-A vi). Default: ValueStatus. -->
+    <!-- DEC-REF-98 D-3 (#73): `time` aditivo — la frescura del dato es un
+         dato en sí mismo (widget dataFreshness). Los presenters que no la
+         declaran la ignoran (Vue descarta props no declaradas). -->
     <template v-else>
-      <component :is="presenter" :value="value" :config="config" context="live" />
+      <component :is="presenter" :value="value" :time="time" :config="config" context="live" />
     </template>
   </span>
 </template>
@@ -31,7 +34,7 @@ export default {
   },
   // config = { userId, dId, variable, variableType, variableFullName, unit, ... }
   data() {
-    return { value: null, topic: '' };
+    return { value: null, time: null, topic: '' };
   },
   computed: {
     hasValue() { return this.value !== null; },
@@ -54,6 +57,7 @@ export default {
     topicKey() {
       if (this.topic) this.$nuxt.$off(this.topic + '/sdata', this.onData);
       this.value = null;
+      this.time = null;
       this.topic = '';
       if (this.config.userId && this.config.dId && this.config.variable) {
         this.topic = this.topicKey;
@@ -73,7 +77,12 @@ export default {
   },
   methods: {
     onData(data) {
-      try { this.value = data.value; } catch (e) { console.log(e); }
+      try {
+        this.value = data.value;
+        // DEC-REF-98: timestamp del publish si viaja; si no, la recepción
+        // local es la mejor aproximación honesta a la frescura.
+        this.time = Number.isFinite(data.time) ? data.time : Date.now();
+      } catch (e) { console.log(e); }
     },
     // BACKLOG-UI-7 · siembra al montar con el último valor histórico si el
     // publish MQTT todavía no llegó. Ventana 15 min: cubre la cadencia máxima
@@ -93,7 +102,9 @@ export default {
         if (this.topic !== topicAtStart) return;
         if (this.value !== null) return;
         if (res.data && res.data.status === 'success' && Array.isArray(res.data.data) && res.data.data.length > 0) {
-          this.value = res.data.data[res.data.data.length - 1].value;
+          const last = res.data.data[res.data.data.length - 1];
+          this.value = last.value;
+          if (Number.isFinite(last.time)) this.time = last.time;
         }
       } catch (e) {
         // Fallback silencioso: sin siembra el widget queda en "esperando".

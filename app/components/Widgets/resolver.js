@@ -13,12 +13,25 @@
 // resuelve a ValueStatus{Live,Editor} — el dato queda correcto desde el día
 // uno; la UI lo alcanza cuando se construyan las otras composiciones.
 
-import Rtnumberchart     from '@/components/Widgets/Rtnumberchart.vue';
-import Iotswitch         from '@/components/Widgets/Iotswitch.vue';
-import Iotbutton         from '@/components/Widgets/Iotbutton.vue';
-import Iotindicator      from '@/components/Widgets/Iotindicator.vue';
-import ValueStatusLive   from '@/components/Widgets/ValueStatusLive.vue';
-import ValueStatusEditor from '@/components/Widgets/ValueStatusEditor.vue';
+import Rtnumberchart          from '@/components/Widgets/Rtnumberchart.vue';
+import Iotswitch              from '@/components/Widgets/Iotswitch.vue';
+import Iotbutton              from '@/components/Widgets/Iotbutton.vue';
+import Iotindicator           from '@/components/Widgets/Iotindicator.vue';
+import ValueStatusLive        from '@/components/Widgets/ValueStatusLive.vue';
+import ValueStatusEditor      from '@/components/Widgets/ValueStatusEditor.vue';
+// DEC-REF-98 D-3 (#73) — los 6 widgets Wanomi 3.0.
+import TankLevelLive          from '@/components/Widgets/TankLevelLive.vue';
+import TankLevelEditor        from '@/components/Widgets/TankLevelEditor.vue';
+import MultiStateLive         from '@/components/Widgets/MultiStateLive.vue';
+import MultiStateEditor       from '@/components/Widgets/MultiStateEditor.vue';
+import ProjectedAutonomyLive  from '@/components/Widgets/ProjectedAutonomyLive.vue';
+import ProjectedAutonomyEditor from '@/components/Widgets/ProjectedAutonomyEditor.vue';
+import DataFreshnessLive      from '@/components/Widgets/DataFreshnessLive.vue';
+import DataFreshnessEditor    from '@/components/Widgets/DataFreshnessEditor.vue';
+import BooleanDwellLive       from '@/components/Widgets/BooleanDwellLive.vue';
+import BooleanDwellEditor     from '@/components/Widgets/BooleanDwellEditor.vue';
+import EquipmentAlarmsLive    from '@/components/Widgets/EquipmentAlarmsLive.vue';
+import EquipmentAlarmsEditor  from '@/components/Widgets/EquipmentAlarmsEditor.vue';
 
 const LEGACY = {
   numberchart: Rtnumberchart,
@@ -28,15 +41,25 @@ const LEGACY = {
 };
 
 const CATALOG_LIVE = {
-  valueStatus: ValueStatusLive,
+  valueStatus:       ValueStatusLive,
+  tankLevel:         TankLevelLive,
+  multiState:        MultiStateLive,
+  projectedAutonomy: ProjectedAutonomyLive,
+  dataFreshness:     DataFreshnessLive,
+  booleanDwell:      BooleanDwellLive,
+  equipmentAlarms:   EquipmentAlarmsLive,
   // Sumar acá cuando se construya cada tipo del catálogo:
-  // tankLevel: TankLevelLive, counter: CounterLive, multiState: MultiStateLive,
-  // equipmentAlarms, miniTrend, projectedAutonomy, dataFreshness,
-  // activeRecommendation, dcPlant, powerCascade, booleanDwell.
+  // counter, miniTrend, activeRecommendation, dcPlant, powerCascade.
 };
 
 const CATALOG_EDITOR = {
-  valueStatus: ValueStatusEditor,
+  valueStatus:       ValueStatusEditor,
+  tankLevel:         TankLevelEditor,
+  multiState:        MultiStateEditor,
+  projectedAutonomy: ProjectedAutonomyEditor,
+  dataFreshness:     DataFreshnessEditor,
+  booleanDwell:      BooleanDwellEditor,
+  equipmentAlarms:   EquipmentAlarmsEditor,
 };
 
 export function resolveWidget(type, opts) {

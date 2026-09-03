@@ -51,6 +51,9 @@ const widgetSchema = new Schema({
     enumValues:       [enumValueSchema],
     bitmapDictionary: [bitmapEntrySchema],
     cadenceExpected:  { type: Number },
+    // DEC-REF-98 D-3 (#73): ventana de historial (horas) del widget
+    // booleanDwell para ubicar el último cambio de estado.
+    dwellWindowHours: { type: Number },
 }, { _id: false, strict: true });
 
 const templateSchema = new Schema({

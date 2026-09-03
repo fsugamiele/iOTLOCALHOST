@@ -67,6 +67,27 @@
               <el-option value="valueStatus" label="Valor con Estado — luz por umbral (catálogo)">
                 <i class="fa fa-signal" style="margin-right:8px"></i>Valor con Estado — luz por umbral (catálogo)
               </el-option>
+              <!-- DEC-REF-98 D-3 (#73): widgets Wanomi 3.0 -->
+              <el-option-group label="Wanomi 3.0">
+                <el-option value="tankLevel" label="Nivel de Tanque — % con litros (Wanomi 3.0)">
+                  <i class="fa fa-tint" style="margin-right:8px"></i>Nivel de Tanque — % con litros (Wanomi 3.0)
+                </el-option>
+                <el-option value="multiState" label="Estado Múltiple — estado nombrado con catálogo (Wanomi 3.0)">
+                  <i class="fa fa-toggle-on" style="margin-right:8px"></i>Estado Múltiple — estado nombrado con catálogo (Wanomi 3.0)
+                </el-option>
+                <el-option value="projectedAutonomy" label="Autonomía Proyectada — horas que publica el equipo (Wanomi 3.0)">
+                  <i class="fa fa-battery-half" style="margin-right:8px"></i>Autonomía Proyectada — horas que publica el equipo (Wanomi 3.0)
+                </el-option>
+                <el-option value="dataFreshness" label="Frescura de Datos — hace cuánto llegó el dato (Wanomi 3.0)">
+                  <i class="fa fa-sync" style="margin-right:8px"></i>Frescura de Datos — hace cuánto llegó el dato (Wanomi 3.0)
+                </el-option>
+                <el-option value="booleanDwell" label="Permanencia Booleana — cuánto lleva en este estado (Wanomi 3.0)">
+                  <i class="fa fa-clock" style="margin-right:8px"></i>Permanencia Booleana — cuánto lleva en este estado (Wanomi 3.0)
+                </el-option>
+                <el-option value="equipmentAlarms" label="Alarmas del Equipo — feed del sitio filtrado (Wanomi 3.0)">
+                  <i class="fa fa-bell" style="margin-right:8px"></i>Alarmas del Equipo — feed del sitio filtrado (Wanomi 3.0)
+                </el-option>
+              </el-option-group>
             </el-select>
 
             <br /><br />
@@ -272,6 +293,251 @@
 
               <label class="control-label">Tamaño del Widget</label>
               <el-select v-model="iotIndicatorConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
+                <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
+              </el-select>
+              <br /><br />
+            </div>
+
+            <!-- ══ FORMS WANOMI 3.0 (DEC-REF-98 D-3, #73) ═══════════════
+                 Los 5 de variable repiten la regla de valueStatus: con
+                 ficha elegida la variable técnica sale del picker de
+                 arriba (estricto); sin ficha, texto libre. -->
+
+            <!-- FORM TANK LEVEL -->
+            <div v-if="widgetType == 'tankLevel'">
+              <base-input
+                v-if="!sheetVariables.length"
+                v-model="tankLevelConfig.variable"
+                label="Variable (nombre técnico, ej: fuel_level)"
+                type="text"
+              />
+              <base-input
+                v-else
+                :value="tankLevelConfig.variable"
+                label="Variable (técnica — se fija desde la ficha, arriba)"
+                type="text"
+                disabled
+              />
+              <base-input v-model="tankLevelConfig.variableFullName" label="Nombre de Variable" type="text" />
+              <base-input v-model.number="tankLevelConfig.tankCapacity" label="Capacidad del tanque (opcional, en la unidad de abajo)" type="number" />
+              <base-input v-model="tankLevelConfig.tankUnit" label="Unidad de capacidad (ej: L)" type="text" />
+              <base-input v-model.number="tankLevelConfig.thresholds.warningLow" label="Umbral warning bajo (% — opcional)" type="number" />
+              <base-input v-model.number="tankLevelConfig.thresholds.criticalLow" label="Umbral crítico bajo (% — opcional)" type="number" />
+
+              <label class="control-label">Ícono</label>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
+                <el-select v-model="tankLevelConfig.icon" placeholder="Ícono" style="flex:1" class="select-primary">
+                  <el-option v-for="ic in iconOptions" :key="ic.value" :value="ic.value" :label="ic.label">
+                    <i class="fa" :class="ic.value" style="margin-right:8px; width:16px; text-align:center"></i>{{ ic.label }}
+                  </el-option>
+                </el-select>
+                <i class="fa fa-2x" :class="tankLevelConfig.icon" style="min-width:28px; text-align:center; opacity:0.85"></i>
+              </div>
+
+              <label class="control-label">Tamaño del Widget</label>
+              <el-select v-model="tankLevelConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
+                <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
+              </el-select>
+              <br /><br />
+            </div>
+
+            <!-- FORM MULTI STATE -->
+            <div v-if="widgetType == 'multiState'">
+              <base-input
+                v-if="!sheetVariables.length"
+                v-model="multiStateConfig.variable"
+                label="Variable (nombre técnico, ej: genset_state)"
+                type="text"
+              />
+              <base-input
+                v-else
+                :value="multiStateConfig.variable"
+                label="Variable (técnica — se fija desde la ficha, arriba)"
+                type="text"
+                disabled
+              />
+              <base-input v-model="multiStateConfig.variableFullName" label="Nombre de Variable" type="text" />
+
+              <label class="control-label">Catálogo de estados</label>
+              <div
+                v-for="(ev, i) in multiStateConfig.enumValues"
+                :key="i"
+                style="display:flex; gap:6px; align-items:center; margin-bottom:6px"
+              >
+                <el-input v-model="ev.value" placeholder="valor (ej: 1)" style="flex:1" size="small" />
+                <el-input v-model="ev.label" placeholder="etiqueta (ej: En marcha)" style="flex:2" size="small" />
+                <el-select v-model="ev.severity" style="width:110px" size="small" class="select-primary">
+                  <el-option value="ok" label="ok" />
+                  <el-option value="info" label="info" />
+                  <el-option value="warning" label="warning" />
+                  <el-option value="critical" label="critical" />
+                </el-select>
+                <base-button size="sm" type="danger" icon @click="multiStateConfig.enumValues.splice(i, 1)">
+                  <i class="fa fa-trash"></i>
+                </base-button>
+              </div>
+              <base-button
+                size="sm"
+                type="default"
+                @click="multiStateConfig.enumValues.push({ value: '', label: '', severity: 'info' })"
+              >
+                <i class="fa fa-plus" style="margin-right:4px"></i>Estado
+              </base-button>
+              <p class="text-muted" style="font-size:11px; margin:8px 0 16px">
+                Valor fuera del catálogo → el widget lo muestra en gris con el valor crudo (la plataforma no inventa significados).
+              </p>
+
+              <label class="control-label">Ícono</label>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
+                <el-select v-model="multiStateConfig.icon" placeholder="Ícono" style="flex:1" class="select-primary">
+                  <el-option v-for="ic in iconOptions" :key="ic.value" :value="ic.value" :label="ic.label">
+                    <i class="fa" :class="ic.value" style="margin-right:8px; width:16px; text-align:center"></i>{{ ic.label }}
+                  </el-option>
+                </el-select>
+                <i class="fa fa-2x" :class="multiStateConfig.icon" style="min-width:28px; text-align:center; opacity:0.85"></i>
+              </div>
+
+              <label class="control-label">Tamaño del Widget</label>
+              <el-select v-model="multiStateConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
+                <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
+              </el-select>
+              <br /><br />
+            </div>
+
+            <!-- FORM PROJECTED AUTONOMY -->
+            <div v-if="widgetType == 'projectedAutonomy'">
+              <base-input
+                v-if="!sheetVariables.length"
+                v-model="projectedAutonomyConfig.variable"
+                label="Variable (nombre técnico, ej: autonomy_hours)"
+                type="text"
+              />
+              <base-input
+                v-else
+                :value="projectedAutonomyConfig.variable"
+                label="Variable (técnica — se fija desde la ficha, arriba)"
+                type="text"
+                disabled
+              />
+              <base-input v-model="projectedAutonomyConfig.variableFullName" label="Nombre de Variable" type="text" />
+              <base-input v-model.number="projectedAutonomyConfig.thresholds.warningLow" label="Umbral warning bajo (horas — opcional)" type="number" />
+              <base-input v-model.number="projectedAutonomyConfig.thresholds.criticalLow" label="Umbral crítico bajo (horas — opcional)" type="number" />
+              <p class="text-muted" style="font-size:11px; margin-bottom:16px">
+                La autonomía la calcula y publica el equipo (la ficha la declara); la plataforma no estima consumo.
+              </p>
+
+              <label class="control-label">Ícono</label>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
+                <el-select v-model="projectedAutonomyConfig.icon" placeholder="Ícono" style="flex:1" class="select-primary">
+                  <el-option v-for="ic in iconOptions" :key="ic.value" :value="ic.value" :label="ic.label">
+                    <i class="fa" :class="ic.value" style="margin-right:8px; width:16px; text-align:center"></i>{{ ic.label }}
+                  </el-option>
+                </el-select>
+                <i class="fa fa-2x" :class="projectedAutonomyConfig.icon" style="min-width:28px; text-align:center; opacity:0.85"></i>
+              </div>
+
+              <label class="control-label">Tamaño del Widget</label>
+              <el-select v-model="projectedAutonomyConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
+                <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
+              </el-select>
+              <br /><br />
+            </div>
+
+            <!-- FORM DATA FRESHNESS -->
+            <div v-if="widgetType == 'dataFreshness'">
+              <base-input
+                v-if="!sheetVariables.length"
+                v-model="dataFreshnessConfig.variable"
+                label="Variable a vigilar (nombre técnico)"
+                type="text"
+              />
+              <base-input
+                v-else
+                :value="dataFreshnessConfig.variable"
+                label="Variable (técnica — se fija desde la ficha, arriba)"
+                type="text"
+                disabled
+              />
+              <base-input v-model="dataFreshnessConfig.variableFullName" label="Nombre de Variable" type="text" />
+              <base-input v-model.number="dataFreshnessConfig.cadenceExpected" label="Cadencia esperada (seg)" type="number" />
+              <p class="text-muted" style="font-size:11px; margin-bottom:16px">
+                Color por demora: ok ≤ 1× cadencia · warning ≤ 2× · crítico &gt; 2×. Sin cadencia → solo edad, sin juicio.
+              </p>
+
+              <label class="control-label">Ícono</label>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
+                <el-select v-model="dataFreshnessConfig.icon" placeholder="Ícono" style="flex:1" class="select-primary">
+                  <el-option v-for="ic in iconOptions" :key="ic.value" :value="ic.value" :label="ic.label">
+                    <i class="fa" :class="ic.value" style="margin-right:8px; width:16px; text-align:center"></i>{{ ic.label }}
+                  </el-option>
+                </el-select>
+                <i class="fa fa-2x" :class="dataFreshnessConfig.icon" style="min-width:28px; text-align:center; opacity:0.85"></i>
+              </div>
+
+              <label class="control-label">Tamaño del Widget</label>
+              <el-select v-model="dataFreshnessConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
+                <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
+              </el-select>
+              <br /><br />
+            </div>
+
+            <!-- FORM BOOLEAN DWELL -->
+            <div v-if="widgetType == 'booleanDwell'">
+              <base-input
+                v-if="!sheetVariables.length"
+                v-model="booleanDwellConfig.variable"
+                label="Variable booleana (nombre técnico, ej: mains_fail)"
+                type="text"
+              />
+              <base-input
+                v-else
+                :value="booleanDwellConfig.variable"
+                label="Variable (técnica — se fija desde la ficha, arriba)"
+                type="text"
+                disabled
+              />
+              <base-input v-model="booleanDwellConfig.variableFullName" label="Nombre de Variable" type="text" />
+              <base-input v-model.number="booleanDwellConfig.dwellWindowHours" label="Ventana de historial (horas)" type="number" />
+              <p class="text-muted" style="font-size:11px; margin-bottom:16px">
+                Si el último cambio de estado es anterior a la ventana, el widget dice "al menos {ventana}" — nunca afirma una permanencia mayor a la observada.
+              </p>
+
+              <label class="control-label">Ícono</label>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
+                <el-select v-model="booleanDwellConfig.icon" placeholder="Ícono" style="flex:1" class="select-primary">
+                  <el-option v-for="ic in iconOptions" :key="ic.value" :value="ic.value" :label="ic.label">
+                    <i class="fa" :class="ic.value" style="margin-right:8px; width:16px; text-align:center"></i>{{ ic.label }}
+                  </el-option>
+                </el-select>
+                <i class="fa fa-2x" :class="booleanDwellConfig.icon" style="min-width:28px; text-align:center; opacity:0.85"></i>
+              </div>
+
+              <label class="control-label">Tamaño del Widget</label>
+              <el-select v-model="booleanDwellConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
+                <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
+              </el-select>
+              <br /><br />
+            </div>
+
+            <!-- FORM EQUIPMENT ALARMS (sin variable: su fuente es el feed del sitio) -->
+            <div v-if="widgetType == 'equipmentAlarms'">
+              <base-input v-model="equipmentAlarmsConfig.variableFullName" label="Título del Widget" type="text" />
+              <p class="text-muted" style="font-size:11px; margin-bottom:16px">
+                Sin variable: en la vista del sitio lista las alarmas activas del equipo (feed de alarmas del sitio filtrado por dispositivo). Uno por plantilla alcanza.
+              </p>
+
+              <label class="control-label">Ícono</label>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px">
+                <el-select v-model="equipmentAlarmsConfig.icon" placeholder="Ícono" style="flex:1" class="select-primary">
+                  <el-option v-for="ic in iconOptions" :key="ic.value" :value="ic.value" :label="ic.label">
+                    <i class="fa" :class="ic.value" style="margin-right:8px; width:16px; text-align:center"></i>{{ ic.label }}
+                  </el-option>
+                </el-select>
+                <i class="fa fa-2x" :class="equipmentAlarmsConfig.icon" style="min-width:28px; text-align:center; opacity:0.85"></i>
+              </div>
+
+              <label class="control-label">Tamaño del Widget</label>
+              <el-select v-model="equipmentAlarmsConfig.column" placeholder="Tamaño del Widget" style="width:100%" class="select-primary">
                 <el-option v-for="col in columnOptions" :key="col.value" :value="col.value" :label="col.label" />
               </el-select>
               <br /><br />
@@ -501,7 +767,7 @@
 
 <script>
 import { Table, TableColumn, Dialog, Tooltip } from "element-ui";
-import { Select, Option, MessageBox } from "element-ui";
+import { Select, Option, OptionGroup, Input, MessageBox } from "element-ui";
 import { resolveWidget } from "@/components/Widgets/resolver.js";
 
 export default {
@@ -512,6 +778,8 @@ export default {
     [Dialog.name]: Dialog,
     [Tooltip.name]: Tooltip,
     [Option.name]: Option,
+    [OptionGroup.name]: OptionGroup,
+    [Input.name]: Input,
     [Select.name]: Select,
   },
   data() {
@@ -683,6 +951,67 @@ export default {
         column: "col-4",
         widget: "valueStatus",
       },
+
+      // DEC-REF-98 D-3 (#73): configs de los 6 widgets Wanomi 3.0.
+      // Misma regla que valueStatus: sin selectedDevice/userId; la
+      // variable técnica viene de la ficha cuando hay ficha con catálogo.
+      tankLevelConfig: {
+        variable: "",
+        variableFullName: "",
+        unit: "%",
+        icon: "fa-tint",
+        column: "col-4",
+        widget: "tankLevel",
+        tankCapacity: null,
+        tankUnit: "L",
+        thresholds: { warningLow: null, criticalLow: null },
+      },
+
+      multiStateConfig: {
+        variable: "",
+        variableFullName: "",
+        icon: "fa-toggle-on",
+        column: "col-4",
+        widget: "multiState",
+        enumValues: [],
+      },
+
+      projectedAutonomyConfig: {
+        variable: "",
+        variableFullName: "",
+        unit: "h",
+        icon: "fa-battery-half",
+        column: "col-4",
+        widget: "projectedAutonomy",
+        thresholds: { warningLow: null, criticalLow: null },
+      },
+
+      dataFreshnessConfig: {
+        variable: "",
+        variableFullName: "",
+        icon: "fa-sync",
+        column: "col-4",
+        widget: "dataFreshness",
+        cadenceExpected: 120,
+      },
+
+      booleanDwellConfig: {
+        variable: "",
+        variableFullName: "",
+        icon: "fa-clock",
+        column: "col-4",
+        widget: "booleanDwell",
+        dwellWindowHours: 24,
+      },
+
+      // equipmentAlarms NO es widget de variable: su fuente es el feed
+      // de alarmas del sitio (DEC-REF-43/54) filtrado por el equipo.
+      equipmentAlarmsConfig: {
+        variableFullName: "Alarmas del equipo",
+        icon: "fa-bell",
+        column: "col-6",
+        widget: "equipmentAlarms",
+      },
     };
   },
 
@@ -692,18 +1021,34 @@ export default {
       const config = this.previewConfig;
       if (!config || !config.variableFullName || !config.variableFullName.trim()) return false;
       // DEC-REF-76-B (iii): valueStatus exige `variable` no vacía además.
-      if (this.widgetType === 'valueStatus') {
+      // DEC-REF-98 D-3: misma regla para los 5 widgets Wanomi 3.0 de
+      // variable (la variable técnica es la clave real contra el equipo).
+      // equipmentAlarms NO exige variable (su fuente es el feed del sitio).
+      if (this.variableWidgets.includes(this.widgetType)) {
         if (!config.variable || !config.variable.trim()) return false;
       }
       return true;
     },
+    // DEC-REF-98 D-3: widgets del catálogo que son DE VARIABLE (la
+    // fuente es el topic MQTT de la variable). equipmentAlarms queda
+    // fuera — no tiene variable.
+    variableWidgets() {
+      return ['valueStatus', 'tankLevel', 'multiState',
+              'projectedAutonomy', 'dataFreshness', 'booleanDwell'];
+    },
     previewConfig() {
       const configs = {
-        numberchart: this.ncConfig,
-        switch:      this.iotSwitchConfig,
-        button:      this.configButton,
-        indicator:   this.iotIndicatorConfig,
-        valueStatus: this.valueStatusConfig,
+        numberchart:       this.ncConfig,
+        switch:            this.iotSwitchConfig,
+        button:            this.configButton,
+        indicator:         this.iotIndicatorConfig,
+        valueStatus:       this.valueStatusConfig,
+        tankLevel:         this.tankLevelConfig,
+        multiState:        this.multiStateConfig,
+        projectedAutonomy: this.projectedAutonomyConfig,
+        dataFreshness:     this.dataFreshnessConfig,
+        booleanDwell:      this.booleanDwellConfig,
+        equipmentAlarms:   this.equipmentAlarmsConfig,
       };
       return configs[this.widgetType];
     },
@@ -971,16 +1316,29 @@ export default {
     addNewWidget() {
       const config = this.previewConfig;
       const isValueStatus = this.widgetType === 'valueStatus';
+      // DEC-REF-98 D-3: los 5 widgets Wanomi 3.0 de variable siguen la
+      // regla de valueStatus (la variable es la clave real). equipmentAlarms
+      // no tiene variable — dedupe por TIPO (uno por plantilla alcanza).
+      const isVariableWidget = this.variableWidgets.includes(this.widgetType);
+      const isAlarms = this.widgetType === 'equipmentAlarms';
       // DEC-REF-97: la variable vino del catálogo de la ficha → es la clave
       // real (técnica) y NO se pisa con makeid.
       const fromSheet = this.sheetVariableNames.includes(config.variable);
 
-      // DEC-REF-76-B (ii): dedupe por `variable` en valueStatus (clave real
-      // de unicidad); en los 4 legacy sigue por variableFullName.trim()
-      // (retrocompatibilidad — el makeid garantiza `variable` único).
-      // DEC-REF-97: si vino de la ficha, dedupe por variable técnica en
-      // todos los tipos (es la clave real contra el equipo).
-      if (isValueStatus || fromSheet) {
+      if (isAlarms) {
+        if (this.widgets.some((w) => w.widget === 'equipmentAlarms')) {
+          this.$notify({
+            type: "warning",
+            icon: "tim-icons icon-alert-circle-exc",
+            message: "Ya hay un widget de alarmas del equipo en esta plantilla (uno alcanza)",
+          });
+          return;
+        }
+      } else if (isVariableWidget || fromSheet) {
+        // DEC-REF-76-B (ii): dedupe por `variable` en widgets de variable
+        // (clave real de unicidad); en los 4 legacy sigue por
+        // variableFullName.trim() (retrocompat — el makeid garantiza
+        // `variable` único).
         const varName = (config.variable || '').trim();
         if (this.widgets.some((w) => w.variable === varName)) {
           this.$notify({
@@ -1005,7 +1363,9 @@ export default {
       // DEC-REF-76-B (i): NO pisar `variable` con makeid en valueStatus
       // (la variable la fija el mapa Modbus del equipo, no la plataforma).
       // DEC-REF-97: tampoco si vino de la ficha (la fija el catálogo).
-      if (!isValueStatus && !fromSheet) {
+      // DEC-REF-98: tampoco en los Wanomi 3.0 de variable; equipmentAlarms
+      // directamente no tiene variable.
+      if (!isVariableWidget && !fromSheet && !isAlarms) {
         config.variable = this.makeid(10);
       }
 
@@ -1016,8 +1376,8 @@ export default {
       // NaN en cambio hace REVENTAR Template.create con Cast to Number
       // failed). Normalizamos antes del push para que preview y post-save
       // coincidan.
+      const toNumOrNull = (v) => (Number.isFinite(v) ? v : null);
       if (isValueStatus) {
-        const toNumOrNull = (v) => (Number.isFinite(v) ? v : null);
         config.decimalPlaces     = toNumOrNull(config.decimalPlaces);
         // variableSendFreq: si el usuario borró el default, restauramos 60
         // (frecuencia null persistida en Mongo dejaría al widget sin ciclo).
@@ -1025,19 +1385,49 @@ export default {
           ? config.variableSendFreq
           : 60;
       }
+      // DEC-REF-98 D-3: mismas guardas para los Wanomi 3.0 — todo numérico
+      // opcional queda null (no ""/NaN), los con default restauran default.
+      if (this.widgetType === 'tankLevel' || this.widgetType === 'projectedAutonomy') {
+        config.thresholds = {
+          warningLow:  toNumOrNull(config.thresholds.warningLow),
+          criticalLow: toNumOrNull(config.thresholds.criticalLow),
+        };
+        if (this.widgetType === 'tankLevel') {
+          config.tankCapacity = toNumOrNull(config.tankCapacity);
+        }
+      }
+      if (this.widgetType === 'multiState') {
+        config.enumValues = (config.enumValues || []).filter(
+          (e) => (e.value || '').trim() !== ''
+        );
+      }
+      if (this.widgetType === 'dataFreshness') {
+        config.cadenceExpected = Number.isFinite(config.cadenceExpected) && config.cadenceExpected > 0
+          ? config.cadenceExpected
+          : 120;
+      }
+      if (this.widgetType === 'booleanDwell') {
+        config.dwellWindowHours = Number.isFinite(config.dwellWindowHours) && config.dwellWindowHours > 0
+          ? config.dwellWindowHours
+          : 24;
+      }
 
       this.widgets.push(JSON.parse(JSON.stringify(config)));
 
-      // Reset del form: label siempre; en valueStatus además reset de
-      // variable/unit/decimalPlaces (DEC-REF-76-C iv) para que el próximo
-      // widget no herede campos del anterior. Se conservan variableType
-      // (default sano), icon y column (defaults del form).
+      // Reset del form: label siempre; en widgets de variable además reset
+      // de variable/unit/decimalPlaces (DEC-REF-76-C iv) para que el
+      // próximo widget no herede campos del anterior. Se conservan
+      // variableType (default sano), icon y column (defaults del form).
+      // equipmentAlarms restaura su título default (no es por-variable).
       config.variableFullName = "";
       this.sheetVarPick = "";
-      if (isValueStatus) {
-        config.variable      = "";
-        config.unit          = "";
-        config.decimalPlaces = null;
+      if (isVariableWidget) {
+        config.variable = "";
+        if ('unit' in config) config.unit = "";
+        if ('decimalPlaces' in config) config.decimalPlaces = null;
+      }
+      if (isAlarms) {
+        config.variableFullName = "Alarmas del equipo";
       }
     },
 

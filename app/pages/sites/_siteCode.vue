@@ -81,18 +81,20 @@
               </p>
             </template>
 
-            <div class="device-widgets" v-if="device.templateWidgets && device.templateWidgets.length > 0">
+            <!-- DEC-REF-98 D-3 (#73): cada widget se resuelve por tipo con
+                 el resolver (composición Live con shell propia — muestra la
+                 etiqueta). La fila label+valor solo servía para live-value
+                 y no soportaba los widgets custom (booleanDwell,
+                 equipmentAlarms). -->
+            <div v-if="device.templateWidgets && device.templateWidgets.length > 0">
               <div
-                v-for="widget in device.templateWidgets"
-                :key="widget.variable"
-                class="widget-row"
+                v-for="(widget, i) in device.templateWidgets"
+                :key="widget.widget + '-' + (widget.variable || i)"
               >
-                <div class="widget-label">
-                  {{ labelOf(widget) }}
-                </div>
-                <div class="widget-value">
-                  <live-value :config="liveConfig(device, widget)" />
-                </div>
+                <component
+                  :is="resolveWidget(widget.widget, { context: 'live' })"
+                  :config="liveConfig(device, widget)"
+                />
               </div>
             </div>
             <p v-else class="text-muted mb-0">Sin variables declaradas.</p>
@@ -115,7 +117,7 @@
 <script>
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import LiveValue from '@/components/LiveValue.vue';
+import { resolveWidget } from '@/components/Widgets/resolver.js';
 
 // Colores de severidad — mismo criterio que pages/sites/index.vue (DEC-REF-27).
 const STATUS_COLOR = {
@@ -127,7 +129,6 @@ const STATUS_COLOR = {
 export default {
   name: 'SiteDetail',
   middleware: 'authenticated',
-  components: { LiveValue },
 
   data() {
     return {
@@ -309,22 +310,19 @@ export default {
       if (this.marker) this.marker.setIcon(this.iconForStatus(nextStatus));
     },
 
-    labelOf(widget) {
-      return (widget.variableFullName || widget.variable || '')
-        .replace(/\s*\([^)]*\)\s*$/, '').trim();
-    },
+    resolveWidget,
 
     liveConfig(device, widget) {
+      // DEC-REF-98 D-3 (#73): viaja el widget COMPLETO (thresholds,
+      // tankCapacity, tankUnit, enumValues, cadenceExpected,
+      // dwellWindowHours, decimalPlaces...) + identidad de la fuente
+      // (userId del owner, dId) + contexto de sitio (equipmentAlarms
+      // filtra el feed de alarmas por siteCode/dId).
       return {
+        ...widget,
         userId: this.ownerOf(device.dId),
         dId: device.dId,
-        variable: widget.variable,
-        variableType: widget.variableType,
-        variableFullName: widget.variableFullName,
-        unit: widget.unit,
-        // DEC-REF-76-C (v): pasar decimalPlaces al config. Sin esto
-        // ValueStatus cae al default por tipo aunque el widget lo configure.
-        decimalPlaces: widget.decimalPlaces,
+        siteCode: this.siteCode,
       };
     },
 
@@ -378,35 +376,6 @@ export default {
 .dot-critical { background: #E24B4A; }
 .dot-warning  { background: #EF9F27; }
 .dot-ok       { background: #639922; }
-
-.device-widgets {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.widget-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.35rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.widget-row:last-child {
-  border-bottom: none;
-}
-
-.widget-label {
-  flex: 1;
-  font-weight: 500;
-}
-
-.widget-value {
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-}
 </style>
 
 <!-- DEC-REF-70 (f) · #50 — .site-pin vive en assets/sass/dashboard/custom/_leaflet-pins.scss (global). -->
