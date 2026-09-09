@@ -14,7 +14,7 @@
 //   - Device debe tener firmwareType='wanomi-sim'
 //   - Template debe pertenecer al mismo usuario
 //   - Sensor debe estar en widgets del template
-//   - value debe matchear variableType (bool/float)
+//   - value debe matchear variableType (bool/float/int/categorical)
 //   - dId formato makeid(8) — alfanumérico de 8 chars
 // ════════════════════════════════════════════════════════════════════
 
@@ -27,35 +27,12 @@ import Template from '../models/template.js';
 const checkAuth = require('../middlewares/authentication.js').checkAuth;
 const { buildWriteFilter } = require('../middlewares/scope.js');
 
-// Whitelist de escenarios — debe matchear sensor-engine.js del simulador.
-// Divergencia con el sim documentada como BACKLOG-SIM-5 (2 mordidas: #7 y
-// #53/Fase 3). La solución real es una sola fuente de verdad; hoy se sincroniza
-// a mano al agregar escenarios. Al agregar/quitar acá, verificar en paralelo
-// contra tools/device_simulator/lib/sensor-engine.js SCENARIOS con grep.
-const VALID_SCENARIOS = [
-  // Existentes desde antes de #53/Fase 3
-  'intrusion',
-  'copper_theft',
-  'fuel_siphon',
-  'genset_no_start',
-  'genset_vibration_anomaly',
-  'battery_degraded',
-  'maintenance',
-  // Existentes en el sim pero fuera de la whitelist hasta #53/Fase 3
-  // (7 escenarios del guion del paréntesis pre-reunión Claro que la consola
-  // no podía disparar por UI hasta este commit)
-  'mains_failure_ats_transfer',
-  'mains_failure_gen_no_start',
-  'mains_restore',
-  'cummins_setpoint_lost',
-  'cummins_setpoint_restore',
-  'eltek_load_high',
-  'eltek_load_restore',
-  // Nuevos en #53/Fase 3 (DEC-REF-77-A + DEC-REF-79 vi + DEC-REF-79-B)
-  'weekly_exercise',
-  'service_due',
-  'fuel_drawdown',
-];
+// DEC-REF-99 / D-2 — fuente única de verdad: el catálogo de escenarios
+// vive en el simulador (sensor-engine.js) y la API lo expone enriquecido
+// (roles, duración, noCleanup). Cierra BACKLOG-SIM-5: ya no hay whitelist
+// duplicada a mano.
+const { SCENARIOS } = require('../../../tools/device_simulator/lib/sensor-engine.js');
+const VALID_SCENARIOS = Object.keys(SCENARIOS);
 
 // ────────── Helpers ────────────────────────────────────────────────
 
@@ -92,6 +69,20 @@ function validateValueForWidget(widget, value) {
   } else if (widget.variableType === 'float') {
     if (typeof value !== 'number' || !isFinite(value)) {
       return { ok: false, error: `Sensor '${widget.variable}' is float, value must be a finite number` };
+    }
+  } else if (widget.variableType === 'int') {
+    if (typeof value !== 'number' || !isFinite(value) || !Number.isInteger(value)) {
+      return { ok: false, error: `Sensor '${widget.variable}' is int, value must be an integer` };
+    }
+  } else if (widget.variableType === 'categorical') {
+    if (typeof value !== 'string') {
+      return { ok: false, error: `Sensor '${widget.variable}' is categorical, value must be a string` };
+    }
+    if (Array.isArray(widget.enumValues) && widget.enumValues.length > 0) {
+      const allowed = widget.enumValues.map(e => (e && typeof e === 'object' ? e.value : e));
+      if (!allowed.includes(value)) {
+        return { ok: false, error: `Sensor '${widget.variable}' is categorical, value must be one of: ${allowed.join(', ')}` };
+      }
     }
   }
   return { ok: true };
@@ -174,9 +165,20 @@ router.get('/simulator/devices', checkAuth, async (req, res) => {
 });
 
 // ────────── GET /scenarios ────────────────────────────────────────
+// DEC-REF-99 / D-2: catálogo enriquecido desde la fuente única (sensor-engine).
 router.get('/simulator/scenarios', checkAuth, (req, res) => {
   if (!isApiEnabled()) return notFound(res);
-  return res.json({ status: 'success', data: VALID_SCENARIOS });
+  const data = VALID_SCENARIOS.map(name => {
+    const s = SCENARIOS[name];
+    return {
+      name,
+      description: s.description || '',
+      duration_ms: s.duration_ms || 0,
+      roles: Array.isArray(s.roles) ? s.roles : [],
+      noCleanup: !!s.noCleanup,
+    };
+  });
+  return res.json({ status: 'success', data });
 });
 
 // ────────── POST /trigger ─────────────────────────────────────────
