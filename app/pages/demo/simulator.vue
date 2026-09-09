@@ -1,15 +1,15 @@
 <template>
   <div class="content">
-    <!-- Header simple -->
+    <!-- Header -->
     <div class="row">
       <div class="col-12">
         <h2 class="title">
           Panel de Simulador
-          <small class="text-muted ml-2">— modo demo</small>
+          <small class="text-muted ml-2">— Wanomi 3.0</small>
         </h2>
         <p class="text-muted mb-4">
-          Control de dispositivos simulados para la demostración a clientes.
-          Los datos se publican en tiempo real al broker MQTT.
+          Control de dispositivos simulados por equipo. Editá cualquier variable y
+          aplicala para publicarla por MQTT, o dispará un escenario pre-grabado.
         </p>
       </div>
     </div>
@@ -39,46 +39,41 @@
       </div>
     </div>
 
-    <!-- Layout master-detail -->
-    <div v-else class="row">
-      <!-- Columna izquierda: lista de devices -->
-      <div class="col-md-4 col-lg-3">
-        <card>
-          <h4 slot="header" class="card-title">Dispositivos</h4>
-          <DeviceList
-            :devices="devices"
-            :selected-d-id="selectedDevice ? selectedDevice.dId : null"
-            @select-device="onDeviceSelected"
-            @reset-device="onResetDevice"
-          />
-        </card>
-      </div>
-
-      <!-- Columna derecha: panel del device seleccionado -->
-      <div class="col-md-8 col-lg-9">
-        <card>
-          <h4 slot="header" class="card-title">
-            {{ selectedDevice ? selectedDevice.name : 'Selecciona un dispositivo' }}
-          </h4>
-          <DevicePanel
-            :device="selectedDevice"
+    <!-- Secciones por equipo -->
+    <template v-else>
+      <div v-for="section in visibleSections" :key="section.key" class="row">
+        <div class="col-12">
+          <h3 class="section-title">
+            <i :class="['tim-icons', section.icon]"></i>
+            {{ section.title }}
+          </h3>
+          <EquipmentCard
+            v-for="family in section.families"
+            :key="family"
+            :title="familyLabels[family] || family"
+            :family="family"
+            :devices="devicesByFamily[family]"
+            :scenarios="scenarios"
+            :note="section.notes && section.notes[family] || ''"
             :user-id="userId"
             :user-token="$store.state.auth.token"
+            class="mb-4"
           />
-        </card>
+        </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
 <script>
-import DeviceList from '~/components/Simulator/DeviceList.vue';
-import DevicePanel from '~/components/Simulator/DevicePanel.vue';
+import EquipmentCard from '~/components/Simulator/EquipmentCard.vue';
+
+const ATS_NOTE = 'Editar gen_status a mano propaga sharedState.gen_running al Cummins del sitio (el generador arranca/frena en consecuencia).';
 
 export default {
   name: 'SimulatorPanel',
   middleware: 'authenticated',
-  components: { DeviceList, DevicePanel },
+  components: { EquipmentCard },
 
   data() {
     return {
@@ -86,13 +81,47 @@ export default {
       loadError: null,
       devices: [],
       scenarios: [],
-      selectedDevice: null,
+      // Orden y composición de las secciones del panel
+      sectionDefs: [
+        { key: 'gen',   title: 'Generador',    icon: 'icon-button-power', families: ['CUMMINS', 'GEN'] },
+        { key: 'ats',   title: 'ATS',          icon: 'icon-refresh-02',   families: ['ATS'], notes: { ATS: ATS_NOTE } },
+        { key: 'eltek', title: 'Rectificador', icon: 'icon-flash',        families: ['ELTEK'] },
+        { key: 'sec',   title: 'Seguridad',    icon: 'icon-bell-55',      families: ['SEC'] },
+      ],
+      familyLabels: {
+        CUMMINS: 'Grupo electrógeno — Cummins PowerCommand',
+        GEN: 'Grupo electrógeno — GEN legacy',
+        ATS: 'Transferencia automática — InteliATS',
+        ELTEK: 'Rectificador — Eltek Smartpack S',
+        SEC: 'Seguridad perimetral',
+      },
     };
   },
 
   computed: {
     userId() {
       return this.$store.state.auth?.userData?._id || '';
+    },
+
+    // Agrupa devices por familia de rol, derivada del name (${siteCode}-${role}).
+    // ELTEK-01/02/03 comparten familia 'ELTEK' (una sola tarjeta con selector).
+    devicesByFamily() {
+      const grouped = {};
+      for (const d of this.devices) {
+        const family = this.familyOf(d);
+        if (!grouped[family]) grouped[family] = [];
+        grouped[family].push(d);
+      }
+      return grouped;
+    },
+
+    visibleSections() {
+      return this.sectionDefs
+        .map(s => ({
+          ...s,
+          families: s.families.filter(f => (this.devicesByFamily[f] || []).length > 0),
+        }))
+        .filter(s => s.families.length > 0);
     },
   },
 
@@ -101,6 +130,14 @@ export default {
   },
 
   methods: {
+    familyOf(device) {
+      const prefix = device.siteId ? device.siteId + '-' : '';
+      const role = device.name && device.name.startsWith(prefix)
+        ? device.name.slice(prefix.length)
+        : device.name || '';
+      return role.startsWith('ELTEK') ? 'ELTEK' : role;
+    },
+
     async loadInitialData() {
       this.loading = true;
       this.loadError = null;
@@ -108,7 +145,6 @@ export default {
       const headers = { headers: { token: this.$store.state.auth.token } };
 
       try {
-        // Fetch en paralelo
         const [devicesRes, scenariosRes] = await Promise.all([
           this.$axios.get('/simulator/devices', headers),
           this.$axios.get('/simulator/scenarios', headers),
@@ -126,7 +162,15 @@ export default {
 
         if (this.devices.length === 0) {
           this.loadError = 'No hay dispositivos simulados disponibles.';
+          return;
         }
+
+        // Burst inmediato: reset de todos los devices para que las tarjetas
+        // muestren valores sin esperar el próximo ciclo de publicación.
+        this.devices.forEach(d => {
+          this.$axios.post('/simulator/reset', { dId: d.dId }, headers)
+            .catch(err => console.warn('[Simulator] reset burst error:', err.message));
+        });
 
       } catch (err) {
         // Auth 401 → redirect al login (patrón del proyecto)
@@ -146,26 +190,6 @@ export default {
         this.loading = false;
       }
     },
-
-    async onDeviceSelected(device) {
-      this.selectedDevice = device;
-      // Forzar burst inmediato de todos los sensores para que el panel
-      // muestre valores sin esperar el próximo ciclo de 30s.
-      await this.callReset(device.dId);
-    },
-
-    async onResetDevice(dId) {
-      await this.callReset(dId);
-    },
-
-    async callReset(dId) {
-      try {
-        const headers = { headers: { token: this.$store.state.auth.token } };
-        await this.$axios.post('/simulator/reset', { dId }, headers);
-      } catch (err) {
-        console.warn('[Simulator] reset error:', err.message);
-      }
-    },
   },
 };
 </script>
@@ -182,21 +206,15 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-.device-list-placeholder {
-  list-style: none;
-  padding-left: 0;
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 1.2rem 0 0.8rem;
+  color: rgba(255, 255, 255, 0.9);
 }
 
-.device-list-placeholder li {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.device-list-placeholder li:last-child {
-  border-bottom: none;
-}
-
-.placeholder {
-  min-height: 200px;
+.section-title i {
+  margin-right: 0.5rem;
+  color: #e14eca;
 }
 </style>
