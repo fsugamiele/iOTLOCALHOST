@@ -288,12 +288,21 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 //   steps:        array de { at: ms, set: { var: value } }
 //   noCleanup:    si true, los valores quedan donde el último step los dejó
 //   isMaintenanceEvent: si true, el sistema de alarmas debe marcar como autorizado
+//   roles:        DEC-REF-99 D-2 (#74) — roles de device a los que aplica el
+//                 escenario ('SEC' | 'GEN' | 'CUMMINS' | 'ATS' | 'ELTEK').
+//                 Metadata: el sim NO la consume para ejecutar (la guarda real
+//                 es la validación de variables de device.js:_runScenario);
+//                 la sirve GET /simulator/scenarios para que la UI ofrezca
+//                 solo los escenarios del equipo. FUENTE ÚNICA del catálogo —
+//                 cierra la divergencia whitelist↔engine (BACKLOG-SIM-5).
+//                 'ELTEK' cubre ELTEK-01..03 por prefix match.
 // ════════════════════════════════════════════════════════════════════
 
 const SCENARIOS = {
 
   intrusion: {
     description: 'Intrusión por cerco con robo de baterías',
+    roles: ['SEC'],
     duration_ms: 60000,
     steps: [
       { at: 0,     set: { fence_vibration: 1 } },
@@ -309,6 +318,7 @@ const SCENARIOS = {
 
   copper_theft: {
     description: 'Robo de cobre en perímetro',
+    roles: ['SEC'],
     duration_ms: 75000,
     steps: [
       { at: 0,     set: { copper_field_anomaly: 1 } },
@@ -320,6 +330,7 @@ const SCENARIOS = {
 
   fuel_siphon: {
     description: 'Sifoneo de combustible (motor apagado)',
+    roles: ['GEN', 'CUMMINS'],
     duration_ms: 15000,
     noCleanup: true,
     steps: [
@@ -336,6 +347,7 @@ const SCENARIOS = {
 
   genset_no_start: {
     description: 'Corte de luz, generador no arranca tras 3 intentos',
+    roles: ['GEN'],
     duration_ms: 45000,
     steps: [
       { at: 0,     set: { mains_voltage: 0 } },
@@ -351,6 +363,7 @@ const SCENARIOS = {
 
   genset_vibration_anomaly: {
     description: 'Falla predictiva por firma vibracional anómala',
+    roles: ['GEN'],
     duration_ms: 30000,
     steps: [
       { at: 0,     set: { mains_voltage: 0 } },
@@ -366,6 +379,7 @@ const SCENARIOS = {
 
   battery_degraded: {
     description: 'Batería de arranque degradada',
+    roles: ['GEN'],
     duration_ms: 20000,
     steps: [
       { at: 0,     set: { mains_voltage: 0 } },
@@ -379,6 +393,7 @@ const SCENARIOS = {
 
   maintenance: {
     description: 'Mantenimiento autorizado (técnico con tag BLE)',
+    roles: ['SEC'],
     duration_ms: 90000,
     isMaintenanceEvent: true,
     steps: [
@@ -396,6 +411,7 @@ const SCENARIOS = {
 
   mains_failure_ats_transfer: {
     description: 'Corte de red — ATS transfiere a generador',
+    roles: ['ATS'],
     duration_ms: 60000,
     noCleanup: true,
     steps: [
@@ -408,6 +424,7 @@ const SCENARIOS = {
 
   mains_failure_gen_no_start: {
     description: 'Corte de red — generador NO arranca (cascada)',
+    roles: ['ATS'],
     duration_ms: 60000,
     noCleanup: true,
     steps: [
@@ -417,6 +434,7 @@ const SCENARIOS = {
 
   mains_restore: {
     description: 'Restauración de red — ATS vuelve a red, generador se apaga',
+    roles: ['ATS'],
     duration_ms: 30000,
     noCleanup: true,
     steps: [
@@ -435,6 +453,7 @@ const SCENARIOS = {
   // sharedState al próximo tick (patrón espejo de mains_failure).
   eltek_load_high: {
     description: 'Carga rectificadores alta — total del site cruza umbral',
+    roles: ['ELTEK'],
     duration_ms: 60000,
     noCleanup: true,
     steps: [
@@ -444,6 +463,7 @@ const SCENARIOS = {
 
   eltek_load_restore: {
     description: 'Carga rectificadores vuelve a normal',
+    roles: ['ELTEK'],
     duration_ms: 30000,
     noCleanup: true,
     steps: [
@@ -459,6 +479,7 @@ const SCENARIOS = {
   // (ruleEngine.js:104, DEC-REF-26 — ya cableado, verificable acá).
   cummins_setpoint_lost: {
     description: 'Cummins PCC pierde publicación de setpoints (falla comm Modbus)',
+    roles: ['CUMMINS'],
     duration_ms: 30000,
     noCleanup: true,
     steps: [
@@ -468,6 +489,7 @@ const SCENARIOS = {
 
   cummins_setpoint_restore: {
     description: 'Cummins PCC recupera publicación de setpoints',
+    roles: ['CUMMINS'],
     duration_ms: 30000,
     noCleanup: true,
     steps: [
@@ -490,6 +512,7 @@ const SCENARIOS = {
   // y es correcto. La demostración de autonomía va por fuel_drawdown.
   weekly_exercise: {
     description: 'Ciclo de ejercicio semanal — arranca motor 5 min con red presente',
+    roles: ['ATS'],
     duration_ms: 300000,   // 5 min reales, observables
     // noCleanup:false — cleanup restaura ATS al initial (gen_status='STOPPED')
     steps: [
@@ -506,6 +529,7 @@ const SCENARIOS = {
   // Apuntar al Cummins del sitio.
   service_due: {
     description: 'Empuja run_hours al borde del próximo servicio (2999,5 h; threshold 3000)',
+    roles: ['CUMMINS'],
     duration_ms: 10000,    // el escenario solo mueve el dato, no simula tiempo
     noCleanup: true,       // el dato queda empujado hasta el próximo restart del sim
     steps: [
@@ -536,6 +560,7 @@ const SCENARIOS = {
   //      de MOTOR CORRIENDO, que es lo correcto para simular consumo real
   fuel_drawdown: {
     description: 'Autonomía — baja el tanque cruzando umbrales 48h y 12h en 6 min',
+    roles: ['CUMMINS'],
     duration_ms: 360000,   // 6 min total (12 steps de 30s + 30s de cola)
     noCleanup: true,       // deja el nivel en 15% para operador
     steps: [

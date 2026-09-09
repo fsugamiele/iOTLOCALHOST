@@ -196,8 +196,11 @@ class SimulatedDevice {
       const t = setTimeout(() => this._set(sensor, 0), duration_ms);
       this._timers.push(t);
     } else if (command === 'set_sensor') {
-      // Permanente: setea el valor hasta nuevo comando
-      this._set(sensor, Number(value));
+      // Permanente: setea el valor hasta nuevo comando.
+      // DEC-REF-99 — si el estado actual del sensor es string (categorical,
+      // ej. gen_status='RUNNING'), preservar el string; Number() lo haría NaN.
+      const next = typeof this._state[sensor] === 'string' ? String(value) : Number(value);
+      this._set(sensor, next);
     } else if (command === 'scenario') {
       // Ejecuta un escenario pre-grabado (cmd.value es el nombre)
       this._runScenario(value);
