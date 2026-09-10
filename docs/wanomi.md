@@ -11987,3 +11987,41 @@ Primera corrida del smoke F8 mandó el alta de ficha con wrapper `newSheet` en v
 6. Deudas con gate propio que siguen: sincronización spec↔runner · CST-12 → CONFORME · integrar `run.sh` a `apertura.sh` · K2 · BACKLOG-TENANT-11 (Opción B) · BACKLOG-OPS-3 · BACKLOG-RULE-8.
 
 **Nota de push.** Al cierre hay 10 commits sin push (7 de #72 + `e0beba5` W1 + `995e8b0` W2+W3 + `72b7c39` W4+W5 + el asiento de esta sesión). Push requiere orden explícita de Franco.
+
+---
+
+## Sesión #74 — 2026-09-10 · Área 2 · DEC-REF-99 implementado — simulador Wanomi 3.0 por UI (variables editables + escenarios por equipo)
+
+**Foco.** Pedido de Franco: reestablecer el simulador con diseño producto — la página debe disponer una tarjeta-template por equipo (generador, ATS, rectificador) con cada una de las variables y valores editables que publican por MQTT, y debajo tarjetas con los escenarios importantes de cada equipo. Registrado como **DEC-REF-99** en el corpus (antes del código).
+
+**Decisiones de Franco firmadas en sesión (no reabrir).** **D-1:** se incluye SEC (seguridad) como cuarta sección. **D-2:** catálogo de escenarios con **fuente única** — `roles[]` vive en `sensor-engine.js` y la API lo expone enriquecido (`GET /simulator/scenarios` devuelve `{name, description, duration_ms, roles, noCleanup}`); cierra BACKLOG-SIM-5 (la whitelist duplicada a mano desaparece). **D-3:** edición con **Aplicar por variable**, sin auto-aplicar.
+
+**Implementado — 4 commits.**
+
+- **F0+F1 — corpus + sim** (`cf9db6c`): fila DEC-REF-99 · `roles[]` en los 17 escenarios de `sensor-engine.js` (SEC: intrusion/copper_theft/maintenance · GEN: fuel_siphon/genset_no_start/genset_vibration_anomaly/battery_degraded · CUMMINS: fuel_siphon/fuel_drawdown/service_due/cummins_setpoint_lost/restore · ATS: mains_failure_ats_transfer/mains_failure_gen_no_start/mains_restore/weekly_exercise · ELTEK: eltek_load_high/restore) · fix `device.js` `set_sensor`: si el estado actual del sensor es string (categorical, ej. `gen_status='RUNNING'`) preserva el string — antes `Number(value)` lo convertía en **NaN**.
+- **F2 — API** (`ae40aac`): `VALID_SCENARIOS` deriva de `Object.keys(SCENARIOS)` (require directo al engine) · `GET /simulator/scenarios` enriquecido · `validateValueForWidget` gana `int` (entero finito) y `categorical` (string; contra `enumValues` si el widget lo declara — hoy ningún widget los declara, queda input libre).
+- **F3 — UI** (`60c7571`): `app/pages/demo/simulator.vue` reescrita — secciones **Generador** (CUMMINS + GEN legacy), **ATS**, **Rectificador** (ELTEK), **Seguridad** (SEC), derivadas del `device.name` (`${siteCode}-${role}`, ELTEK-* colapsa a familia ELTEK) · `app/components/Simulator/EquipmentCard.vue` NUEVO: header con template/dId/sitio + selector de instancia (ELTEK-01/02/03) + botón Reset; grilla de variables del template con valor **live** (suscripción `$nuxt.$on('${userId}/${dId}/${variable}/sdata')`, keys pre-inicializadas para reactividad Vue 2), control por tipo (bool→el-switch, float/int→el-input number, categorical→el-input libre; element-ui importado por componente, no es global) y botón **Aplicar** por variable (POST /simulator/set + `$notify`) con indicador "modificado sin aplicar"; tarjetas de escenarios filtradas por `roles[]` con barra de progreso y bloqueo mientras corre uno; nota en ATS: editar `gen_status` propaga `sharedState.gen_running` al Cummins · retirados `DeviceList.vue` y `DevicePanel.vue` (reemplazados, sin otros usos).
+- **F4 — infra** (`93c5b88`): mount read-only `./tools/device_simulator/lib:/home/node/tools/device_simulator/lib:ro` en `node` (production), `node-p2` y `node_dev` — la API requiere el catálogo desde `../../../tools/...` y los contenedores solo montaban `./app`; sin esto el ServerMiddleware rompe en build y runtime.
+
+**Verificación (F4, stack dev — ver declarado 1).** Build por `docker_nuxt_build.yml` exit 0 (el error de ServerMiddleware del primer intento derivó en el fix de mounts) · strings nuevos medidos en chunks de `app/dist/_nuxt` (`Generador` en `pages/demo/simulator`, `Aplicar`/`modificado sin aplicar` en `components/equipment-card`) · recreate de `node` y `node-p2` → UI **200** en /demo/simulator (:3000 y :3100), API **401** sin token (control, ambos stacks) · **smoke E2E PASS** (`/tmp/smoke_w74.js`, dev :3001): login · GET /simulator/devices → **13 devices** (7 de CR00061 con widgets: ATS 7 vars) · GET /simulator/scenarios → **17 con roles, 0 sin roles** (muestra mains_restore con description/duration/roles/noCleanup) · set float `load_kw=7.5` → 200 · **set categorical `gen_status='RUNNING'` → 200 y verificado por suscripción MQTT directa al broker: mensaje `{"value":"RUNNING","save":1}` — string preservado, NO NaN** · validación int rechaza `rpm=800.5` con 400 y acepta `1500` · scenario `mains_restore` → 200 · reset → 200.
+
+**Declarado — tres cambios de estado del entorno dev:**
+
+1. **La verificación fue en dev, no en P2.** El plan decía P2, pero los devices `wanomi-sim` (13, incluidos los 7 de CR00061) viven en el mongo **dev** y el sim bootea contra el API dev (`localhost:3001` default de `lib/api.js`). En mongo-p2 no hay devices simulados — el panel P2 (:3100) sirve la UI (200 medido) pero mostrará "No hay dispositivos simulados". Decisión pendiente de Franco: sembrar devices sim en P2 o aceptar el panel solo en dev.
+2. **El pipeline de ingesta dev estaba muerto desde el 2026-09-02** (último doc de `db.data` anterior a esta sesión: 02-09 12:36Z; nadie corrió apertura.sh en 2 semanas). Restaurado en sesión: restart de `emqx` (los 3 web_hooks volvieron `is_alive=true`) + restart limpio del sim (había quedado en loop de `reconnecting...` tras el restart del broker — los clientes conectaban pero no publicaban) + la SAVER-RULE del ATS `59XYsglM` (`rule:a95f877e`) estaba `enabled='false'` — habilitada vía API de management (:8085). Verificado: **145 docs en 60s** y doc fresco del ATS (`mains_freq` 01:19Z). Refuerza BACKLOG-OPS-1 (watchdog con remediación, no solo detección).
+3. El sim corre nohup en host (pid nuevo) con el arranque válido de `tools/apertura.sh` (sin sourcear app/.env; credenciales por grep puntuales).
+
+### Errores de método — dos, menores
+
+1. **`pkill -f "device_simulator/run.js"` se auto-mató**: el patrón matcheó la propia línea de comando del shell que lo ejecutaba (exit -1, comando abortado). Regla ya escrita en #73 (matar por PID) y aun así se reincidió. Sin daño (el sim ya estaba caído), pero queda asentada la reincidencia.
+2. Se reinició `node` mientras el build Nuxt corría → crash-loop breve por "No build files found" (dist aún no existía). Se recuperó solo al terminar el build. Orden correcto: build primero, restart después.
+
+### Carry-over para #75, en orden
+
+1. **Click-through visual en browser** del panel nuevo (sigue la deuda de #72/#73: sin headless en el host, la verificación es por API + chunks + MQTT).
+2. Decisión: **devices sim en P2** (sembrar o aceptar panel solo en dev — declarado 1).
+3. BACKLOG-OPS-1 releído contra el episodio de hoy: el saver dev murió 8 días sin que nadie lo notara; apertura.sh lo detecta pero no se corrió. Candidato: alerta de ingesta o apertura programada.
+4. El sim no resiste el restart del broker (queda conectado sin publicar — reconnect handler no reanuda `startPublishing`). Workaround: restart del sim tras restart de emqx. Fix real = deuda nueva del sim.
+5. Siguen de #73: booleanDwell/equipmentAlarms con datos reales (ahora hay ingesta viva para morder) · credenciales fuera de /tmp · sembrar ficha `cummins-pcc` en prod · `backups/`, `seeds/_dev/`, fotos `.jfif` sin trackear · deudas con gate propio (spec↔runner, CST-12, run.sh→apertura, K2, BACKLOG-TENANT-11, BACKLOG-OPS-3, BACKLOG-RULE-8).
+
+**Nota de push.** Al cierre hay 4 commits sin push (`cf9db6c` F0+F1 · `ae40aac` F2 · `60c7571` F3 · `93c5b88` F4 + el asiento de esta sesión). Push requiere orden explícita de Franco.
