@@ -18,6 +18,9 @@ services:
     working_dir: /home/node/app
     volumes:
       - ./app/:/home/node/app
+      # DEC-REF-99: la API del simulador requiere el catálogo de escenarios
+      # (fuente única) desde ../../../tools/device_simulator/lib/. Read-only.
+      - ./tools/device_simulator/lib:/home/node/tools/device_simulator/lib:ro
     ports:
       - "3000:3000"
       - "3001:3001"

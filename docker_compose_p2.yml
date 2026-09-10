@@ -33,6 +33,8 @@ services:
     volumes:
       - ./app/:/home/node/app
       - ./p2/app.env:/home/node/app/.env:ro
+      # DEC-REF-99: catálogo de escenarios del simulador (fuente única), read-only
+      - ./tools/device_simulator/lib:/home/node/tools/device_simulator/lib:ro
     ports:
       # API (host 3101 -> 3001) y Nuxt (host 3100 -> 3000). El front de P2 se
       # publica desde D1 (opción A): el bundle ya no hornea URL — nuxt start
