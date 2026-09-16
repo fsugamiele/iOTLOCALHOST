@@ -23,6 +23,8 @@
         <span class="equipment-alarms__badge">{{ a.severity || 'info' }}</span>
         <span class="equipment-alarms__label">{{ a.label || a.variableFullName || a.variable }}</span>
         <span class="equipment-alarms__age">hace {{ ageLabel(a.time) }}</span>
+        <!-- DEC-REF-100 D-4 — recomendación de la regla (ya viaja en el feed) -->
+        <span v-if="a.recommendation" class="equipment-alarms__rec">→ {{ a.recommendation }}</span>
       </span>
       <span v-if="alarms.length > 5" class="equipment-alarms__more">
         +{{ alarms.length - 5 }} más
@@ -84,6 +86,7 @@ export default {
 .equipment-alarms--info     { color: #1d8cf8; }
 .equipment-alarms__label { color: #d3d7e0; flex: 1; }
 .equipment-alarms__age { color: #6b7280; font-size: 0.85em; white-space: nowrap; }
+.equipment-alarms__rec { flex-basis: 100%; color: #9aa0b4; font-size: 0.85em; font-style: italic; margin-left: 66px; }
 .equipment-alarms__more { color: #6b7280; font-size: 0.85em; font-style: italic; }
 .equipment-alarms__ok { color: #00bf9a; }
 .equipment-alarms__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }

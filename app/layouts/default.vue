@@ -381,10 +381,13 @@ export default {
             const conf = isResolve
               ? { type: 'success', icon: 'tim-icons icon-check-2' }
               : (sevMap[payload.severity] || { type: 'danger', icon: 'tim-icons icon-alert-circle-exc' });
+            // DEC-REF-100 D-4 — la recomendación se muestra en el toast
+            // (viaja en el payload desde notificationRouter).
+            const recSuffix = payload.recommendation ? ` → ${payload.recommendation}` : '';
             this.$notify({
               type: conf.type,
               icon: conf.icon,
-              message: (isResolve ? 'Resuelto: ' : '') + (payload.message || raw)
+              message: (isResolve ? 'Resuelto: ' : '') + (payload.message || raw) + recSuffix
             });
             this.$store.dispatch("getNotifications");
             // Real-time-lite (DEC-REF-44 / DEC-REF-54 / DEC-REF-55): reemitir

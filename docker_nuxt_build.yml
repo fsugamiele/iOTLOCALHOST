@@ -9,6 +9,10 @@ services:
     working_dir: /home/node/app
     volumes:
       - ./app/:/home/node/app
+      # DEC-REF-100: el build carga el ServerMiddleware de la API del simulador,
+      # que requiere el catálogo desde ../../../tools/... (mismo mount que los
+      # contenedores de runtime). Sin esto el build loguea un error espurio.
+      - ./tools/device_simulator/lib:/home/node/tools/device_simulator/lib:ro
 
 
     command: sh -c "npm run build" 

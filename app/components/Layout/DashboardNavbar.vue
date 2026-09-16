@@ -69,6 +69,11 @@
               <b>Condition: </b> {{ notification.condition }} <br />
               <b>Limit: </b> {{ notification.value }} <br />
               <b>Value: </b> {{ notification.payload.value }}
+              <!-- DEC-REF-100 D-4 — recomendación de la regla si existe -->
+              <template v-if="notification.recommendation">
+                <br />
+                <b>Recomendación: </b> {{ notification.recommendation }}
+              </template>
             </div>
           </a>
         </li>

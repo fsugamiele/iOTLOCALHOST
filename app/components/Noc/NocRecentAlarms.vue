@@ -52,6 +52,11 @@
                 <span class="alarm-time"> · {{ timeMetaLabel(a) }}</span>
                 <span v-if="reasonSuffix(a)" class="alarm-reason"> · {{ reasonSuffix(a) }}</span>
               </div>
+
+              <!-- Línea 4 · recomendación (DEC-REF-100 D-4 — ya viaja en el payload) -->
+              <div v-if="a.recommendation" class="alarm-line-4 alarm-rec">
+                → {{ a.recommendation }}
+              </div>
             </div>
           </li>
         </ul>
@@ -334,6 +339,7 @@ export default {
 .alarm-line-2    { font-size: 12px; opacity: 0.85; }
 
 .alarm-line-3    { font-size: 12px; display: flex; gap: 0.35em; flex-wrap: wrap; }
+.alarm-rec       { font-size: 12px; font-style: italic; color: #9aa0b4; margin-top: 2px; }
 .alarm-site      { font-weight: 500; opacity: 0.9; }
 
 /* Badges — DEC-REF-27. bg + text-color coherentes. */

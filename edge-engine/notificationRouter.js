@@ -80,6 +80,9 @@ function sendMqttNotif(alarm) {
     ruleId:            alarm.ruleId,
     variable:          alarm.variable,
     message,
+    // DEC-REF-100 D-4 — recommendation viaja también al toast en vivo;
+    // era el único canal que lo omitía (Mongo/NOC/Telegram ya lo tenían).
+    recommendation:    alarm.recommendation || '',
     time:              Date.now(),
     correlationParent: alarm.correlationParent || null,
     mode:              alarm.mode || 'direct',
