@@ -157,7 +157,6 @@ export default {
     // Catálogo enriquecido: [{name, description, duration_ms, roles, noCleanup}]
     scenarios: { type: Array, default: () => [] },
     note: { type: String, default: '' },
-    userId: { type: String, required: true },
     userToken: { type: String, required: true },
   },
 
@@ -245,8 +244,15 @@ export default {
     },
 
     subscribe(dId) {
+      // DEC-REF-100 D-1 — suscribir por namespace del OWNER del device
+      // (el layout re-emite con el topic completo, que lleva el userId del
+      // owner). Antes se usaba el userId del usuario logueado: con devices
+      // de otro owner no llegaba ningún live.
+      const device = this.devices.find(d => d.dId === dId);
+      const owner = device && device.userId;
+      if (!owner) return;
       for (const w of this.widgets) {
-        const topic = `${this.userId}/${dId}/${w.variable}/sdata`;
+        const topic = `${owner}/${dId}/${w.variable}/sdata`;
         const handler = (data) => this.onSdata(w.variable, data);
         this.$nuxt.$on(topic, handler);
         this.activeHandlers.push({ topic, handler });

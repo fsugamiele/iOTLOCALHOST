@@ -133,9 +133,11 @@ router.get('/simulator/devices', checkAuth, async (req, res) => {
     const writeFilter = await buildWriteFilter(req, 'Device');
 
     // 1. Cargar devices simulados (incluyendo templateId, lo necesitamos para join)
+    // DEC-REF-100 D-1: userId (owner) incluido — la UI suscribe lives por
+    // namespace del owner, no del caller (espejo de default.vue:272-287).
     const devices = await Device.find(
       { ...writeFilter, firmwareType: 'wanomi-sim' },
-      { dId: 1, name: 1, siteId: 1, templateName: 1, templateId: 1, _id: 0 }
+      { dId: 1, name: 1, siteId: 1, templateName: 1, templateId: 1, userId: 1, _id: 0 }
     ).lean();
 
     // 2. Cargar templates únicos en una sola query. Sin filtro userId —
@@ -154,6 +156,7 @@ router.get('/simulator/devices', checkAuth, async (req, res) => {
       dId: d.dId,
       name: d.name,
       siteId: d.siteId,
+      userId: d.userId,
       templateName: d.templateName,
       templateWidgets: widgetsByTemplateId[d.templateId?.toString()] || [],
     }));

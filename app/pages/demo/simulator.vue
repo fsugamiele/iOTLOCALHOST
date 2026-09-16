@@ -41,6 +41,16 @@
 
     <!-- Secciones por equipo -->
     <template v-else>
+      <!-- Filtro de sitio (DEC-REF-100 D-2) -->
+      <div class="row">
+        <div class="col-md-4 col-sm-6">
+          <el-select v-model="siteFilter" class="select-primary site-filter" size="small">
+            <el-option value="ALL" label="Todos los sitios" />
+            <el-option v-for="s in siteOptions" :key="s" :value="s" :label="s" />
+          </el-select>
+        </div>
+      </div>
+
       <div v-for="section in visibleSections" :key="section.key" class="row">
         <div class="col-12">
           <h3 class="section-title">
@@ -55,25 +65,29 @@
             :devices="devicesByFamily[family]"
             :scenarios="scenarios"
             :note="section.notes && section.notes[family] || ''"
-            :user-id="userId"
             :user-token="$store.state.auth.token"
             class="mb-4"
           />
         </div>
       </div>
+
+      <p v-if="visibleSections.length === 0" class="text-muted">
+        No hay dispositivos simulados para el sitio seleccionado.
+      </p>
     </template>
   </div>
 </template>
 
 <script>
 import EquipmentCard from '~/components/Simulator/EquipmentCard.vue';
+import { Select, Option } from 'element-ui';
 
 const ATS_NOTE = 'Editar gen_status a mano propaga sharedState.gen_running al Cummins del sitio (el generador arranca/frena en consecuencia).';
 
 export default {
   name: 'SimulatorPanel',
   middleware: 'authenticated',
-  components: { EquipmentCard },
+  components: { EquipmentCard, [Select.name]: Select, [Option.name]: Option },
 
   data() {
     return {
@@ -81,11 +95,12 @@ export default {
       loadError: null,
       devices: [],
       scenarios: [],
+      siteFilter: 'ALL',
       // Orden y composición de las secciones del panel
       sectionDefs: [
         { key: 'gen',   title: 'Generador',    icon: 'icon-button-power', families: ['CUMMINS', 'GEN'] },
         { key: 'ats',   title: 'ATS',          icon: 'icon-refresh-02',   families: ['ATS'], notes: { ATS: ATS_NOTE } },
-        { key: 'eltek', title: 'Rectificador', icon: 'icon-flash',        families: ['ELTEK'] },
+        { key: 'eltek', title: 'Rectificador', icon: 'icon-light-3',      families: ['ELTEK'] },
         { key: 'sec',   title: 'Seguridad',    icon: 'icon-bell-55',      families: ['SEC'] },
       ],
       familyLabels: {
@@ -99,15 +114,21 @@ export default {
   },
 
   computed: {
-    userId() {
-      return this.$store.state.auth?.userData?._id || '';
+    // Sitios disponibles para el filtro (DEC-REF-100 D-2)
+    siteOptions() {
+      return [...new Set(this.devices.map(d => d.siteId).filter(Boolean))].sort();
+    },
+
+    filteredDevices() {
+      if (this.siteFilter === 'ALL') return this.devices;
+      return this.devices.filter(d => d.siteId === this.siteFilter);
     },
 
     // Agrupa devices por familia de rol, derivada del name (${siteCode}-${role}).
     // ELTEK-01/02/03 comparten familia 'ELTEK' (una sola tarjeta con selector).
     devicesByFamily() {
       const grouped = {};
-      for (const d of this.devices) {
+      for (const d of this.filteredDevices) {
         const family = this.familyOf(d);
         if (!grouped[family]) grouped[family] = [];
         grouped[family].push(d);
@@ -216,5 +237,10 @@ export default {
 .section-title i {
   margin-right: 0.5rem;
   color: #e14eca;
+}
+
+.site-filter {
+  width: 100%;
+  margin-bottom: 0.5rem;
 }
 </style>
