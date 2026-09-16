@@ -42,37 +42,11 @@
         </div>
 
         <div class="row">
-          <div class="col-6">
-            <slot name="label">
-              <label>Sitio (opcional)</label>
-            </slot>
-            <el-select
-              v-model="newDevice.siteCode"
-              placeholder="Sin sitio — se asocia después"
-              class="select-primary"
-              style="width:100%"
-              filterable
-              clearable
-            >
-              <el-option
-                v-for="s in sites"
-                :key="s.siteCode"
-                :value="s.siteCode"
-                :label="(s.nombre || s.siteCode) + ' (' + s.siteCode + ')'"
-              ></el-option>
-            </el-select>
-          </div>
-
-          <div class="col-6">
-            <slot name="label">
-              <label>Guardar datos en BD</label>
-            </slot>
-            <div style="padding-top:8px">
-              <base-switch v-model="newDevice.saverRule" type="primary" on-text="On" off-text="Off"></base-switch>
-              <span class="text-muted" style="margin-left:10px; font-size:12px">
-                histórico para gráficos, dwell y frescura
-              </span>
-            </div>
+          <div class="col-12">
+            <p class="text-muted" style="font-size:12px">
+              El sitio se asigna después desde la tabla (ícono <i class="tim-icons icon-pin"></i>).
+              El guardado de datos en BD arranca prendido y se controla con el interruptor de la tabla.
+            </p>
           </div>
         </div>
 
@@ -148,7 +122,7 @@
                   class="btn-link"
                   @click="openBindModal(row)"
                 >
-                  <i class="tim-icons icon-pin-3"></i>
+                  <i class="tim-icons icon-pin"></i>
                 </base-button>
               </el-tooltip>
 
@@ -283,9 +257,7 @@ export default {
       newDevice: {
         name: "",
         templateId: "",
-        templateName: "",
-        siteCode: "",
-        saverRule: true
+        templateName: ""
       },
       // Credenciales post-alta (DEC-REF-98 D-2)
       credentialsModal: false,
@@ -439,11 +411,12 @@ export default {
       const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
 
       try {
+        // DEC-REF-100 D-5 — alta = nombre + template. saverRule no viaja:
+        // el backend lo crea ON por default y se togglea desde la tabla.
         const res = await this.$axios.post("/device", { newDevice: {
           name: this.newDevice.name,
           templateId: this.newDevice.templateId,
           templateName: this.newDevice.templateName,
-          saverRule: this.newDevice.saverRule,
         } }, axiosHeaders);
 
         if (res.data.status != "success") return;
@@ -459,28 +432,11 @@ export default {
           localStorage.setItem('lastSelectedDId:' + userId, dId);
         }
 
-        // Bind al sitio elegido (opcional). Fallo parcial explícito: el
-        // device YA existe — se informa y queda para asociar por la tabla.
-        if (this.newDevice.siteCode) {
-          try {
-            await this.$axios.post("/site/devices", { siteCode: this.newDevice.siteCode, dId }, axiosHeaders);
-          } catch (e) {
-            const msg = (e.response && e.response.data && e.response.data.error) || "error desconocido";
-            this.$notify({
-              type: "warning",
-              icon: "tim-icons icon-alert-circle-exc",
-              message: `Dispositivo creado pero NO se pudo asociar a ${this.newDevice.siteCode} (${msg}). Asocialo desde la tabla.`,
-            });
-          }
-        }
-
         this.createdCredentials = { dId, password: res.data.password };
         this.credentialsModal = true;
 
         this.$store.dispatch("getDevices");
         this.newDevice.name = "";
-        this.newDevice.siteCode = "";
-        this.newDevice.saverRule = true;
         this.selectedIndexTemplate = null;
       } catch (e) {
         console.log(e);
