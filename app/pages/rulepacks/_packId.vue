@@ -63,28 +63,43 @@
 
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
-              <base-button type="primary" size="sm" @click="openNewRule">
-                <i class="tim-icons icon-simple-add"></i> Nueva regla
-              </base-button>
+              <div>
+                <!-- DEC-REF-100 D-7 (F6): el alta guiada es el camino
+                     principal; el formulario completo queda como modo
+                     avanzado (F7) para C/S/cross y parámetros finos. -->
+                <base-button type="default" size="sm" @click="openNewRule">
+                  <i class="tim-icons icon-settings"></i> Modo avanzado
+                </base-button>
+                <base-button type="primary" size="sm" @click="openWizardNew">
+                  <i class="tim-icons icon-simple-add"></i> Nueva regla
+                </base-button>
+              </div>
             </div>
 
+            <!-- DEC-REF-100 D-7 (F6): tabla legible — qué hace cada regla
+                 en lenguaje de usuario, sin jerga técnica a la vista. -->
             <base-table
               v-if="(pack.rules || []).length > 0"
               :data="pack.rules"
-              :columns="['ruleId', 'label', 'type', 'severity', 'variable', 'cooldownSec', 'acciones']"
+              :columns="['Regla', 'Qué hace', 'Severidad', 'Acciones']"
               thead-classes="text-primary"
             >
               <template slot-scope="{ row, index }">
-                <td>{{ row.ruleId }}</td>
-                <td>{{ row.label }}</td>
-                <td>{{ row.type }}</td>
+                <td>
+                  <strong>{{ row.label }}</strong><br />
+                  <small class="text-muted">{{ row.ruleId }} · tipo {{ row.type }}</small>
+                </td>
+                <td>
+                  {{ ruleSentence(row) }}
+                  <div v-if="row.recommendation" class="text-muted" style="font-size:12px">
+                    <i class="fa fa-wrench" style="margin-right:4px"></i>{{ row.recommendation }}
+                  </div>
+                </td>
                 <td>
                   <span class="badge" :class="severityBadge(row.severity)">
                     {{ row.severity }}
                   </span>
                 </td>
-                <td>{{ row.variable }}</td>
-                <td>{{ row.cooldownSec }}</td>
                 <td>
                   <base-button
                     type="info"
@@ -409,6 +424,146 @@
       </div>
     </el-dialog>
 
+    <!-- WIZARD guiado · DEC-REF-100 D-7 (F6) — alta/edición de reglas de
+         umbral (type D) en 4 pasos de lenguaje de usuario. ruleId e
+         inferenceId se autogeneran y no se muestran. Lo que el wizard no
+         cubre (C/S/cross, tiempos finos) va por "Opciones avanzadas",
+         que abre el formulario clásico con lo ya cargado. -->
+    <el-dialog
+      :title="wizEditingIndex !== null ? 'Editar regla' : 'Nueva regla'"
+      :visible.sync="wizardOpen"
+      width="640px"
+      :close-on-click-modal="false"
+    >
+      <div class="wiz-steps mb-4">
+        <span
+          v-for="(name, i) in wizStepNames"
+          :key="i"
+          class="wiz-step"
+          :class="{ active: wizardStep === i + 1, done: wizardStep > i + 1 }"
+        >
+          {{ i + 1 }}. {{ name }}
+        </span>
+      </div>
+
+      <!-- Paso 1 · equipo -->
+      <div v-if="wizardStep === 1">
+        <h5>¿Sobre qué equipo es la regla?</h5>
+        <el-select
+          v-model="wiz.deviceType"
+          class="select-primary"
+          style="width:100%"
+          filterable
+          :disabled="sheets.length === 0"
+        >
+          <el-option
+            v-for="s in sheets"
+            :key="s.deviceType"
+            :label="s.manufacturer ? `${s.deviceType} — ${s.manufacturer} ${s.model || ''}`.trim() : s.deviceType"
+            :value="s.deviceType"
+          />
+        </el-select>
+        <small class="text-muted">
+          Por defecto es el equipo del pack; podés elegir otro si la regla vigila un equipo distinto.
+        </small>
+      </div>
+
+      <!-- Paso 2 · variable -->
+      <div v-if="wizardStep === 2">
+        <h5>¿Qué variable querés vigilar?</h5>
+        <el-select
+          v-if="wizVariables.length > 0"
+          v-model="wiz.variable"
+          class="select-primary"
+          style="width:100%"
+          filterable
+          placeholder="Elegir variable"
+        >
+          <el-option
+            v-for="v in wizVariables"
+            :key="v.name"
+            :label="v.label ? `${v.label} (${v.name})` : v.name"
+            :value="v.name"
+          />
+        </el-select>
+        <base-input v-else v-model="wiz.variable" placeholder="ej: fuel_level" />
+        <small v-if="wiz.deviceType && wizVariables.length === 0" class="text-warning">
+          La ficha {{ wiz.deviceType }} no declara variables — texto libre.
+        </small>
+      </div>
+
+      <!-- Paso 3 · condición en lenguaje natural -->
+      <div v-if="wizardStep === 3">
+        <h5>¿Cuándo debe avisar?</h5>
+        <div class="wiz-sentence">
+          <span>Avisame cuando</span>
+          <strong>{{ wizVariableLabel }}</strong>
+          <span>esté</span>
+          <el-select v-model="wiz.op" class="select-primary wiz-op">
+            <el-option v-for="op in WIZ_OPS" :key="op" :value="op" :label="OPERATOR_LABELS[op]" />
+          </el-select>
+          <input v-model.number="wiz.value" type="number" class="form-control wiz-value" />
+          <span v-if="wizVariableUnit">{{ wizVariableUnit }}</span>
+        </div>
+        <small class="text-muted">
+          Ejemplo: "Avisame cuando Nivel de combustible esté menor que 30 %".
+        </small>
+      </div>
+
+      <!-- Paso 4 · aviso -->
+      <div v-if="wizardStep === 4">
+        <h5>¿Cómo te avisamos?</h5>
+        <base-input v-model="wiz.label" label="Nombre de la regla" placeholder="ej: Combustible bajo" />
+
+        <label class="mt-3 d-block">Importancia</label>
+        <div class="wiz-severities">
+          <label
+            v-for="opt in WIZ_SEVERITIES"
+            :key="opt.value"
+            class="wiz-sev"
+            :class="{ active: wiz.severity === opt.value }"
+          >
+            <input type="radio" v-model="wiz.severity" :value="opt.value" />
+            <span class="badge" :class="severityBadge(opt.value)">{{ opt.label }}</span>
+            <small class="d-block text-muted mt-1">{{ opt.help }}</small>
+          </label>
+        </div>
+
+        <label class="mt-3 d-block">Recomendación — qué hacer cuando dispara (opcional)</label>
+        <textarea
+          v-model="wiz.recommendation"
+          class="form-control"
+          rows="2"
+          placeholder="ej: Coordinar recarga de combustible con el proveedor"
+        ></textarea>
+      </div>
+
+      <div slot="footer">
+        <base-button type="link" @click="wizardToAdvanced">
+          <i class="tim-icons icon-settings"></i> Opciones avanzadas
+        </base-button>
+        <base-button type="secondary" :disabled="wizardStep === 1" @click="wizardStep--">
+          Atrás
+        </base-button>
+        <base-button
+          v-if="wizardStep < 4"
+          type="primary"
+          :disabled="!wizStepReady"
+          @click="wizardStep++"
+        >
+          Siguiente
+        </base-button>
+        <base-button
+          v-else
+          type="primary"
+          :disabled="!wizStepReady || saving"
+          @click="submitWizard"
+        >
+          {{ saving ? 'Guardando...' : (wizEditingIndex !== null ? 'Guardar cambios' : 'Crear regla') }}
+        </base-button>
+      </div>
+    </el-dialog>
+
     <!-- MODAL: borrar regla (confirmación simple, sin fricción de escritura —
          menor riesgo que borrar pack porque son parte del mismo pack que
          el usuario ya sabe que está editando). -->
@@ -438,6 +593,23 @@
 
 <script>
 import CrossExprNode, { stripEditorKeys } from '@/components/CrossExprNode.vue';
+
+// DEC-REF-100 D-7 (F6) — capa de presentación del wizard: mismos labels que
+// OPERATOR_LABELS del backend (api/models/rule_definition.js — la identidad
+// interna lt/gt/... NO se toca; esto es solo idioma de usuario, mismo
+// criterio que fichas.vue).
+const OPERATOR_LABELS = {
+  gt: 'mayor que', gte: 'mayor o igual que',
+  lt: 'menor que', lte: 'menor o igual que',
+  eq: 'igual a',   neq: 'distinto de',
+};
+const WIZ_OPS = ['lt', 'lte', 'gt', 'gte', 'eq', 'neq'];
+const WIZ_SEVERITIES = [
+  { value: 'info',     label: 'Informativa', help: 'Queda registrada, sin urgencia' },
+  { value: 'warning',  label: 'Atención',    help: 'Hay que revisarlo pronto' },
+  { value: 'critical', label: 'Crítica',     help: 'Requiere acción inmediata' },
+];
+const WIZ_STEP_NAMES = ['Equipo', 'Variable', 'Condición', 'Aviso'];
 
 // SF-5 Capa 3 · DEC-REF-62.d/e + DEC-REF-62-A — edición de reglas del
 // pack + revalidación /me al mount (esta página gana superficie de
@@ -489,7 +661,24 @@ export default {
       // S6 — catálogo de fichas (lectura global D-1) para los selectores
       // de deviceType y variable del editor de reglas. Misma fuente que
       // el selector de pack (index.vue, S5).
-      sheets: []
+      sheets: [],
+      // DEC-REF-100 D-7 (F6) — wizard guiado de reglas type D.
+      OPERATOR_LABELS,
+      WIZ_OPS,
+      WIZ_SEVERITIES,
+      wizStepNames: WIZ_STEP_NAMES,
+      wizardOpen: false,
+      wizardStep: 1,
+      wizEditingIndex: null, // null = alta; número = edición de regla type D
+      wiz: {
+        deviceType: '',
+        variable: '',
+        op: 'lt',
+        value: '',
+        severity: 'warning',
+        recommendation: '',
+        label: ''
+      }
     };
   },
   computed: {
@@ -522,6 +711,31 @@ export default {
     // mismo criterio que los warnings del backend, rulepacks.js).
     draftVariables() {
       return (this.ruleSheet && this.ruleSheet.variables) || [];
+    },
+    // DEC-REF-100 D-7 (F6) — computeds del wizard (espejo de ruleSheet/
+    // draftVariables pero sobre wiz.deviceType).
+    wizSheet() {
+      return this.sheetByType[this.wiz.deviceType] || null;
+    },
+    wizVariables() {
+      return (this.wizSheet && this.wizSheet.variables) || [];
+    },
+    wizVariableLabel() {
+      const v = this.wizVariables.find(x => x.name === this.wiz.variable);
+      return (v && v.label) || this.wiz.variable || 'la variable';
+    },
+    wizVariableUnit() {
+      const v = this.wizVariables.find(x => x.name === this.wiz.variable);
+      return (v && v.unit) || '';
+    },
+    wizStepReady() {
+      if (this.wizardStep === 1) return !!this.wiz.deviceType;
+      if (this.wizardStep === 2) return !!this.wiz.variable;
+      if (this.wizardStep === 3) {
+        return this.wiz.value !== '' && this.wiz.value !== null &&
+               this.wiz.value !== undefined && Number.isFinite(Number(this.wiz.value));
+      }
+      return !!this.wiz.label;
     },
     isRuleReady() {
       const r = this.ruleDraft;
@@ -640,6 +854,123 @@ export default {
       if (sev === 'warning')  return 'badge-warning';
       return 'badge-info';
     },
+    // DEC-REF-100 D-7 (F6) — la regla contada en lenguaje de usuario para
+    // la tabla legible.
+    ruleSentence(r) {
+      const varName = r.variableLabel || r.variable || '';
+      const unit = r.unit ? ` ${r.unit}` : '';
+      if (r.type === 'D' && r.condition) {
+        return `${varName} ${OPERATOR_LABELS[r.condition.op] || r.condition.op} ${r.condition.value}${unit}`;
+      }
+      if (r.type === 'C' && r.setpointSource) {
+        return `${varName} contra el setpoint real del equipo (${r.setpointSource.variable || 'auto'})`;
+      }
+      if (r.type === 'S' && r.window) {
+        const mc = r.window.matchCondition;
+        const cond = mc ? ` ${OPERATOR_LABELS[mc.op] || mc.op} ${mc.value}${unit}` : '';
+        return `${varName}${cond}, ${r.window.countThreshold} veces en ${Math.round((r.window.durationSec || 0) / 60)} min`;
+      }
+      if (r.type === 'cross') return 'condición combinada entre equipos';
+      return varName;
+    },
+    // ── Wizard guiado (DEC-REF-100 D-7 · F6) ───────────────────────────
+    openWizardNew() {
+      this.wizEditingIndex = null;
+      this.wiz = {
+        deviceType: this.pack ? this.pack.deviceType : '',
+        variable: '',
+        op: 'lt',
+        value: '',
+        severity: 'warning',
+        recommendation: '',
+        label: ''
+      };
+      this.wizardStep = 1;
+      this.wizardOpen = true;
+    },
+    openWizardEdit(index) {
+      const r = this.pack.rules[index];
+      this.wizEditingIndex = index;
+      this.wiz = {
+        deviceType: r.deviceType,
+        variable: r.variable,
+        op: (r.condition && r.condition.op) || 'gt',
+        value: r.condition && r.condition.value !== undefined ? r.condition.value : '',
+        severity: r.severity || 'warning',
+        recommendation: r.recommendation || '',
+        label: r.label || ''
+      };
+      this.wizardStep = 1;
+      this.wizardOpen = true;
+    },
+    slugifyText(s) {
+      return String(s || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '').slice(0, 40) || 'regla';
+    },
+    // ruleId autogenerado y oculto al usuario: deviceType + slug del label,
+    // con sufijo numérico si ya existe en el pack (excluyendo la regla en
+    // edición).
+    genRuleId() {
+      const base = `${this.wiz.deviceType}-${this.slugifyText(this.wiz.label)}`;
+      const taken = new Set((this.pack.rules || [])
+        .filter((_, i) => i !== this.wizEditingIndex)
+        .map(r => r.ruleId));
+      let id = base;
+      let n = 2;
+      while (taken.has(id)) { id = `${base}-${n}`; n++; }
+      return id;
+    },
+    // inferenceId autogenerado: código corto derivado del label.
+    genInferenceId() {
+      const base = this.slugifyText(this.wiz.label).replace(/-/g, '_').toUpperCase().slice(0, 20) || 'REGLA';
+      const taken = new Set((this.pack.rules || [])
+        .filter((_, i) => i !== this.wizEditingIndex)
+        .map(r => r.inferenceId));
+      let id = base;
+      let n = 2;
+      while (taken.has(id)) { id = `${base}_${n}`; n++; }
+      return id;
+    },
+    buildRuleFromWizard() {
+      const existing = this.wizEditingIndex !== null ? this.pack.rules[this.wizEditingIndex] : null;
+      const v = this.wizVariables.find(x => x.name === this.wiz.variable);
+      const rule = {
+        ruleId: existing ? existing.ruleId : this.genRuleId(),
+        label: this.wiz.label,
+        variableLabel: (v && v.label) || (existing && existing.variableLabel) || '',
+        inferenceId: existing ? existing.inferenceId : this.genInferenceId(),
+        type: 'D',
+        severity: this.wiz.severity,
+        recommendation: this.wiz.recommendation || '',
+        deviceType: this.wiz.deviceType,
+        variable: this.wiz.variable,
+        cooldownSec: existing && existing.cooldownSec ? existing.cooldownSec : 300,
+        condition: { op: this.wiz.op, value: this.wiz.value === '' ? 0 : Number(this.wiz.value) },
+        crossExpr: null
+      };
+      if ((v && v.unit) || (existing && existing.unit)) rule.unit = (v && v.unit) || existing.unit;
+      return rule;
+    },
+    async submitWizard() {
+      if (!this.wizStepReady) return;
+      this.ruleDraft = this.buildRuleFromWizard();
+      this.editingIndex = this.wizEditingIndex;
+      this.wizardOpen = false;
+      // Reusa el camino canónico: limpieza por type + savePack con bump
+      // de version + recarga del edge (submitRule ya lo hace).
+      await this.submitRule();
+    },
+    // Deriva al formulario clásico conservando lo cargado en el wizard
+    // (F7: ahí viven C/S/cross, tiempos y resto de parámetros).
+    wizardToAdvanced() {
+      this.ruleDraft = this.buildRuleFromWizard();
+      this.editingIndex = this.wizEditingIndex;
+      this.wizardOpen = false;
+      this.ensureShapeForType('D');
+      this.ruleModal = true;
+    },
     isEditableType(t) {
       return t === 'D' || t === 'cross';
     },
@@ -669,6 +1000,12 @@ export default {
       this.ruleModal = true;
     },
     openEditRule(index) {
+      // DEC-REF-100 D-7 (F6): las reglas de umbral (type D) se editan en el
+      // wizard guiado; C/S/cross van directo al formulario avanzado.
+      if (this.pack.rules[index] && this.pack.rules[index].type === 'D') {
+        this.openWizardEdit(index);
+        return;
+      }
       this.editingIndex = index;
       // Copia profunda para no mutar la fuente hasta guardar.
       const original = this.pack.rules[index];
@@ -848,6 +1185,15 @@ export default {
         this.ruleDraft.variable = '';
       }
     },
+    // DEC-REF-100 D-7 (F6) — mismo reset de variable pero sobre el wizard.
+    'wiz.deviceType'(newType, oldType) {
+      if (!this.wiz || newType === oldType) return;
+      if (oldType === undefined || oldType === '') return;
+      const vars = this.wizVariables;
+      if (vars.length > 0 && !vars.some(v => v.name === this.wiz.variable)) {
+        this.wiz.variable = '';
+      }
+    },
     // Cuando el usuario cambia type en el form, ajustar shape del
     // draft para que los inputs relevantes tengan defaults.
     'ruleDraft.type'(newType, oldType) {
@@ -868,3 +1214,63 @@ export default {
   }
 };
 </script>
+
+<style>
+/* DEC-REF-100 D-7 (F6) — estilos del wizard guiado. No-scoped porque
+   el-dialog teletransporta el contenido al body (scoped no aplicaría). */
+.wiz-steps {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wiz-step {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #9a9a9a;
+}
+.wiz-step.active {
+  background: #e14eca;
+  color: #fff;
+}
+.wiz-step.done {
+  background: rgba(0, 210, 130, 0.2);
+  color: #00d69a;
+}
+.wiz-sentence {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  padding: 14px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.wiz-sentence .wiz-op {
+  width: 190px;
+}
+.wiz-sentence .wiz-value {
+  width: 110px;
+  display: inline-block;
+}
+.wiz-severities {
+  display: flex;
+  gap: 12px;
+}
+.wiz-sev {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+.wiz-sev.active {
+  border-color: #e14eca;
+  background: rgba(225, 78, 202, 0.08);
+}
+.wiz-sev input[type="radio"] {
+  display: none;
+}
+</style>
