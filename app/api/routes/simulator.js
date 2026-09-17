@@ -23,9 +23,16 @@ const router = express.Router();
 
 import Device from '../models/device.js';
 import Template from '../models/template.js';
+import Site from '../models/site.js';
 
 const checkAuth = require('../middlewares/authentication.js').checkAuth;
-const { buildWriteFilter } = require('../middlewares/scope.js');
+const { buildReadFilter, buildWriteFilter } = require('../middlewares/scope.js');
+const SimScript = require('../models/sim_script.js');
+const runner = require('../services/simScriptRunner.js');
+
+// DEC-REF-100 D-8 (F8) — límites firmados del generador de escenarios.
+const SCRIPT_MAX_STEPS = 50;
+const SCRIPT_MAX_DURATION_SEC = 1800; // 30 min
 
 // DEC-REF-99 / D-2 — fuente única de verdad: el catálogo de escenarios
 // vive en el simulador (sensor-engine.js) y la API lo expone enriquecido
@@ -179,6 +186,9 @@ router.get('/simulator/scenarios', checkAuth, (req, res) => {
       duration_ms: s.duration_ms || 0,
       roles: Array.isArray(s.roles) ? s.roles : [],
       noCleanup: !!s.noCleanup,
+      // DEC-REF-100 D-8 (F8): los pasos se exponen para "Clonar y editar"
+      // (el front los convierte a guion editable apuntando al equipo elegido).
+      steps: Array.isArray(s.steps) ? s.steps : [],
     };
   });
   return res.json({ status: 'success', data });
@@ -340,6 +350,236 @@ router.post('/simulator/reset', checkAuth, async (req, res) => {
 
   } catch (error) {
     return internalError(res, error);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// GUIONES DE ESCENARIO (DEC-REF-100 D-8 · F8) — generador por sitio.
+// Pasos (segundo + equipo + variable + valor), reloj en el servidor
+// (simScriptRunner), bloqueo de un guion activo por sitio, límites
+// 50 pasos / 30 min, validación variable/valor idéntica al botón Aplicar.
+// ════════════════════════════════════════════════════════════════════
+
+// Shape + límites. Devuelve string de error o null.
+function validateScriptShape(body) {
+  if (!body || typeof body.name !== 'string' || !body.name.trim()) {
+    return 'name is required';
+  }
+  if (body.name.length > 120) return 'name too long (max 120)';
+  if (typeof body.siteId !== 'string' || !body.siteId) return 'siteId is required';
+  if (body.cleanup !== undefined && !['reset', 'hold'].includes(body.cleanup)) {
+    return "cleanup must be 'reset' or 'hold'";
+  }
+  if (!Array.isArray(body.steps) || body.steps.length === 0) {
+    return 'steps must be a non-empty array';
+  }
+  if (body.steps.length > SCRIPT_MAX_STEPS) {
+    return `Máximo ${SCRIPT_MAX_STEPS} pasos por guion`;
+  }
+  for (const [i, s] of body.steps.entries()) {
+    if (!s || typeof s !== 'object') return `Paso ${i + 1}: shape inválido`;
+    if (typeof s.atSec !== 'number' || !isFinite(s.atSec) || s.atSec < 0 || s.atSec > SCRIPT_MAX_DURATION_SEC) {
+      return `Paso ${i + 1}: el segundo debe estar entre 0 y ${SCRIPT_MAX_DURATION_SEC} (30 min)`;
+    }
+    if (!isValidDId(s.dId)) return `Paso ${i + 1}: dId inválido`;
+    if (!isValidSensorName(s.variable)) return `Paso ${i + 1}: variable inválida`;
+    if (s.value === undefined) return `Paso ${i + 1}: value es requerido`;
+  }
+  return null;
+}
+
+// Validación contra el mundo real: sitio en scope + cada paso contra el
+// template de su equipo (misma regla que /simulator/set).
+async function validateScriptSteps(req, siteId, steps) {
+  const siteFilter = await buildReadFilter(req, 'Site');
+  const site = await Site.findOne({ ...siteFilter, siteCode: siteId }, { siteCode: 1 }).lean();
+  if (!site) {
+    const err = new Error('El sitio no existe o está fuera de tu scope');
+    err.statusCode = 404;
+    throw err;
+  }
+  const dIds = [...new Set(steps.map(s => s.dId))];
+  for (const dId of dIds) {
+    const { device, template } = await resolveDeviceAndTemplate(req, dId);
+    if (device.siteId !== siteId) {
+      const err = new Error(`El equipo ${dId} no pertenece al sitio ${siteId}`);
+      err.statusCode = 400;
+      throw err;
+    }
+    for (const step of steps.filter(s => s.dId === dId)) {
+      const widget = (template.widgets || []).find(w => w.variable === step.variable);
+      if (!widget) {
+        const err = new Error(`Paso ${step.atSec}s: la variable '${step.variable}' no está en la plantilla de ${device.name || dId}`);
+        err.statusCode = 400;
+        throw err;
+      }
+      const v = validateValueForWidget(widget, step.value);
+      if (!v.ok) {
+        const err = new Error(`Paso ${step.atSec}s: ${v.error}`);
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+  }
+}
+
+function scriptError(res, error) {
+  if (error.statusCode) {
+    return res.status(error.statusCode).json({ status: 'error', error: error.message });
+  }
+  return internalError(res, error);
+}
+
+// ── GET /simulator/scripts/active — guiones en ejecución (barra de progreso)
+router.get('/simulator/scripts/active', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  const isSuperadmin = (req.userData.grants || []).some(g => g.role === 'superadmin');
+  const runs = runner.listActive()
+    .filter(r => isSuperadmin || r.userId === req.userData._id);
+  return res.json({ status: 'success', data: runs });
+});
+
+// ── GET /simulator/scripts?siteId= — mis guiones (opcional por sitio)
+router.get('/simulator/scripts', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const filter = await buildReadFilter(req, 'SimScript');
+    if (req.query.siteId) filter.siteId = String(req.query.siteId);
+    const scripts = await SimScript.find(filter).sort({ updatedAt: -1 }).lean();
+    return res.json({ status: 'success', data: scripts });
+  } catch (error) {
+    return scriptError(res, error);
+  }
+});
+
+// ── POST /simulator/scripts — crear guion
+router.post('/simulator/scripts', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const shapeError = validateScriptShape(req.body);
+    if (shapeError) return badRequest(res, shapeError);
+
+    const { name, description, siteId, cleanup, steps } = req.body;
+    await validateScriptSteps(req, siteId, steps);
+
+    const doc = await SimScript.create({
+      userId: req.userData._id,
+      siteId,
+      name: name.trim(),
+      description: (description || '').slice(0, 300),
+      cleanup: cleanup || 'reset',
+      steps: steps.map(s => ({ atSec: s.atSec, dId: s.dId, variable: s.variable, value: s.value })),
+    });
+    return res.json({ status: 'success', data: doc });
+  } catch (error) {
+    return scriptError(res, error);
+  }
+});
+
+// ── PUT /simulator/scripts/:id — editar guion (solo propio)
+router.put('/simulator/scripts/:id', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const shapeError = validateScriptShape(req.body);
+    if (shapeError) return badRequest(res, shapeError);
+
+    const writeFilter = await buildWriteFilter(req, 'SimScript');
+    const script = await SimScript.findOne({ ...writeFilter, _id: req.params.id });
+    if (!script) return notFound(res);
+
+    if (runner.isSiteBusy(script.siteId)) {
+      return res.status(409).json({ status: 'error', error: 'Hay un guion en ejecución en ese sitio — detenelo antes de editar' });
+    }
+
+    const { name, description, siteId, cleanup, steps } = req.body;
+    await validateScriptSteps(req, siteId, steps);
+
+    script.siteId = siteId;
+    script.name = name.trim();
+    script.description = (description || '').slice(0, 300);
+    script.cleanup = cleanup || 'reset';
+    script.steps = steps.map(s => ({ atSec: s.atSec, dId: s.dId, variable: s.variable, value: s.value }));
+    await script.save();
+    return res.json({ status: 'success', data: script });
+  } catch (error) {
+    return scriptError(res, error);
+  }
+});
+
+// ── DELETE /simulator/scripts/:id
+router.delete('/simulator/scripts/:id', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const writeFilter = await buildWriteFilter(req, 'SimScript');
+    const script = await SimScript.findOne({ ...writeFilter, _id: req.params.id });
+    if (!script) return notFound(res);
+    if (runner.isSiteBusy(script.siteId)) {
+      return res.status(409).json({ status: 'error', error: 'Hay un guion en ejecución en ese sitio — detenelo antes de borrar' });
+    }
+    await script.deleteOne();
+    return res.json({ status: 'success' });
+  } catch (error) {
+    return scriptError(res, error);
+  }
+});
+
+// ── POST /simulator/scripts/:id/duplicate
+router.post('/simulator/scripts/:id/duplicate', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const readFilter = await buildReadFilter(req, 'SimScript');
+    const src = await SimScript.findOne({ ...readFilter, _id: req.params.id }).lean();
+    if (!src) return notFound(res);
+    const doc = await SimScript.create({
+      userId: req.userData._id,
+      siteId: src.siteId,
+      name: `${src.name} (copia)`.slice(0, 120),
+      description: src.description,
+      cleanup: src.cleanup,
+      steps: src.steps,
+    });
+    return res.json({ status: 'success', data: doc });
+  } catch (error) {
+    return scriptError(res, error);
+  }
+});
+
+// ── POST /simulator/scripts/:id/run — ejecutar (reloj en el servidor)
+router.post('/simulator/scripts/:id/run', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const readFilter = await buildReadFilter(req, 'SimScript');
+    const script = await SimScript.findOne({ ...readFilter, _id: req.params.id }).lean();
+    if (!script) return notFound(res);
+
+    if (runner.isSiteBusy(script.siteId)) {
+      return res.status(409).json({ status: 'error', error: `Ya hay un guion en ejecución en el sitio ${script.siteId}` });
+    }
+    // Revalidar contra el estado actual (el template/device pudo cambiar
+    // desde que se guardó el guion).
+    await validateScriptSteps(req, script.siteId, script.steps);
+
+    const run = runner.startRun({ script, userId: req.userData._id, publishCommand });
+    return res.json({ status: 'success', data: run });
+  } catch (error) {
+    return scriptError(res, error);
+  }
+});
+
+// ── POST /simulator/scripts/:id/stop — detener (sin cleanup)
+router.post('/simulator/scripts/:id/stop', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const readFilter = await buildReadFilter(req, 'SimScript');
+    const script = await SimScript.findOne({ ...readFilter, _id: req.params.id }).lean();
+    if (!script) return notFound(res);
+    const stopped = runner.stopRun(script.siteId);
+    if (!stopped) {
+      return res.status(409).json({ status: 'error', error: 'No hay guion en ejecución en ese sitio' });
+    }
+    return res.json({ status: 'success', data: stopped });
+  } catch (error) {
+    return scriptError(res, error);
   }
 });
 

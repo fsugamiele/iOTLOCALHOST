@@ -114,19 +114,25 @@
       </div>
 
       <div v-if="familyScenarios.length" class="scenarios-grid">
-        <button
+        <div
           v-for="scenario in familyScenarios"
           :key="scenario.name"
           class="scenario-button"
-          :disabled="!!activeScenario"
-          @click="triggerScenario(scenario)"
         >
-          <div class="scenario-text">
+          <div class="scenario-text" role="button" :class="{ 'is-disabled': !!activeScenario }" @click="!activeScenario && triggerScenario(scenario)">
             <div class="scenario-name">{{ scenario.name }}</div>
             <div class="scenario-description">{{ scenario.description }}</div>
           </div>
+          <!-- DEC-REF-100 D-8 (F8): el catálogo es solo-lectura; "Clonar y
+               editar" lo convierte en guion editable del sitio (el padre
+               abre el editor del generador). -->
+          <el-tooltip content="Clonar y editar como guion del sitio" effect="light" :open-delay="300" placement="top">
+            <button class="btn btn-sm btn-link text-info clone-btn" @click="cloneScenario(scenario)">
+              <i class="fa fa-code-branch"></i>
+            </button>
+          </el-tooltip>
           <div class="scenario-duration">{{ durationLabel(scenario.duration_ms) }}</div>
-        </button>
+        </div>
       </div>
       <p v-else class="text-muted">
         <small>No hay escenarios catalogados para este equipo.</small>
@@ -378,6 +384,17 @@ export default {
       if (s < 60) return `${s}s`;
       return `${Math.floor(s / 60)}m${s % 60 ? ' ' + (s % 60) + 's' : ''}`;
     },
+
+    // DEC-REF-100 D-8 (F8) — "Clonar y editar": el catálogo queda
+    // solo-lectura; el padre (simulator.vue) abre el editor de guiones
+    // con los pasos expandidos apuntando al equipo seleccionado.
+    cloneScenario(scenario) {
+      this.$emit('clone-scenario', {
+        scenario,
+        dId: this.selectedDId,
+        siteId: this.selectedDevice.siteId,
+      });
+    },
   },
 };
 </script>
@@ -563,6 +580,16 @@ export default {
 .scenario-text {
   flex: 1;
   min-width: 0;
+}
+
+.scenario-text.is-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.clone-btn {
+  padding: 0 0.4rem;
+  font-size: 0.9rem;
 }
 
 .scenario-name {
