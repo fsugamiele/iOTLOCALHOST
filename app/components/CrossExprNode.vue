@@ -8,13 +8,15 @@
         :value="nodeType"
         @change="onTypeChange($event.target.value)"
       >
-        <option value="AND">Grupo AND</option>
-        <option value="OR">Grupo OR</option>
-        <option value="leafDevice">Hoja equipo</option>
+        <!-- DEC-REF-100 D-7 (F7): frases de usuario para los grupos
+             lógicos — la identidad interna sigue siendo AND/OR. -->
+        <option value="AND">TODAS estas condiciones (AND)</option>
+        <option value="OR">CUALQUIERA de estas condiciones (OR)</option>
+        <option value="leafDevice">Condición de equipo</option>
         <!-- SF-6 · DEC-REF-65.e — hoja suma editable desde R16. Antes
              estaba con v-if="isSumLeaf" (solo si el nodo YA era sum).
              Ahora se ofrece siempre para permitir convertir. -->
-        <option value="leafSum">Hoja suma</option>
+        <option value="leafSum">Suma entre equipos</option>
       </select>
 
       <base-button
@@ -81,13 +83,19 @@
         Grupo vacío. Agregá al menos una condición o el backend
         rechazará con "{{ nodeType }} sin children".
       </p>
+      <p v-else class="text-muted small mt-2 mb-0">
+        <i class="fa fa-info-circle"></i>
+        {{ nodeType === 'AND'
+          ? 'El grupo se cumple cuando TODAS las condiciones de abajo se cumplen a la vez.'
+          : 'El grupo se cumple cuando CUALQUIERA de las condiciones de abajo se cumple.' }}
+      </p>
     </div>
 
     <!-- HOJA EQUIPO (deviceType, variable, condition) -->
     <div v-else-if="isLeafDevice" class="cross-leaf pl-3">
       <div class="row">
         <div class="col-md-4">
-          <label class="small">deviceType</label>
+          <label class="small">equipo</label>
           <base-input
             :value="value.deviceType || ''"
             placeholder="cummins-pcc"
@@ -103,23 +111,18 @@
           />
         </div>
         <div class="col-md-2">
-          <label class="small">op</label>
+          <label class="small">condición</label>
           <select
             class="form-control"
             :value="value.condition && value.condition.op || 'gt'"
             @change="updateCondition('op', $event.target.value)"
           >
             <!-- Set exacto de ops que typeD.js soporta (OPS en línea 1-8). -->
-            <option value="lt">lt</option>
-            <option value="lte">lte</option>
-            <option value="gt">gt</option>
-            <option value="gte">gte</option>
-            <option value="eq">eq</option>
-            <option value="neq">neq</option>
+            <option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op">{{ lbl }}</option>
           </select>
         </div>
         <div class="col-md-2">
-          <label class="small">value</label>
+          <label class="small">valor</label>
           <base-input
             type="number"
             :value="value.condition && value.condition.value !== undefined ? value.condition.value : ''"
@@ -187,22 +190,17 @@
       <p class="small mb-1">Condición sobre el total sumado:</p>
       <div class="row">
         <div class="col-md-4">
-          <label class="small">op</label>
+          <label class="small">condición</label>
           <select
             class="form-control"
             :value="(value.condition && value.condition.op) || 'gt'"
             @change="updateCondition('op', $event.target.value)"
           >
-            <option value="lt">lt</option>
-            <option value="lte">lte</option>
-            <option value="gt">gt</option>
-            <option value="gte">gte</option>
-            <option value="eq">eq</option>
-            <option value="neq">neq</option>
+            <option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op">{{ lbl }}</option>
           </select>
         </div>
         <div class="col-md-4">
-          <label class="small">value</label>
+          <label class="small">valor</label>
           <base-input
             type="number"
             :value="value.condition && value.condition.value !== undefined ? value.condition.value : ''"
@@ -253,6 +251,15 @@ const uid = (() => {
   return () => `k${++n}`;
 })();
 
+// DEC-REF-100 D-7 (F7) — labels de usuario para los comparadores (misma
+// capa de presentación que fichas.vue / rulepacks/_packId.vue; la
+// identidad interna lt/gt/... no se toca).
+const OPERATOR_LABELS = {
+  gt: 'mayor que', gte: 'mayor o igual que',
+  lt: 'menor que', lte: 'menor o igual que',
+  eq: 'igual a',   neq: 'distinto de',
+};
+
 function ensureKey(node) {
   if (node && typeof node === 'object' && !node.__editorKey) {
     node.__editorKey = uid();
@@ -268,9 +275,11 @@ export default {
     maxDepth: { type: Number, default: 8 },
     isRoot: { type: Boolean, default: false }
   },
+  data() {
+    return { OPERATOR_LABELS };
+  },
   computed: {
-    nodeType() {
-      if (this.value.op === 'AND') return 'AND';
+    nodeType() {      if (this.value.op === 'AND') return 'AND';
       if (this.value.op === 'OR')  return 'OR';
       if (Array.isArray(this.value.sum)) return 'leafSum';
       return 'leafDevice';

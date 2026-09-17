@@ -140,45 +140,37 @@
         <!-- SF-7 parte 2 · DEC-REF-66.a/.b — mini-forms C y S incorporados
              (R23). El stub anterior "edición en roadmap futuro" queda
              obsoleto: ahora los 4 types se editan con paridad. -->
+        <!-- DEC-REF-100 D-7 (F7) — modo avanzado: arriba lo esencial
+             (nombre, severidad, tipo, equipo, variable, recomendación);
+             la identidad técnica (ruleId/inferenceId), los tiempos y las
+             configs de C/S/cross viven en la sección desplegable. -->
         <div class="row">
-          <div class="col-md-4">
-            <label>ruleId <span class="text-danger">*</span></label>
-            <base-input
-              v-model="ruleDraft.ruleId"
-              placeholder="cummins-A0-oil-pressure-low"
-              :disabled="editingIndex !== null"
-            />
-          </div>
-          <div class="col-md-4">
-            <label>label <span class="text-danger">*</span></label>
+          <div class="col-md-6">
+            <label>Nombre de la regla <span class="text-danger">*</span></label>
             <base-input v-model="ruleDraft.label" placeholder="Presión de aceite baja" />
           </div>
-          <div class="col-md-4">
-            <label>inferenceId <span class="text-danger">*</span></label>
-            <base-input v-model="ruleDraft.inferenceId" placeholder="A0" />
+          <div class="col-md-3">
+            <label>Importancia <span class="text-danger">*</span></label>
+            <select v-model="ruleDraft.severity" class="form-control">
+              <option value="info">Informativa</option>
+              <option value="warning">Atención</option>
+              <option value="critical">Crítica</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label>Tipo <span class="text-danger">*</span></label>
+            <select v-model="ruleDraft.type" class="form-control">
+              <option value="D">Umbral simple</option>
+              <option value="cross">Combinada (entre equipos)</option>
+              <option value="C">Autocalibrada (setpoint)</option>
+              <option value="S">Ventana de eventos</option>
+            </select>
           </div>
         </div>
 
         <div class="row">
-          <div class="col-md-3">
-            <label>type <span class="text-danger">*</span></label>
-            <select v-model="ruleDraft.type" class="form-control">
-              <option value="D">D (umbral)</option>
-              <option value="cross">cross (árbol)</option>
-              <option value="C">C (autocalibrado)</option>
-              <option value="S">S (ventana)</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label>severity <span class="text-danger">*</span></label>
-            <select v-model="ruleDraft.severity" class="form-control">
-              <option value="info">info</option>
-              <option value="warning">warning</option>
-              <option value="critical">critical</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label>deviceType <span class="text-danger">*</span></label>
+          <div class="col-md-6">
+            <label>Equipo <span class="text-danger">*</span></label>
             <!-- S6 — el deviceType de la REGLA también es referencia a ficha
                  (DEC-REF-91 adenda #60: 2ª superficie de texto libre; la 3ª,
                  CrossExprNode, sigue fuera de la rebanada). Default: la ficha
@@ -202,8 +194,8 @@
               No hay fichas de equipo cargadas (o no se pudieron cargar).
             </small>
           </div>
-          <div class="col-md-3">
-            <label>variable <span class="text-danger">*</span></label>
+          <div class="col-md-6">
+            <label>Variable <span class="text-danger">*</span></label>
             <!-- S6 — variables de la ficha del deviceType elegido en la regla.
                  Estricto cuando la ficha declara variables (decisión Franco,
                  #70); texto libre cuando no — espejo del criterio de warnings
@@ -231,6 +223,75 @@
           </div>
         </div>
 
+        <!-- DEC-REF-100 D-7 — recommendation editable también en el form
+             clásico (en el wizard vive en el paso 4). Es el texto que
+             acompaña la notificación (F2). -->
+        <div class="row">
+          <div class="col-md-12">
+            <label>Recomendación — qué hacer cuando dispara (opcional)</label>
+            <textarea
+              v-model="ruleDraft.recommendation"
+              class="form-control"
+              rows="2"
+              placeholder="ej: Coordinar recarga de combustible con el proveedor"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- typeD → condition simple (visible: es la esencia de la regla) -->
+        <div v-if="ruleDraft.type === 'D'" class="mt-3">
+          <h5>Condición</h5>
+          <div class="row">
+            <div class="col-md-4">
+              <label>avisar cuando la variable esté</label>
+              <select
+                class="form-control"
+                :value="(ruleDraft.condition || {}).op || 'gt'"
+                @change="setConditionField('op', $event.target.value)"
+              >
+                <option v-for="op in WIZ_OPS" :key="op" :value="op">{{ OPERATOR_LABELS[op] }}</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label>este valor</label>
+              <base-input
+                type="number"
+                :value="(ruleDraft.condition || {}).value !== undefined ? ruleDraft.condition.value : ''"
+                @input="setConditionField('value', numericOrRaw($event))"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- DEC-REF-100 D-7 (F7) — opciones avanzadas desplegables:
+             identidad técnica (ruleId/inferenceId), tiempos y las
+             configuraciones de cross/C/S. Cerrado por default; se abre
+             solo si el tipo elegido lo requiere (watch ruleDraft.type)
+             o si el usuario viene desde "Opciones avanzadas" del wizard. -->
+        <div class="adv-toggle mt-4" @click="advancedOpen = !advancedOpen">
+          <i class="fa" :class="advancedOpen ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+          Opciones avanzadas
+          <span class="text-muted" style="font-weight:400">
+            — identificadores técnicos, tiempos{{ ruleDraft.type !== 'D' ? ', configuración del tipo elegido' : '' }}
+          </span>
+        </div>
+
+        <div v-show="advancedOpen" class="adv-body">
+        <div class="row mt-3">
+          <div class="col-md-6">
+            <label>ruleId <span class="text-danger">*</span></label>
+            <base-input
+              v-model="ruleDraft.ruleId"
+              placeholder="cummins-A0-oil-pressure-low"
+              :disabled="editingIndex !== null"
+            />
+          </div>
+          <div class="col-md-6">
+            <label>inferenceId <span class="text-danger">*</span></label>
+            <base-input v-model="ruleDraft.inferenceId" placeholder="A0" />
+          </div>
+        </div>
+
         <div class="row">
           <div class="col-md-4">
             <label>cooldownSec</label>
@@ -242,43 +303,15 @@
           </div>
         </div>
 
-        <!-- typeD → condition simple -->
-        <div v-if="ruleDraft.type === 'D'" class="mt-3">
-          <h5>Condición</h5>
-          <div class="row">
-            <div class="col-md-4">
-              <label>op</label>
-              <select
-                class="form-control"
-                :value="(ruleDraft.condition || {}).op || 'gt'"
-                @change="setConditionField('op', $event.target.value)"
-              >
-                <option value="lt">lt</option>
-                <option value="lte">lte</option>
-                <option value="gt">gt</option>
-                <option value="gte">gte</option>
-                <option value="eq">eq</option>
-                <option value="neq">neq</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label>value</label>
-              <base-input
-                type="number"
-                :value="(ruleDraft.condition || {}).value !== undefined ? ruleDraft.condition.value : ''"
-                @input="setConditionField('value', numericOrRaw($event))"
-              />
-            </div>
-          </div>
-        </div>
-
         <!-- typecross → CrossExprNode -->
-        <div v-else-if="ruleDraft.type === 'cross'" class="mt-3">
-          <h5>Árbol crossExpr</h5>
+        <div v-if="ruleDraft.type === 'cross'" class="mt-3">
+          <h5>Condición combinada entre equipos</h5>
           <p class="text-muted small">
-            Grupos AND/OR y hojas de equipo. Límite de profundidad: 8
-            (validateCrossTree en el backend). La hoja de suma se
-            activa en SF-6.
+            Armá grupos "TODAS estas condiciones" (AND) o "CUALQUIERA de
+            estas condiciones" (OR), con condiciones sobre variables de
+            cualquier equipo del sitio. Límite de anidamiento: 8 niveles
+            (validateCrossTree en el backend). También podés sumar una
+            variable entre equipos del mismo tipo ("Agregar suma").
           </p>
           <cross-expr-node
             v-if="ruleDraft.crossExpr"
@@ -291,7 +324,7 @@
         </div>
 
         <!-- typeC → setpointSource + flags EDGE-2 + condition (DEC-REF-66.a) -->
-        <div v-else-if="ruleDraft.type === 'C' && ruleDraft.setpointSource && ruleDraft.condition" class="mt-3">
+        <div v-if="ruleDraft.type === 'C' && ruleDraft.setpointSource && ruleDraft.condition" class="mt-3">
           <h5>Autocalibrado (typeC)</h5>
           <div class="row">
             <div class="col-md-6">
@@ -363,7 +396,7 @@
         </div>
 
         <!-- typeS → window (durationSec, countThreshold, matchCondition) (DEC-REF-66.b) -->
-        <div v-else-if="ruleDraft.type === 'S' && ruleDraft.window" class="mt-3">
+        <div v-if="ruleDraft.type === 'S' && ruleDraft.window" class="mt-3">
           <h5>Ventana (typeS)</h5>
           <div class="row">
             <div class="col-md-4">
@@ -409,6 +442,7 @@
             </div>
           </div>
         </div>
+        </div><!-- /adv-body -->
 
       </template>
 
@@ -653,6 +687,10 @@ export default {
       // Delete rule modal
       deleteRuleModal: false,
       deleteRuleTargetIndex: null,
+      // DEC-REF-100 D-7 (F7): sección "Opciones avanzadas" del formulario
+      // clásico. Cerrada por default; se abre sola para C/S/cross (su
+      // configuración vive adentro) o al venir del wizard.
+      advancedOpen: false,
       // SF-7 parte 2 · DEC-REF-66 — warnings no bloqueantes que el
       // backend devuelve en el 200 del PUT (validateC ADVERTENCIAS de
       // config semánticamente muerta). Se muestran como banner ámbar
@@ -686,8 +724,9 @@ export default {
       return this.$route.params.packId;
     },
     ruleModalTitle() {
-      if (this.editingIndex !== null) return 'Editar regla';
-      return 'Nueva regla';
+      // DEC-REF-100 D-7 (F7): el formulario clásico es el modo avanzado.
+      if (this.editingIndex !== null) return 'Editar regla (modo avanzado)';
+      return 'Nueva regla (modo avanzado)';
     },
     deleteRuleTargetRuleId() {
       if (this.deleteRuleTargetIndex === null || !this.pack) return '';
@@ -969,6 +1008,7 @@ export default {
       this.editingIndex = this.wizEditingIndex;
       this.wizardOpen = false;
       this.ensureShapeForType('D');
+      this.advancedOpen = true; // pidió opciones avanzadas: se las muestro
       this.ruleModal = true;
     },
     isEditableType(t) {
@@ -997,6 +1037,7 @@ export default {
     openNewRule() {
       this.editingIndex = null;
       this.ruleDraft = this.emptyRule();
+      this.advancedOpen = false;
       this.ruleModal = true;
     },
     openEditRule(index) {
@@ -1021,6 +1062,8 @@ export default {
         this.$set(this.ruleDraft, 'crossExpr', { op: 'AND', children: [] });
       }
       this.ensureShapeForType(copy.type);
+      // C/S/cross configuran en la sección avanzada: se abre sola (F7).
+      this.advancedOpen = copy.type !== 'D';
       this.ruleModal = true;
     },
     closeRuleModal() {
@@ -1210,6 +1253,10 @@ export default {
       if (newType === 'C' || newType === 'S') {
         this.ensureShapeForType(newType);
       }
+      // F7: la configuración de C/S/cross vive en la sección avanzada —
+      // se abre sola para que el usuario no se quede mirando un form
+      // vacío tras elegir el tipo.
+      if (newType !== 'D') this.advancedOpen = true;
     }
   }
 };
@@ -1272,5 +1319,22 @@ export default {
 }
 .wiz-sev input[type="radio"] {
   display: none;
+}
+/* F7 — sección "Opciones avanzadas" del formulario clásico de reglas */
+.adv-toggle {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.adv-toggle i {
+  margin-right: 8px;
+}
+.adv-body {
+  padding: 6px 4px 0;
+  border-left: 2px solid rgba(225, 78, 202, 0.35);
+  margin-left: 4px;
+  padding-left: 14px;
 }
 </style>
