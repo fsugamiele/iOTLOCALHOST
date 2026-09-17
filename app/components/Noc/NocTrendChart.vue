@@ -87,7 +87,17 @@ export default {
       loading:          false,
       error:            null,
       lastData:         null,
+      // DEC-REF-100 D-5 (F5): refresh automático cada 60 s, en silencio
+      // (sin spinner ni parpadeo — lastData se pisa cuando llega la nueva).
+      refreshTimer:     null,
+      _inFlight:        false,
     };
+  },
+  mounted() {
+    this.refreshTimer = setInterval(() => this.fetchTrend({ silent: true }), 60000);
+  },
+  beforeDestroy() {
+    if (this.refreshTimer) { clearInterval(this.refreshTimer); this.refreshTimer = null; }
   },
   computed: {
     hasNoData() {
@@ -153,10 +163,14 @@ export default {
       if (v == null || !Number.isFinite(v)) return '—';
       return (v > 0 ? '+' : '') + v.toString();
     },
-    async fetchTrend() {
+    async fetchTrend({ silent = false } = {}) {
       if (!this.selectedVariable) return;
-      this.loading = true;
-      this.error = null;
+      if (this._inFlight) return; // refresh solapado — se espera al próximo tick
+      this._inFlight = true;
+      if (!silent) {
+        this.loading = true;
+        this.error = null;
+      }
       const headers = { headers: { token: this.$store.state.auth.token } };
       try {
         const q = 'variable=' + encodeURIComponent(this.selectedVariable) +
@@ -166,13 +180,18 @@ export default {
           throw new Error(res.data.error || 'Error al cargar tendencia');
         }
         this.lastData = res.data.data;
+        this.error = null;
       } catch (err) {
         if (err.response && err.response.status === 401) {
           window.location.href = '/login';
           return;
         }
-        this.error = (err.response && err.response.data && err.response.data.error) || err.message || 'Error inesperado al cargar la tendencia';
+        // En refresh silencioso no se pisa la data buena con un error transitorio.
+        if (!silent) {
+          this.error = (err.response && err.response.data && err.response.data.error) || err.message || 'Error inesperado al cargar la tendencia';
+        }
       } finally {
+        this._inFlight = false;
         this.loading = false;
       }
     },

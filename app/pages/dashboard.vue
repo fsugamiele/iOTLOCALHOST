@@ -28,17 +28,33 @@
         scope="red"
       />
 
+      <!-- DEC-REF-100 D-5 (F5): en la fase viva `sites`/`trendVariables`
+           llegan null (son del tramo PESADO) → skeleton solo en esos
+           bloques mientras KPIs y alarmas ya están pintados. -->
       <noc-site-board
+        v-if="nocData.sites"
         :sites="nocData.sites"
         :is-light="isLight"
       />
+      <div v-else class="row">
+        <div class="col-xl-7 col-12">
+          <card><div class="skeleton skeleton-block skeleton-map"></div></card>
+        </div>
+        <div class="col-xl-5 col-12">
+          <card>
+            <div v-for="i in 4" :key="'r'+i" class="skeleton skeleton-line skeleton-md mt-2"></div>
+          </card>
+        </div>
+      </div>
 
       <div class="row">
         <div class="col-12">
           <noc-trend-chart
+            v-if="nocData.trendVariables"
             :trend-variables="nocData.trendVariables"
             :is-light="isLight"
           />
+          <card v-else><div class="skeleton skeleton-block skeleton-chart"></div></card>
         </div>
       </div>
 
@@ -139,6 +155,10 @@ export default {
       // Ambos con fresh=1. Cualquier notif nueva resetea ambos.
       _notifFastTimer: null,
       _notifSlowTimer: null,
+      // DEC-REF-100 D-5 (F5): true cuando ya llegó la respuesta FULL. La
+      // fase viva solo pinta si el full todavía no aterrizó (evita que una
+      // respuesta viva lenta pise datos completos).
+      _fullLoaded: false,
     };
   },
   async mounted() {
@@ -182,6 +202,12 @@ export default {
   },
   methods: {
     async loadNoc({ silent = false, fresh = false } = {}) {
+      // DEC-REF-100 D-5 (F5): en la carga inicial se dispara ANTES la fase
+      // viva (?phase=vivo, ~150 ms — alarmas, histograma, KPI de alertas) y
+      // el full corre en paralelo; los bloques pesados quedan en skeleton
+      // hasta que el full aterriza. En polls/refreshes el full ya sale
+      // rápido por la cache PESADO (TTL 180 s) y no hace falta la fase viva.
+      if (!silent && !this._fullLoaded) this.loadVivo();
       const headers = { headers: { token: this.$store.state.auth.token } };
       const url = '/dashboard/noc' + (fresh ? '?fresh=1' : '');
       try {
@@ -190,6 +216,7 @@ export default {
           throw new Error(res.data.error || 'Error al cargar el dashboard');
         }
         this.nocData = res.data.data;
+        this._fullLoaded = true;
         this.loadError = null;
       } catch (err) {
         if (err.response && err.response.status === 401) {
@@ -198,6 +225,20 @@ export default {
         }
         if (!silent) this.loadError = err.message || 'Error inesperado';
         console.warn('[NOC] loadNoc error:', err.message || err);
+      }
+    },
+
+    // Fase viva (DEC-REF-100 D-5 · F5): respuesta parcial del tramo VIVO.
+    // Falla en silencio — el fetch full reporta el error si lo hay.
+    async loadVivo() {
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.get('/dashboard/noc?phase=vivo', headers);
+        if (res.data.status === 'success' && !this._fullLoaded) {
+          this.nocData = res.data.data;
+        }
+      } catch (err) {
+        console.warn('[NOC] loadVivo error:', err.message || err);
       }
     },
   },

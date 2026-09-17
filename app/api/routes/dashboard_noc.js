@@ -185,10 +185,17 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     });
     const allowedDIds = devices.map(d => d.dId);
 
+    // (DEC-REF-100 D-5 · F5) — render progresivo: con `?phase=vivo` el handler
+    // NO dispara las 5 queries pesadas (las promesas son eager → guard null)
+    // y responde solo el tramo VIVO (~150 ms: alarmas, histograma, KPI de
+    // alertas). El front pinta eso primero y completa con el fetch full,
+    // que en MISS paga ~12 s (cache PESADO TTL 180 s sigue igual).
+    const phaseVivo = req.query.phase === "vivo";
+
     // (R4 · G7 · 1b) — lastByDid: findOne({dId}).sort({time:-1}) × device en
     // paralelo (IXSCAN puro c/u sobre idx_data_reconstruct), en lugar del
     // $group global que escaneaba y agrupaba toda la tabla filtrada.
-    const lastByDidPromise = Promise.all(
+    const lastByDidPromise = phaseVivo ? null : Promise.all(
       allowedDIds.map(dId =>
         Data.findOne({ dId }, { time: 1, _id: 0 }).sort({ time: -1 }).lean()
           .then(doc => [dId, doc ? doc.time : null])
@@ -231,7 +238,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
         return null;
       })();
     };
-    const lastValuesPromise = Promise.all(
+    const lastValuesPromise = phaseVivo ? null : Promise.all(
       sites.flatMap(s => [
         lastValueOne(s.siteCode, FUEL_PRIORITY),
         lastValueOne(s.siteCode, TEMP_PRIORITY),
@@ -248,7 +255,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
         dId: d.dId
       }));
     });
-    const dieselResultsPromise = Promise.all(dieselJobs.map(job => Promise.all([
+    const dieselResultsPromise = phaseVivo ? null : Promise.all(dieselJobs.map(job => Promise.all([
       Data.findOne(
         { dId: job.dId, variable: "fuel_level", time: { $gte: since24h } },
         { value: 1, _id: 0 }
@@ -260,7 +267,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     ]).then(([first, last]) => ({ ...job, first, last }))));
 
     // (R4 · G7 · 1a) — uptime aggregate.
-    const uptimeAggPromise = Data.aggregate([
+    const uptimeAggPromise = phaseVivo ? null : Data.aggregate([
       { $match: { dId: { $in: allowedDIds }, time: { $gte: sinceUptime } } },
       { $group: { _id: { dId: "$dId", variable: "$variable" }, count: { $sum: 1 } } }
     ]).allowDiskUse(true);
@@ -324,7 +331,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
 
     // (R4 · G7 · 1a) — trendVariables reusa templates ya cargados (evita
     // Template.find duplicado). Solo queda el Data.distinct en la promesa.
-    const trendVariablesPromise = computeTrendVariablesFromTemplates(templates);
+    const trendVariablesPromise = phaseVivo ? null : computeTrendVariablesFromTemplates(templates);
 
     // ── Fan-in en DOS tramos, ejecutados en paralelo (DEC-REF-85 v · -85-A) ──
     //
@@ -343,9 +350,11 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     // promesa resuelve inmediata y el wall del request ≈ wall del VIVO.
     // Cuando el PESADO es MISS, corren realmente en paralelo, sin serial.
     let pesadoStatus;
-    let heavyPromise;
-    const heavyCached = nocPesadoCache.get(cacheKey);
-    if (heavyCached && (now - heavyCached.at) < HEAVY_TTL_MS) {
+    let heavyPromise = null;
+    const heavyCached = phaseVivo ? null : nocPesadoCache.get(cacheKey);
+    if (phaseVivo) {
+      pesadoStatus = "SKIP";
+    } else if (heavyCached && (now - heavyCached.at) < HEAVY_TTL_MS) {
       heavyPromise = Promise.resolve(heavyCached.payload);
       pesadoStatus = "HIT";
     } else {
@@ -372,9 +381,141 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       ({ activeEpisodes, histAgg, recentAlarmsPairs, rulepacksRaw })
     );
 
+    // Composición del tramo VIVO — una sola fuente para la respuesta parcial
+    // (phase=vivo) y el fetch full (DEC-REF-100 D-5 · F5). Usa `sites`,
+    // `notifFilter` y `now` del closure del handler.
+    const composeVivo = async ({ activeEpisodes, histAgg, recentAlarmsPairs, rulepacksRaw }) => {
+      // Status por site (H1 — episodio por regla×site) + contadores globales.
+      const statusBySite = {};
+      let activeCritical = 0, activeWarning = 0;
+      activeEpisodes.forEach(ep => {
+        const siteId = ep._id.siteId;
+        if (ep.lastSeverity === "critical") activeCritical++;
+        else if (ep.lastSeverity === "warning") activeWarning++;
+        const cur = statusBySite[siteId];
+        if (ep.lastSeverity === "critical") statusBySite[siteId] = "critical";
+        else if (ep.lastSeverity === "warning" && cur !== "critical") statusBySite[siteId] = "warning";
+      });
+      const activeAlertsValue = activeCritical + activeWarning;
+
+      const severityHistogram7d = {
+        tz: TZ_OPERACION,
+        buckets: histAgg.map(b => ({ day: b._id, critical: b.critical, warning: b.warning, info: b.info }))
+      };
+
+      // (DEC-REF-82) — índice ruleId → RuleDefinition (una sola pasada). Colisión
+      // de ruleId entre packs (no ocurre hoy pero el schema no lo previene):
+      // gana el ÚLTIMO visto — determinístico por el orden de find().
+      const ruleByRuleId = new Map();
+      for (const p of (rulepacksRaw || [])) {
+        for (const r of (p.rules || [])) {
+          if (r && r.ruleId) ruleByRuleId.set(r.ruleId, r);
+        }
+      }
+
+      // (F1.a) — Para cada (ruleId, siteId) del top 10 resolver firedAt/
+      // resolvedAt del EPISODIO ACTUAL (state-machine acotado por el resolve
+      // anterior). 2 findOne × 10 pares = 20 queries, todas en paralelo.
+      // Reglas explícitas (DEC-REF-81 iv):
+      //   · lastKind='resolve' ⇒ episodio cerrado; buscar fires entre el resolve
+      //     inmediatamente ANTERIOR (exclusive) y este resolve (inclusive).
+      //   · lastKind='fire'    ⇒ episodio abierto; buscar fires desde el último
+      //     resolve (exclusive) hasta lastTime (inclusive).
+      //   · Dos fires consecutivos sin resolve intermedio ⇒ firedAt = el más
+      //     ANTIGUO (sort asc, primer resultado).
+      //   · Resolve sin fire en el rango (pack purgado o resolve inicial)
+      //     ⇒ firedAt=null, durationSec=null; el ítem NO se descarta.
+      const enrichedPairs = await Promise.all((recentAlarmsPairs || []).map(async p => {
+        const { ruleId, siteId } = p._id;
+        const isResolve = p.lastKind === 'resolve';
+
+        const prevResolveDoc = await Notification.findOne(
+          { ...notifFilter, ruleId, siteId, kind: 'resolve', time: { $lt: p.lastTime } },
+          { time: 1 }
+        ).sort({ time: -1 }).lean();
+        const prevResolveTime = prevResolveDoc ? prevResolveDoc.time : 0;
+
+        // "fire" = kind='fire' OR kind ausente/null (docs históricos pre-DEC-REF-64
+        // — schema default 'fire'). $ne:'resolve' cubre las tres formas en una.
+        const firstFireDoc = await Notification.findOne(
+          { ...notifFilter, ruleId, siteId,
+            kind: { $ne: 'resolve' },
+            time: { $gt: prevResolveTime, $lte: p.lastTime } },
+          { time: 1 }
+        ).sort({ time: 1 }).lean();
+
+        const firedAt     = firstFireDoc ? firstFireDoc.time : null;
+        const resolvedAt  = isResolve ? p.lastTime : null;
+        const durationSec = (firedAt !== null && resolvedAt !== null)
+          ? Math.round((resolvedAt - firedAt) / 1000)
+          : null;
+
+        return { ...p, firedAt, resolvedAt, durationSec };
+      }));
+
+      const siteByCode = new Map(sites.map(s => [s.siteCode, s]));
+      const recentAlarms = enrichedPairs.map(p => {
+        const { ruleId, siteId } = p._id;
+        const rule = ruleByRuleId.get(ruleId) || null;
+        return {
+          // Contrato preservado (l.412-419 original): _id, siteCode, siteName,
+          // severity, message, ruleId, kind, time. _id ahora es el del ÚLTIMO
+          // evento del episodio.
+          _id:               p.lastEventId,
+          siteCode:          siteId,
+          siteName:          siteByCode.get(siteId) ? siteByCode.get(siteId).nombre : null,
+          severity:          p.lastSeverity,
+          message:           p.lastMessage || p.lastReason || p.lastLabel || p.lastVariableFullName || p.lastVariable,
+          ruleId,
+          kind:              p.lastKind,
+          time:              p.lastTime,
+          // (F1.a · DEC-REF-81 iv) — episodio correlacionado
+          resolved:          p.lastKind === 'resolve',
+          firedAt:           p.firedAt,
+          resolvedAt:        p.resolvedAt,
+          durationSec:       p.durationSec,
+          // (F1.b) — correlationParent del último evento (usado por la cascada
+          // en NocRecentAlarms.vue)
+          correlationParent: p.lastCorrelationParent || null,
+          // (DEC-REF-82 v) — join contra RulePack
+          type:              rule ? rule.type : null,
+          label:             rule ? rule.label : ruleId,
+          recommendation:    rule ? rule.recommendation : null
+        };
+      });
+
+      return { statusBySite, activeCritical, activeWarning, activeAlertsValue, severityHistogram7d, recentAlarms };
+    };
+
+    // Fase VIVA (DEC-REF-100 D-5 · F5): respuesta parcial ~150 ms. `sites` y
+    // `trendVariables` son del tramo PESADO → null; el front mantiene skeleton
+    // en esos bloques hasta que llega el fetch full.
+    if (phaseVivo) {
+      const c = await composeVivo(await vivoPromise);
+      res.set("X-Cache", "vivo=COMPUTE pesado=SKIP");
+      res.set("X-Compute-Ms", String(Date.now() - t0));
+      return res.json({
+        status: "success",
+        data: {
+          window, generatedAt: now, phase: "vivo",
+          kpis: {
+            sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: null, total: sites.length, unit: null },
+            dieselDelta24h: { label: "Diésel 24h", sublabel: "nivel promedio red", value: null, delta24h: null, sitesWithFuel: 0, unit: "%" },
+            activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: c.activeAlertsValue, critical: c.activeCritical, warning: c.activeWarning, unit: null },
+            uptime:         { label: "Uptime", sublabel: "% telemetría esperada recibida · 7d", value: null, received: 0, expected: 0, unit: "%" }
+          },
+          sites: null,
+          severityHistogram7d: c.severityHistogram7d,
+          recentAlarms: c.recentAlarms,
+          trendVariables: null
+        }
+      });
+    }
+
     const [heavy, vivo] = await Promise.all([heavyPromise, vivoPromise]);
     const { lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg, trendVariables } = heavy;
-    const { activeEpisodes, histAgg, recentAlarmsPairs, rulepacksRaw }               = vivo;
+    const vivoC = await composeVivo(vivo);
+    const { statusBySite, activeCritical, activeWarning, activeAlertsValue, severityHistogram7d, recentAlarms } = vivoC;
 
     const lastTimeByDid = new Map(lastByDidPairs);
 
@@ -393,19 +534,6 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       onlineBySite.set(s.siteCode, online);
     }
     const sitesOnlineValue = [...onlineBySite.values()].filter(Boolean).length;
-
-    // Status por site (H1 — episodio por regla×site) + contadores globales.
-    const statusBySite = {};
-    let activeCritical = 0, activeWarning = 0;
-    activeEpisodes.forEach(ep => {
-      const siteId = ep._id.siteId;
-      if (ep.lastSeverity === "critical") activeCritical++;
-      else if (ep.lastSeverity === "warning") activeWarning++;
-      const cur = statusBySite[siteId];
-      if (ep.lastSeverity === "critical") statusBySite[siteId] = "critical";
-      else if (ep.lastSeverity === "warning" && cur !== "critical") statusBySite[siteId] = "warning";
-    });
-    const activeAlertsValue = activeCritical + activeWarning;
 
     // Reconstrucción de la tabla de sites desde lastValuesFlat (fuel, temp, mains
     // en el orden en que se emitieron: 3 slots por site).
@@ -470,92 +598,6 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     const uptimeValue = uptimeExpected > 0
       ? Math.round((uptimeReceived / uptimeExpected) * 1000) / 10
       : null;
-
-    const severityHistogram7d = {
-      tz: TZ_OPERACION,
-      buckets: histAgg.map(b => ({ day: b._id, critical: b.critical, warning: b.warning, info: b.info }))
-    };
-
-    // (DEC-REF-82) — índice ruleId → RuleDefinition (una sola pasada). Colisión
-    // de ruleId entre packs (no ocurre hoy pero el schema no lo previene):
-    // gana el ÚLTIMO visto — determinístico por el orden de find().
-    const ruleByRuleId = new Map();
-    for (const p of (rulepacksRaw || [])) {
-      for (const r of (p.rules || [])) {
-        if (r && r.ruleId) ruleByRuleId.set(r.ruleId, r);
-      }
-    }
-
-    // (F1.a) — Para cada (ruleId, siteId) del top 10 resolver firedAt/
-    // resolvedAt del EPISODIO ACTUAL (state-machine acotado por el resolve
-    // anterior). 2 findOne × 10 pares = 20 queries, todas en paralelo.
-    // Reglas explícitas (DEC-REF-81 iv):
-    //   · lastKind='resolve' ⇒ episodio cerrado; buscar fires entre el resolve
-    //     inmediatamente ANTERIOR (exclusive) y este resolve (inclusive).
-    //   · lastKind='fire'    ⇒ episodio abierto; buscar fires desde el último
-    //     resolve (exclusive) hasta lastTime (inclusive).
-    //   · Dos fires consecutivos sin resolve intermedio ⇒ firedAt = el más
-    //     ANTIGUO (sort asc, primer resultado).
-    //   · Resolve sin fire en el rango (pack purgado o resolve inicial)
-    //     ⇒ firedAt=null, durationSec=null; el ítem NO se descarta.
-    const enrichedPairs = await Promise.all((recentAlarmsPairs || []).map(async p => {
-      const { ruleId, siteId } = p._id;
-      const isResolve = p.lastKind === 'resolve';
-
-      const prevResolveDoc = await Notification.findOne(
-        { ...notifFilter, ruleId, siteId, kind: 'resolve', time: { $lt: p.lastTime } },
-        { time: 1 }
-      ).sort({ time: -1 }).lean();
-      const prevResolveTime = prevResolveDoc ? prevResolveDoc.time : 0;
-
-      // "fire" = kind='fire' OR kind ausente/null (docs históricos pre-DEC-REF-64
-      // — schema default 'fire'). $ne:'resolve' cubre las tres formas en una.
-      const firstFireDoc = await Notification.findOne(
-        { ...notifFilter, ruleId, siteId,
-          kind: { $ne: 'resolve' },
-          time: { $gt: prevResolveTime, $lte: p.lastTime } },
-        { time: 1 }
-      ).sort({ time: 1 }).lean();
-
-      const firedAt     = firstFireDoc ? firstFireDoc.time : null;
-      const resolvedAt  = isResolve ? p.lastTime : null;
-      const durationSec = (firedAt !== null && resolvedAt !== null)
-        ? Math.round((resolvedAt - firedAt) / 1000)
-        : null;
-
-      return { ...p, firedAt, resolvedAt, durationSec };
-    }));
-
-    const siteByCode = new Map(sites.map(s => [s.siteCode, s]));
-    const recentAlarms = enrichedPairs.map(p => {
-      const { ruleId, siteId } = p._id;
-      const rule = ruleByRuleId.get(ruleId) || null;
-      return {
-        // Contrato preservado (l.412-419 original): _id, siteCode, siteName,
-        // severity, message, ruleId, kind, time. _id ahora es el del ÚLTIMO
-        // evento del episodio.
-        _id:               p.lastEventId,
-        siteCode:          siteId,
-        siteName:          siteByCode.get(siteId) ? siteByCode.get(siteId).nombre : null,
-        severity:          p.lastSeverity,
-        message:           p.lastMessage || p.lastReason || p.lastLabel || p.lastVariableFullName || p.lastVariable,
-        ruleId,
-        kind:              p.lastKind,
-        time:              p.lastTime,
-        // (F1.a · DEC-REF-81 iv) — episodio correlacionado
-        resolved:          p.lastKind === 'resolve',
-        firedAt:           p.firedAt,
-        resolvedAt:        p.resolvedAt,
-        durationSec:       p.durationSec,
-        // (F1.b) — correlationParent del último evento (usado por la cascada
-        // en NocRecentAlarms.vue)
-        correlationParent: p.lastCorrelationParent || null,
-        // (DEC-REF-82 v) — join contra RulePack
-        type:              rule ? rule.type : null,
-        label:             rule ? rule.label : ruleId,
-        recommendation:    rule ? rule.recommendation : null
-      };
-    });
 
     const payload = {
       status: "success",
