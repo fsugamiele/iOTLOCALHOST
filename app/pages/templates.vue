@@ -622,7 +622,22 @@
     <div class="row">
       <card>
         <div slot="header">
-          <h4 class="card-title">Guardar Plantilla</h4>
+          <h4 class="card-title">
+            {{ editingTemplateId ? 'Editar Plantilla' : 'Guardar Plantilla' }}
+            <base-button
+              v-if="editingTemplateId"
+              size="sm"
+              type="default"
+              style="margin-left:12px"
+              @click="cancelEditTemplate()"
+            >
+              Cancelar edición
+            </base-button>
+          </h4>
+          <p v-if="editingTemplateId" class="text-muted" style="font-size:12px; margin-bottom:0">
+            <i class="fa fa-exclamation-triangle" style="margin-right:6px"></i>
+            Quitar variables en uso por dispositivos o reglas será rechazado por el sistema.
+          </p>
         </div>
 
         <div class="row">
@@ -654,7 +669,7 @@
                 :class="saveLoading ? 'fa-spinner fa-spin' : 'fa-save'"
                 style="margin-right:6px"
               ></i>
-              {{ saveLoading ? 'Guardando...' : 'Guardar Plantilla' }}
+              {{ saveLoading ? 'Guardando...' : (editingTemplateId ? 'Guardar Cambios' : 'Guardar Plantilla') }}
             </base-button>
           </div>
         </div>
@@ -697,6 +712,11 @@
                 <el-tooltip content="Ver detalle" effect="light" :open-delay="300" placement="top">
                   <base-button @click="viewTemplate(row)" type="info" icon size="sm" class="btn-link">
                     <i class="tim-icons icon-zoom-split"></i>
+                  </base-button>
+                </el-tooltip>
+                <el-tooltip content="Editar" effect="light" :open-delay="300" placement="top">
+                  <base-button @click="openEditTemplate(row)" type="warning" icon size="sm" class="btn-link">
+                    <i class="fa fa-pencil"></i>
                   </base-button>
                 </el-tooltip>
                 <el-tooltip content="Eliminar" effect="light" :open-delay="300" placement="top">
@@ -791,6 +811,8 @@ export default {
       templateDescription: "",
       saveLoading: false,
       deleteLoadingId: null,
+      // DEC-REF-100 D-6 (#75, F4): plantilla en edición. null = modo alta.
+      editingTemplateId: null,
       showDetailModal: false,
       selectedTemplate: null,
 
@@ -1238,30 +1260,58 @@ export default {
         },
       };
       try {
-        const res = await this.$axios.post("/template", toSend, axiosHeaders);
+        // DEC-REF-100 D-6 (F4): edición → PUT con templateId; alta → POST.
+        const res = this.editingTemplateId
+          ? await this.$axios.put("/template", { templateId: this.editingTemplateId, ...toSend }, axiosHeaders)
+          : await this.$axios.post("/template", toSend, axiosHeaders);
         if (res.data.status == "success") {
           this.$notify({
             type: "success",
             icon: "tim-icons icon-check-2",
-            message: "¡Plantilla guardada!",
+            message: this.editingTemplateId ? "¡Cambios guardados!" : "¡Plantilla guardada!",
           });
           await this.getTemplates();
-          this.widgets = [];
-          this.templateName = "";
-          this.templateDescription = "";
-          this.templateDeviceType = "";
-          this.sheetVarPick = "";
-          this.widgetType = "";
+          this.resetTemplateForm();
         }
       } catch (error) {
+        // El 409 del PUT trae el detalle (variables en uso por devices o reglas).
+        const detail = error.response && error.response.data && error.response.data.error;
         this.$notify({
           type: "danger",
           icon: "tim-icons icon-alert-circle-exc",
-          message: "Error al guardar plantilla",
+          message: typeof detail === "string" ? detail : (this.editingTemplateId ? "Error al guardar cambios" : "Error al guardar plantilla"),
         });
       } finally {
         this.saveLoading = false;
       }
+    },
+
+    // DEC-REF-100 D-6 (F4): carga la plantilla en el configurador para editarla.
+    // La edición de tamaño (column) sale gratis: los widgets cargados se
+    // retocan con los mini-forms existentes y se reordenan/quitan igual.
+    openEditTemplate(template) {
+      this.editingTemplateId = template._id;
+      this.templateName = template.name;
+      this.templateDescription = template.description || "";
+      this.templateDeviceType = template.deviceType || "";
+      this.sheetVarPick = "";
+      this.widgetType = "";
+      this.widgets = JSON.parse(JSON.stringify(template.widgets || []));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+
+    cancelEditTemplate() {
+      this.resetTemplateForm();
+    },
+
+    resetTemplateForm() {
+      this.editingTemplateId = null;
+      this.widgets = [];
+      this.templateName = "";
+      this.templateDescription = "";
+      this.templateDeviceType = "";
+      this.sheetVarPick = "";
+      this.widgetType = "";
     },
 
     async deleteTemplate(template) {
