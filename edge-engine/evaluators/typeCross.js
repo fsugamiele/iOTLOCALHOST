@@ -165,6 +165,10 @@ function evaluateCross(rule, siteState, crossState, eventTs, siteCode) {
 
   const startKey = `${siteCode}:${rule.ruleId}:start`;
   const firedKey = `${siteCode}:${rule.ruleId}:fired`;
+  // DEC-REF-102 D-2 (#77) — persistencia del resolve (espejo del startKey de
+  // graceSec, mismo reloj eventTs): la condición debe permanecer NO cumplida
+  // resolveGraceSec segundos antes de reportar resolved al caller.
+  const resolveStartKey = `${siteCode}:${rule.ruleId}:resolveStart`;
 
   // SF-6 · DEC-REF-65.b — staleness: no evaluar este ciclo. No tocar
   // crossState (preservar startKey y firedKey del ciclo anterior); no fire,
@@ -179,9 +183,31 @@ function evaluateCross(rule, siteState, crossState, eventTs, siteCode) {
     // que la regla ACTIVA dejó de cumplirse en esta transición. Delete
     // retorna true si la clave estaba presente. El caller decide si emite
     // fireResolve consultando activeState.has(ruleId).
-    const resolved = crossState.delete(firedKey);
-    return { fired: false, resolved };
+    // DEC-REF-102 D-2 — con resolveGraceSec > 0 el delete del firedKey (y por
+    // tanto el resolved) se difiere hasta que la condición lleva la ventana
+    // completa sin cumplirse. Un true dentro de la ventana (rama de abajo)
+    // cancela el resolve pendiente.
+    if (!crossState.has(firedKey)) return { fired: false, resolved: false };
+    const resolveGraceMs = (rule.resolveGraceSec || 0) * 1000;
+    if (resolveGraceMs === 0) {
+      crossState.delete(firedKey);
+      return { fired: false, resolved: true };
+    }
+    if (!crossState.has(resolveStartKey)) {
+      crossState.set(resolveStartKey, eventTs);
+      return { fired: false, resolved: false };
+    }
+    if (eventTs - crossState.get(resolveStartKey) >= resolveGraceMs) {
+      crossState.delete(resolveStartKey);
+      crossState.delete(firedKey);
+      return { fired: false, resolved: true };
+    }
+    return { fired: false, resolved: false };
   }
+
+  // Árbol true — cancela un resolve pendiente (DEC-REF-102 D-2): la alarma
+  // sigue activa sin notificación intermedia.
+  crossState.delete(resolveStartKey);
 
   const graceMs = (rule.graceSec || 0) * 1000;
 

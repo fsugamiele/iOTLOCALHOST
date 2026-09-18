@@ -21,8 +21,12 @@ const pack = {
       // ambigüedad. Motor cross-expr reusado tal cual (DEC-REF-47/-53):
       // ambas hojas sobre el mismo device (`cummins-pcc`) — la búsqueda
       // por deviceType+siteCode (typeCross.js:53) resuelve al único
-      // CUMMINS del sitio. graceSec:0 (compound activa dispara inmediato,
-      // el cooldown gestiona los transitorios). Mantiene severity warning,
+      // CUMMINS del sitio. graceSec:60 (DEC-REF-102 D-2, #77): el transitorio
+      // de apagado (oil cae a 0 por física con rpm aún >300 mientras el motor
+      // hace spindown) sostiene la condición segundos — sin grace disparaba
+      // CRÍTICA falsa en cada apagado normal (medido 02:48:14, fire/resolve
+      // en 300 ms). resolveGraceSec:30 (DEC-REF-102 D-2): el resolve exige 30 s
+      // de condición sana. Mantiene severity warning,
       // cooldownSec 300 y correlationParent:null.
       ruleId:      'cummins-A0-oil-pressure-low',
       label:       'Presión de aceite baja (advertencia)',
@@ -34,7 +38,8 @@ const pack = {
       recommendation: 'Presión de aceite en descenso. Programar verificación de nivel y estado del sensor.',
       correlationParent: null,
       cooldownSec: 300,
-      graceSec:    0,
+      graceSec:    60,
+      resolveGraceSec: 30,
       deviceType:  'cummins-pcc',
       variable:    'oil_pressure',
       condition:   null,
@@ -51,7 +56,9 @@ const pack = {
     },
     {
       // DEC-REF-56 — A1 espeja A0 con umbral crítico 1.0 Bar y cooldown 60s.
-      // Misma inhibición de motor parado (rpm > 300). Mantiene severity
+      // Misma inhibición de motor parado (rpm > 300) y mismo tratamiento del
+      // transitorio de apagado (graceSec 60 / resolveGraceSec 30,
+      // DEC-REF-102 D-2, #77). Mantiene severity
       // critical y correlationParent:null. Ver A0 arriba para el detalle
       // del fundamento y de la geometría cross-single-device.
       ruleId:      'cummins-A1-oil-pressure',
@@ -64,7 +71,8 @@ const pack = {
       recommendation: 'Detener el grupo urgente. Verificar nivel de aceite y sensor de presión. No operar hasta diagnóstico.',
       correlationParent: null,
       cooldownSec: 60,
-      graceSec:    0,
+      graceSec:    60,
+      resolveGraceSec: 30,
       deviceType:  'cummins-pcc',
       variable:    'oil_pressure',
       condition:   null,
@@ -90,6 +98,10 @@ const pack = {
       recommendation: 'Nivel crítico de combustible. VERIFICAR FÍSICAMENTE — el sensor de fábrica puede no ser confiable (CR00058). Coordinar reabastecimiento urgente.',
       correlationParent: null,
       cooldownSec: 900,
+      // DEC-REF-102 D-2 (#77) — resolve persistente: el tanque debe leer
+      // ≥15% durante 60 s seguidos antes de cerrar la alarma (ruido de
+      // sensor o una lectura aislada post-recarga no la cierran).
+      resolveGraceSec: 60,
       deviceType:  'cummins-pcc',
       variable:    'fuel_level',
       condition:   { op: 'lt', value: 15 },

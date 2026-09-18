@@ -301,6 +301,14 @@
             <label>graceSec</label>
             <base-input v-model.number="ruleDraft.graceSec" type="number" />
           </div>
+          <!-- DEC-REF-102 D-2 (#77) — persistencia del cierre: segundos que la
+               condición debe permanecer SIN cumplirse antes de emitir el
+               resolve. 0 = cierre inmediato (comportamiento anterior).
+               Aplica a type D y cross (C/S tienen su propia temporalidad). -->
+          <div class="col-md-4" v-if="ruleDraft.type === 'D' || ruleDraft.type === 'cross'">
+            <label>resolveGraceSec</label>
+            <base-input v-model.number="ruleDraft.resolveGraceSec" type="number" />
+          </div>
         </div>
 
         <!-- typecross → CrossExprNode -->
@@ -1030,6 +1038,7 @@ export default {
         variable: '',
         cooldownSec: 300,
         graceSec: 0,
+        resolveGraceSec: 0,
         condition: { op: 'gt', value: 0 },
         crossExpr: null
       };
@@ -1134,6 +1143,10 @@ export default {
         } else if (finalRule.type === 'cross') {
           finalRule.crossExpr = stripEditorKeys(finalRule.crossExpr);
           finalRule.condition = null;
+        } else {
+          // DEC-REF-102 D-2 — resolveGraceSec no aplica a C/S (C resuelve por
+          // setpoint recuperado; S es temporal por su propia ventana).
+          delete finalRule.resolveGraceSec;
         }
 
         // Construir el pack nuevo (immutable): bump de version + rules

@@ -179,6 +179,9 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
           continue;
       }
       if (evaluated && triggered) {
+        // DEC-REF-102 D-2 — un fire cancela un resolve pendiente: la alarma
+        // sigue activa y NO se re-notifica (el cooldown de fireAlarm gobierna).
+        cooldownState.delete(`${rule.ruleId}:resolveStart`);
         fireAlarm({ rule, value, deviceId: dId, reason: 'threshold',
                     thresholdUsed: rule.condition?.value, cooldownState, siteState, activeState });
       } else if (evaluated && !triggered && rule.type === 'D' && activeState.has(rule.ruleId)) {
@@ -187,12 +190,36 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
         // Restricción a type 'D': para type 'C' la semántica no-ref/fallback
         // no equivale a "condición resuelta" — queda como pendiente (ver
         // DEC-REF-64.c: la ventana temporal cubre C hasta que se aclare).
-        fireResolve({
-          rule, deviceId: dId,
-          reason: 'threshold-cleared',
-          mode: 'resolve-by-condition',
-          cooldownState, siteState, activeState,
-        });
+        // DEC-REF-102 D-2 — persistencia del resolve: con resolveGraceSec > 0
+        // la condición debe permanecer NO cumplida durante esa ventana antes
+        // de emitir el resolve; un valor que vuelve a cruzar el umbral dentro
+        // de la ventana cancela el cierre (rama triggered, arriba).
+        const resolveGraceMs = (rule.resolveGraceSec || 0) * 1000;
+        if (resolveGraceMs === 0) {
+          fireResolve({
+            rule, deviceId: dId,
+            reason: 'threshold-cleared',
+            mode: 'resolve-by-condition',
+            cooldownState, siteState, activeState,
+          });
+        } else {
+          const rsKey = `${rule.ruleId}:resolveStart`;
+          if (!cooldownState.has(rsKey)) {
+            cooldownState.set(rsKey, Date.now());
+          } else if (Date.now() - cooldownState.get(rsKey) >= resolveGraceMs) {
+            cooldownState.delete(rsKey);
+            fireResolve({
+              rule, deviceId: dId,
+              reason: 'threshold-cleared',
+              mode: 'resolve-by-condition',
+              cooldownState, siteState, activeState,
+            });
+          }
+        }
+      } else if (evaluated && !triggered && rule.type === 'D') {
+        // Regla inactiva y condición no cumplida — limpiar un resolveStart
+        // huérfano (p.ej. quedó de un episodio anterior ya resuelto).
+        cooldownState.delete(`${rule.ruleId}:resolveStart`);
       }
     }
   }
@@ -246,9 +273,14 @@ function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldow
 function fireResolve({ rule, deviceId, reason, mode, recommendation, cooldownState, siteState, activeState }) {
   if (!activeState || !activeState.has(rule.ruleId)) return;
   activeState.delete(rule.ruleId);
-  // No borramos cooldownState — protege contra fire re-inmediato tras
-  // resolve (patrón "clear then re-raise" con flapping alto). El
-  // cooldownSec de la regla vuelve a proteger el próximo fire.
+  // DEC-REF-102 D-1 (#77) — el cooldown de fire SÍ se limpia al resolver:
+  // una recurrencia genuina de la falla después del cierre debe notificar de
+  // inmediato (antes quedaba muda hasta cooldownSec — medido con G2: 900 s de
+  // silencio tras resolve, "las alarmas no saltan"). La protección anti-flap
+  // que el cooldown cubría acá migra al resolve persistente
+  // (resolveGraceSec, DEC-REF-102 D-2): quien evita la ráfaga fire/resolve es
+  // la ventana de persistencia, no el silencio del re-disparo.
+  cooldownState.delete(rule.ruleId);
 
   const devState = siteState ? siteState.get(deviceId) || {} : {};
 

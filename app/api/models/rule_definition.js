@@ -59,6 +59,11 @@ const RuleDefinitionSchema = new Schema({
 
   crossExpr: { type: Schema.Types.Mixed, default: null },
   graceSec:  { type: Number },  // DEC-REF-53 D3 — grace del temporizador reactivo (cross), consumido por typeCross.js:96
+  // DEC-REF-102 D-2 (#77) — persistencia del RESOLVE: la condición debe estar
+  // NO cumplida durante resolveGraceSec segundos antes de emitir el resolve.
+  // 0/undefined = comportamiento anterior (resolve inmediato al primer falso).
+  // Configurable por regla, consumido por ruleEngine.js (type D) y typeCross.js.
+  resolveGraceSec: { type: Number, default: 0 },
 
   source_filter:  { type: String, enum: ['physical', 'inferred', 'connect', null], default: null },
   on_missing_ref: { type: String, enum: ['ignore', 'alarm'], default: 'ignore' },

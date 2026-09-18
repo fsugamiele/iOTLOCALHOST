@@ -172,8 +172,13 @@ function evolve(variable, currentValue, deviceState, sharedState) {
     // ── Cummins PowerCommand ─────────────────────────────────────
     case 'rpm': {
       const target = sharedState.gen_running ? 1500 : 0;
-      if (currentValue < target) return Math.min(currentValue + 100, target);
-      if (currentValue > target) return Math.max(currentValue - 100, target);
+      // DEC-REF-102 D-3 (#77) — rampa 750 rpm/tick (era 100): un motor real
+      // llega a 1500 rpm en segundos y hace spindown en segundos; a cadencia
+      // 30 s son ~2 ticks. La rampa vieja (15 ticks ≈ 7,5 min) estiraba el
+      // transitorio de apagado (rpm>300 con oil=0) por minutos y vencía
+      // cualquier graceSec razonable en las reglas A0/A1.
+      if (currentValue < target) return Math.min(currentValue + 750, target);
+      if (currentValue > target) return Math.max(currentValue - 750, target);
       return currentValue + (target > 0 ? Math.round(jitter(10)) : 0);
     }
 
