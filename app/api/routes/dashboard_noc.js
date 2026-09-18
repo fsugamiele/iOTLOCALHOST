@@ -46,31 +46,40 @@ const MAINS_PRIORITY = ["mains_voltage"];
 const AVG_VARIABLES = new Set(["fuel_level"]);
 const classifyAggregation = (v) => AVG_VARIABLES.has(v) ? "avg" : "range";
 
-// ── Caché de servidor para /noc — split VIVO/PESADO (DEC-REF-85 v · -85-A) ──
-// El handler compone la respuesta desde DOS tramos:
+// ── Caché de servidor para /noc (DEC-REF-85 v · -85-A · DEC-REF-101) ──────
+// DEC-REF-101 rebalanceó los tramos. Con el índice garantizado desde la API
+// (D-2) y trendVariables derivado de templates (D-3), la ÚNICA query pesada
+// que queda es uptimeAgg ($group de 7 días sobre db.data). Todo lo demás —
+// lastByDid, lastValues, diesel, trendVariables — es fan-out de findOne
+// IXSCAN y se computa SIEMPRE fresco, en ambas fases:
 //
-//   VIVO  — se recomputa SIEMPRE (nunca se cachea):
-//           recentAlarmsPairs, activeEpisodes, histAgg, rulepacks.
-//           Es lo que la demostración necesita ver rápido; suma ~150 ms.
-//           Los tres primeros consumen notifFilter (dependen del usuario).
+//   D-1 — el estado online de un sitio JAMÁS se calcula contra datos
+//         cacheados: el caché PESADO de 180 s generaba flap offline/online
+//         determinista cuando 2×cadencia < TTL (el sitio caía "offline" a
+//         los ~120 s de un HIT aunque el device siguiera publicando;
+//         medido en #76 — no eran desuscripciones MQTT).
 //
-//   PESADO — caché in-memory con TTL 180 s, `?fresh=1` NO lo invalida:
-//           trendVariables, uptimeAgg, lastByDid, lastValues, diesel.
-//           Domina el wall (~12 s en MISS por consultas sobre db.data);
-//           en HIT vale ~0 ms.
+//   uptimeAgg — caché in-memory con TTL 1 h (D-5: un uptime de 7 días no
+//               necesita refrescarse cada 3 min). `?fresh=1` NO lo invalida.
+//               En la fase viva se sirve solo si hay HIT; nunca se dispara
+//               el MISS desde ?phase=vivo.
 //
-// Clave del tramo PESADO = hash(sorted(siteCodes)) — SIN userId.
-// Es SEGURO agnóstico al usuario porque las 5 queries del tramo PESADO
-// derivan EXCLUSIVAMENTE de `siteCodes` y de `Device.find({siteId:{$in
-// :siteCodes}})` (l.167-170, sin buildReadFilter). Dos usuarios con
-// mismos siteCodes ⇒ mismos allowedDIds ⇒ mismas 5 consultas ⇒ mismo
-// resultado. Verificado etapa por etapa (V-PESADO de F2, sesión #53).
-// El tramo VIVO — que sí depende del usuario vía notifFilter — se
-// recomputa por request, cerrando el defecto histórico donde la key
-// agnóstica al userId servía respuesta cross-tenant por coincidencia
-// empírica (DEC-REF-85-A).
-const HEAVY_TTL_MS = 180 * 1000;
-const nocPesadoCache = new Map(); // scopeKey → { at, payload:heavyBlock }
+// Clave = hash(sorted(siteCodes)) — SIN userId. Es SEGURO agnóstico al
+// usuario porque uptimeAgg deriva EXCLUSIVAMENTE de `siteCodes` y de
+// `Device.find({siteId:{$in:siteCodes}})` (sin buildReadFilter). Dos
+// usuarios con mismos siteCodes ⇒ mismos allowedDIds ⇒ misma consulta ⇒
+// mismo resultado (mismo argumento auditado en DEC-REF-85-A, sesión #53).
+// El tramo que sí depende del usuario (notifFilter) se recomputa por
+// request, cerrando el defecto histórico de respuesta cross-tenant por
+// coincidencia empírica (DEC-REF-85-A).
+const UPTIME_TTL_MS = 60 * 60 * 1000;
+const nocUptimeCache = new Map(); // scopeKey → { at, payload: uptimeAgg }
+// (DEC-REF-101 D-6) — caché corto del endpoint /trend: el aggregate
+// bucketizado sobre db.data se repite idéntico ante polls del gráfico.
+// TTL 60 s, key = sha1(variable|window|sorted(siteCodes)); la variable ya
+// fue validada contra el scope al momento del cómputo.
+const TREND_TTL_MS = 60 * 1000;
+const trendCache = new Map(); // trendKey → { at, payload }
 function scopeKeyOf(siteCodes) {
   if (!siteCodes.length) return "empty";
   return crypto.createHash("sha1").update(siteCodes.slice().sort().join("|")).digest("hex");
@@ -78,11 +87,16 @@ function scopeKeyOf(siteCodes) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-// (7 · R4) — intersección declarada∩presente − sufijo _setpoint.
+// (7 · R4) — variables del selector de tendencia: declaradas en los widgets
+// de los templates del scope (float|int, sin sufijo _setpoint).
 // Enriquecido con label legible: variableFullName del primer widget que
 // declara la variable en el scope; fallback a la variable cruda.
+// (DEC-REF-101 D-3) — se retiró el Data.distinct de "presencia": escaneaba
+// db.data sin filtro temporal en cada MISS; la fuente de verdad de qué
+// variables existen es el template. Una variable declarada sin datos aún
+// produce serie vacía en /trend, sin costo de escaneo acá.
 // Acepta templates pre-cargados para evitar re-fetch en el handler principal.
-async function computeTrendVariablesFromTemplates(templates) {
+function computeTrendVariablesFromTemplates(templates) {
   const declared = new Set();
   const labelByVar = new Map();
   const unitByVar  = new Map();
@@ -100,10 +114,7 @@ async function computeTrendVariablesFromTemplates(templates) {
       unitByVar.set(w.variable, w.unit);
     }
   }));
-  if (!declared.size) return [];
-  const present = new Set(await Data.distinct("variable", { variable: { $in: [...declared] } }));
   return [...declared]
-    .filter(v => present.has(v))
     .sort()
     .map(v => ({
       variable:    v,
@@ -185,17 +196,21 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     });
     const allowedDIds = devices.map(d => d.dId);
 
-    // (DEC-REF-100 D-5 · F5) — render progresivo: con `?phase=vivo` el handler
-    // NO dispara las 5 queries pesadas (las promesas son eager → guard null)
-    // y responde solo el tramo VIVO (~150 ms: alarmas, histograma, KPI de
-    // alertas). El front pinta eso primero y completa con el fetch full,
-    // que en MISS paga ~12 s (cache PESADO TTL 180 s sigue igual).
+    // (DEC-REF-100 D-5 · F5 · DEC-REF-101 D-1/D-4) — render progresivo: con
+    // `?phase=vivo` el handler responde TODO el panel fresco (sitios con
+    // estado online, KPIs, alarmas, histograma, trendVariables) salvo el KPI
+    // de uptime, que solo se sirve si hay HIT de su caché de 1 h (D-5). El
+    // fetch full completa uptime. Desde DEC-REF-101 ya no hay queries
+    // pesadas fuera de uptimeAgg: el resto es fan-out IXSCAN.
     const phaseVivo = req.query.phase === "vivo";
 
-    // (R4 · G7 · 1b) — lastByDid: findOne({dId}).sort({time:-1}) × device en
-    // paralelo (IXSCAN puro c/u sobre idx_data_reconstruct), en lugar del
-    // $group global que escaneaba y agrupaba toda la tabla filtrada.
-    const lastByDidPromise = phaseVivo ? null : Promise.all(
+    // (R4 · G7 · 1b · DEC-REF-101 D-1) — lastByDid: findOne({dId}).sort(
+    // {time:-1}) × device en paralelo (IXSCAN puro c/u sobre
+    // idx_data_reconstruct). Se computa SIEMPRE, también en la fase viva:
+    // el estado online del sitio se calcula contra el último dato FRESCO,
+    // nunca contra el caché (el caché de 180 s era la causa del flap
+    // offline/online medido en #76).
+    const lastByDidPromise = Promise.all(
       allowedDIds.map(dId =>
         Data.findOne({ dId }, { time: 1, _id: 0 }).sort({ time: -1 }).lean()
           .then(doc => [dId, doc ? doc.time : null])
@@ -238,7 +253,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
         return null;
       })();
     };
-    const lastValuesPromise = phaseVivo ? null : Promise.all(
+    const lastValuesPromise = Promise.all(
       sites.flatMap(s => [
         lastValueOne(s.siteCode, FUEL_PRIORITY),
         lastValueOne(s.siteCode, TEMP_PRIORITY),
@@ -255,7 +270,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
         dId: d.dId
       }));
     });
-    const dieselResultsPromise = phaseVivo ? null : Promise.all(dieselJobs.map(job => Promise.all([
+    const dieselResultsPromise = Promise.all(dieselJobs.map(job => Promise.all([
       Data.findOne(
         { dId: job.dId, variable: "fuel_level", time: { $gte: since24h } },
         { value: 1, _id: 0 }
@@ -266,11 +281,31 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       ).sort({ time: -1 }).lean()
     ]).then(([first, last]) => ({ ...job, first, last }))));
 
-    // (R4 · G7 · 1a) — uptime aggregate.
-    const uptimeAggPromise = phaseVivo ? null : Data.aggregate([
-      { $match: { dId: { $in: allowedDIds }, time: { $gte: sinceUptime } } },
-      { $group: { _id: { dId: "$dId", variable: "$variable" }, count: { $sum: 1 } } }
-    ]).allowDiskUse(true);
+    // (R4 · G7 · 1a · DEC-REF-101 D-5) — uptime aggregate: el ÚNICO tramo
+    // PESADO que queda ($group de 7 días sobre db.data, dominante del wall
+    // en MISS). Caché propio TTL 1 h. En fase viva NUNCA se dispara el MISS:
+    // se sirve el HIT si existe, si no el KPI de uptime queda null hasta el
+    // fetch full (que sí lo computa).
+    let pesadoStatus;
+    let uptimeAggPromise;
+    const cachedUptime = nocUptimeCache.get(cacheKey);
+    const uptimeHit = cachedUptime && (now - cachedUptime.at) < UPTIME_TTL_MS;
+    if (uptimeHit) {
+      uptimeAggPromise = Promise.resolve(cachedUptime.payload);
+      pesadoStatus = "HIT";
+    } else if (phaseVivo) {
+      uptimeAggPromise = Promise.resolve(null);
+      pesadoStatus = "SKIP";
+    } else {
+      uptimeAggPromise = Data.aggregate([
+        { $match: { dId: { $in: allowedDIds }, time: { $gte: sinceUptime } } },
+        { $group: { _id: { dId: "$dId", variable: "$variable" }, count: { $sum: 1 } } }
+      ]).allowDiskUse(true).then(u => {
+        nocUptimeCache.set(cacheKey, { at: Date.now(), payload: u });
+        return u;
+      });
+      pesadoStatus = "MISS";
+    }
 
     // (R4 · G7 · 1a) — severityHistogram7d aggregate (H3 / TZ_OPERACION).
     const histAggPromise = Notification.aggregate([
@@ -329,49 +364,16 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     // recommendation=null; el ítem NO se descarta.
     const rulepacksPromise = RulePack.find({}, { rules: 1 }).lean();
 
-    // (R4 · G7 · 1a) — trendVariables reusa templates ya cargados (evita
-    // Template.find duplicado). Solo queda el Data.distinct en la promesa.
-    const trendVariablesPromise = phaseVivo ? null : computeTrendVariablesFromTemplates(templates);
+    // (R4 · G7 · 1a · DEC-REF-101 D-3) — trendVariables: síncrono, deriva de
+    // los widgets de los templates ya cargados. Sin Data.distinct (antes
+    // escaneaba db.data sin filtro temporal en cada MISS del caché viejo).
+    const trendVariables = computeTrendVariablesFromTemplates(templates);
 
-    // ── Fan-in en DOS tramos, ejecutados en paralelo (DEC-REF-85 v · -85-A) ──
-    //
-    //   PESADO: 5 fuentes que dominan el wall (~12 s en MISS). Cache TTL
-    //           180 s, `?fresh=1` NO invalida. Cuando hay HIT vale ~0 ms.
-    //           Todas las 5 derivan de siteCodes/allowedDIds (V-PESADO
-    //           auditado), por lo que compartir cache entre usuarios de
-    //           igual scope es seguro (DEC-REF-85-A).
-    //
-    //   VIVO:   4 fuentes que suman ~150 ms. NUNCA se cachean. Los tres
-    //           que consumen notifFilter (dependen del usuario) están acá,
-    //           lo que cierra el defecto histórico de la key agnóstica al
-    //           userId.
-    //
-    // Los dos tramos se lanzan en Promise.all: cuando el PESADO es HIT su
-    // promesa resuelve inmediata y el wall del request ≈ wall del VIVO.
-    // Cuando el PESADO es MISS, corren realmente en paralelo, sin serial.
-    let pesadoStatus;
-    let heavyPromise = null;
-    const heavyCached = phaseVivo ? null : nocPesadoCache.get(cacheKey);
-    if (phaseVivo) {
-      pesadoStatus = "SKIP";
-    } else if (heavyCached && (now - heavyCached.at) < HEAVY_TTL_MS) {
-      heavyPromise = Promise.resolve(heavyCached.payload);
-      pesadoStatus = "HIT";
-    } else {
-      heavyPromise = Promise.all([
-        lastByDidPromise,
-        lastValuesPromise,
-        dieselResultsPromise,
-        uptimeAggPromise,
-        trendVariablesPromise
-      ]).then(([lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg, trendVariables]) => {
-        const heavy = { lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg, trendVariables };
-        nocPesadoCache.set(cacheKey, { at: now, payload: heavy });
-        return heavy;
-      });
-      pesadoStatus = "MISS";
-    }
-
+    // ── Fan-in (DEC-REF-101) ─────────────────────────────────────────────
+    // Todas las fuentes frescas (vivo + lastByDid + lastValues + diesel)
+    // corren en paralelo; el único tramo cacheado es uptimeAgg, armado
+    // arriba con su TTL de 1 h (D-5). En fase viva uptimeAggPromise es null
+    // o HIT (nunca MISS).
     const vivoPromise = Promise.all([
       activeEpisodesPromise,
       histAggPromise,
@@ -487,33 +489,11 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       return { statusBySite, activeCritical, activeWarning, activeAlertsValue, severityHistogram7d, recentAlarms };
     };
 
-    // Fase VIVA (DEC-REF-100 D-5 · F5): respuesta parcial ~150 ms. `sites` y
-    // `trendVariables` son del tramo PESADO → null; el front mantiene skeleton
-    // en esos bloques hasta que llega el fetch full.
-    if (phaseVivo) {
-      const c = await composeVivo(await vivoPromise);
-      res.set("X-Cache", "vivo=COMPUTE pesado=SKIP");
-      res.set("X-Compute-Ms", String(Date.now() - t0));
-      return res.json({
-        status: "success",
-        data: {
-          window, generatedAt: now, phase: "vivo",
-          kpis: {
-            sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: null, total: sites.length, unit: null },
-            dieselDelta24h: { label: "Diésel 24h", sublabel: "nivel promedio red", value: null, delta24h: null, sitesWithFuel: 0, unit: "%" },
-            activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: c.activeAlertsValue, critical: c.activeCritical, warning: c.activeWarning, unit: null },
-            uptime:         { label: "Uptime", sublabel: "% telemetría esperada recibida · 7d", value: null, received: 0, expected: 0, unit: "%" }
-          },
-          sites: null,
-          severityHistogram7d: c.severityHistogram7d,
-          recentAlarms: c.recentAlarms,
-          trendVariables: null
-        }
-      });
-    }
-
-    const [heavy, vivo] = await Promise.all([heavyPromise, vivoPromise]);
-    const { lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg, trendVariables } = heavy;
+    // Fan-in único (DEC-REF-101): tramo vivo + fuentes frescas + uptime.
+    // uptimeAgg es null solo en fase viva sin HIT de caché (D-5).
+    const [vivo, lastByDidPairs, lastValuesFlat, dieselResults, uptimeAgg] = await Promise.all([
+      vivoPromise, lastByDidPromise, lastValuesPromise, dieselResultsPromise, uptimeAggPromise
+    ]);
     const vivoC = await composeVivo(vivo);
     const { statusBySite, activeCritical, activeWarning, activeAlertsValue, severityHistogram7d, recentAlarms } = vivoC;
 
@@ -573,6 +553,8 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     const dieselDeltaValue = deltaSites > 0 ? Math.round((deltaSum / deltaSites) * 10) / 10 : null;
 
     // Uptime 7d — recibidos / esperados por widget float|int (sin _setpoint).
+    // (DEC-REF-101 D-5) uptimeAgg es null en fase viva sin HIT: el KPI queda
+    // value null con received/expected en 0 hasta el fetch full.
     const widgetsPerDevice = [];
     for (const d of devices) {
       const tpl = templateById.get(String(d.templateId));
@@ -587,7 +569,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       });
     }
     const receivedMap = new Map();
-    uptimeAgg.forEach(a => receivedMap.set(`${a._id.dId}|${a._id.variable}`, a.count));
+    (uptimeAgg || []).forEach(a => receivedMap.set(`${a._id.dId}|${a._id.variable}`, a.count));
     let uptimeReceived = 0, uptimeExpected = 0;
     widgetsPerDevice.forEach(w => {
       const expected = Math.floor((UPTIME_WINDOW_DAYS * 86400) / w.freq);
@@ -595,7 +577,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       uptimeExpected += expected;
       uptimeReceived += received;
     });
-    const uptimeValue = uptimeExpected > 0
+    const uptimeValue = (uptimeAgg && uptimeExpected > 0)
       ? Math.round((uptimeReceived / uptimeExpected) * 1000) / 10
       : null;
 
@@ -603,6 +585,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       status: "success",
       data: {
         window, generatedAt: now,
+        ...(phaseVivo ? { phase: "vivo" } : {}),
         kpis: {
           // R5 · G8 · 6 — ver notas del branch empty arriba (unit: null en
           // sitesOnline/activeAlerts).
@@ -618,9 +601,9 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       }
     };
 
-    // Header split (DEC-REF-85 v): VIVO se recomputa siempre, PESADO
-    // respeta TTL 180 s. La cache PESADA se escribe en el fan-in (arriba)
-    // solo en MISS, así que acá no hay set adicional.
+    // Header split (DEC-REF-85 v · DEC-REF-101): todo el panel se recomputa
+    // fresco por request; el único tramo cacheado es uptimeAgg (TTL 1 h,
+    // D-5). pesado = HIT | MISS | SKIP (SKIP solo en fase viva sin HIT).
     res.set("X-Cache", `vivo=COMPUTE pesado=${pesadoStatus}`);
     res.set("X-Compute-Ms", String(Date.now() - t0));
     return res.json(payload);
@@ -649,6 +632,19 @@ router.get("/dashboard/noc/trend", checkAuth, async (req, res) => {
     const sites = await Site.find(siteFilter, { siteCode: 1, _id: 0 }).lean();
     const siteCodes = sites.map(s => s.siteCode);
     const aggregation = classifyAggregation(variable);
+
+    // (DEC-REF-101 D-6) — caché corto 60 s: el aggregate bucketizado sobre
+    // db.data se repite idéntico ante polls del gráfico. Key agnóstica al
+    // usuario por el mismo argumento de scopeKeyOf (deriva de siteCodes; la
+    // variable fue validada contra el scope al momento del cómputo).
+    const trendKey = crypto.createHash("sha1")
+      .update(variable + "|" + window + "|" + siteCodes.slice().sort().join("|"))
+      .digest("hex");
+    const cachedTrend = trendCache.get(trendKey);
+    if (cachedTrend && (now - cachedTrend.at) < TREND_TTL_MS) {
+      res.set("X-Cache", "trend=HIT");
+      return res.json(cachedTrend.payload);
+    }
     if (!siteCodes.length) {
       return res.json({ status: "success", data: { variable, window, aggregation, bucketMs: null, series: [], cardStat: null } });
     }
@@ -737,18 +733,21 @@ router.get("/dashboard/noc/trend", checkAuth, async (req, res) => {
       const first = netPoints.length ? Math.round(netPoints[0] * 100) / 100 : null;
       const last  = netPoints.length ? Math.round(netPoints[netPoints.length - 1] * 100) / 100 : null;
       const delta = (first != null && last != null) ? Math.round((last - first) * 100) / 100 : null;
-      return res.json({
+      const payload = {
         status: "success",
         data: {
           variable, window, aggregation, bucketMs,
           series,
           cardStat: { current: last, prevValue: first, delta }
         }
-      });
+      };
+      trendCache.set(trendKey, { at: Date.now(), payload });
+      res.set("X-Cache", "trend=MISS");
+      return res.json(payload);
     }
 
     // aggregation === 'range' — cardStat min/max globales crudos (R1).
-    return res.json({
+    const payload = {
       status: "success",
       data: {
         variable, window, aggregation, bucketMs,
@@ -758,7 +757,10 @@ router.get("/dashboard/noc/trend", checkAuth, async (req, res) => {
           max: overallMax != null ? Math.round(overallMax * 100) / 100 : null
         }
       }
-    });
+    };
+    trendCache.set(trendKey, { at: Date.now(), payload });
+    res.set("X-Cache", "trend=MISS");
+    return res.json(payload);
   } catch (error) {
     console.log("ERROR /dashboard/noc/trend", error);
     return res.status(500).json({ status: "error", error: String(error && error.message || error) });
