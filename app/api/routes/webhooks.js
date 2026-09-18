@@ -101,6 +101,15 @@ router.post("/saver-webhook", async (req, res) => {
     var result = await Device.find({ dId: dId, userId: data.userId });
 
     if (result.length == 1) {
+      // (#76) — value null/undefined = señal sin dato persistible: el
+      // simulador publica setpoint_* en null a propósito cuando un setpoint
+      // queda limpiado (device.js, "only allowed for setpoint_* vars").
+      // Antes caía en Data.create y Mongoose lo rechazaba con "Path value
+      // is required" llenando el log de ruido (~0,5% de los mensajes).
+      const payloadValue = data.payload ? data.payload.value : undefined;
+      if (payloadValue === undefined || payloadValue === null) {
+        console.log("Saver skip (value null/undefined):", { dId: dId, variable: variable });
+      } else {
       try {
         const savedData = await Data.create({
           userId: data.userId,
@@ -117,7 +126,14 @@ router.post("/saver-webhook", async (req, res) => {
           _id: savedData._id
         });
       } catch (createError) {
-        console.log("Error creating data:", createError);
+        // Contexto completo del descarte por validación (diagnóstico #76).
+        console.log("Error creating data:", {
+          error: String(createError && createError.message || createError),
+          dId: dId,
+          variable: variable,
+          topic: data.topic
+        });
+      }
       }
     } else {
       console.log("Device not found:", { dId: dId, userId: data.userId, resultLength: result.length });
