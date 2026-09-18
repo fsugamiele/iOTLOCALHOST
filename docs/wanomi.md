@@ -12125,3 +12125,24 @@ Primera corrida del smoke F8 mandó el alta de ficha con wrapper `newSheet` en v
 1. Click-through visual: campo `resolveGraceSec` en el editor de reglas + todo lo arrastrado desde #72.
 2. Push pendiente de los commits de #76 y #77 — requiere orden explícita de Franco.
 3. Carry-over #75 ítem 3 sigue vivo (booleanDwell/equipmentAlarms con datos reales, credenciales fuera de /tmp, ficha `cummins-pcc` en prod, archivos sin trackear).
+
+### Adenda #77 — BACKLOG-OPS-1 CERRADO (DEC-REF-103): watchdog runtime de recursos EMQX, verificado con drill del desastre
+
+**Mecanismo raíz del gap de ingesta (identificado en `docker logs emqx`, línea crítica 18:56:19):** cuando EMQX bootea con `node` sin servir, la inicialización del resource web_hook falla (`resource_not_initialized`) y **EMQX auto-DESABILITA las 13 SAVER-RULE** ("The rule is disabled. Fix the issue and enable it manually"). El recurso queda muerto sin recuperación (4.2.3 no re-inicializa resources en runtime, no soporta `PUT /resources`, el build de `emqx_ctl` no tiene `eval`, y el DELETE del saver está bloqueado por `dependency_exists`). Re-habilitar las reglas no alcanza: con el recurso muerto cada entrega falla (medido: matched 103 / success 0 / failed 103).
+
+**Watchdog implementado en `app/api/routes/emqxapi.js`** (loop 60 s, primer tick a los 90 s de boot, todo fire-and-forget):
+
+- Crea recursos faltantes (reusa `createMissingResources`).
+- **Sensor 1 — estado explícito:** `status` poblado sin ningún nodo vivo, 2 lecturas consecutivas (debounce: el episodio sano de las 02:11 se auto-recuperó en 8 s).
+- **Sensor 2 — entregas reales (el sensor honesto):** suma de métricas de las acciones atadas al recurso; `failed` creciendo con `success` quieto 2 ticks seguidos = roto. Nació del drill: el estado "recurso no inicializado al boot" reporta `status: null` y engaña al sensor 1.
+- **Remediación:** DELETE de las reglas atadas (libera dependency_exists) → DELETE del recurso → recreación → refresh de globals (sin esto las reglas se atan al id borrado — bug medido: "13 err") → `reconcileRules()` SIEMPRE (gatearlo al alive dejaba las reglas borradas — bug medido: 13 reglas perdidas en la primera versión). Throttle 5 min por recurso.
+- **Semántica medida de `status` en 4.2.3:** vacío `[]` ≠ muerto (recién creado, entrega bien: 375 docs/90 s medidos con status vacío); `is_alive=false` poblado = muerto; `null` = no inicializado al boot (roto). La primera versión del watchdog remediaba en loop recursos sanos por tratar vacío como muerto — corregido en sesión.
+- **Boot:** `initEmqxResources` ahora reconcilia SIEMPRE (antes gateado al alive: con status vacío vencía el wait y las reglas quedaban sin recrear).
+
+**Verificación — drill del desastre (el incidente exacto):** `docker stop node` → `docker restart emqx` (boot sin node: 18× "Can not re-build rule", estado roto confirmado: success 0 / failed 417, db.data 0 docs/90 s) → `docker start node` → **recuperación 100% automática, cero intervención manual:** reconcile de boot recreó/habilitó las 13 reglas, el sensor de entregas detectó el fracaso (Δfailed=154, 158) y reme­dió el recurso, y la ingesta volvió: **success 466 / failed 0, 259 docs/90 s**. El sim necesitó restart aparte (no resiste restart del broker — deuda conocida de #74, declarada).
+
+**Declarado.**
+
+1. El código es bind-mounteado: el watchdog se activa en prod y P2 en el próximo restart de cada `node` — actúa solo cuando algo está caído (en estado sano es un GET cada 60 s).
+2. Lateral observado sin investigar: alarma `high_system_memory_usage` (>70%) en EMQX a las 22:25 — memoria del host apretada; si los recursos mueren por OOM del beam, el watchdog remedia el síntoma pero la causa es sizing.
+3. El sim en host ahora arranca con `setsid` + `nohup` + `</dev/null` (con `nohup ... &` a secas moría al cerrar el shell que lo lanzó — dos muertes silenciosas medidas en la sesión).
