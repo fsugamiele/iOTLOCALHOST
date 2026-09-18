@@ -65,6 +65,9 @@
 // Default inicial (GATE 6 · Franco): variable=fuel_level · window=24h.
 // Si trendVariables no la trae (scope sin fuel), cae a la primera de la
 // lista alfabética para no dejar el chart vacío en la carga inicial.
+// DEC-REF-101 D-9/D-11 (#76): window e intervalo de refresco configurables
+// desde el menú de la tarjeta (props defaultWindow/refreshSec); el selector
+// interno de window sigue disponible como cambio ad-hoc.
 const DEFAULT_VARIABLE = 'fuel_level';
 const DEFAULT_WINDOW   = '24h';
 
@@ -79,22 +82,26 @@ export default {
   props: {
     trendVariables: { type: Array,  default: () => [] },
     isLight:        { type: Boolean, default: false },
+    // DEC-REF-101 D-9/D-11 (#76) — configurables desde el menú de la tarjeta.
+    refreshSec:     { type: Number, default: 60 },
+    defaultWindow:  { type: String, default: DEFAULT_WINDOW },
   },
   data() {
     return {
       selectedVariable: '',
-      selectedWindow:   DEFAULT_WINDOW,
+      selectedWindow:   this.defaultWindow,
       loading:          false,
       error:            null,
       lastData:         null,
-      // DEC-REF-100 D-5 (F5): refresh automático cada 60 s, en silencio
-      // (sin spinner ni parpadeo — lastData se pisa cuando llega la nueva).
+      // DEC-REF-100 D-5 (F5) · DEC-REF-101 D-11: refresh automático en
+      // silencio (sin spinner ni parpadeo — lastData se pisa cuando llega
+      // la nueva). El intervalo lo fija refreshSec (menú de la tarjeta).
       refreshTimer:     null,
       _inFlight:        false,
     };
   },
   mounted() {
-    this.refreshTimer = setInterval(() => this.fetchTrend({ silent: true }), 60000);
+    this.startRefreshTimer();
   },
   beforeDestroy() {
     if (this.refreshTimer) { clearInterval(this.refreshTimer); this.refreshTimer = null; }
@@ -145,6 +152,12 @@ export default {
   watch: {
     selectedVariable() { this.fetchTrend(); },
     selectedWindow()   { this.fetchTrend(); },
+    // D-9/D-11 (#76) — el menú de la tarjeta cambia el default persistido:
+    // se aplica al selector y el watch de selectedWindow dispara el fetch.
+    defaultWindow(w) {
+      if (w && w !== this.selectedWindow) this.selectedWindow = w;
+    },
+    refreshSec() { this.startRefreshTimer(); },
     trendVariables: {
       immediate: true,
       handler(next) {
@@ -155,6 +168,13 @@ export default {
     },
   },
   methods: {
+    // DEC-REF-101 D-11 (#76) — timer propio del widget, intervalo del menú.
+    startRefreshTimer() {
+      if (this.refreshTimer) { clearInterval(this.refreshTimer); this.refreshTimer = null; }
+      const sec = Number(this.refreshSec);
+      if (!Number.isFinite(sec) || sec <= 0) return;
+      this.refreshTimer = setInterval(() => this.fetchTrend({ silent: true }), sec * 1000);
+    },
     fmt(v) {
       if (v == null || !Number.isFinite(v)) return '—';
       return v.toString();

@@ -44,7 +44,8 @@ app.use("/api", require("./routes/dataprovider.js"));
 app.use("/api", require("./routes/dashboard_noc.js"));
 app.use("/api", require("./routes/equipmentsheets.js"));  // D-4 montaje permanente (Franco, #68). Sin interruptor: exposición directa firmada junto a S3/S4
 app.use("/api", require("./routes/operators.js"));  // DEC-REF-97 D-3 (#72) — operator por API; cierra la pata de alta directa en Mongo de BACKLOG-TENANT-11
- 
+app.use("/api", require("./routes/panellayouts.js"));  // DEC-REF-101 D-8 (#76) — Panel diseñable por usuario (layout+settings en Mongo)
+
 module.exports = app;
 
 //listener

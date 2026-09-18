@@ -41,6 +41,7 @@ export default {
   */
   plugins: [
     `~/plugins/dashboard-plugin.js`,
+    { src: `~/plugins/vue-grid-layout.js`, mode: 'client' },  // DEC-REF-101 D-7 (#76) — Panel diseñable
   ],
   //autoimport
   components: true,

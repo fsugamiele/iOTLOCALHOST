@@ -1,0 +1,50 @@
+/* DEC-REF-101 D-7 (#76) — CSS mínimo de vue-grid-layout 2.4.0.
+   El paquete npm no publica dist-css; estos son los estilos operativos
+   estándar de la librería (transiciones, placeholder, handle de resize). */
+
+.vue-grid-layout {
+  position: relative;
+  transition: height 200ms ease;
+}
+
+.vue-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top;
+  touch-action: none;
+}
+
+.vue-grid-item.cssTransforms {
+  transition-property: transform;
+}
+
+.vue-grid-item.resizing {
+  z-index: 1;
+  position: relative;
+}
+
+.vue-grid-item.vue-grid-placeholder {
+  background: #e14eca;
+  opacity: 0.2;
+  transition-duration: 100ms;
+  z-index: 2;
+  border-radius: 6px;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -o-user-select: none;
+  user-select: none;
+}
+
+.vue-grid-item > .vue-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  bottom: 0;
+  right: 0;
+  z-index: 10;
+  cursor: se-resize;
+  box-sizing: border-box;
+  padding: 0 4px 4px 0;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.45) 50%);
+  border-bottom-right-radius: 6px;
+}
