@@ -189,6 +189,7 @@ export default {
       nocSlices: { kpis: null, sites: null, trend: null, alarms: null },
       widgetTimers: {},
       initialLoaded: false,
+      lastLayout: null,
       _saveTimer: null,
       // R7 · pedido Franco — refresh event-driven al recibir wanomi:notif.
       _notifHandler: null,
@@ -340,7 +341,7 @@ export default {
         try {
           await this.$axios.put('/panellayout', {
             dashboard: 'noc',
-            layout: this.layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
+            layout: this.lastLayout || this.layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
             settings: this.settings,
           }, headers);
         } catch (err) {
@@ -364,7 +365,12 @@ export default {
       this.customizing = !this.customizing;
     },
     onLayoutUpdated(newLayout) {
-      this.layout = newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
+      // NUNCA reasignar this.layout acá: la librería muta el array in place
+      // y su watcher sobre `layout` vuelve a emitir layout-updated
+      // (GridLayout.vue:244-246) ⇒ reasignar un array nuevo genera un LOOP
+      // INFINITO que congela la pestaña (medido en #76). Solo se copia para
+      // persistir.
+      this.lastLayout = newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
       this.saveLayout();
       // Highcharts/Leaflet no escuchan resize del contenedor: disparo el
       // evento de ventana para que re-fluyan tras arrastrar/redimensionar.
