@@ -1,14 +1,14 @@
 <template>
   <WidgetShell :config="config">
-    <ValueStatus :config="config" context="editor" />
+    <ValueStatus :config="config" :value="sample" context="editor" />
   </WidgetShell>
 </template>
 
 <script>
 // DEC-REF-76-A (vi) — composición EDITOR del widget valueStatus.
-// Shell + presenter puro con context='editor' (no hay fuente por
-// definición → guión neutro en vez de "sin dato"). Se instancia en
-// templates.vue (preview + lista) donde no hay device seleccionado.
+// DEC-REF-107 (Paso 2, diseño): inyecta un valor de MUESTRA en contexto
+// editor para que la preview refleje la config gráfica (color por umbral,
+// unidad, decimales) en vez del guión neutro. El sample varía por tipo.
 import WidgetShell from '@/components/Widgets/WidgetShell.vue';
 import ValueStatus from '@/components/Widgets/ValueStatus.vue';
 
@@ -17,6 +17,16 @@ export default {
   components: { WidgetShell, ValueStatus },
   props: {
     config: { type: Object, default: () => ({}) },
+  },
+  computed: {
+    sample() {
+      switch (this.config.variableType) {
+        case 'bool':        return true;
+        case 'categorical': return 'OK';
+        case 'int':         return 42;
+        default:            return 23.5;  // float
+      }
+    },
   },
 };
 </script>

@@ -1,6 +1,6 @@
 <template>
   <WidgetShell :config="config">
-    <BooleanDwell :windowHours="windowHours" context="editor" />
+    <BooleanDwell :windowHours="windowHours" :value="true" :dwellSince="sampleSince" context="editor" />
   </WidgetShell>
 </template>
 
@@ -17,6 +17,11 @@ export default {
   components: { WidgetShell, BooleanDwell },
   props: {
     config: { type: Object, default: () => ({}) },
+  },
+  data() {
+    // DEC-REF-107 (Paso 2, diseño): estado "Activo desde hace ~3 h" de muestra
+    // para que la preview no quede en guión neutro.
+    return { sampleSince: Date.now() - 3 * 3600 * 1000 };
   },
   computed: {
     windowHours() {

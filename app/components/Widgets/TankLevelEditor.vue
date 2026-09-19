@@ -1,6 +1,6 @@
 <template>
   <WidgetShell :config="config">
-    <TankLevel :config="config" context="editor" />
+    <TankLevel :config="config" :value="62" context="editor" />
   </WidgetShell>
 </template>
 

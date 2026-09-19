@@ -136,14 +136,15 @@
           <div class="col-6">
             <div v-if="widgetType" style="margin-bottom:10px">
               <h6 class="text-muted">
-                <i class="fa fa-eye" style="margin-right:6px"></i>Vista Previa
+                <i class="fa fa-eye" style="margin-right:6px"></i>Vista Previa <small>(datos de muestra)</small>
               </h6>
             </div>
-            <component
-              v-if="widgetType && widgetDraft"
-              :is="resolveWidget(widgetType, { context: 'editor' })"
-              :config="widgetDraft"
-            />
+            <div v-if="widgetType && widgetDraft" class="widget-preview-box">
+              <component
+                :is="resolveWidget(widgetType, { context: 'editor' })"
+                :config="widgetDraft"
+              />
+            </div>
           </div>
         </div>
 
@@ -176,6 +177,7 @@
         v-for="(widget, index) in widgets"
         :key="index"
         :class="[widget.column]"
+        style="margin-bottom:24px"
       >
         <div style="display:flex; justify-content:flex-end; align-items:center; gap:4px; margin-bottom:6px">
           <base-button
@@ -197,7 +199,7 @@
             <i class="fa fa-arrow-right"></i>
           </base-button>
           <base-button size="sm" type="warning" icon @click="openEditWidget(index)">
-            <i class="fa fa-pencil"></i>
+            <i class="fa fa-pencil-alt"></i>
           </base-button>
           <base-button size="sm" type="danger" icon @click="deleteWidget(index)">
             <i class="fa fa-trash"></i>
@@ -318,7 +320,7 @@
                 </el-tooltip>
                 <el-tooltip content="Editar" effect="light" :open-delay="300" placement="top">
                   <base-button @click="openEditTemplate(row)" type="warning" icon size="sm" class="btn-link">
-                    <i class="fa fa-pencil"></i>
+                    <i class="fa fa-pencil-alt"></i>
                   </base-button>
                 </el-tooltip>
                 <el-tooltip content="Eliminar" effect="light" :open-delay="300" placement="top">
@@ -426,8 +428,10 @@
           />
         </div>
         <div class="col-5">
-          <h6 class="text-muted"><i class="fa fa-eye" style="margin-right:6px"></i>Vista Previa</h6>
-          <component :is="resolveWidget(editWidgetDraft.widget, { context: 'editor' })" :config="editWidgetDraft" />
+          <h6 class="text-muted"><i class="fa fa-eye" style="margin-right:6px"></i>Vista Previa <small>(datos de muestra)</small></h6>
+          <div class="widget-preview-box">
+            <component :is="resolveWidget(editWidgetDraft.widget, { context: 'editor' })" :config="editWidgetDraft" />
+          </div>
         </div>
       </div>
       <span slot="footer">
@@ -947,3 +951,18 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+/* DEC-REF-107 (Paso 2, diseño): contenedor de la vista previa del widget,
+   para que no quede pegado al formulario y se lea como una muestra. */
+.widget-preview-box {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>

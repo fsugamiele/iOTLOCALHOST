@@ -1,6 +1,6 @@
 <template>
   <WidgetShell :config="config">
-    <ProjectedAutonomy :config="config" context="editor" />
+    <ProjectedAutonomy :config="config" :value="8" context="editor" />
   </WidgetShell>
 </template>
 
