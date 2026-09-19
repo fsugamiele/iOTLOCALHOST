@@ -170,6 +170,9 @@ const DEFAULT_LAYOUT = [
 
 const DEFAULT_REFRESH_SEC = 60;
 const DEFAULT_WINDOW = '24h';
+// P3 (#79) — red de seguridad del Panel (única pasada periódica; el
+// refresco de datos es por evento vía wanomi:sdata / wanomi:notif).
+const SAFETY_REFRESH_SEC = 60;
 
 export default {
   name: 'DashboardNoc',
@@ -236,14 +239,30 @@ export default {
       }, 4000);
     };
     this.$nuxt.$on('wanomi:notif', this._notifHandler);
+
+    // P3 (#79) — actualización EVENT-DRIVEN de todas las tarjetas a la vez.
+    // Con publicación por cambio (P2), cada sdata entrante es un cambio real
+    // de alguna variable monitorizada: se refrescan TODAS las slices juntas
+    // (mismo dato, mismo instante — fin del efecto "cada tarjeta a su hora").
+    // Debounce 2 s para colapsar ráfagas (latido de varios devices a la vez).
+    this._sdataHandler = () => {
+      if (this._sdataTimer) clearTimeout(this._sdataTimer);
+      this._sdataTimer = setTimeout(() => {
+        this._sdataTimer = null;
+        this.refreshAllSlices();
+      }, 2000);
+    };
+    this.$nuxt.$on('wanomi:sdata', this._sdataHandler);
   },
   beforeDestroy() {
     this.clearTimers();
     if (this.themeObserver)  { this.themeObserver.disconnect(); this.themeObserver = null; }
     if (this._notifFastTimer){ clearTimeout(this._notifFastTimer); this._notifFastTimer = null; }
     if (this._notifSlowTimer){ clearTimeout(this._notifSlowTimer); this._notifSlowTimer = null; }
+    if (this._sdataTimer)    { clearTimeout(this._sdataTimer); this._sdataTimer = null; }
     if (this._saveTimer)     { clearTimeout(this._saveTimer); this._saveTimer = null; }
     if (this._notifHandler)  { this.$nuxt.$off('wanomi:notif', this._notifHandler); this._notifHandler = null; }
+    if (this._sdataHandler)  { this.$nuxt.$off('wanomi:sdata', this._sdataHandler); this._sdataHandler = null; }
   },
   methods: {
     widgetDef(id) {
@@ -300,17 +319,18 @@ export default {
       return this.fetchInto(null, '/dashboard/noc', { silent: true });
     },
 
-    // D-11 — un timer por tarjeta con su propio intervalo.
+    // P3 (#79) — UN solo timer de red de seguridad para todo el Panel.
+    // Antes (D-11) cada tarjeta polleaba /noc con su propio refreshSec:
+    // tarjetas actualizándose a distinta hora con snapshots distintos —
+    // el "caos" reportado. Ahora el refresco es por evento (wanomi:sdata /
+    // wanomi:notif) y este timer solo cubre deriva de reloj/ventanas
+    // (histograma, edades) si no llega ningún evento.
     setupTimers() {
       this.clearTimers();
-      WIDGETS.forEach(w => {
-        const sec = this.refreshSecOf(w.i);
-        if (!Number.isFinite(sec) || sec <= 0) return;
-        this.widgetTimers[w.i] = setInterval(
-          () => this.fetchInto(w.i, '/dashboard/noc', { silent: true }),
-          sec * 1000
-        );
-      });
+      this.widgetTimers._safety = setInterval(
+        () => this.refreshAllSlices(),
+        SAFETY_REFRESH_SEC * 1000
+      );
     },
     clearTimers() {
       Object.values(this.widgetTimers).forEach(t => clearInterval(t));

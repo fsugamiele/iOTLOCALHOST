@@ -77,6 +77,7 @@ async function main() {
         userId,
         variables: creds.variables,
         sharedState: cfg.sharedState,
+        heartbeatSec: creds.heartbeatSec, // P2 (#79) — latido desde el template
       }));
     } catch (err) {
       console.error(`Failed to bootstrap ${cfg.siteCode}/${cfg.role}: ${err.message}`);
@@ -155,5 +156,18 @@ async function main() {
 
 main().catch(err => {
   console.error('\nRUN ERROR:', err.message);
+  process.exit(1);
+});
+
+// Muerte VISIBLE (P1 · #79): un throw dentro de un timer de publicación o una
+// promise sin catch mataba el proceso sin dejar rastro (así murió el sim el
+// 2026-09-19 01:24 UTC: log limpio, proceso desaparecido, 12 h de sitios
+// offline). Log + exit(1): el supervisor (supervisor.sh) lo relanza solo.
+process.on('uncaughtException', err => {
+  console.error('\nUNCAUGHT EXCEPTION — el supervisor relanzará el sim:', err && err.stack || err);
+  process.exit(1);
+});
+process.on('unhandledRejection', err => {
+  console.error('\nUNHANDLED REJECTION — el supervisor relanzará el sim:', err && err.stack || err);
   process.exit(1);
 });

@@ -12177,3 +12177,37 @@ Primera corrida del smoke F8 mandó el alta de ficha con wrapper `newSheet` en v
 1. Franco: hard-refresh una vez (mata el service worker viejo) y click-through del Panel (intervalos, drag, menú) + confirmar que el dropdown envejece como máximo 60 s.
 2. Push pendiente de los commits de #76, #77 y #78 — requiere orden explícita de Franco.
 3. Carry-over #75 ítem 3 sigue vivo (booleanDwell/equipmentAlarms con datos reales, credenciales fuera de /tmp, ficha `cummins-pcc` en prod, archivos sin trackear).
+
+## Sesión #79 — 2026-09-19 · Área 2 · DEC-REF-105: telemetría por cambio con umbral + latido · Panel event-driven · supervisor del sim
+
+### Reporte de Franco (apertura)
+
+Sitios seguían offline pese a #78 · notificaciones ya OK · cada tarjeta del Panel actualiza a distinta hora ("caótico") — pedido: que cada indicador se actualice cuando CAMBIA la variable, con umbral, todo a la vez y con el mismo dato · UPTIME bajo: 115.314/786.240 msgs (14%).
+
+### Diagnóstico medido (origen, uno por uno)
+
+1. **Sitios offline = simulador MUERTO desde la 01:24 UTC** (~12 h sin telemetría). NO desuscripciones MQTT: proceso desaparecido con log limpio (muerte silenciosa). Agravante de la deuda #74: `device.js` usaba `once('connect')`, así que tras un restart del broker el cliente reconectaba pero `_connected` quedaba false para siempre → proceso vivo publicando cero.
+2. **Uptime 14% ≠ pérdida de paquetes.** El cálculo asumía publicación 24/7 por cadencia declarada. Realidad medida por día: 12/09 16k · 13→16/09 CERO · 17/09 64k · 18/09 122k (108% de lo esperado: con el sim vivo no se pierde nada) · 19/09 parcial. El KPI medía "horas de sim encendido", no salud MQTT.
+3. **Caos de tarjetas = D-11**: cada tarjeta polleaba `/dashboard/noc` con su propio refreshSec → snapshots distintos a distinta hora.
+
+### DEC-REF-105 (sala + Franco, diseño aprobado en 4 puntos y orden 1→4)
+
+**D-1 · Supervisor del sim (cierra la causa raíz de los offline).** `tools/device_simulator/supervisor.sh`: instancia única (flock), relanza siempre que el proceso termina, backoff 5→60 s si vive <15 s. `run.js`: `uncaughtException`/`unhandledRejection` loguean y exit(1) (muerte visible, el supervisor relanza). `device.js`: `once('connect')` → `on('connect')` con `_connected=true` en cada reconexión (deuda #74 CERRADA). Receta de apertura actualizada. Verificado: kill → relanzado solo en <15 s; `docker restart emqx` → "reconnecting…" + 101 docs/30 s sin intervención.
+
+**D-2 · Publicación por cambio con umbral + latido (report-by-exception, estándar SCADA).** `widget.deadband` (template, heredable de la ficha — `equipment_sheet.variables[].deadband`, editable en ambas UIs) y `template.heartbeatSec` (default 300, editable en templates.vue). El bootstrap entrega ambos al device. El sim publica una variable numérica solo si `|Δ| ≥ deadband` (bool/string: cualquier cambio) y republica TODO cada heartbeatSec. Seed `seeds/migrate_deadband_p2.js` (idempotente, --dry-run): 5 templates, 21 umbrales con criterio físico (temp 0,5 °C · fuel 1 % · V bat 0,3 · V red 2 · rpm 25 · Hz 0,1…). Medido: **105 → 6 docs/min** en régimen.
+
+**D-3 · Panel event-driven.** `default.vue` emite `wanomi:sdata` global con cada telemetría; `dashboard.vue` escucha y refresca TODAS las tarjetas juntas (debounce 2 s) — mismo dato, mismo instante. Se retira el timer por tarjeta (D-11); queda una sola pasada de seguridad de 60 s (reloj/ventanas). El refreshSec del menú sigue gobernando solo el gráfico de tendencia. Online del sitio en `/noc`: contra `2 × heartbeatSec` del template (no contra cadencia mínima de variables — con publicación por cambio una variable quieta no dice nada).
+
+**D-4 · KPI Uptime redefinido por presencia de latido.** `% ventanas de heartbeatSec CON ≥1 dato · 7d` (antes: volumen de mensajes vs esperado 24/7). Un aggregate por valor de heartbeat distinto. Medido post-cambio: 14,7 % (3.860/26.208 ventanas de 300 s) — honesto: refleja los 4 días de sim apagado; con el supervisor vivo converge a ~100 %.
+
+### Verificación E2E
+
+Build exit 0 · node restart · sim relanzado por el supervisor bootea con el contrato nuevo ("13 variables @ cambio(umbral) + latido 300s") · 4/4 sitios online · uptime nuevo shape servido · logs node y sim sin errores.
+
+### Carry-over para #80, en orden
+
+1. Franco: hard-refresh una vez y click-through (Panel event-driven, menú de tarjetas, umbral/latido en templates y fichas) + confirmar.
+2. Push pendiente de #76–#79 — requiere orden explícita de Franco.
+3. Carry-over #75 ítem 3 sigue vivo (booleanDwell/equipmentAlarms con datos reales, credenciales fuera de /tmp, ficha cummins-pcc en prod, archivos sin trackear).
+4. Uptime histórico: los días 13→16/09 sin datos seguirán deprimiendo el KPI hasta que roten fuera de la ventana de 7d (es la verdad del sistema, no un bug).
+5. Alarma de memoria >70 % en host EMQX (lateral, sin investigar) · BACKLOG-RULE-8 (fires cross atribuidos al dId del mensaje en curso).

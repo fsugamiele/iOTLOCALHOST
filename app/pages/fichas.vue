@@ -175,17 +175,21 @@
           </div>
         </div>
         <div class="row">
-          <div class="col-md-4 form-group">
+          <div class="col-md-3 form-group">
             <label>Unidad</label>
             <base-input v-model="v.unit" placeholder="ej. kPa" />
           </div>
-          <div class="col-md-4 form-group">
+          <div class="col-md-3 form-group">
             <label>Rango de fábrica</label>
             <base-input v-model="v.factoryRange" placeholder="ej. 0-100" />
           </div>
-          <div class="col-md-4 form-group">
+          <div class="col-md-3 form-group">
             <label>Cadencia</label>
             <base-input v-model="v.cadence" placeholder="ej. 60s" />
+          </div>
+          <div class="col-md-3 form-group">
+            <label>Umbral de cambio</label>
+            <base-input v-model="v.deadband" placeholder="ej. 0.5" type="number" />
           </div>
         </div>
 
@@ -249,7 +253,7 @@
         </p>
         <base-table
           :data="detailSheet.variables || []"
-          :columns="['nombre', 'legible', 'tipo', 'unidad', 'rango fábrica', 'cadencia', 'límites']"
+          :columns="['nombre', 'legible', 'tipo', 'unidad', 'rango fábrica', 'cadencia', 'umbral cambio', 'límites']"
           thead-classes="text-primary"
         >
           <template slot-scope="{ row }">
@@ -259,6 +263,7 @@
             <td>{{ row.unit || '—' }}</td>
             <td>{{ row.factoryRange || '—' }}</td>
             <td>{{ row.cadence || '—' }}</td>
+            <td>{{ (row.deadband === null || row.deadband === undefined) ? '—' : row.deadband }}</td>
             <td>
               <span v-if="!(row.limits || []).length" class="text-muted">—</span>
               <span v-for="(l, j) in row.limits" :key="j" class="badge badge-warning mr-1">
@@ -433,6 +438,7 @@ export default {
               unit: v.unit || '',
               factoryRange: v.factoryRange || '',
               cadence: v.cadence || '',
+              deadband: (v.deadband === null || v.deadband === undefined) ? null : v.deadband,
               limits: v.limits || [],
             })),
           };
@@ -461,12 +467,12 @@ export default {
       const text = this.rawCandidates[index];
       this.rawCandidates.splice(index, 1);
       this.newSheet.variables.push({
-        name: '', label: text.slice(0, 80), type: 'float', unit: '', factoryRange: '', cadence: '', limits: [],
+        name: '', label: text.slice(0, 80), type: 'float', unit: '', factoryRange: '', cadence: '', deadband: null, limits: [],
       });
     },
     addVariable() {
       this.newSheet.variables.push({
-        name: '', label: '', type: 'number', unit: '', factoryRange: '', cadence: '', limits: [],
+        name: '', label: '', type: 'number', unit: '', factoryRange: '', cadence: '', deadband: null, limits: [],
       });
     },
     addLimit(variable) {
@@ -490,6 +496,7 @@ export default {
             unit: v.unit || undefined,
             factoryRange: v.factoryRange || undefined,
             cadence: v.cadence || undefined,
+            deadband: v.deadband === '' || v.deadband === null || v.deadband === undefined ? undefined : Number(v.deadband),
             limits: (v.limits || []).map(l => ({
               kind: l.kind,
               op: l.op,

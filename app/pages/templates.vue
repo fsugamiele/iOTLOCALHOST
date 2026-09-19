@@ -137,6 +137,7 @@
               </div>
 
               <base-input v-model.number="ncConfig.variableSendFreq" label="Frecuencia de Envío (seg)" type="number" />
+              <base-input v-model.number="ncConfig.deadband" label="Umbral de cambio (opcional — publica solo si el valor varía al menos esto)" type="number" />
               <base-input v-model.number="ncConfig.chartTimeAgo" label="Historial del Gráfico (min)" type="number" />
               <base-input v-model="ncConfig.tasmotaPath" label="Tasmota Path (opcional, ej: DHT11.Temperature)" type="text" placeholder="DHT11.Temperature" />
 
@@ -243,6 +244,7 @@
 
               <base-input v-model="valueStatusConfig.unit" label="Unidad (opcional, ej: °C, psi, %)" type="text" />
               <base-input v-model.number="valueStatusConfig.variableSendFreq" label="Frecuencia de Envío (seg)" type="number" />
+              <base-input v-model.number="valueStatusConfig.deadband" label="Umbral de cambio (opcional — publica solo si el valor varía al menos esto)" type="number" />
               <base-input v-model.number="valueStatusConfig.decimalPlaces" label="Decimales (opcional; vacío = default por tipo)" type="number" />
 
               <!-- DEC-REF-76-C: los 4 inputs de umbral se retiran del mini-form
@@ -642,7 +644,19 @@
 
         <div class="row">
           <base-input class="col-4" v-model="templateName" label="Nombre" type="text" />
-          <base-input class="col-8" v-model="templateDescription" label="Descripción" type="text" />
+          <base-input class="col-5" v-model="templateDescription" label="Descripción" type="text" />
+          <base-input class="col-3" v-model.number="templateHeartbeatSec" label="Latido del equipo (seg)" type="number" />
+        </div>
+
+        <div class="row">
+          <div class="col-12">
+            <p class="text-muted" style="font-size:12px; margin-top:-8px; margin-bottom:10px">
+              <i class="fa fa-heartbeat" style="margin-right:6px"></i>
+              Latido: aunque ninguna variable supere su umbral de cambio, el equipo publica todo
+              cada esta cantidad de segundos para avisar que está vivo. El estado online del
+              sitio y el indicador de Uptime se calculan contra este valor.
+            </p>
+          </div>
         </div>
 
         <div class="row" v-if="templateDeviceType">
@@ -809,6 +823,7 @@ export default {
       widgetType: "",
       templateName: "",
       templateDescription: "",
+      templateHeartbeatSec: 300,
       saveLoading: false,
       deleteLoadingId: null,
       // DEC-REF-100 D-6 (#75, F4): plantilla en edición. null = modo alta.
@@ -899,6 +914,7 @@ export default {
         variable: "varname",
         variableType: "input",
         variableSendFreq: "30",
+        deadband: null,
         unit: "°C",
         class: "success",
         column: "col-12",
@@ -968,6 +984,7 @@ export default {
         variableType: "float",
         unit: "",
         variableSendFreq: 60,
+        deadband: null,
         decimalPlaces: null,
         icon: "fa-signal",
         column: "col-4",
@@ -1183,6 +1200,9 @@ export default {
       cfg.variable = v.name;
       cfg.variableFullName = v.label || v.name;
       if ("unit" in cfg) cfg.unit = v.unit || "";
+      // P2 (#79): el umbral de cambio nace en la ficha (precisión del
+      // fabricante). Si el config del widget lo soporta, se hereda.
+      if ("deadband" in cfg) cfg.deadband = Number.isFinite(v.deadband) ? v.deadband : null;
       // valueStatus declara variableType propio: se adopta el de la ficha
       // solo si es uno de los 4 que el widget entiende.
       if (
@@ -1256,6 +1276,7 @@ export default {
           name: this.templateName,
           description: this.templateDescription,
           deviceType: this.templateDeviceType || "",
+          heartbeatSec: Number(this.templateHeartbeatSec) > 0 ? Number(this.templateHeartbeatSec) : 300,
           widgets: this.widgets,
         },
       };
@@ -1293,6 +1314,7 @@ export default {
       this.editingTemplateId = template._id;
       this.templateName = template.name;
       this.templateDescription = template.description || "";
+      this.templateHeartbeatSec = Number(template.heartbeatSec) > 0 ? Number(template.heartbeatSec) : 300;
       this.templateDeviceType = template.deviceType || "";
       this.sheetVarPick = "";
       this.widgetType = "";
@@ -1309,6 +1331,7 @@ export default {
       this.widgets = [];
       this.templateName = "";
       this.templateDescription = "";
+      this.templateHeartbeatSec = 300;
       this.templateDeviceType = "";
       this.sheetVarPick = "";
       this.widgetType = "";
@@ -1427,6 +1450,9 @@ export default {
       // failed). Normalizamos antes del push para que preview y post-save
       // coincidan.
       const toNumOrNull = (v) => (Number.isFinite(v) ? v : null);
+      // P2 (#79) — deadband opcional: null si quedó vacío (""/NaN romperían
+      // el cast a Number de Mongoose igual que decimalPlaces).
+      if ('deadband' in config) config.deadband = toNumOrNull(config.deadband);
       if (isValueStatus) {
         config.decimalPlaces     = toNumOrNull(config.decimalPlaces);
         // variableSendFreq: si el usuario borró el default, restauramos 60
@@ -1471,6 +1497,7 @@ export default {
       // equipmentAlarms restaura su título default (no es por-variable).
       config.variableFullName = "";
       this.sheetVarPick = "";
+      if ('deadband' in config) config.deadband = null;
       if (isVariableWidget) {
         config.variable = "";
         if ('unit' in config) config.unit = "";

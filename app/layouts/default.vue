@@ -415,7 +415,14 @@ export default {
             this.$nuxt.$emit("wanomi:notif", payload);
             return;
           } else if (msgType == "sdata") {
-            this.$nuxt.$emit(topic, JSON.parse(message.toString()));
+            const parsed = JSON.parse(message.toString());
+            this.$nuxt.$emit(topic, parsed);
+            // P3 (#79) — evento global de telemetría: con publicación por
+            // cambio, un sdata entrante significa "algo cambió de verdad"
+            // (superó umbral o latido). El Panel escucha ESTE evento para
+            // refrescar todas las tarjetas juntas (mismo dato, mismo instante)
+            // en lugar de pollear cada una a su propio ritmo.
+            this.$nuxt.$emit("wanomi:sdata", { topic, payload: parsed });
             return;
           } else if (msgType == "actdata") {
             this.$nuxt.$emit(topic, JSON.parse(message.toString()));

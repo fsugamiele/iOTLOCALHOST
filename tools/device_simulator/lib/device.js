@@ -28,7 +28,7 @@ class SimulatedDevice {
    * @param {Array}    opts.variables      [{variable, variableSendFreq, ...}] del template
    * @param {Object}   opts.sharedState    estado compartido del site (default: {})
    */
-  constructor({ dId, role, siteCode, mqttUsername, mqttPassword, userId, variables, sharedState }) {
+  constructor({ dId, role, siteCode, mqttUsername, mqttPassword, userId, variables, sharedState, heartbeatSec }) {
     this._dId = dId;
     this._role = role;
     this._siteCode = siteCode;
@@ -41,6 +41,17 @@ class SimulatedDevice {
     this._client = null;
     this._timers = [];
     this._connected = false;
+    // P2 (#79) — report-by-exception. deadband por variable (numéricas);
+    // _lastPublished guarda el último valor EFECTIVAMENTE publicado.
+    this._deadbandByVar = new Map();
+    for (const v of variables) {
+      const db = Number(v.deadband);
+      if (Number.isFinite(db) && db > 0) this._deadbandByVar.set(v.variable, db);
+    }
+    this._lastPublished = new Map();
+    // Latido: aunque nada supere el umbral, publicar TODO cada heartbeatSec
+    // (default 300). Es la señal de vida contra la que el panel calcula online.
+    this._heartbeatSec = Number(heartbeatSec) > 0 ? Number(heartbeatSec) : 300;
   }
 
   _initialState(role) {
@@ -88,20 +99,30 @@ class SimulatedDevice {
         keepalive: 60,
       });
 
-      this._client.once('connect', () => {
+      // `on` y no `once` (deuda #74): mqtt.js re-emite 'connect' en CADA
+      // reconexión al broker. Con `once`, tras un restart de emqx el cliente
+      // reconectaba pero _connected quedaba false para siempre → _tick()
+      // early-return eterno: proceso vivo, cero publicaciones. Así moría el
+      // sim en silencio (medido 2026-09-19: 12 h sin datos con proceso "vivo").
+      this._client.on('connect', () => {
         clearTimeout(timeout);
+        const isReconnect = this._connected;
         this._connected = true;
-        console.log(`${this.tag} connected dId=${this._dId}`);
+        console.log(isReconnect
+          ? `${this.tag} reconnected — publishing resumes`
+          : `${this.tag} connected dId=${this._dId}`);
 
-        // DEFENSA EN PROFUNDIDAD: control channel solo si SIMULATOR_MODE=true
+        // DEFENSA EN PROFUNDIDAD: control channel solo si SIMULATOR_MODE=true.
+        // mqtt.js resuscribe solo tras reconexión (resubscribe default true),
+        // pero suscribir de nuevo es idempotente — cubre clean=true edge cases.
         if (SIMULATOR_MODE) {
           const ctrlTopic = `simulator/${this._dId}/control`;
           this._client.subscribe(ctrlTopic, { qos: 1 }, err => {
             if (err) console.error(`${this.tag} control subscribe error: ${err.message}`);
-            else     console.log(`${this.tag} control topic active: ${ctrlTopic}`);
+            else if (!isReconnect) console.log(`${this.tag} control topic active: ${ctrlTopic}`);
           });
         }
-        resolve();
+        resolve(); // idempotente: resolves posteriores son no-op
       });
 
       this._client.on('message', (topic, msg) => {
@@ -140,7 +161,31 @@ class SimulatedDevice {
 
       this._timers.push(startTimer);
     }
-    console.log(`${this.tag} ${this._variables.length} variables publishing @ individual freqs`);
+
+    // P2 (#79) — latido: republica TODAS las variables cada heartbeatSec,
+    // aunque ninguna haya superado su umbral. Es la señal de vida del device.
+    const hb = setInterval(() => {
+      if (!this._connected) return;
+      for (const v of this._variables) this._publish(v.variable, { force: true });
+    }, this._heartbeatSec * 1000);
+    this._timers.push(hb);
+
+    console.log(`${this.tag} ${this._variables.length} variables @ cambio(umbral) + latido ${this._heartbeatSec}s`);
+  }
+
+  // P2 (#79) — decisión de publicación (report-by-exception):
+  //   · nunca publicó            → publica (primer valor visible de inmediato)
+  //   · numérica con deadband>0  → publica si |nuevo - último| >= deadband
+  //   · resto (bool/string/0)    → publica ante cualquier cambio de valor
+  _shouldPublish(varName) {
+    const value = this._state[varName];
+    const last = this._lastPublished.get(varName);
+    if (last === undefined) return true;
+    const db = this._deadbandByVar.get(varName);
+    if (db !== undefined && typeof value === 'number' && typeof last === 'number') {
+      return Math.abs(value - last) >= db;
+    }
+    return value !== last;
   }
 
   _tick(varName) {
@@ -150,7 +195,7 @@ class SimulatedDevice {
     // Evolucionar el valor (booleanos no cambian, floats hacen drift)
     this._state[varName] = engine.evolve(varName, this._state[varName], this._state, this._sharedState);
     if (varName === 'gen_status') this._syncSharedState();
-    this._publish(varName);
+    if (this._shouldPublish(varName)) this._publish(varName);
   }
 
   // DEC-REF-104 D-4 (#78) — transición de marcha ACOPLADA. Física real: la
@@ -180,7 +225,7 @@ class SimulatedDevice {
     this._sharedState.gen_running = this._state.gen_status === 'RUNNING';
   }
 
-  _publish(varName) {
+  _publish(varName, { force = false } = {}) {
     if (!this._connected) return;
     const value = this._state[varName];
     // Defensa: nunca publicar undefined.
@@ -198,6 +243,7 @@ class SimulatedDevice {
     const topic = `${this._userId}/${this._dId}/${varName}/sdata`;
     const payload = JSON.stringify({ value, save: 1 });
     this._client.publish(topic, payload, { qos: 0 });
+    this._lastPublished.set(varName, value);
   }
 
   applyCommand(cmd) {

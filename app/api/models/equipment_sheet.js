@@ -17,6 +17,10 @@ const VariableSchema = new Schema({
   unit:         { type: String },
   factoryRange: { type: String },
   cadence:      { type: String },
+  // P2 (#79) — umbral de cambio (report-by-exception): precisión/ruido del
+  // sensor según fabricante. Los templates nacidos de esta ficha lo heredan
+  // como widget.deadband. 0/ausente = publicar ante cualquier cambio.
+  deadband:     { type: Number },
   limits:       { type: [LimitSchema], default: [] },  // PUEDE estar vacía (DEC-REF-94, condición Backend #60)
 }, { _id: false });
 

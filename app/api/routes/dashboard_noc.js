@@ -16,9 +16,12 @@ import Data         from "../models/data.js";
 // por "día" pasa por este TZ; si cambia, cambia acá (single point of truth).
 const TZ_OPERACION = "America/Argentina/Buenos_Aires";
 
-// "Dentro de cadencia" = last-data ≤ FACTOR × min(variableSendFreq del template).
-// FACTOR=2 alinea con la lección BUG-SIM-6 (frescura ≥2-3× cadencia) y con el
-// criterio de SF-4 de no marcar offline por jitter puntual.
+// "Dentro de cadencia" = last-data ≤ FACTOR × heartbeatSec del template.
+// P3 (#79): el estado online se mide contra el LATIDO del device (publica
+// todo cada heartbeatSec aunque nada cambie), no contra la cadencia mínima
+// de variables — con publicación por cambio, una variable quieta no dice
+// nada sobre la salud del equipo. FACTOR=2 alinea con la lección BUG-SIM-6
+// y con el criterio de SF-4 de no marcar offline por jitter puntual.
 const CADENCE_TOLERANCE_FACTOR = 2;
 
 // Ventanas fijas por KPI (resolución de sala #49, R2/GATE 2).
@@ -136,6 +139,12 @@ function minCadenceSec(template) {
   return cads.length ? Math.min(...cads) : null;
 }
 
+// P3 (#79) — latido efectivo del template (default 300 s si no declarado).
+function heartbeatSecOf(template) {
+  const hb = template ? Number(template.heartbeatSec) : NaN;
+  return Number.isFinite(hb) && hb > 0 ? hb : 300;
+}
+
 // ── GET /dashboard/noc ──────────────────────────────────────────────────
 router.get("/dashboard/noc", checkAuth, async (req, res) => {
   try {
@@ -165,7 +174,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
             sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: 0, total: 0, unit: null },
             dieselDelta24h: { label: "Diésel 24h", sublabel: "nivel promedio red", value: null, delta24h: null, sitesWithFuel: 0, unit: "%" },
             activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: 0, critical: 0, warning: 0, unit: null },
-            uptime:         { label: "Uptime", sublabel: "% telemetría esperada recibida · 7d", value: null, received: 0, expected: 0, unit: "%" }
+            uptime:         { label: "Uptime", sublabel: "% ventanas de latido con telemetría · 7d", value: null, received: 0, expected: 0, unit: "%" }
           },
           sites: [],
           severityHistogram7d: { tz: TZ_OPERACION, buckets: [] },
@@ -297,10 +306,31 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
       uptimeAggPromise = Promise.resolve(null);
       pesadoStatus = "SKIP";
     } else {
-      uptimeAggPromise = Data.aggregate([
-        { $match: { dId: { $in: allowedDIds }, time: { $gte: sinceUptime } } },
-        { $group: { _id: { dId: "$dId", variable: "$variable" }, count: { $sum: 1 } } }
-      ]).allowDiskUse(true).then(u => {
+      // P4 (#79) — uptime por PRESENCIA de latido, no por volumen: con
+      // publicación por cambio un device sano puede publicar poco. Se cuenta
+      // en cuántas ventanas de heartbeatSec (del template de cada device)
+      // apareció ≥1 dato. Un aggregate por valor de heartbeat distinto
+      // (en la práctica casi siempre uno solo: 300 s default).
+      uptimeAggPromise = (async () => {
+        const byHb = new Map(); // hbSec → [dId]
+        for (const d of devices) {
+          const tpl = templateById.get(String(d.templateId));
+          const hb = heartbeatSecOf(tpl);
+          if (!byHb.has(hb)) byHb.set(hb, []);
+          byHb.get(hb).push(d.dId);
+        }
+        const out = [];
+        for (const [hb, dIds] of byHb) {
+          const hbMs = hb * 1000;
+          const rows = await Data.aggregate([
+            { $match: { dId: { $in: dIds }, time: { $gte: sinceUptime } } },
+            { $group: { _id: { dId: "$dId", bucket: { $subtract: ["$time", { $mod: ["$time", hbMs] }] } } } },
+            { $group: { _id: "$_id.dId", buckets: { $sum: 1 } } }
+          ]).allowDiskUse(true);
+          rows.forEach(r => out.push({ dId: r._id, hb, buckets: r.buckets }));
+        }
+        return out;
+      })().then(u => {
         nocUptimeCache.set(cacheKey, { at: Date.now(), payload: u });
         return u;
       });
@@ -499,17 +529,20 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
 
     const lastTimeByDid = new Map(lastByDidPairs);
 
-    // Sitios Online — cadencia declarada por template.
+    // Sitios Online — P3 (#79): contra el LATIDO del template, no contra la
+    // cadencia mínima de variables. Con publicación por cambio, un equipo
+    // sano puede no publicar una variable quieta por horas; su señal de
+    // vida es el latido (publica todo cada heartbeatSec).
     const onlineBySite = new Map();
     for (const s of sites) {
       const devs = devicesBySite.get(s.siteCode) || [];
       let online = devs.length > 0;
       for (const d of devs) {
         const tpl = templateById.get(String(d.templateId));
-        const cadSec = tpl ? minCadenceSec(tpl) : null;
+        const hbSec = tpl ? heartbeatSecOf(tpl) : null;
         const lastMs = lastTimeByDid.get(d.dId);
-        if (!cadSec || !lastMs) { online = false; break; }
-        if (((now - lastMs) / 1000) > CADENCE_TOLERANCE_FACTOR * cadSec) { online = false; break; }
+        if (!hbSec || !lastMs) { online = false; break; }
+        if (((now - lastMs) / 1000) > CADENCE_TOLERANCE_FACTOR * hbSec) { online = false; break; }
       }
       onlineBySite.set(s.siteCode, online);
     }
@@ -552,31 +585,20 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
     const dieselLevelValue = levelSites > 0 ? Math.round((levelSum / levelSites) * 10) / 10 : null;
     const dieselDeltaValue = deltaSites > 0 ? Math.round((deltaSum / deltaSites) * 10) / 10 : null;
 
-    // Uptime 7d — recibidos / esperados por widget float|int (sin _setpoint).
-    // (DEC-REF-101 D-5) uptimeAgg es null en fase viva sin HIT: el KPI queda
-    // value null con received/expected en 0 hasta el fetch full.
-    const widgetsPerDevice = [];
+    // Uptime 7d — P4 (#79): % de ventanas de latido CON telemetría.
+    // expected por device = 7d / heartbeatSec de su template; received =
+    // ventanas con ≥1 dato (tope en expected). Un device sin ningún dato
+    // en 7d no aparece en uptimeAgg pero SÍ cuenta su expected (0 recibido).
+    const bucketsByDid = new Map((uptimeAgg || []).map(r => [r.dId, r]));
+    let uptimeReceived = 0, uptimeExpected = 0;
     for (const d of devices) {
       const tpl = templateById.get(String(d.templateId));
-      if (!tpl) continue;
-      (tpl.widgets || []).forEach(w => {
-        if (!w || !w.variable) return;
-        if (w.variableType !== "float" && w.variableType !== "int") return;
-        if (w.variable.endsWith(SETPOINT_SUFFIX)) return;
-        const freq = Number(w.variableSendFreq);
-        if (!Number.isFinite(freq) || freq <= 0) return;
-        widgetsPerDevice.push({ dId: d.dId, variable: w.variable, freq });
-      });
-    }
-    const receivedMap = new Map();
-    (uptimeAgg || []).forEach(a => receivedMap.set(`${a._id.dId}|${a._id.variable}`, a.count));
-    let uptimeReceived = 0, uptimeExpected = 0;
-    widgetsPerDevice.forEach(w => {
-      const expected = Math.floor((UPTIME_WINDOW_DAYS * 86400) / w.freq);
-      const received = Math.min(receivedMap.get(`${w.dId}|${w.variable}`) || 0, expected);
+      const hb = heartbeatSecOf(tpl);
+      const expected = Math.floor((UPTIME_WINDOW_DAYS * 86400) / hb);
+      const r = bucketsByDid.get(d.dId);
       uptimeExpected += expected;
-      uptimeReceived += received;
-    });
+      uptimeReceived += Math.min(r ? r.buckets : 0, expected);
+    }
     const uptimeValue = (uptimeAgg && uptimeExpected > 0)
       ? Math.round((uptimeReceived / uptimeExpected) * 1000) / 10
       : null;
@@ -592,7 +614,7 @@ router.get("/dashboard/noc", checkAuth, async (req, res) => {
           sitesOnline:    { label: "Sitios Online", sublabel: "transmitiendo dentro de cadencia", value: sitesOnlineValue, total: sites.length, unit: null },
           dieselDelta24h: { label: "Diésel 24h", sublabel: "nivel promedio red", value: dieselLevelValue, delta24h: dieselDeltaValue, sitesWithFuel: levelSites, unit: "%" },
           activeAlerts:   { label: "Alertas", sublabel: "activas ahora", value: activeAlertsValue, critical: activeCritical, warning: activeWarning, unit: null },
-          uptime:         { label: "Uptime", sublabel: "% telemetría esperada recibida · 7d", value: uptimeValue, received: uptimeReceived, expected: uptimeExpected, unit: "%" }
+          uptime:         { label: "Uptime", sublabel: "% ventanas de latido con telemetría · 7d", value: uptimeValue, received: uptimeReceived, expected: uptimeExpected, unit: "%" }
         },
         sites: sitesTable,
         severityHistogram7d,

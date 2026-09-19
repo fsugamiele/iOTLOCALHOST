@@ -19,6 +19,11 @@ const widgetSchema = new Schema({
     variableFullName: { type: String },
     variableType:     { type: String },
     variableSendFreq: { type: Number },
+    // P2 (#79) — report-by-exception: umbral de cambio. El device solo publica
+    // cuando |valor - últimoPublicado| >= deadband (numéricas). 0/ausente =
+    // publica ante cualquier cambio. Nace en la ficha (precisión del
+    // fabricante), se edita acá por template. Bool/string: cualquier cambio.
+    deadband:         { type: Number },
 
     unit:   { type: String, default: '' },
     widget: {
@@ -61,6 +66,11 @@ const templateSchema = new Schema({
     name:        { type: String, required: [true] },
     description: { type: String },
     deviceType:  { type: String, default: '' },  // S3 (DEC-REF-91/-92): referencia a la ficha (equipmentsheets.deviceType); '' = sin ficha, compat con plantillas pre-ficha. NO copia: la ficha es madre
+    // P2 (#79) — latido del device: si nada cambió, publica igual cada
+    // heartbeatSec para probar que está vivo. El estado online del sitio y
+    // el KPI uptime se calculan contra ESTE valor, no contra la cadencia de
+    // cada variable (esa queda como cadencia de evaluación/evolución).
+    heartbeatSec: { type: Number, default: 300 },
     createdTime: { type: Number, required: [true] },
     widgets:     { type: [widgetSchema], default: [] },
 });

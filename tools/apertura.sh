@@ -49,13 +49,9 @@ echo "Bitácora: ${BITACORA}"
 echo "=========================================="
 echo
 echo "Si el sim está caído, ESTE es el único arranque válido"
-echo "(NO sourcear app/.env — MQTT_PORT=8083 es WebSocket, el sim usa TCP):"
+echo "(vía supervisor: relanza solo si el sim muere — NO lanzar run.js directo):"
 cat <<'ARRANQUE'
-E=$(grep -E '^TEST_USER_EMAIL=' app/.env|cut -d= -f2-|tr -d '"'"'"'\r')
-W=$(grep -E '^TEST_USER_PWD='   app/.env|cut -d= -f2-|tr -d '"'"'"'\r')
-USER_EMAIL="$E" USER_PASSWORD="$W" SIMULATOR_MODE=true \
-  nohup node tools/device_simulator/run.js >> logs/sim-CR00061.log 2>&1 &
-unset E W
+setsid nohup bash tools/device_simulator/supervisor.sh >> logs/sim-CR00061.log 2>&1 < /dev/null &
 ARRANQUE
 echo
 echo "Recordatorio: si commiteaste corpus, RE-SUBIR WanomiRefactor.md"

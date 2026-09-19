@@ -60,7 +60,7 @@ router.post("/getdevicecredentials", async (req, res) => {
     const activeRules = await Rule.find({ userId, dId, status: true });
 
     const variables = template.widgets.map(widget => {
-      const { variable, variableFullName, variableType, variableSendFreq } = widget;
+      const { variable, variableFullName, variableType, variableSendFreq, deadband } = widget;
 
       // Among all active rules for this variable, use the minimum triggerTime.
       // If no active rules exist for this variable, fall back to the template default.
@@ -69,13 +69,18 @@ router.post("/getdevicecredentials", async (req, res) => {
         ? Math.min(...rulesForVar.map(r => r.triggerTime))
         : Number(variableSendFreq) || 30;
 
-      return { variable, variableFullName, variableType, variableSendFreq: effectiveFreq };
+      // P2 (#79) — deadband viaja al device: publicación por cambio
+      // (report-by-exception). undefined si el template no lo define.
+      return { variable, variableFullName, variableType, variableSendFreq: effectiveFreq, deadband };
     });
 
     res.json({
       username: credentials.username,
       password: credentials.password,
       topic: userId + "/" + dId + "/",
+      // P2 (#79) — latido: aunque nada cambie, el device publica todo cada
+      // heartbeatSec. Default 300 si el template no lo declara.
+      heartbeatSec: Number(template.heartbeatSec) > 0 ? Number(template.heartbeatSec) : 300,
       variables
     });
   } catch (error) {
