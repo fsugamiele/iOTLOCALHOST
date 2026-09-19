@@ -196,6 +196,9 @@
           >
             <i class="fa fa-arrow-right"></i>
           </base-button>
+          <base-button size="sm" type="warning" icon @click="openEditWidget(index)">
+            <i class="fa fa-pencil"></i>
+          </base-button>
           <base-button size="sm" type="danger" icon @click="deleteWidget(index)">
             <i class="fa fa-trash"></i>
           </base-button>
@@ -381,6 +384,60 @@
       </span>
     </el-dialog>
 
+    <!-- WIDGET EDIT MODAL (DEC-REF-107 Paso 2): edición in-situ de un widget
+         de la plantilla en construcción (gráfica + tamaño + variables), con
+         el mismo formulario genérico del builder. Reemplaza el "borrar y
+         rehacer". Desde la tabla, la ✏️ carga la plantilla en el builder y
+         cada widget se edita acá. -->
+    <el-dialog
+      :title="editDescriptor ? 'Editar Widget — ' + editDescriptor.label : 'Editar Widget'"
+      :visible.sync="showEditWidgetModal"
+      width="70%"
+      append-to-body
+      @close="closeEditWidget"
+    >
+      <div v-if="editWidgetDraft && editDescriptor" class="row">
+        <div class="col-7">
+          <!-- Re-elección de la variable técnica desde la ficha (DEC-REF-97) -->
+          <div v-if="sheetVariables.length && editDescriptor.isVariableWidget">
+            <label class="control-label">
+              Variable de la ficha <code style="font-size:11px">{{ templateDeviceType }}</code>
+            </label>
+            <el-select
+              v-model="editSheetVarPick"
+              class="select-info"
+              placeholder="Elegir variable del catálogo de la ficha"
+              style="width:100%; margin-bottom:12px"
+              filterable
+              @change="applyEditSheetVariable"
+            >
+              <el-option
+                v-for="v in sheetVariables"
+                :key="v.name"
+                :value="v.name"
+                :label="sheetVarLabel(v)"
+              />
+            </el-select>
+          </div>
+          <widget-config-form
+            :descriptor="editDescriptor"
+            :config="editWidgetDraft"
+            :sheet-variables="sheetVariables"
+          />
+        </div>
+        <div class="col-5">
+          <h6 class="text-muted"><i class="fa fa-eye" style="margin-right:6px"></i>Vista Previa</h6>
+          <component :is="resolveWidget(editWidgetDraft.widget, { context: 'editor' })" :config="editWidgetDraft" />
+        </div>
+      </div>
+      <span slot="footer">
+        <base-button type="default" @click="closeEditWidget">Cancelar</base-button>
+        <base-button type="primary" :disabled="!canSaveEditWidget" @click="saveEditWidget">
+          Guardar cambios
+        </base-button>
+      </span>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -432,6 +489,12 @@ export default {
       sheets: [],
       templateDeviceType: "",
       sheetVarPick: "",
+
+      // DEC-REF-107 (Paso 2): edición in-situ de un widget ya agregado.
+      showEditWidgetModal: false,
+      editWidgetIndex: null,
+      editWidgetDraft: null,
+      editSheetVarPick: "",
     };
   },
 
@@ -440,6 +503,18 @@ export default {
     // defaults, dedupe y normalización).
     activeDescriptor() {
       return getDescriptor(this.widgetType);
+    },
+    // DEC-REF-107 (Paso 2): descriptor del widget en edición.
+    editDescriptor() {
+      return this.editWidgetDraft ? getDescriptor(this.editWidgetDraft.widget) : null;
+    },
+    canSaveEditWidget() {
+      const d = this.editDescriptor;
+      const cfg = this.editWidgetDraft;
+      if (!d || !cfg) return false;
+      if (!cfg.variableFullName || !cfg.variableFullName.trim()) return false;
+      if (d.isVariableWidget && (!cfg.variable || !cfg.variable.trim())) return false;
+      return true;
     },
     canAddWidget() {
       const d = this.activeDescriptor;
@@ -550,9 +625,10 @@ export default {
       }
     },
 
-    applySheetVariable(varName) {
+    // DEC-REF-107 (Paso 2): la herencia desde la ficha se aplica a un config
+    // dado (widgetDraft en el builder, editWidgetDraft en la edición).
+    applySheetVariableTo(cfg, varName) {
       const v = this.sheetVariables.find((x) => x.name === varName);
-      const cfg = this.widgetDraft;
       if (!v || !cfg) return;
       // La variable TÉCNICA es la de la ficha (es la que viaja en el topic
       // MQTT y la que compara el motor de reglas — DEC-REF-91).
@@ -565,11 +641,84 @@ export default {
       // valueStatus declara variableType propio: se adopta el de la ficha
       // solo si es uno de los 4 que el widget entiende.
       if (
-        this.widgetType === "valueStatus" &&
+        cfg.widget === "valueStatus" &&
         ["float", "int", "bool", "categorical"].includes(v.type)
       ) {
         cfg.variableType = v.type;
       }
+    },
+
+    applySheetVariable(varName) {
+      this.applySheetVariableTo(this.widgetDraft, varName);
+    },
+
+    // DEC-REF-107 (Paso 2): mismo mecanismo dentro del modal de edición.
+    applyEditSheetVariable(varName) {
+      this.editSheetVarPick = varName;
+      this.applySheetVariableTo(this.editWidgetDraft, varName);
+    },
+
+    // DEC-REF-107 (Paso 2): dedupe compartido por alta y edición.
+    // Devuelve el mensaje de conflicto o null. excludeIndex omite un widget
+    // (la propia posición en edición); -1 = alta (no omite ninguno).
+    findDuplicateMessage(config, d, excludeIndex) {
+      const isAlarms = d.dedupeKey === "type";
+      const isVariableWidget = d.isVariableWidget;
+      const fromSheet = this.sheetVariableNames.includes(config.variable);
+      const others = this.widgets.filter((_, i) => i !== excludeIndex);
+      if (isAlarms) {
+        // equipmentAlarms: uno por plantilla (su fuente es el feed del sitio).
+        if (others.some((w) => w.widget === d.type)) {
+          return "Ya hay un widget de alarmas del equipo en esta plantilla (uno alcanza)";
+        }
+      } else if (isVariableWidget || fromSheet) {
+        // DEC-REF-76-B (ii): dedupe por `variable` (clave real de unicidad).
+        const varName = (config.variable || "").trim();
+        if (others.some((w) => w.variable === varName)) {
+          return `Ya existe un widget con la variable "${varName}"`;
+        }
+      } else {
+        // Legacy: dedupe por variableFullName (el makeid garantiza `variable` único).
+        const label = (config.variableFullName || "").trim();
+        if (others.some((w) => (w.variableFullName || "").trim() === label)) {
+          return `Ya existe un widget con la variable "${label}"`;
+        }
+      }
+      return null;
+    },
+
+    // DEC-REF-107 (Paso 2): abre el modal con una copia del widget elegido.
+    openEditWidget(index) {
+      this.editWidgetIndex = index;
+      this.editWidgetDraft = JSON.parse(JSON.stringify(this.widgets[index]));
+      this.editSheetVarPick = "";
+      this.showEditWidgetModal = true;
+    },
+
+    saveEditWidget() {
+      const d = this.editDescriptor;
+      const cfg = this.editWidgetDraft;
+      if (!d || !cfg || !this.canSaveEditWidget) return;
+
+      const dup = this.findDuplicateMessage(cfg, d, this.editWidgetIndex);
+      if (dup) {
+        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: dup });
+        return;
+      }
+
+      // Misma normalización que el alta (toNumOrNull / restore defaults /
+      // filtro enumValues) para que la edición no persista ""/NaN.
+      d.normalize(cfg);
+      this.$set(this.widgets, this.editWidgetIndex, JSON.parse(JSON.stringify(cfg)));
+      this.closeEditWidget();
+      this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Widget actualizado" });
+    },
+
+    closeEditWidget() {
+      this.showEditWidgetModal = false;
+      this.editWidgetDraft = null;
+      this.editWidgetIndex = null;
+      this.editSheetVarPick = "";
     },
 
     moveWidget(index, direction) {
@@ -759,38 +908,11 @@ export default {
       // (técnica) y NO se pisa con makeid.
       const fromSheet = this.sheetVariableNames.includes(config.variable);
 
-      if (isAlarms) {
-        // equipmentAlarms: uno por plantilla (su fuente es el feed del sitio).
-        if (this.widgets.some((w) => w.widget === d.type)) {
-          this.$notify({
-            type: "warning",
-            icon: "tim-icons icon-alert-circle-exc",
-            message: "Ya hay un widget de alarmas del equipo en esta plantilla (uno alcanza)",
-          });
-          return;
-        }
-      } else if (isVariableWidget || fromSheet) {
-        // DEC-REF-76-B (ii): dedupe por `variable` (clave real de unicidad).
-        const varName = (config.variable || "").trim();
-        if (this.widgets.some((w) => w.variable === varName)) {
-          this.$notify({
-            type: "warning",
-            icon: "tim-icons icon-alert-circle-exc",
-            message: `Ya existe un widget con la variable "${varName}"`,
-          });
-          return;
-        }
-      } else {
-        // Legacy: dedupe por variableFullName (el makeid garantiza `variable` único).
-        const label = (config.variableFullName || "").trim();
-        if (this.widgets.some((w) => (w.variableFullName || "").trim() === label)) {
-          this.$notify({
-            type: "warning",
-            icon: "tim-icons icon-alert-circle-exc",
-            message: `Ya existe un widget con la variable "${label}"`,
-          });
-          return;
-        }
+      // DEC-REF-107 (Paso 2): dedupe compartido con la edición por-widget.
+      const dup = this.findDuplicateMessage(config, d, -1);
+      if (dup) {
+        this.$notify({ type: "warning", icon: "tim-icons icon-alert-circle-exc", message: dup });
+        return;
       }
 
       // DEC-REF-76-B (i) / DEC-REF-98: NO pisar `variable` con makeid en los
