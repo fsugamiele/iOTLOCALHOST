@@ -102,9 +102,28 @@ export default {
   },
   mounted() {
     this.startRefreshTimer();
+    // DEC-REF-105 D-3 (extensión #79-c) — el gráfico también es event-driven:
+    // cuando llega un sdata de LA VARIABLE seleccionada, se re-fetchea en
+    // silencio (debounce 3 s para colapsar ráfagas). Con report-by-exception
+    // ese evento ES "el valor cambió de verdad" — el punto nuevo aparece en
+    // el gráfico en segundos, no en el próximo tick del timer. El timer de
+    // refreshSec queda como red de seguridad (ventana que avanza, TZ, etc.).
+    this._sdataHandler = ({ topic } = {}) => {
+      if (!topic || !this.selectedVariable) return;
+      const parts = topic.split('/');
+      if (parts.length < 4 || parts[2] !== this.selectedVariable) return;
+      if (this._sdataTimer) clearTimeout(this._sdataTimer);
+      this._sdataTimer = setTimeout(() => {
+        this._sdataTimer = null;
+        this.fetchTrend({ silent: true });
+      }, 3000);
+    };
+    this.$nuxt.$on('wanomi:sdata', this._sdataHandler);
   },
   beforeDestroy() {
     if (this.refreshTimer) { clearInterval(this.refreshTimer); this.refreshTimer = null; }
+    if (this._sdataTimer)  { clearTimeout(this._sdataTimer); this._sdataTimer = null; }
+    if (this._sdataHandler){ this.$nuxt.$off('wanomi:sdata', this._sdataHandler); this._sdataHandler = null; }
   },
   computed: {
     hasNoData() {

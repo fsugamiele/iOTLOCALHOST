@@ -12221,3 +12221,7 @@ Build exit 0 · node restart · sim relanzado por el supervisor bootea con el co
 **Verificación E2E:** fuel→12 → fire en **10 ms** · fuel→75 → resolve en **12 ms**. Simétrico e instantáneo en ambos sentidos.
 
 **Límite conocido (carry-over):** si una restauración cruza el umbral de alarma pero con Δ menor al deadband (ej. 14,5→15,4% con deadband 1), no publica hasta el latido — clareo acotado a ≤5 min en ese rincón. Fix candidato para #80: el device publica SIEMPRE al cruzar un nivel significativo (límites de la ficha viajan en el bootstrap), independiente del deadband.
+
+### Adenda #79-c — Gráfico de tendencia: datos sanos + ahora también event-driven
+
+**Pregunta de Franco:** ¿el gráfico funciona bien y recibe/muestra datos por eventos? **Verificación de datos (24h, fuel_level y mains_voltage):** series sanas — bucket 3,6 min, último punto hace ≤5,3 min (el latido de 300 s garantiza un punto por ventana aunque la variable no cambie), gaps de exactamente 1 bucket, cardStat correcto (fuel mostró el Δ-14,06 de la prueba de alarma). **Respuesta sobre eventos: NO los tenía** — era la única pieza del Panel que seguía polleando con su propio timer (refreshSec del menú). **Corregido (extensión de DEC-REF-105 D-3):** el gráfico escucha `wanomi:sdata` y re-fetchea en silencio (debounce 3 s) cuando el mensaje entrante es de LA VARIABLE seleccionada; el timer del menú queda como red de seguridad. Build + restart verificados (bundle servido con el handler; UI 200 en :3000).
