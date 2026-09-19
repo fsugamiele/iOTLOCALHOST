@@ -1,6 +1,6 @@
 <template>
   <div v-if="descriptor">
-    <template v-for="(field, i) in descriptor.fields">
+    <template v-for="(field, i) in visibleFields">
 
       <!-- VARIABLE (DEC-REF-97): libre sin ficha; fijada/disabled con ficha -->
       <div :key="i" v-if="field.kind === 'variable'">
@@ -182,6 +182,15 @@ export default {
       colorOptions: COLOR_OPTIONS,
       columnOptions: COLUMN_OPTIONS,
     };
+  },
+  computed: {
+    // DEC-REF-107 (Paso 2): campos condicionales — un field con showIf solo
+    // se muestra si su predicado sobre el config da true (p.ej. la config del
+    // gauge solo aparece con render='gauge').
+    visibleFields() {
+      const fields = (this.descriptor && this.descriptor.fields) || [];
+      return fields.filter((f) => !f.showIf || f.showIf(this.config));
+    },
   },
   methods: {
     getByPath(path) {

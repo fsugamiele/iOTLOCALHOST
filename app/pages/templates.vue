@@ -52,40 +52,40 @@
               placeholder="Widget"
               style="width: 100%;"
             >
-              <el-option value="numberchart" label="Number Chart — Sensor Numérico (entrada ←)">
-                <i class="fa fa-chart-line" style="margin-right:8px"></i>Number Chart — Sensor Numérico (entrada ←)
+              <!-- DEC-REF-107 (Paso 2): tipos por FORMA DE DATO. Los numéricos
+                   (valor+luz, gauge, tanque, contador, ícono) se unifican en
+                   'Valor Numérico' + representación. Los tipos numéricos legacy
+                   (numberchart, valueStatus, tankLevel, projectedAutonomy)
+                   siguen resolviéndose para plantillas ya guardadas, pero no se
+                   ofrecen para altas nuevas. -->
+              <el-option value="numeric" label="Valor Numérico — sensor (gauge / tanque / contador / valor)">
+                <i class="fa fa-tachometer-alt" style="margin-right:8px"></i>Valor Numérico — sensor (gauge / tanque / contador / valor)
               </el-option>
-              <el-option value="indicator" label="Indicador Booleano — On/Off (entrada ←)">
-                <i class="fa fa-toggle-on" style="margin-right:8px"></i>Indicador Booleano — On/Off (entrada ←)
-              </el-option>
-              <el-option value="switch" label="Switch — Control On/Off (salida →)">
-                <i class="fa fa-power-off" style="margin-right:8px"></i>Switch — Control On/Off (salida →)
-              </el-option>
-              <el-option value="button" label="Botón — Envío de Comando (salida →)">
-                <i class="fa fa-hand-pointer" style="margin-right:8px"></i>Botón — Envío de Comando (salida →)
-              </el-option>
-              <el-option value="valueStatus" label="Valor con Estado — luz por umbral (catálogo)">
-                <i class="fa fa-signal" style="margin-right:8px"></i>Valor con Estado — luz por umbral (catálogo)
-              </el-option>
-              <!-- DEC-REF-98 D-3 (#73): widgets Wanomi 3.0 -->
-              <el-option-group label="Wanomi 3.0">
-                <el-option value="tankLevel" label="Nivel de Tanque — % con litros (Wanomi 3.0)">
-                  <i class="fa fa-tint" style="margin-right:8px"></i>Nivel de Tanque — % con litros (Wanomi 3.0)
+              <el-option-group label="Estado">
+                <el-option value="indicator" label="Indicador Booleano — On/Off">
+                  <i class="fa fa-toggle-on" style="margin-right:8px"></i>Indicador Booleano — On/Off
                 </el-option>
-                <el-option value="multiState" label="Estado Múltiple — estado nombrado con catálogo (Wanomi 3.0)">
-                  <i class="fa fa-toggle-on" style="margin-right:8px"></i>Estado Múltiple — estado nombrado con catálogo (Wanomi 3.0)
+                <el-option value="booleanDwell" label="Permanencia Booleana — cuánto lleva en este estado">
+                  <i class="fa fa-clock" style="margin-right:8px"></i>Permanencia Booleana — cuánto lleva en este estado
                 </el-option>
-                <el-option value="projectedAutonomy" label="Autonomía Proyectada — horas que publica el equipo (Wanomi 3.0)">
-                  <i class="fa fa-battery-half" style="margin-right:8px"></i>Autonomía Proyectada — horas que publica el equipo (Wanomi 3.0)
+                <el-option value="multiState" label="Estado Múltiple — estado nombrado con catálogo">
+                  <i class="fa fa-toggle-on" style="margin-right:8px"></i>Estado Múltiple — estado nombrado con catálogo
                 </el-option>
-                <el-option value="dataFreshness" label="Frescura de Datos — hace cuánto llegó el dato (Wanomi 3.0)">
-                  <i class="fa fa-sync" style="margin-right:8px"></i>Frescura de Datos — hace cuánto llegó el dato (Wanomi 3.0)
+                <el-option value="dataFreshness" label="Frescura de Datos — hace cuánto llegó el dato">
+                  <i class="fa fa-sync" style="margin-right:8px"></i>Frescura de Datos — hace cuánto llegó el dato
                 </el-option>
-                <el-option value="booleanDwell" label="Permanencia Booleana — cuánto lleva en este estado (Wanomi 3.0)">
-                  <i class="fa fa-clock" style="margin-right:8px"></i>Permanencia Booleana — cuánto lleva en este estado (Wanomi 3.0)
+              </el-option-group>
+              <el-option-group label="Sitio">
+                <el-option value="equipmentAlarms" label="Alarmas del Equipo — feed del sitio filtrado">
+                  <i class="fa fa-bell" style="margin-right:8px"></i>Alarmas del Equipo — feed del sitio filtrado
                 </el-option>
-                <el-option value="equipmentAlarms" label="Alarmas del Equipo — feed del sitio filtrado (Wanomi 3.0)">
-                  <i class="fa fa-bell" style="margin-right:8px"></i>Alarmas del Equipo — feed del sitio filtrado (Wanomi 3.0)
+              </el-option-group>
+              <el-option-group label="Control (salida →)">
+                <el-option value="switch" label="Switch — Control On/Off">
+                  <i class="fa fa-power-off" style="margin-right:8px"></i>Switch — Control On/Off
+                </el-option>
+                <el-option value="button" label="Botón — Envío de Comando">
+                  <i class="fa fa-hand-pointer" style="margin-right:8px"></i>Botón — Envío de Comando
                 </el-option>
               </el-option-group>
             </el-select>

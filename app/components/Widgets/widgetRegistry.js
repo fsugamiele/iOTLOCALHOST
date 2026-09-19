@@ -92,6 +92,22 @@ const VARIABLE_TYPE_OPTIONS = [
   { value: 'categorical', label: 'categorical — estado nombrado' },
 ];
 
+// DEC-REF-107 (Paso 2): representaciones de la familia numérica. El usuario
+// elige cómo se dibuja el mismo dato (desacople representación↔tipo).
+const NUMERIC_TYPE_OPTIONS = [
+  { value: 'float', label: 'float — número con decimales' },
+  { value: 'int',   label: 'int — número entero' },
+];
+const RENDER_OPTIONS = [
+  { value: 'valueStatus', label: 'Valor con luz de estado' },
+  { value: 'gauge',       label: 'Gauge / tacómetro (autonomía, RPM, presión…)' },
+  { value: 'tank',        label: 'Tanque — nivel con líquido (gasoil, batería…)' },
+  { value: 'counter',     label: 'Contador surtidor (litros, horas, kWh…)' },
+  { value: 'icon',        label: 'Ícono + valor (estilo clásico)' },
+];
+// Helper de visibilidad condicional por representación.
+const renderIn = (...vals) => (cfg) => vals.includes(cfg.render);
+
 // ── Helpers de color/tamaño (antes métodos privados de templates.vue) ───────
 export function colorHex(v)    { const c = COLOR_OPTIONS.find((o) => o.value === v); return c ? c.hex : '#aaa'; }
 export function colorLabel(v)  { const c = COLOR_OPTIONS.find((o) => o.value === v); return c ? c.label : v; }
@@ -111,6 +127,74 @@ const VAR_LOCKED_LABEL = 'Variable (técnica — se fija desde la ficha, arriba)
 // FieldSpec.model = ruta al campo del config ('unit', 'thresholds.criticalLow').
 
 export const WIDGET_REGISTRY = {
+
+  // ── VALOR NUMÉRICO (DEC-REF-107 Paso 2) ──────────────────────────────
+  // Un solo tipo por FORMA DE DATO; la visual la elige el usuario en `render`.
+  // Los campos gráficos se muestran según la representación (showIf).
+  numeric: {
+    type: 'numeric',
+    label: 'Valor Numérico — sensor (representación configurable)',
+    icon: 'fa-tachometer-alt',
+    group: 'wanomi',
+    isVariableWidget: true,
+    dedupeKey: 'variable',
+    fields: [
+      { kind: 'variable', model: 'variable', label: 'Variable (nombre técnico, ej: rpm)', lockedLabel: VAR_LOCKED_LABEL },
+      { kind: 'text',     model: 'variableFullName', label: 'Nombre de Variable' },
+      { kind: 'select',   model: 'variableType', label: 'Tipo de dato', options: NUMERIC_TYPE_OPTIONS },
+      { kind: 'text',     model: 'unit',             label: 'Unidad (ej: rpm, psi, %, L)' },
+      { kind: 'number',   model: 'variableSendFreq', label: 'Frecuencia de Envío (seg)' },
+      { kind: 'number',   model: 'deadband',         label: 'Umbral de cambio (opcional — publica solo si el valor varía al menos esto)' },
+      // Selector de representación gráfica.
+      { kind: 'select',   model: 'render', label: 'Representación gráfica', options: RENDER_OPTIONS },
+      // Campos condicionales según la representación:
+      { kind: 'icon',     model: 'icon', showIf: renderIn('icon') },
+      { kind: 'number',   model: 'decimalPlaces', label: 'Decimales', showIf: renderIn('valueStatus', 'icon', 'counter', 'gauge') },
+      { kind: 'number',   model: 'gaugeMin', label: 'Mínimo del gauge (opcional — automático si vacío)', showIf: renderIn('gauge') },
+      { kind: 'number',   model: 'gaugeMax', label: 'Máximo del gauge (opcional — automático si vacío)', showIf: renderIn('gauge') },
+      { kind: 'number',   model: 'tankCapacity', label: 'Capacidad del tanque (opcional)', showIf: renderIn('tank') },
+      { kind: 'text',     model: 'tankUnit', label: 'Unidad de capacidad (ej: L)', showIf: renderIn('tank') },
+      { kind: 'number',   model: 'thresholds.criticalLow',  label: 'Umbral crítico bajo (color)',  showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon') },
+      { kind: 'number',   model: 'thresholds.warningLow',   label: 'Umbral warning bajo (color)',   showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon') },
+      { kind: 'number',   model: 'thresholds.warningHigh',  label: 'Umbral warning alto (color)',   showIf: renderIn('valueStatus', 'gauge', 'icon') },
+      { kind: 'number',   model: 'thresholds.criticalHigh', label: 'Umbral crítico alto (color)',   showIf: renderIn('valueStatus', 'gauge', 'icon') },
+      { kind: 'help', text: 'La representación no cambia el dato: elegís cómo se dibuja el mismo sensor. Los umbrales pintan el color/zonas del gráfico.' },
+      { kind: 'size',     model: 'column' },
+    ],
+    defaultConfig: () => ({
+      variable: '',
+      variableFullName: '',
+      variableType: 'float',
+      unit: '',
+      variableSendFreq: 60,
+      deadband: null,
+      decimalPlaces: null,
+      render: 'valueStatus',
+      icon: 'fa-tachometer-alt',
+      column: 'col-4',
+      widget: 'numeric',
+      thresholds: { criticalLow: null, warningLow: null, warningHigh: null, criticalHigh: null },
+      gaugeMin: null,
+      gaugeMax: null,
+      tankCapacity: null,
+      tankUnit: 'L',
+    }),
+    normalize(cfg) {
+      const n = (v) => (Number.isFinite(v) ? v : null);
+      cfg.deadband = n(cfg.deadband);
+      cfg.decimalPlaces = n(cfg.decimalPlaces);
+      cfg.gaugeMin = n(cfg.gaugeMin);
+      cfg.gaugeMax = n(cfg.gaugeMax);
+      cfg.tankCapacity = n(cfg.tankCapacity);
+      cfg.thresholds = {
+        criticalLow:  n(cfg.thresholds && cfg.thresholds.criticalLow),
+        warningLow:   n(cfg.thresholds && cfg.thresholds.warningLow),
+        warningHigh:  n(cfg.thresholds && cfg.thresholds.warningHigh),
+        criticalHigh: n(cfg.thresholds && cfg.thresholds.criticalHigh),
+      };
+      cfg.variableSendFreq = Number.isFinite(cfg.variableSendFreq) ? cfg.variableSendFreq : 60;
+    },
+  },
 
   // ── LEGACY (grupo input/output) ──────────────────────────────────────
   numberchart: {

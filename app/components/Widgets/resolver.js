@@ -32,6 +32,10 @@ import BooleanDwellLive       from '@/components/Widgets/BooleanDwellLive.vue';
 import BooleanDwellEditor     from '@/components/Widgets/BooleanDwellEditor.vue';
 import EquipmentAlarmsLive    from '@/components/Widgets/EquipmentAlarmsLive.vue';
 import EquipmentAlarmsEditor  from '@/components/Widgets/EquipmentAlarmsEditor.vue';
+// DEC-REF-107 (Paso 2) — familia numérica: un tipo, varias representaciones
+// (la visual la elige config.render vía el dispatcher NumericValue).
+import NumericLive            from '@/components/Widgets/NumericLive.vue';
+import NumericEditor          from '@/components/Widgets/NumericEditor.vue';
 
 const LEGACY = {
   numberchart: Rtnumberchart,
@@ -41,6 +45,7 @@ const LEGACY = {
 };
 
 const CATALOG_LIVE = {
+  numeric:           NumericLive,
   valueStatus:       ValueStatusLive,
   tankLevel:         TankLevelLive,
   multiState:        MultiStateLive,
@@ -53,6 +58,7 @@ const CATALOG_LIVE = {
 };
 
 const CATALOG_EDITOR = {
+  numeric:           NumericEditor,
   valueStatus:       ValueStatusEditor,
   tankLevel:         TankLevelEditor,
   multiState:        MultiStateEditor,

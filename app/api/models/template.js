@@ -33,8 +33,19 @@ const widgetSchema = new Schema({
             'valueStatus', 'tankLevel', 'counter', 'multiState',
             'equipmentAlarms', 'miniTrend', 'projectedAutonomy', 'dataFreshness',
             'activeRecommendation', 'dcPlant', 'powerCascade', 'booleanDwell',
+            // DEC-REF-107 (Paso 2): tipo por FORMA DE DATO; la visual la elige
+            // el usuario en `render` (desacople representación↔tipo).
+            'numeric',
         ],
     },
+
+    // DEC-REF-107 (Paso 2): representación gráfica elegida por el usuario para
+    // el tipo `numeric` (valueStatus | gauge | tank | counter | icon | ...).
+    // Ausente = compat: los tipos legacy dibujan por su `widget`.
+    render:        { type: String },
+    // Rango del gauge (opcional; vacío = automático).
+    gaugeMin:      { type: Number },
+    gaugeMax:      { type: Number },
 
     icon:          { type: String },
     class:         { type: String },
