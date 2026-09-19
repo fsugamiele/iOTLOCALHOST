@@ -326,11 +326,16 @@ router.delete("/user/:userId", checkAuth, async (req, res) => {
 //**********************
 
 // mqtt credential types: "user", "device", "superuser"
+// DEC-REF-104 D-1 (#78) — multi-sesión: cada llamada CREA una credencial nueva
+// en vez de rotar la única. La rotación invalidaba a las sesiones vivas (dos
+// pestañas se desconectaban mutuamente en loop — medido en log EMQX: mismo
+// clientId rechazado con usernames sucesivos). Cada pestaña/dispositivo vive
+// con su credencial hasta que la limpieza la retira.
 async function getWebUserMqttCredentials(userId, req) {
   try {
     // DEC-REF-38 — ACL B-narrow α-estricta: subscribe a sdata/notif/actdata por dId
     // del scope, publish solo a actdata por dId; más {userId}/# propio. Reescrito en
-    // cada llamada (CREATE y UPDATE) → scope fresco con grants actualizados (DEC-REF-29/32).
+    // cada llamada → scope fresco con grants actualizados (DEC-REF-29/32).
     const owned = await resolveScopedDIdsWithOwner(req);
     const subTopics = [userId + "/#"];
     const pubTopics = [userId + "/#"];
@@ -341,53 +346,34 @@ async function getWebUserMqttCredentials(userId, req) {
       pubTopics.push(owner + "/" + dId + "/+/actdata");
     }
 
-    var rule = await EmqxAuthRule.find({ type: "user", userId: userId });
+    const plainPassword = makeid(10);
+    const newRule = {
+      userId: userId,
+      username: makeid(10),
+      password: hashPassword(plainPassword),
+      publish: pubTopics,
+      subscribe: subTopics,
+      type: "user",
+      time: Date.now(),
+      updatedTime: Date.now()
+    };
 
-    if (rule.length == 0) {
-      const plainPassword = makeid(10);
-      const newRule = {
-        userId: userId,
-        username: makeid(10),
-        password: hashPassword(plainPassword),
-        publish: pubTopics,
-        subscribe: subTopics,
-        type: "user",
-        time: Date.now(),
-        updatedTime: Date.now()
-      };
+    const result = await EmqxAuthRule.create(newRule);
 
-      const result = await EmqxAuthRule.create(newRule);
-
-      return {
-        username: result.username,
-        password: plainPassword
-      };
+    // Limpieza: conservar solo las últimas 5 credenciales del usuario (las
+    // sesiones vivas recientes); las viejas se retiran para no acumular
+    // entradas en la colección que lee emqx_auth_mongo.
+    const KEEP = 5;
+    const stale = await EmqxAuthRule.find({ type: "user", userId: userId })
+      .sort({ time: -1 }).skip(KEEP).select("_id");
+    if (stale.length > 0) {
+      await EmqxAuthRule.deleteMany({ _id: { $in: stale.map(r => r._id) } });
     }
 
-    const newUserName = makeid(10);
-    const newPassword = makeid(10);
-
-    const result = await EmqxAuthRule.updateOne(
-      { type: "user", userId: userId },
-      {
-        $set: {
-          username: newUserName,
-          password: hashPassword(newPassword),
-          publish: pubTopics,
-          subscribe: subTopics,
-          updatedTime: Date.now()
-        }
-      }
-    );
-
-    if (result.n == 1 && result.ok == 1) {
-      return {
-        username: newUserName,
-        password: newPassword
-      };
-    } else {
-      return false;
-    }
+    return {
+      username: result.username,
+      password: plainPassword
+    };
   } catch (error) {
     console.log(error);
     return false;

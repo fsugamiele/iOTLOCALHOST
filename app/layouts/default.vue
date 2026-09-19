@@ -222,6 +222,12 @@ export default {
   },
   async mounted() {
     this.$store.dispatch("getNotifications");
+    // DEC-REF-104 D-3 (#78) — refresh periódico del dropdown: el vivo por MQTT
+    // se congela si el cliente del browser queda desconectado; con esto la
+    // campana nunca envejece más de 60 s aunque MQTT esté caído.
+    this._notifPoll = setInterval(() => {
+      this.$store.dispatch("getNotifications");
+    }, 60000);
     this.initScrollbar();
     // Pieza 3 (DEC-REF-38) — await getDevices ANTES de armar MQTT: la suscripción
     // ahora es por (owner, dId) del scope; necesita el store poblado. Reemplaza el
@@ -231,6 +237,7 @@ export default {
   },
   beforeDestroy() {
     this.$nuxt.$off("mqtt-sender");
+    if (this._notifPoll) { clearInterval(this._notifPoll); this._notifPoll = null; }
   },
   methods: {
     async getMqttCredentials() {
@@ -257,7 +264,10 @@ export default {
       } catch (error) {
         console.log(error);
 
-        if (error.response.status == 401) {
+        // DEC-REF-104 D-2 — error.response puede no existir (red caída, API
+        // down): sin la guarda, el TypeError rompía el flujo y el cliente
+        // quedaba sin credenciales ni reconexión.
+        if (error.response && error.response.status == 401) {
           console.log("NO VALID TOKEN");
           localStorage.clear();
 
@@ -291,6 +301,15 @@ export default {
       // Defensive cleanup before (re)starting to avoid listener accumulation
       this.$nuxt.$off("mqtt-sender");
       await this.getMqttCredentials();
+
+      // DEC-REF-104 D-2 — sin credencial válida NO conectar (con la vieja o
+      // vacía es CONNACK fatal "Not authorized" y un loop inútil): reintentar
+      // en 5 s. La credencial nueva es multi-sesión (DEC-REF-104 D-1): pedir
+      // otra ya no invalida a las sesiones vivas.
+      if (!this.options.username) {
+        setTimeout(() => this.startMqttClient(), 5000);
+        return;
+      }
 
       const connectUrl =
         this.$config.mqtt_prefix +

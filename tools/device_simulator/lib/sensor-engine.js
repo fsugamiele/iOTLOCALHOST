@@ -184,6 +184,11 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 
     case 'oil_pressure':
       if (!sharedState.gen_running) return 0;
+      // DEC-REF-104 D-4 (#78) — falla real de aceite demostrable: con el flag
+      // del escenario cummins_oil_failure la presión cae y SE SOSTIENE baja
+      // (sin el flag, el clamp [35,55] hacía imposible demostrar A0/A1 con
+      // valor real — solo disparaban por el transitorio de arranque).
+      if (sharedState.cummins_oil_failure) return clamp(currentValue + jitter(0.2), 0.4, 0.8);
       return clamp(currentValue + jitter(1), 35, 55);
 
     case 'coolant_temp':
@@ -581,6 +586,31 @@ const SCENARIOS = {
       { at: 270000, set: { fuel_level: 25 } },
       { at: 300000, set: { fuel_level: 20 } },
       { at: 330000, set: { fuel_level: 15 } },  // cruza el umbral de 12 h
+    ],
+  },
+
+  // DEC-REF-104 D-4 (#78) — falla de presión de aceite con motor en marcha.
+  // Apuntar al CUMMINS con el motor CORRIENDO (gen_running=true, p.ej. tras
+  // mains_failure_ats_transfer o weekly_exercise): el flag hace que evolve
+  // sostenga oil_pressure <1 Bar → las reglas A0/A1 (rpm>300 AND oil<2/1,
+  // graceSec 60) disparan de forma genuina, no por transitorio.
+  cummins_oil_failure: {
+    description: 'Pérdida de presión de aceite con motor en marcha (sostenida)',
+    roles: ['CUMMINS'],
+    duration_ms: 30000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { cummins_oil_failure: true } },
+    ],
+  },
+
+  cummins_oil_restore: {
+    description: 'Presión de aceite recuperada',
+    roles: ['CUMMINS'],
+    duration_ms: 30000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { cummins_oil_failure: false } },
     ],
   },
 

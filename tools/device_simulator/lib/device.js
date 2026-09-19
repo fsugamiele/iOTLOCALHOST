@@ -145,11 +145,35 @@ class SimulatedDevice {
 
   _tick(varName) {
     if (!this._connected) return;
+    this._syncGenTransition();
     if (this._state[varName] === undefined) return;
     // Evolucionar el valor (booleanos no cambian, floats hacen drift)
     this._state[varName] = engine.evolve(varName, this._state[varName], this._state, this._sharedState);
     if (varName === 'gen_status') this._syncSharedState();
     this._publish(varName);
+  }
+
+  // DEC-REF-104 D-4 (#78) — transición de marcha ACOPLADA. Física real: la
+  // presión de aceite la genera el cigüeñal girando — sube CON el arranque y
+  // cae CON la parada. Sin este acople, los timers independientes por variable
+  // dejaban una ventana de ~65 s con rpm>300 y oil_pressure=0 (medido
+  // 23:32:39→23:33:43) que cruzaba el graceSec=60 de las reglas A0/A1 y
+  // disparaba una CRÍTICA falsa en cada arranque del grupo. Con el acople la
+  // condición `rpm>300 AND oil<2` jamás se cumple en una transición sana;
+  // graceSec queda como segunda red, no como parche del sim.
+  _syncGenTransition() {
+    if (this._state.rpm === undefined || this._state.oil_pressure === undefined) return;
+    const running = !!this._sharedState.gen_running;
+    if (this._lastGenRunning === undefined) { this._lastGenRunning = running; return; }
+    if (running === this._lastGenRunning) return;
+    this._lastGenRunning = running;
+    if (running) {
+      this._set('rpm', 1500);
+      this._set('oil_pressure', 40);
+    } else {
+      this._set('rpm', 0);
+      this._set('oil_pressure', 0);
+    }
   }
 
   _syncSharedState() {

@@ -12146,3 +12146,34 @@ Primera corrida del smoke F8 mandó el alta de ficha con wrapper `newSheet` en v
 1. El código es bind-mounteado: el watchdog se activa en prod y P2 en el próximo restart de cada `node` — actúa solo cuando algo está caído (en estado sano es un GET cada 60 s).
 2. Lateral observado sin investigar: alarma `high_system_memory_usage` (>70%) en EMQX a las 22:25 — memoria del host apretada; si los recursos mueren por OOM del beam, el watchdog remedia el síntoma pero la causa es sizing.
 3. El sim en host ahora arranca con `setsid` + `nohup` + `</dev/null` (con `nohup ... &` a secas moría al cerrar el shell que lo lanzó — dos muertes silenciosas medidas en la sesión).
+
+## Sesión #78 — 2026-09-19 · Área 2 · DEC-REF-104 implementado: sincronía cliente-MQTT, dropdown vivo, sim con física acoplada
+
+**Mandato (Franco):** reporte de 4 inconsistencias con el sistema corriendo: MQTT desconectado en el dashboard, CR00061 alarmado cuando debería estar cleareado, dropdown de notificaciones desactualizado (últimas de las 15 h), configuración de intervalos del Panel "sin efecto / sigue hardcodeado". Directiva reafirmada: producto, no demo — se diseña y se PRUEBA cada cambio → **DEC-REF-104 D-1..D-4** (corpus v1.19).
+
+**Diagnóstico medido (un origen por síntoma).**
+
+1. **MQTT desconectado:** la autoridad MQTT funciona (probe TCP con credencial fresca conecta OK) — el defecto era de MODELO: `/getmqttcredentials` rotaba la credencial del usuario en cada llamada ⇒ dos pestañas se invalidaban mutuamente para siempre (log EMQX: mismo clientId `web_wanomi_621502` rechazado con usernames sucesivos `02kEfuNJ93`→`HAA3a9JlR2`).
+2. **CR00061 alarmado:** la API ya lo mostraba limpio (online, status ok) — estado viejo del browser. PERO el síntoma tenía raíz real en el sim: el arranque del grupo dejaba `rpm>300 AND oil=0` durante ~65 s (timers independientes: rpm cada ~32 s, oil cada ~64 s) y cruzaba el graceSec 60 → falsa CRÍTICA en cada arranque (medido 23:32:39→23:33:43). Físicamente imposible: la presión de aceite la da el cigüeñal girando.
+3. **Dropdown desactualizado:** la API servía eventos frescos (último 23:42 verificado por endpoint); el dropdown solo refrescaba al montar o por notif MQTT en vivo ⇒ con el cliente MQTT muerto (punto 1), se congelaba.
+4. **Intervalo "sin efecto":** código y bundle servido correctos (`set-refresh` medido en `dist/_nuxt`, orden de mount verificado: loadLayout→loadInitial→setupTimers) ⇒ bundle viejo cacheado en el browser (PWA histórica; el sw.js actual es auto-destructor pero hay que fetchearlo una vez — hard-refresh).
+
+**Implementación y verificación (todo probado en vivo).**
+
+- **D-1 · Credenciales web multi-sesión** (`users.js`): cada fetch CREA credencial nueva (las sesiones vivas no se invalidan); limpieza conserva las últimas 5 por usuario. Verificado: dos credenciales pedidas en secuencia **conectan ambas simultáneamente** (antes: la vieja moría).
+- **D-2 · Retry robusto** (`default.vue`): sin credencial válida no conecta con la vieja (reintenta a los 5 s); guarda `error.response` ausente (red caída tiraba TypeError y rompía la cadena de reconexión).
+- **D-3 · Dropdown con refresh 60 s** (`default.vue`): la campana no depende más de un solo canal.
+- **D-4 · Transición de marcha acoplada** (`device.js`): al cambiar `gen_running`, el device publica rpm+oil_pressure juntos (arranque 1500/40, parada 0/0) en el primer tick posterior. Verificado: `mains_failure_ats_transfer` → rpm=1500 y oil=40 publicados en el mismo segundo (00:07:50), **cero alarmas A0/A1 en el arranque** (antes: crítica falsa a los 65 s). Además la falla genuina quedó demostrable por primera vez: escenarios nuevos `cummins_oil_failure`/`cummins_oil_restore` (sharedSet; sin ellos el clamp [35,55] hacía imposible que A0/A1 dispararan por valor real) — ciclo medido: oil sostenida 0,67-0,74 → **fire A0+A1 a los ~60 s (graceSec)** → restore → **resolve a los ~40 s (resolveGraceSec 30)**.
+- Restart `node` post-build (exit 0), UI 200; sim relanzado (setsid); cadena de ingesta sana.
+
+**Declarado.**
+
+1. El click-through del menú de intervalos del Panel sigue sin verificación en browser (sin headless en el host); el código y el bundle servido están verificados. Si tras hard-refresh Franco sigue viendo el intervalo sin efecto, se reabre con evidencia del browser.
+2. Los fires cross se atribuyen al dId del mensaje en curso (59XYsglM/Yf86psyC en vez del CUMMINS) — BACKLOG-RULE-8 conocido, no regresión.
+3. Lateral pendiente de #77: alarma de memoria >70% en el host EMQX.
+
+### Carry-over para #79, en orden
+
+1. Franco: hard-refresh una vez (mata el service worker viejo) y click-through del Panel (intervalos, drag, menú) + confirmar que el dropdown envejece como máximo 60 s.
+2. Push pendiente de los commits de #76, #77 y #78 — requiere orden explícita de Franco.
+3. Carry-over #75 ítem 3 sigue vivo (booleanDwell/equipmentAlarms con datos reales, credenciales fuera de /tmp, ficha `cummins-pcc` en prod, archivos sin trackear).
