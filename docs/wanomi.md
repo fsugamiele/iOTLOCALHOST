@@ -12211,3 +12211,13 @@ Build exit 0 · node restart · sim relanzado por el supervisor bootea con el co
 3. Carry-over #75 ítem 3 sigue vivo (booleanDwell/equipmentAlarms con datos reales, credenciales fuera de /tmp, ficha cummins-pcc en prod, archivos sin trackear).
 4. Uptime histórico: los días 13→16/09 sin datos seguirán deprimiendo el KPI hasta que roten fuera de la ventana de 7d (es la verdad del sistema, no un bug).
 5. Alarma de memoria >70 % en host EMQX (lateral, sin investigar) · BACKLOG-RULE-8 (fires cross atribuidos al dId del mensaje en curso).
+
+### Adenda #79-b — DEC-REF-106: clareo instantáneo (Franco, mismo día)
+
+**Prueba de Franco:** alarma de combustible en CR00061 disparó bien, pero al reestablecer el nivel NO clareó (a la vista). **Diagnóstico medido:** el resolve SÍ salió, pero 5 min 21 s tarde (fire 14:18:23 → restore 14:22:06 → resolve 14:27:27). Causa: el resolve con persistencia (resolveGraceSec 60) se evalúa SOLO al llegar un mensaje de la variable; con publicación por cambio (DEC-REF-105), el combustible quieto en 75% no publicó más hasta el latido de 300 s — la confirmación de gracia esperó al latido.
+
+**Decisión de Franco:** "el motor debe usar el mismo método para notificar que para clarear — debe ser instantáneo". DEC-REF-106 (SUPERA a DEC-REF-102 D-2 en las reglas sembradas): `resolveGraceSec=0` en `cummins-A0/A1/G2` (seed `cummins_pcc_v1.js` + update en vivo + hot-reload SF-3 del edge, sin restart). El anti-flap que la gracia cubría lo absorbe ahora el deadband de publicación: oscilaciones menores al umbral de cambio ni siquiera viajan.
+
+**Verificación E2E:** fuel→12 → fire en **10 ms** · fuel→75 → resolve en **12 ms**. Simétrico e instantáneo en ambos sentidos.
+
+**Límite conocido (carry-over):** si una restauración cruza el umbral de alarma pero con Δ menor al deadband (ej. 14,5→15,4% con deadband 1), no publica hasta el latido — clareo acotado a ≤5 min en ese rincón. Fix candidato para #80: el device publica SIEMPRE al cruzar un nivel significativo (límites de la ficha viajan en el bootstrap), independiente del deadband.
