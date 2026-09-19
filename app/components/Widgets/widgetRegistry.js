@@ -586,6 +586,59 @@ export const WIDGET_REGISTRY = {
     }),
     normalize() {},
   },
+
+  // ── MULTI-FUENTE (DEC-REF-107 Paso 5) ────────────────────────────────
+  powerCascade: {
+    type: 'powerCascade',
+    label: 'Cascada de Energía — red → ATS → grupo → rectificador (multi-fuente)',
+    icon: 'fa-bolt',
+    group: 'wanomi',
+    isVariableWidget: false,
+    dedupeKey: 'type',
+    fields: [
+      { kind: 'text', model: 'variableFullName', label: 'Título del Widget' },
+      { kind: 'sourceRepeater', model: 'sources', label: 'Etapas de la cascada', withRole: true,
+        help: 'Cada etapa = una señal del equipo (red / ATS / grupo / rectificador). El orden es el de la cadena; el estado (activo/inactivo) sale del valor de cada señal.' },
+      { kind: 'icon', model: 'icon' },
+      { kind: 'size', model: 'column' },
+    ],
+    defaultConfig: () => ({
+      variableFullName: 'Cascada de energía',
+      icon: 'fa-bolt',
+      column: 'col-8',
+      widget: 'powerCascade',
+      sources: [],
+    }),
+    normalize(cfg) {
+      cfg.sources = (cfg.sources || []).filter((s) => s && (s.variable || '').trim());
+    },
+  },
+
+  dcPlant: {
+    type: 'dcPlant',
+    label: 'Planta DC — tensión / corriente / batería (multi-fuente)',
+    icon: 'fa-car-battery',
+    group: 'wanomi',
+    isVariableWidget: false,
+    dedupeKey: 'type',
+    fields: [
+      { kind: 'text', model: 'variableFullName', label: 'Título del Widget' },
+      { kind: 'sourceRepeater', model: 'sources', label: 'Métricas', withRole: false,
+        help: 'Cada métrica = una variable numérica del equipo (tensión de barra, corriente, temperatura de batería…).' },
+      { kind: 'icon', model: 'icon' },
+      { kind: 'size', model: 'column' },
+    ],
+    defaultConfig: () => ({
+      variableFullName: 'Planta DC',
+      icon: 'fa-car-battery',
+      column: 'col-6',
+      widget: 'dcPlant',
+      sources: [],
+    }),
+    normalize(cfg) {
+      cfg.sources = (cfg.sources || []).filter((s) => s && (s.variable || '').trim());
+    },
+  },
 };
 
 // Orden del selector de tipos (idéntico al del template previo).

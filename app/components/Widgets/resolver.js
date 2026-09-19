@@ -39,6 +39,11 @@ import NumericEditor          from '@/components/Widgets/NumericEditor.vue';
 // DEC-REF-107 (Paso 5) — recomendación activa (feed del sitio, sin variable).
 import ActiveRecommendationLive   from '@/components/Widgets/ActiveRecommendationLive.vue';
 import ActiveRecommendationEditor from '@/components/Widgets/ActiveRecommendationEditor.vue';
+// DEC-REF-107 (Paso 5) — multi-fuente: cascada de energía y planta DC.
+import PowerCascadeLive           from '@/components/Widgets/PowerCascadeLive.vue';
+import PowerCascadeEditor         from '@/components/Widgets/PowerCascadeEditor.vue';
+import DcPlantLive                from '@/components/Widgets/DcPlantLive.vue';
+import DcPlantEditor              from '@/components/Widgets/DcPlantEditor.vue';
 
 const LEGACY = {
   numberchart: Rtnumberchart,
@@ -50,6 +55,8 @@ const LEGACY = {
 const CATALOG_LIVE = {
   numeric:           NumericLive,
   activeRecommendation: ActiveRecommendationLive,
+  powerCascade:      PowerCascadeLive,
+  dcPlant:           DcPlantLive,
   valueStatus:       ValueStatusLive,
   tankLevel:         TankLevelLive,
   multiState:        MultiStateLive,
@@ -64,6 +71,8 @@ const CATALOG_LIVE = {
 const CATALOG_EDITOR = {
   numeric:           NumericEditor,
   activeRecommendation: ActiveRecommendationEditor,
+  powerCascade:      PowerCascadeEditor,
+  dcPlant:           DcPlantEditor,
   valueStatus:       ValueStatusEditor,
   tankLevel:         TankLevelEditor,
   multiState:        MultiStateEditor,

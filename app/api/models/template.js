@@ -14,6 +14,19 @@ const bitmapEntrySchema = new Schema({
     severity: { type: String },
 }, { _id: false });
 
+// DEC-REF-107 (Paso 3) — fuente de un widget MULTI-FUENTE (cascada, planta DC).
+// Cada source ata UNA variable del mismo dId; el widget compone N. `key` es el
+// identificador estable dentro del widget; `role` es opcional (semántica de
+// etapa para la cascada: mains|ats|genset|rectifier).
+const sourceSchema = new Schema({
+    key:              { type: String },
+    variable:         { type: String },
+    variableFullName: { type: String },
+    unit:             { type: String },
+    variableType:     { type: String },
+    role:             { type: String },
+}, { _id: false });
+
 const widgetSchema = new Schema({
     variable:         { type: String },
     variableFullName: { type: String },
@@ -43,6 +56,8 @@ const widgetSchema = new Schema({
     // el tipo `numeric` (valueStatus | gauge | tank | counter | icon | ...).
     // Ausente = compat: los tipos legacy dibujan por su `widget`.
     render:        { type: String },
+    // DEC-REF-107 (Paso 3): fuentes de un widget multi-fuente (cascada, planta DC).
+    sources:       { type: [sourceSchema], default: undefined },
     // Rango del gauge (opcional; vacío = automático).
     gaugeMin:      { type: Number },
     gaugeMax:      { type: Number },

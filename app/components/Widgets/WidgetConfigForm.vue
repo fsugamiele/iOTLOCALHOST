@@ -140,6 +140,49 @@
         <p v-if="field.help" class="text-muted" style="font-size:11px; margin:8px 0 16px">{{ field.help }}</p>
       </div>
 
+      <!-- SOURCE REPEATER (multi-fuente: cascada / planta DC) -->
+      <div :key="i" v-else-if="field.kind === 'sourceRepeater'">
+        <label class="control-label">{{ field.label }}</label>
+        <div
+          v-for="(src, idx) in sourceRows(field.model)"
+          :key="idx"
+          style="display:flex; gap:6px; align-items:center; margin-bottom:6px"
+        >
+          <el-select
+            v-if="sheetVariables.length"
+            v-model="src.variable"
+            @change="onSourceVar(src, $event)"
+            filterable
+            placeholder="variable"
+            size="small"
+            class="select-info"
+            style="flex:2"
+          >
+            <el-option v-for="v in sheetVariables" :key="v.name" :value="v.name" :label="v.label || v.name" />
+          </el-select>
+          <el-input v-else v-model="src.variable" placeholder="variable técnica" size="small" style="flex:2" />
+          <el-input v-model="src.variableFullName" placeholder="etiqueta" size="small" style="flex:2" />
+          <el-input v-model="src.unit" placeholder="unidad" size="small" style="width:72px" />
+          <el-select
+            v-if="field.withRole"
+            v-model="src.role"
+            placeholder="rol"
+            size="small"
+            class="select-primary"
+            style="width:130px"
+          >
+            <el-option v-for="r in roleOptions" :key="r.value" :value="r.value" :label="r.label" />
+          </el-select>
+          <base-button size="sm" type="danger" icon @click="removeSource(field.model, idx)">
+            <i class="fa fa-trash"></i>
+          </base-button>
+        </div>
+        <base-button size="sm" type="default" @click="addSource(field.model)">
+          <i class="fa fa-plus" style="margin-right:4px"></i>Fuente
+        </base-button>
+        <p v-if="field.help" class="text-muted" style="font-size:11px; margin:8px 0 16px">{{ field.help }}</p>
+      </div>
+
       <!-- HELP (texto explicativo) -->
       <p
         :key="i"
@@ -181,6 +224,15 @@ export default {
       iconOptions: ICON_OPTIONS,
       colorOptions: COLOR_OPTIONS,
       columnOptions: COLUMN_OPTIONS,
+      // DEC-REF-107 (Paso 5): roles de etapa para la cascada de energía.
+      roleOptions: [
+        { value: 'mains',     label: 'Red' },
+        { value: 'ats',       label: 'ATS' },
+        { value: 'genset',    label: 'Grupo' },
+        { value: 'rectifier', label: 'Rectificador' },
+        { value: 'battery',   label: 'Batería' },
+        { value: 'other',     label: 'Otro' },
+      ],
     };
   },
   computed: {
@@ -221,6 +273,35 @@ export default {
         arr = this.getByPath(path);
       }
       return arr;
+    },
+    // ── DEC-REF-107 (Paso 5): filas de fuentes (multi-fuente) ──────────
+    sourceRows(path) {
+      let arr = this.getByPath(path);
+      if (!Array.isArray(arr)) {
+        this.setByPath(path, [], 'text');
+        arr = this.getByPath(path);
+      }
+      return arr;
+    },
+    addSource(path) {
+      this.sourceRows(path).push({
+        key: 's' + Math.random().toString(36).slice(2, 9),
+        variable: '',
+        variableFullName: '',
+        unit: '',
+        role: '',
+      });
+    },
+    removeSource(path, idx) {
+      this.sourceRows(path).splice(idx, 1);
+    },
+    // Al elegir la variable de la ficha, autocompleta etiqueta/unidad/tipo.
+    onSourceVar(src, varName) {
+      const v = this.sheetVariables.find((x) => x.name === varName);
+      if (!v) return;
+      if (!src.variableFullName) src.variableFullName = v.label || v.name;
+      if (!src.unit) src.unit = v.unit || '';
+      src.variableType = v.type || '';
     },
     colorDotStyle(hex) {
       return {

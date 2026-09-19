@@ -83,6 +83,14 @@
                   <i class="fa fa-bell" style="margin-right:8px"></i>Alarmas del Equipo — feed del sitio filtrado
                 </el-option>
               </el-option-group>
+              <el-option-group label="Multi-fuente">
+                <el-option value="powerCascade" label="Cascada de Energía — red → ATS → grupo → rectificador">
+                  <i class="fa fa-bolt" style="margin-right:8px"></i>Cascada de Energía — red → ATS → grupo → rectificador
+                </el-option>
+                <el-option value="dcPlant" label="Planta DC — tensión / corriente / batería">
+                  <i class="fa fa-car-battery" style="margin-right:8px"></i>Planta DC — tensión / corriente / batería
+                </el-option>
+              </el-option-group>
               <el-option-group label="Control (salida →)">
                 <el-option value="switch" label="Switch — Control On/Off">
                   <i class="fa fa-power-off" style="margin-right:8px"></i>Switch — Control On/Off
@@ -674,9 +682,9 @@ export default {
       const fromSheet = this.sheetVariableNames.includes(config.variable);
       const others = this.widgets.filter((_, i) => i !== excludeIndex);
       if (isAlarms) {
-        // equipmentAlarms: uno por plantilla (su fuente es el feed del sitio).
+        // dedupeKey 'type': uno por plantilla (alarmas, recomendación, cascada, planta DC).
         if (others.some((w) => w.widget === d.type)) {
-          return "Ya hay un widget de alarmas del equipo en esta plantilla (uno alcanza)";
+          return "Ya existe un widget de este tipo en la plantilla (uno alcanza)";
         }
       } else if (isVariableWidget || fromSheet) {
         // DEC-REF-76-B (ii): dedupe por `variable` (clave real de unicidad).
