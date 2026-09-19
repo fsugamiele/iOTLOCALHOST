@@ -274,6 +274,14 @@ class SimulatedDevice {
     } else if (command === 'scenario') {
       // Ejecuta un escenario pre-grabado (cmd.value es el nombre)
       this._runScenario(value);
+    } else if (command === 'snapshot') {
+      // #79-d — republica el estado ACTUAL de todas las variables (como el
+      // latido, bajo demanda) SIN tocar _state ni timers. Lo usa la UI del
+      // simulador al abrir para pintar valores al instante; antes usaba
+      // 'reset' y pisaba los valores cargados con los defaults.
+      for (const v of this._variables) {
+        this._publish(v.variable, { force: true });
+      }
     } else if (command === 'reset') {
       // Restaura todos los sensores a initialState y reinicia publicación periódica.
       // _cancelActiveTimers() mata también los setInterval de startPublishing(),

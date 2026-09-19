@@ -324,6 +324,40 @@ router.post('/simulator/scenario', checkAuth, async (req, res) => {
   }
 });
 
+// ────────── POST /snapshot ──────────────────────────────────────────
+// Body: { dId }
+// Republica el estado ACTUAL de todas las variables (como el latido, bajo
+// demanda) SIN tocar valores ni timers. Es el burst correcto para que una
+// UI recién abierta muestre valores al instante; /reset (volver a default)
+// queda como acción explícita del operador. Nace del bug #79-d: entrar a la
+// página del simulador disparaba /reset a todos los devices y pisaba los
+// valores cargados (escenarios, restores manuales) con los defaults.
+router.post('/simulator/snapshot', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const body = req.body || {};
+    const { dId } = body;
+
+    if (!isValidDId(dId)) {
+      return badRequest(res, 'Invalid or missing dId');
+    }
+
+    // DEC-REF-78-A: alcance por grants (buildWriteFilter), no por userId propio.
+    const writeFilter = await buildWriteFilter(req, 'Device');
+    const device = await Device.findOne({ ...writeFilter, dId, firmwareType: 'wanomi-sim' }).lean();
+    if (!device) {
+      return res.status(404).json({ status: 'error', error: 'Simulated device not found or not writable in scope' });
+    }
+
+    const command = { command: 'snapshot' };
+    await publishCommand(dId, command);
+    return res.json({ status: 'success', dId });
+
+  } catch (error) {
+    return internalError(res, error);
+  }
+});
+
 // ────────── POST /reset ──────────────────────────────────────────
 // Body: { dId }
 // Resetea TODOS los sensores del device a su initialState.

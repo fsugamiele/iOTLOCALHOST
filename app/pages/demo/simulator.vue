@@ -445,11 +445,14 @@ export default {
           return;
         }
 
-        // Burst inmediato: reset de todos los devices para que las tarjetas
-        // muestren valores sin esperar el próximo ciclo de publicación.
+        // Burst inmediato: SNAPSHOT (no reset — bug #79-d). Republica el
+        // estado actual de cada device para que las tarjetas muestren
+        // valores sin esperar el próximo latido, SIN pisar los valores
+        // cargados (antes llamaba /simulator/reset y todo volvía a default
+        // al entrar a la página).
         this.devices.forEach(d => {
-          this.$axios.post('/simulator/reset', { dId: d.dId }, headers)
-            .catch(err => console.warn('[Simulator] reset burst error:', err.message));
+          this.$axios.post('/simulator/snapshot', { dId: d.dId }, headers)
+            .catch(err => console.warn('[Simulator] snapshot burst error:', err.message));
         });
 
       } catch (err) {
