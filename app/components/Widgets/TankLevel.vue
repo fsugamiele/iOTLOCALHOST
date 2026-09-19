@@ -1,30 +1,31 @@
 <template>
-  <span class="tank-level" :class="'tank-level--' + status">
-    <template v-if="!hasData">
+  <div class="tank-level">
+    <template v-if="hasData">
+      <div ref="chart" class="tank-level__canvas"></div>
+      <div v-if="liters !== null" class="tank-level__liters">
+        {{ liters }} <small>{{ config.tankUnit || 'L' }}</small>
+      </div>
+    </template>
+    <template v-else>
       <span v-if="context === 'editor'" class="tank-level__na">—</span>
       <span v-else class="tank-level__nodata">sin dato</span>
     </template>
-    <template v-else>
-      <span class="tank-level__pct">{{ pct }}<small>%</small></span>
-      <span v-if="liters !== null" class="tank-level__liters">
-        {{ liters }} <small>{{ config.tankUnit || 'L' }}</small>
-      </span>
-      <span class="tank-level__bar">
-        <span class="tank-level__fill" :style="{ width: pct + '%' }"></span>
-      </span>
-    </template>
-  </span>
+  </div>
 </template>
 
 <script>
-// DEC-REF-98 D-3 (#73) — tankLevel, presentación PURA.
-// value = nivel 0-100 (%). Si la ficha/template declara tankCapacity,
+// DEC-REF-98 D-3 (#73) + DEC-REF-107 (Paso 2, diseño) — tankLevel.
+// Ahora se dibuja con ECharts liquidFill (líquido ondulante) en vez de la
+// barra CSS. value = nivel 0-100 (%). Si el template declara tankCapacity,
 // muestra el contenido absoluto (litros = % × capacidad). Color por
-// thresholds (convención DEC-REF-70 g): para un tanque lo crítico es
-// ABAJO → criticalLow/warningLow. Sin umbrales → azul neutro (no afirmar
-// "ok" sin criterio, misma regla que ValueStatus).
+// thresholds (convención DEC-REF-70 g): para un tanque lo crítico es ABAJO
+// → criticalLow/warningLow. Sin umbrales → azul neutro (no afirmar "ok" sin
+// criterio, misma regla que ValueStatus).
+import echartsBase from '@/components/Widgets/echartsBase.js';
+
 export default {
   name: 'TankLevel',
+  mixins: [echartsBase],
   props: {
     value:   { default: null },
     config:  { type: Object, default: () => ({}) },
@@ -52,25 +53,61 @@ export default {
       if (t.criticalLow != null || t.warningLow != null) return 'ok';
       return 'unknown';
     },
+    statusColor() {
+      return {
+        ok:       '#00bf9a',
+        warning:  '#ff8d72',
+        critical: '#fd5d93',
+      }[this.status] || '#1d8cf8';
+    },
+    chartOption() {
+      const color = this.statusColor;
+      const frac = this.pct / 100;
+      return {
+        series: [{
+          type: 'liquidFill',
+          radius: '92%',
+          center: ['50%', '50%'],
+          data: [frac, frac],          // dos ondas desfasadas
+          color: [color],
+          backgroundStyle: { color: 'rgba(255,255,255,0.04)' },
+          outline: {
+            show: true,
+            borderDistance: 2,
+            itemStyle: { borderColor: color, borderWidth: 2, shadowBlur: 0 },
+          },
+          amplitude: 5,
+          waveLength: '80%',
+          period: 3000,
+          label: {
+            formatter: () => this.pct + '%',
+            fontSize: 22,
+            fontWeight: '600',
+            color: '#fff',
+            insideColor: '#0b0f19',
+          },
+        }],
+      };
+    },
   },
 };
 </script>
 
 <style scoped>
-.tank-level__pct { font-size: 1.4em; font-weight: 600; }
-.tank-level__pct small { font-size: 0.5em; margin-left: 2px; }
-.tank-level__liters { margin-left: 10px; color: #6b7280; font-size: 0.65em; }
-.tank-level__bar {
-  display: block; height: 8px; border-radius: 4px;
-  background: rgba(255,255,255,0.1); margin-top: 6px; overflow: hidden;
+.tank-level {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.tank-level__fill { display: block; height: 100%; border-radius: 4px; background: currentColor; transition: width 0.4s; }
-
-.tank-level           { color: #1d8cf8; }
-.tank-level--ok       { color: #00bf9a; }
-.tank-level--warning  { color: #ff8d72; }
-.tank-level--critical { color: #fd5d93; }
-.tank-level--unknown  { color: #1d8cf8; }
-.tank-level--nodata, .tank-level--na { color: #6b7280; }
-.tank-level__nodata { font-style: italic; opacity: 0.7; }
+.tank-level__canvas {
+  width: 140px;
+  height: 140px;
+}
+.tank-level__liters {
+  margin-top: 4px;
+  color: #9aa5b1;
+  font-size: 0.8em;
+}
+.tank-level__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }
+.tank-level__na     { color: #6b7280; opacity: 0.7; font-size: 1.4em; }
 </style>

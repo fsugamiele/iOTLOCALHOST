@@ -1,25 +1,26 @@
 <template>
-  <span class="projected-autonomy" :class="'projected-autonomy--' + status">
-    <template v-if="!hasData">
+  <div class="projected-autonomy">
+    <template v-if="hasData">
+      <div ref="chart" class="projected-autonomy__canvas"></div>
+    </template>
+    <template v-else>
       <span v-if="context === 'editor'" class="projected-autonomy__na">—</span>
       <span v-else class="projected-autonomy__nodata">sin dato</span>
     </template>
-    <template v-else>
-      <span class="projected-autonomy__value">{{ formatted }}</span>
-      <span class="projected-autonomy__suffix">de autonomía</span>
-    </template>
-  </span>
+  </div>
 </template>
 
 <script>
-// DEC-REF-98 D-3 (#73) — projectedAutonomy, presentación PURA.
-// value = horas de autonomía que PUBLICA EL EQUIPO (la calcula el
-// controlador del fabricante — la ficha la declara; la plataforma no
-// estima consumo, presenta). Si el equipo no la publica → "sin dato".
-// Color por thresholds con criterio tanque: lo crítico es ABAJO
-// (criticalLow/warningLow, en horas).
+// DEC-REF-98 D-3 (#73) + DEC-REF-107 (Paso 2, diseño) — projectedAutonomy.
+// Ahora se dibuja como gauge radial ECharts con zonas de color por umbral.
+// value = horas de autonomía que PUBLICA EL EQUIPO (la calcula el controlador
+// del fabricante — la ficha la declara; la plataforma no estima consumo).
+// Color con criterio tanque: lo crítico es ABAJO (criticalLow/warningLow, en h).
+import echartsBase from '@/components/Widgets/echartsBase.js';
+
 export default {
   name: 'ProjectedAutonomy',
+  mixins: [echartsBase],
   props: {
     value:   { default: null },
     config:  { type: Object, default: () => ({}) },
@@ -37,28 +38,70 @@ export default {
       const mm = Math.round((h - hh) * 60);
       return mm ? `${hh} h ${mm} min` : `${hh} h`;
     },
-    status() {
-      if (!this.hasData) return this.context === 'editor' ? 'na' : 'nodata';
+    gaugeMax() {
       const t = this.config.thresholds || {};
-      const n = this.hours;
-      if (t.criticalLow != null && n < t.criticalLow) return 'critical';
-      if (t.warningLow  != null && n < t.warningLow)  return 'warning';
-      if (t.criticalLow != null || t.warningLow != null) return 'ok';
-      return 'unknown';
+      const mx = Math.max(this.hasData ? this.hours : 0, t.warningLow || 0, t.criticalLow || 0);
+      return mx * 1.2 > 24 ? Math.ceil(mx * 1.2) : 24;
+    },
+    // Segmentos del arco: crítico (rojo) abajo, warning (ámbar) medio, ok
+    // (verde) arriba. Sin umbrales → arco neutro azul.
+    axisSegments() {
+      const t = this.config.thresholds || {};
+      const max = this.gaugeMax;
+      if (t.criticalLow == null && t.warningLow == null) return [[1, '#1d8cf8']];
+      const c = t.criticalLow != null ? t.criticalLow : t.warningLow;
+      const w = t.warningLow  != null ? t.warningLow  : t.criticalLow;
+      const lo = Math.min(c, w);
+      const hi = Math.max(c, w);
+      const segs = [[lo / max, '#fd5d93']];
+      if (hi > lo) segs.push([hi / max, '#ff8d72']);
+      segs.push([1, '#00bf9a']);
+      return segs;
+    },
+    chartOption() {
+      return {
+        series: [{
+          type: 'gauge',
+          min: 0,
+          max: this.gaugeMax,
+          radius: '95%',
+          center: ['50%', '60%'],
+          startAngle: 210,
+          endAngle: -30,
+          progress: { show: false },
+          pointer: { width: 4, length: '62%', itemStyle: { color: 'auto' } },
+          axisLine: { lineStyle: { width: 10, color: this.axisSegments } },
+          axisTick: { show: false },
+          splitLine: { length: 10, lineStyle: { color: '#3a4150', width: 1 } },
+          axisLabel: { color: '#6b7280', fontSize: 9, distance: 12 },
+          anchor: { show: false },
+          title: { show: false },
+          detail: {
+            valueAnimation: true,
+            formatter: () => this.formatted,
+            color: '#fff',
+            fontSize: 16,
+            fontWeight: '600',
+            offsetCenter: [0, '42%'],
+          },
+          data: [{ value: this.hours }],
+        }],
+      };
     },
   },
 };
 </script>
 
 <style scoped>
-.projected-autonomy__value { font-size: 1.4em; font-weight: 600; }
-.projected-autonomy__suffix { margin-left: 8px; color: #6b7280; font-size: 0.65em; }
-
-.projected-autonomy           { color: #1d8cf8; }
-.projected-autonomy--ok       { color: #00bf9a; }
-.projected-autonomy--warning  { color: #ff8d72; }
-.projected-autonomy--critical { color: #fd5d93; }
-.projected-autonomy--unknown  { color: #1d8cf8; }
-.projected-autonomy--nodata, .projected-autonomy--na { color: #6b7280; }
-.projected-autonomy__nodata { font-style: italic; opacity: 0.7; }
+.projected-autonomy {
+  display: flex;
+  justify-content: center;
+}
+.projected-autonomy__canvas {
+  width: 100%;
+  height: 150px;
+  max-width: 220px;
+}
+.projected-autonomy__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }
+.projected-autonomy__na     { color: #6b7280; opacity: 0.7; font-size: 1.4em; }
 </style>
