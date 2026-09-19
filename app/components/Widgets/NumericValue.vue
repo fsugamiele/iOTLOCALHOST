@@ -11,6 +11,7 @@ import Gauge       from '@/components/Widgets/Gauge.vue';
 import TankLevel   from '@/components/Widgets/TankLevel.vue';
 import CounterPump from '@/components/Widgets/CounterPump.vue';
 import IconValue   from '@/components/Widgets/IconValue.vue';
+import Sparkline   from '@/components/Widgets/Sparkline.vue';
 
 const RENDERERS = {
   valueStatus: ValueStatus,
@@ -18,6 +19,7 @@ const RENDERERS = {
   tank:        TankLevel,
   counter:     CounterPump,
   icon:        IconValue,
+  sparkline:   Sparkline,
 };
 
 export default {

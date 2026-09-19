@@ -36,6 +36,9 @@ import EquipmentAlarmsEditor  from '@/components/Widgets/EquipmentAlarmsEditor.v
 // (la visual la elige config.render vía el dispatcher NumericValue).
 import NumericLive            from '@/components/Widgets/NumericLive.vue';
 import NumericEditor          from '@/components/Widgets/NumericEditor.vue';
+// DEC-REF-107 (Paso 5) — recomendación activa (feed del sitio, sin variable).
+import ActiveRecommendationLive   from '@/components/Widgets/ActiveRecommendationLive.vue';
+import ActiveRecommendationEditor from '@/components/Widgets/ActiveRecommendationEditor.vue';
 
 const LEGACY = {
   numberchart: Rtnumberchart,
@@ -46,6 +49,7 @@ const LEGACY = {
 
 const CATALOG_LIVE = {
   numeric:           NumericLive,
+  activeRecommendation: ActiveRecommendationLive,
   valueStatus:       ValueStatusLive,
   tankLevel:         TankLevelLive,
   multiState:        MultiStateLive,
@@ -59,6 +63,7 @@ const CATALOG_LIVE = {
 
 const CATALOG_EDITOR = {
   numeric:           NumericEditor,
+  activeRecommendation: ActiveRecommendationEditor,
   valueStatus:       ValueStatusEditor,
   tankLevel:         TankLevelEditor,
   multiState:        MultiStateEditor,

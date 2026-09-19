@@ -103,6 +103,7 @@ const RENDER_OPTIONS = [
   { value: 'gauge',       label: 'Gauge / tacómetro (autonomía, RPM, presión…)' },
   { value: 'tank',        label: 'Tanque — nivel con líquido (gasoil, batería…)' },
   { value: 'counter',     label: 'Contador surtidor (litros, horas, kWh…)' },
+  { value: 'sparkline',   label: 'Sparkline — mini tendencia (historial)' },
   { value: 'icon',        label: 'Ícono + valor (estilo clásico)' },
 ];
 // Helper de visibilidad condicional por representación.
@@ -149,9 +150,10 @@ export const WIDGET_REGISTRY = {
       { kind: 'select',   model: 'render', label: 'Representación gráfica', options: RENDER_OPTIONS },
       // Campos condicionales según la representación:
       { kind: 'icon',     model: 'icon', showIf: renderIn('icon') },
-      { kind: 'number',   model: 'decimalPlaces', label: 'Decimales', showIf: renderIn('valueStatus', 'icon', 'counter', 'gauge') },
+      { kind: 'number',   model: 'decimalPlaces', label: 'Decimales', showIf: renderIn('valueStatus', 'icon', 'counter', 'gauge', 'sparkline') },
       { kind: 'number',   model: 'gaugeMin', label: 'Mínimo del gauge (opcional — automático si vacío)', showIf: renderIn('gauge') },
       { kind: 'number',   model: 'gaugeMax', label: 'Máximo del gauge (opcional — automático si vacío)', showIf: renderIn('gauge') },
+      { kind: 'number',   model: 'chartTimeAgo', label: 'Ventana de historial (min)', showIf: renderIn('sparkline') },
       { kind: 'number',   model: 'tankCapacity', label: 'Capacidad del tanque (opcional)', showIf: renderIn('tank') },
       { kind: 'text',     model: 'tankUnit', label: 'Unidad de capacidad (ej: L)', showIf: renderIn('tank') },
       { kind: 'number',   model: 'thresholds.criticalLow',  label: 'Umbral crítico bajo (color)',  showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon') },
@@ -178,6 +180,7 @@ export const WIDGET_REGISTRY = {
       gaugeMax: null,
       tankCapacity: null,
       tankUnit: 'L',
+      chartTimeAgo: 60,
     }),
     normalize(cfg) {
       const n = (v) => (Number.isFinite(v) ? v : null);
@@ -186,6 +189,7 @@ export const WIDGET_REGISTRY = {
       cfg.gaugeMin = n(cfg.gaugeMin);
       cfg.gaugeMax = n(cfg.gaugeMax);
       cfg.tankCapacity = n(cfg.tankCapacity);
+      cfg.chartTimeAgo = Number.isFinite(cfg.chartTimeAgo) && cfg.chartTimeAgo > 0 ? cfg.chartTimeAgo : 60;
       cfg.thresholds = {
         criticalLow:  n(cfg.thresholds && cfg.thresholds.criticalLow),
         warningLow:   n(cfg.thresholds && cfg.thresholds.warningLow),
@@ -554,6 +558,31 @@ export const WIDGET_REGISTRY = {
       icon: 'fa-bell',
       column: 'col-6',
       widget: 'equipmentAlarms',
+    }),
+    normalize() {},
+  },
+
+  // ── RECOMENDACIÓN ACTIVA (DEC-REF-107 Paso 5) ────────────────────────
+  // Sin variable: su fuente es el feed de alarmas del sitio; muestra LA acción
+  // recomendada de la alarma activa más severa del equipo. Uno por plantilla.
+  activeRecommendation: {
+    type: 'activeRecommendation',
+    label: 'Recomendación Activa — la acción sugerida del equipo',
+    icon: 'fa-lightbulb',
+    group: 'wanomi',
+    isVariableWidget: false,
+    dedupeKey: 'type',
+    fields: [
+      { kind: 'text', model: 'variableFullName', label: 'Título del Widget' },
+      { kind: 'help', text: 'Sin variable: muestra la acción recomendada de la alarma activa más severa del equipo (la recomendación ya viaja en el feed del sitio). Uno por plantilla alcanza.' },
+      { kind: 'icon', model: 'icon' },
+      { kind: 'size', model: 'column' },
+    ],
+    defaultConfig: () => ({
+      variableFullName: 'Acción recomendada',
+      icon: 'fa-lightbulb',
+      column: 'col-6',
+      widget: 'activeRecommendation',
     }),
     normalize() {},
   },

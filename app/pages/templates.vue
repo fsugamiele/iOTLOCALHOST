@@ -76,6 +76,9 @@
                 </el-option>
               </el-option-group>
               <el-option-group label="Sitio">
+                <el-option value="activeRecommendation" label="Recomendación Activa — la acción sugerida del equipo">
+                  <i class="fa fa-lightbulb" style="margin-right:8px"></i>Recomendación Activa — la acción sugerida del equipo
+                </el-option>
                 <el-option value="equipmentAlarms" label="Alarmas del Equipo — feed del sitio filtrado">
                   <i class="fa fa-bell" style="margin-right:8px"></i>Alarmas del Equipo — feed del sitio filtrado
                 </el-option>
