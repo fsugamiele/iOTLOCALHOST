@@ -120,7 +120,7 @@
               </p>
             </div>
 
-            <!-- CONFIG FORM (DEC-REF-106): un solo formulario genérico
+            <!-- CONFIG FORM (DEC-REF-107): un solo formulario genérico
                  dirigido por el descriptor del tipo activo. Reemplaza los
                  11 mini-formularios v-if calcados. -->
             <widget-config-form
@@ -414,7 +414,7 @@ export default {
       widgets: [],
       templates: [],
       widgetType: "",
-      // DEC-REF-106 (Paso 1): un único borrador de widget, reconstruido desde
+      // DEC-REF-107 (Paso 1): un único borrador de widget, reconstruido desde
       // el descriptor del tipo activo. Reemplaza los 11 objetos de config.
       widgetDraft: null,
       templateName: "",
@@ -436,7 +436,7 @@ export default {
   },
 
   computed: {
-    // DEC-REF-106: descriptor del tipo de widget activo (fuente de campos,
+    // DEC-REF-107: descriptor del tipo de widget activo (fuente de campos,
     // defaults, dedupe y normalización).
     activeDescriptor() {
       return getDescriptor(this.widgetType);
@@ -466,7 +466,7 @@ export default {
     },
   },
   watch: {
-    // DEC-REF-106: al cambiar el tipo, se arranca un borrador limpio desde el
+    // DEC-REF-107: al cambiar el tipo, se arranca un borrador limpio desde el
     // descriptor. Cambiar de tipo resetea los campos en curso (intencional).
     widgetType() {
       const d = this.activeDescriptor;
@@ -496,7 +496,7 @@ export default {
 
   methods: {
     resolveWidget,
-    // DEC-REF-106: helpers de color/tamaño ahora viven en el registry.
+    // DEC-REF-107: helpers de color/tamaño ahora viven en el registry.
     colorHex,
     colorLabel,
     columnLabel,
@@ -745,7 +745,7 @@ export default {
       }
     },
 
-    // DEC-REF-106: alta de widget genérica, dirigida por el descriptor.
+    // DEC-REF-107: alta de widget genérica, dirigida por el descriptor.
     // Preserva las guardas previas: dedupe (por tipo / variable / nombre),
     // makeid solo para no-variable no-ficha, y normalización pre-push.
     addNewWidget() {
