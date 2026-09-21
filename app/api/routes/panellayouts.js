@@ -16,10 +16,21 @@ const VALID_WINDOWS = ["24h", "7d", "30d"];
 const MAX_ITEMS = VALID_WIDGET_IDS.length;
 const MAX_TITLE = 80;
 
-function validateLayout(layout) {
-  if (!Array.isArray(layout) || layout.length > MAX_ITEMS) return "layout inválido";
+// DEC-REF-107 (Paso 4): el panel del SITIO reusa /panellayout con dashboard
+// `site-<siteCode>`. A diferencia del NOC (4 widgets fijos), sus ítems son
+// dinámicos (`<dId>::<i>`), así que se valida FORMA y GEOMETRÍA, no el catálogo
+// de widgets. El NOC (dashboard 'noc' u otro no-site) sigue estricto.
+const SITE_MAX_ITEMS = 200;
+const MAX_I_LEN = 120;
+const isSiteDash = (d) => typeof d === "string" && d.startsWith("site-");
+
+function validateLayout(layout, dashboard) {
+  const site = isSiteDash(dashboard);
+  const maxItems = site ? SITE_MAX_ITEMS : MAX_ITEMS;
+  if (!Array.isArray(layout) || layout.length > maxItems) return "layout inválido";
   for (const it of layout) {
-    if (!it || typeof it.i !== "string" || !VALID_WIDGET_IDS.includes(it.i)) return "widget desconocido en layout";
+    if (!it || typeof it.i !== "string" || !it.i || it.i.length > MAX_I_LEN) return "widget desconocido en layout";
+    if (!site && !VALID_WIDGET_IDS.includes(it.i)) return "widget desconocido en layout";
     for (const k of ["x", "y", "w", "h"]) {
       if (!Number.isFinite(it[k])) return `layout.${k} debe ser número`;
     }
@@ -30,9 +41,11 @@ function validateLayout(layout) {
   return null;
 }
 
-function validateSettings(settings) {
+function validateSettings(settings, dashboard) {
   if (settings == null) return null;
   if (typeof settings !== "object" || Array.isArray(settings)) return "settings inválido";
+  // Site: settings libres (hoy sin uso por-widget). NOC: catálogo estricto.
+  if (isSiteDash(dashboard)) return null;
   for (const [id, s] of Object.entries(settings)) {
     if (!VALID_WIDGET_IDS.includes(id)) return `settings de widget desconocido: ${id}`;
     if (typeof s !== "object" || s === null || Array.isArray(s)) return "settings de widget inválido";
@@ -65,9 +78,9 @@ router.put("/panellayout", checkAuth, async (req, res) => {
     const dashboard = String((req.body && req.body.dashboard) || "noc");
     const layout = req.body && req.body.layout;
     const settings = req.body && req.body.settings;
-    const errLayout = validateLayout(layout);
+    const errLayout = validateLayout(layout, dashboard);
     if (errLayout) return res.status(400).json({ status: "error", error: errLayout });
-    const errSettings = validateSettings(settings);
+    const errSettings = validateSettings(settings, dashboard);
     if (errSettings) return res.status(400).json({ status: "error", error: errSettings });
 
     const doc = await PanelLayout.findOneAndUpdate(

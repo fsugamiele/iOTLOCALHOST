@@ -66,41 +66,64 @@
         </div>
       </div>
 
-      <!-- Devices del site -->
-      <div class="row" v-if="devices.length > 0">
-        <div
-          v-for="device in devices"
-          :key="device.dId"
-          class="col-md-6 col-lg-4"
-        >
-          <card>
-            <template #header>
-              <h4 class="card-title mb-0">{{ device.name }}</h4>
-              <p class="card-category">
-                {{ device.templateName || '— sin template' }}
-              </p>
-            </template>
+      <!-- Panel de widgets del sitio (DEC-REF-107 Paso 4): grilla
+           arrastrable/redimensionable por widget; el layout se persiste por
+           usuario y por sitio (/panellayout?dashboard=site-<code>). Reusa el
+           andamiaje del Panel NOC (DEC-REF-101 D-7/D-8). Cada widget es un
+           ítem: el tamaño ahora es real (antes `column` no se respetaba). -->
+      <template v-if="devices.length > 0">
+        <div class="row">
+          <div class="col-12 site-panel-toolbar">
+            <base-button
+              size="sm"
+              :type="customizing ? 'success' : 'default'"
+              @click="toggleCustomizing"
+            >
+              <i class="fa" :class="customizing ? 'fa-check' : 'fa-th-large'" style="margin-right:6px"></i>
+              {{ customizing ? 'Listo' : 'Personalizar' }}
+            </base-button>
+            <base-button v-if="customizing" size="sm" type="default" @click="resetLayout">
+              <i class="fa fa-undo" style="margin-right:6px"></i>Restablecer
+            </base-button>
+          </div>
+        </div>
 
-            <!-- DEC-REF-98 D-3 (#73): cada widget se resuelve por tipo con
-                 el resolver (composición Live con shell propia — muestra la
-                 etiqueta). La fila label+valor solo servía para live-value
-                 y no soportaba los widgets custom (booleanDwell,
-                 equipmentAlarms). -->
-            <div v-if="device.templateWidgets && device.templateWidgets.length > 0">
-              <div
-                v-for="(widget, i) in device.templateWidgets"
-                :key="widget.widget + '-' + (widget.variable || i)"
-              >
+        <grid-layout
+          v-if="gridReady"
+          :layout.sync="layout"
+          :col-num="12"
+          :row-height="30"
+          :margin="[12, 12]"
+          :is-draggable="customizing"
+          :is-resizable="customizing"
+          :vertical-compact="true"
+          :use-css-transforms="true"
+          @layout-updated="onLayoutUpdated"
+        >
+          <grid-item
+            v-for="item in layout"
+            :key="item.i"
+            :i="item.i"
+            :x="item.x"
+            :y="item.y"
+            :w="item.w"
+            :h="item.h"
+            :min-w="2"
+            :min-h="3"
+          >
+            <div v-if="itemMap[item.i]" class="site-grid-cell" :class="{ 'site-grid-cell--customizing': customizing }">
+              <div class="site-grid-cell__cap">{{ itemMap[item.i].device.name }}</div>
+              <div class="site-grid-cell__body">
                 <component
-                  :is="resolveWidget(widget.widget, { context: 'live' })"
-                  :config="liveConfig(device, widget)"
+                  :is="resolveWidget(itemMap[item.i].widget.widget, { context: 'live' })"
+                  :config="liveConfig(itemMap[item.i].device, itemMap[item.i].widget)"
                 />
               </div>
             </div>
-            <p v-else class="text-muted mb-0">Sin variables declaradas.</p>
-          </card>
-        </div>
-      </div>
+          </grid-item>
+        </grid-layout>
+      </template>
+
       <div v-else class="row">
         <div class="col-12">
           <card>
@@ -145,6 +168,13 @@ export default {
       alarmsCursor: null,
       // Real-time-lite A7 (DEC-REF-44/54): handler bindeado a $nuxt bus.
       _notifHandler: null,
+
+      // DEC-REF-107 (Paso 4): panel de widgets con grilla arrastrable.
+      customizing: false,
+      gridReady: false,
+      layout: [],
+      panelSettings: {},
+      lastLayout: null,
     };
   },
 
@@ -158,11 +188,38 @@ export default {
     hasAddress() {
       return this.site && (this.site.direccion || this.site.localidad || this.site.provincia);
     },
+
+    // DEC-REF-107 (Paso 4): clave de layout por sitio (y por usuario en la API).
+    panelKey() {
+      return 'site-' + this.siteCode;
+    },
+    // Un ítem de grilla por (device, widget). `i` estable: dId::índice.
+    widgetItems() {
+      const items = [];
+      (this.devices || []).forEach((device) => {
+        (device.templateWidgets || []).forEach((widget, j) => {
+          items.push({
+            i: device.dId + '::' + j,
+            device,
+            widget,
+            defW: this.colToW(widget.column),
+            defH: this.hFor(widget),
+          });
+        });
+      });
+      return items;
+    },
+    itemMap() {
+      const map = {};
+      this.widgetItems.forEach((it) => { map[it.i] = it; });
+      return map;
+    },
   },
 
   async mounted() {
     await this.$store.dispatch('getDevices');
     await this.loadDetail();
+    await this.setupGrid();
     await this.loadAlarms();
 
     // Real-time-lite (DEC-REF-44/54/55): re-fetch acotado del feed al recibir
@@ -312,6 +369,113 @@ export default {
 
     resolveWidget,
 
+    // ── DEC-REF-107 (Paso 4): panel de widgets con grilla ──────────────
+    // col-N → ancho de grilla (3..12); default 4. El tamaño ahora es real.
+    colToW(column) {
+      const m = /col-(\d+)/.exec(column || '');
+      const n = m ? parseInt(m[1], 10) : 4;
+      return Math.max(2, Math.min(12, n));
+    },
+    // Alto default por tipo/representación (unidades de fila de 30px).
+    hFor(widget) {
+      const t = widget.widget;
+      if (t === 'numeric') {
+        const r = widget.render;
+        if (r === 'gauge' || r === 'tank') return 8;
+        if (r === 'sparkline') return 6;
+        if (r === 'counter') return 5;
+        return 4; // valueStatus / icon
+      }
+      const H = {
+        powerCascade: 6, dcPlant: 7, equipmentAlarms: 8, activeRecommendation: 5,
+        numberchart: 8, tankLevel: 8, projectedAutonomy: 8,
+        valueStatus: 4, multiState: 4, dataFreshness: 4, booleanDwell: 4,
+        indicator: 4, switch: 4, button: 4,
+      };
+      return H[t] || 5;
+    },
+    buildDefaultLayout() {
+      const COLS = 12;
+      let x = 0, y = 0, rowH = 0;
+      const out = [];
+      this.widgetItems.forEach((it) => {
+        const w = Math.min(COLS, it.defW);
+        const h = it.defH;
+        if (x + w > COLS) { x = 0; y += rowH; rowH = 0; }
+        out.push({ i: it.i, x, y, w, h });
+        x += w;
+        rowH = Math.max(rowH, h);
+      });
+      return out;
+    },
+    async setupGrid() {
+      if (this.loadError || !this.devices.length) { this.gridReady = false; return; }
+      const def = this.buildDefaultLayout();
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      let saved = null;
+      try {
+        const res = await this.$axios.get('/panellayout?dashboard=' + encodeURIComponent(this.panelKey), headers);
+        const d = res.data && res.data.data;
+        if (d && Array.isArray(d.layout)) saved = d.layout;
+        this.panelSettings = (d && d.settings) || {};
+      } catch (err) {
+        console.warn('[SiteDetail] loadLayout error:', err.message || err);
+      }
+      if (saved && saved.length) {
+        // Merge: posición guardada para los ítems que aún existen; default para
+        // ítems nuevos (devices/widgets agregados desde el último guardado).
+        const byId = {};
+        saved.forEach((s) => { byId[s.i] = s; });
+        this.layout = def.map((it) => {
+          const s = byId[it.i];
+          return s ? { i: it.i, x: s.x, y: s.y, w: s.w, h: s.h } : it;
+        });
+      } else {
+        this.layout = def;
+      }
+      this.gridReady = true;
+    },
+    saveLayout() {
+      if (this._saveTimer) clearTimeout(this._saveTimer);
+      this._saveTimer = setTimeout(async () => {
+        this._saveTimer = null;
+        const headers = { headers: { token: this.$store.state.auth.token } };
+        try {
+          await this.$axios.put('/panellayout', {
+            dashboard: this.panelKey,
+            layout: this.lastLayout || this.layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
+            settings: this.panelSettings,
+          }, headers);
+        } catch (err) {
+          console.warn('[SiteDetail] saveLayout error:', err.message || err);
+        }
+      }, 800);
+    },
+    async resetLayout() {
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        await this.$axios.delete('/panellayout?dashboard=' + encodeURIComponent(this.panelKey), headers);
+      } catch (err) {
+        console.warn('[SiteDetail] resetLayout error:', err.message || err);
+      }
+      this.layout = this.buildDefaultLayout();
+      this.panelSettings = {};
+      this.lastLayout = null;
+    },
+    toggleCustomizing() {
+      this.customizing = !this.customizing;
+    },
+    onLayoutUpdated(newLayout) {
+      // NO reasignar this.layout acá (loop infinito: la lib muta in place y su
+      // watcher re-emite layout-updated — lección DEC-REF-101/#76). Solo copiar
+      // para persistir.
+      this.lastLayout = newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
+      this.saveLayout();
+      // ECharts/Leaflet no escuchan resize del contenedor: disparo window resize
+      // para que re-fluyan tras arrastrar/redimensionar.
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
+    },
+
     liveConfig(device, widget) {
       // DEC-REF-98 D-3 (#73): viaja el widget COMPLETO (thresholds,
       // tankCapacity, tankUnit, enumValues, cadenceExpected,
@@ -376,6 +540,33 @@ export default {
 .dot-critical { background: #E24B4A; }
 .dot-warning  { background: #EF9F27; }
 .dot-ok       { background: #639922; }
+
+/* DEC-REF-107 (Paso 4): panel de widgets del sitio. */
+.site-panel-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.site-grid-cell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.site-grid-cell__cap {
+  font-size: 0.72rem;
+  color: #9aa5b1;
+  margin-bottom: 2px;
+  padding-left: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.site-grid-cell__body { flex: 1 1 auto; overflow: auto; }
+.site-grid-cell--customizing {
+  outline: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+}
 </style>
 
 <!-- DEC-REF-70 (f) · #50 — .site-pin vive en assets/sass/dashboard/custom/_leaflet-pins.scss (global). -->
