@@ -200,6 +200,47 @@ export const WIDGET_REGISTRY = {
     },
   },
 
+  // ── CONTADOR SURTIDOR (tipo propio; visual = CounterPump) ────────────
+  // Es el mismo componente que numeric[render=counter]. Existe como TIPO
+  // porque hay plantillas que ya lo usan (run_hours, litros, kWh); el
+  // resolver lo enruta a la composición numérica. Sin este descriptor su
+  // editor quedaba vacío y renderizaba por fallback como valueStatus.
+  counter: {
+    type: 'counter',
+    label: 'Contador Surtidor — acumulador (litros, horas, kWh)',
+    icon: 'fa-gas-pump',
+    group: 'wanomi',
+    isVariableWidget: true,
+    dedupeKey: 'variable',
+    fields: [
+      { kind: 'variable', model: 'variable', label: 'Variable (nombre técnico, ej: run_hours)', lockedLabel: VAR_LOCKED_LABEL },
+      { kind: 'text',     model: 'variableFullName', label: 'Nombre de Variable' },
+      { kind: 'text',     model: 'unit',             label: 'Unidad (ej: L, h, kWh)' },
+      { kind: 'number',   model: 'decimalPlaces',    label: 'Decimales' },
+      { kind: 'number',   model: 'variableSendFreq', label: 'Frecuencia de Envío (seg)' },
+      { kind: 'number',   model: 'deadband',         label: 'Umbral de cambio (opcional — publica solo si el valor varía al menos esto)' },
+      { kind: 'icon',     model: 'icon' },
+      { kind: 'help',     text: 'Acumulador estilo surtidor. Equivale a Valor Numérico con representación "contador"; existe como tipo propio para las plantillas que ya lo usan.' },
+      { kind: 'size',     model: 'column' },
+    ],
+    defaultConfig: () => ({
+      variable: '',
+      variableFullName: '',
+      unit: '',
+      decimalPlaces: 0,
+      variableSendFreq: 60,
+      deadband: null,
+      icon: 'fa-clock',
+      column: 'col-4',
+      widget: 'counter',
+    }),
+    normalize(cfg) {
+      cfg.decimalPlaces = toNumOrNull(cfg.decimalPlaces);
+      cfg.deadband = toNumOrNull(cfg.deadband);
+      cfg.variableSendFreq = Number.isFinite(cfg.variableSendFreq) ? cfg.variableSendFreq : 60;
+    },
+  },
+
   // ── LEGACY (grupo input/output) ──────────────────────────────────────
   numberchart: {
     type: 'numberchart',
@@ -640,12 +681,6 @@ export const WIDGET_REGISTRY = {
     },
   },
 };
-
-// Orden del selector de tipos (idéntico al del template previo).
-export const WIDGET_SELECTOR_GROUPS = [
-  { group: null,        types: ['numberchart', 'indicator', 'switch', 'button', 'valueStatus'] },
-  { group: 'Wanomi 3.0', types: ['tankLevel', 'multiState', 'projectedAutonomy', 'dataFreshness', 'booleanDwell', 'equipmentAlarms'] },
-];
 
 export function getDescriptor(type) {
   return WIDGET_REGISTRY[type] || null;

@@ -54,6 +54,9 @@ const LEGACY = {
 
 const CATALOG_LIVE = {
   numeric:           NumericLive,
+  // `counter` reusa la composición numérica: NumericValue lo dibuja como
+  // contador surtidor (CounterPump) vía su render efectivo, sin duplicar código.
+  counter:           NumericLive,
   activeRecommendation: ActiveRecommendationLive,
   powerCascade:      PowerCascadeLive,
   dcPlant:           DcPlantLive,
@@ -64,12 +67,11 @@ const CATALOG_LIVE = {
   dataFreshness:     DataFreshnessLive,
   booleanDwell:      BooleanDwellLive,
   equipmentAlarms:   EquipmentAlarmsLive,
-  // Sumar acá cuando se construya cada tipo del catálogo:
-  // counter, miniTrend, activeRecommendation, dcPlant, powerCascade.
 };
 
 const CATALOG_EDITOR = {
   numeric:           NumericEditor,
+  counter:           NumericEditor,
   activeRecommendation: ActiveRecommendationEditor,
   powerCascade:      PowerCascadeEditor,
   dcPlant:           DcPlantEditor,

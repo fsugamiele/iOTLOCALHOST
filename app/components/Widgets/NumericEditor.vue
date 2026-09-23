@@ -22,7 +22,9 @@ export default {
   },
   computed: {
     sample() {
-      switch (this.config.render) {
+      // Render efectivo: el tipo legacy `counter` (sin render) se muestra como contador.
+      const render = this.config.render || (this.config.widget === 'counter' ? 'counter' : null);
+      switch (render) {
         case 'tank':    return 62;
         case 'counter': return 12480;
         case 'gauge': {

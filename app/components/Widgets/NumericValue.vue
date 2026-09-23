@@ -31,8 +31,14 @@ export default {
     context: { type: String, default: 'live' },
   },
   computed: {
+    // Representación efectiva. `numeric` la trae en config.render; el tipo
+    // legacy `counter` (sin render) se dibuja como contador surtidor — así los
+    // widgets counter ya existentes dejan de caer al fallback valueStatus.
+    effectiveRender() {
+      return this.config.render || (this.config.widget === 'counter' ? 'counter' : null);
+    },
     // Fallback a valueStatus si render no está definido/known (compat).
-    sub() { return RENDERERS[this.config.render] || ValueStatus; },
+    sub() { return RENDERERS[this.effectiveRender] || ValueStatus; },
   },
 };
 </script>

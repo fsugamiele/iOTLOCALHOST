@@ -44,7 +44,7 @@ const widgetSchema = new Schema({
         enum: [
             'numberchart', 'switch', 'button', 'indicator',
             'valueStatus', 'tankLevel', 'counter', 'multiState',
-            'equipmentAlarms', 'miniTrend', 'projectedAutonomy', 'dataFreshness',
+            'equipmentAlarms', 'projectedAutonomy', 'dataFreshness',
             'activeRecommendation', 'dcPlant', 'powerCascade', 'booleanDwell',
             // DEC-REF-107 (Paso 2): tipo por FORMA DE DATO; la visual la elige
             // el usuario en `render` (desacople representación↔tipo).
