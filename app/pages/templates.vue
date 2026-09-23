@@ -191,6 +191,18 @@
         style="margin-bottom:24px"
       >
         <div style="display:flex; justify-content:flex-end; align-items:center; gap:4px; margin-bottom:6px">
+          <!-- DEC-REF-108 F3 (#80): marca el widget como "solo vista Técnica".
+               La página de sitio lo oculta en modo Operador. -->
+          <span v-if="widget.advanced" class="badge badge-info" style="margin-right:auto" title="Este widget solo se ve en la vista Técnico">TÉCNICO</span>
+          <base-button
+            size="sm"
+            :type="widget.advanced ? 'info' : 'default'"
+            icon
+            :title="widget.advanced ? 'Solo vista Técnico — click para verlo también en Operador' : 'Visible en ambas vistas — click para dejarlo solo en Técnico'"
+            @click="toggleAdvanced(index)"
+          >
+            <i class="fa fa-user-cog"></i>
+          </base-button>
           <base-button
             size="sm"
             type="default"
@@ -742,6 +754,13 @@ export default {
       const arr = [...this.widgets];
       [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
       this.widgets = arr;
+    },
+
+    // DEC-REF-108 F3 (#80): marca/desmarca el widget como "solo vista
+    // Técnico" (la página de sitio lo oculta en modo Operador).
+    toggleAdvanced(index) {
+      const w = this.widgets[index];
+      this.$set(w, 'advanced', !w.advanced);
     },
 
     async getTemplates() {

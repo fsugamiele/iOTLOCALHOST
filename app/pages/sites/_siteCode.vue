@@ -98,17 +98,38 @@
         </div>
         <div class="row">
           <div class="col-12 site-panel-toolbar">
-            <base-button
-              size="sm"
-              :type="customizing ? 'success' : 'default'"
-              @click="toggleCustomizing"
-            >
-              <i class="fa" :class="customizing ? 'fa-check' : 'fa-th-large'" style="margin-right:6px"></i>
-              {{ customizing ? 'Listo' : 'Personalizar' }}
-            </base-button>
-            <base-button v-if="customizing" size="sm" type="default" @click="resetLayout">
-              <i class="fa fa-undo" style="margin-right:6px"></i>Restablecer
-            </base-button>
+            <!-- DEC-REF-108 F3 (#80): vista Operador (solo widgets operativos)
+                 vs Técnico (incluye los marcados "advanced" en la plantilla).
+                 La preferencia se persiste POR USUARIO (site-prefs-viewmode). -->
+            <div class="viewmode-toggle">
+              <base-button
+                size="sm"
+                :type="viewMode === 'operador' ? 'primary' : 'default'"
+                @click="setViewMode('operador')"
+              >
+                <i class="fa fa-eye" style="margin-right:6px"></i>Operador
+              </base-button>
+              <base-button
+                size="sm"
+                :type="viewMode === 'tecnico' ? 'primary' : 'default'"
+                @click="setViewMode('tecnico')"
+              >
+                <i class="fa fa-user-cog" style="margin-right:6px"></i>Técnico
+              </base-button>
+            </div>
+            <div>
+              <base-button
+                size="sm"
+                :type="customizing ? 'success' : 'default'"
+                @click="toggleCustomizing"
+              >
+                <i class="fa" :class="customizing ? 'fa-check' : 'fa-th-large'" style="margin-right:6px"></i>
+                {{ customizing ? 'Listo' : 'Personalizar' }}
+              </base-button>
+              <base-button v-if="customizing" size="sm" type="default" @click="resetLayout">
+                <i class="fa fa-undo" style="margin-right:6px"></i>Restablecer
+              </base-button>
+            </div>
           </div>
         </div>
 
@@ -207,6 +228,9 @@ export default {
       lastLayout: null,
       // DEC-REF-108 F2 (#80): tab de dominio activo ('general' = sin ficha/dominio).
       activeTab: 'general',
+      // DEC-REF-108 F3 (#80): vista 'operador' (sin widgets advanced) o
+      // 'tecnico' (todo). Se carga/persiste por usuario (site-prefs-viewmode).
+      viewMode: 'operador',
     };
   },
 
@@ -237,12 +261,15 @@ export default {
     },
     // Un ítem de grilla por (device, widget) DEL DOMINIO ACTIVO.
     // `i` estable: dId::índice.
+    // DEC-REF-108 F3 (#80): en vista Operador se filtran los widgets
+    // marcados "advanced" en la plantilla (solo vista Técnico).
     widgetItems() {
       const items = [];
       (this.devices || [])
         .filter(d => (d.domain || 'general') === this.activeTab)
         .forEach((device) => {
           (device.templateWidgets || []).forEach((widget, j) => {
+            if (this.viewMode !== 'tecnico' && widget.advanced) return;
             items.push({
               i: device.dId + '::' + j,
               device,
@@ -264,6 +291,7 @@ export default {
   async mounted() {
     await this.$store.dispatch('getDevices');
     await this.loadDetail();
+    await this.loadViewMode();
     await this.setupGrid();
     await this.loadAlarms();
 
@@ -438,6 +466,39 @@ export default {
       this.customizing = false;
       this.gridReady = false;
       await this.setupGrid();
+    },
+
+    // ── DEC-REF-108 F3 (#80): vista Operador/Técnico ────────────────────
+    // Preferencia global POR USUARIO (no por sitio): persiste en
+    // /panellayout con dashboard 'site-prefs-viewmode' (settings libres
+    // para claves site-*, validación del backend). El técnico no la
+    // reactiva en cada visita — decisión de Franco en el diseño.
+    async loadViewMode() {
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.get('/panellayout?dashboard=site-prefs-viewmode', headers);
+        const mode = res.data && res.data.data && res.data.data.settings && res.data.data.settings.siteViewMode;
+        if (mode === 'tecnico' || mode === 'operador') this.viewMode = mode;
+      } catch (err) {
+        console.warn('[SiteDetail] loadViewMode error:', err.message || err);
+      }
+    },
+    async setViewMode(mode) {
+      if (mode === this.viewMode) return;
+      this.viewMode = mode;
+      this.customizing = false;
+      this.gridReady = false;
+      await this.setupGrid();
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        await this.$axios.put('/panellayout', {
+          dashboard: 'site-prefs-viewmode',
+          layout: [],
+          settings: { siteViewMode: mode },
+        }, headers);
+      } catch (err) {
+        console.warn('[SiteDetail] persist viewMode error:', err.message || err);
+      }
     },
 
     // ── DEC-REF-107 (Paso 4): panel de widgets con grilla ──────────────
@@ -615,9 +676,14 @@ export default {
 /* DEC-REF-107 (Paso 4): panel de widgets del sitio. */
 .site-panel-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+.viewmode-toggle {
+  display: flex;
+  gap: 4px;
 }
 .site-grid-cell {
   height: 100%;

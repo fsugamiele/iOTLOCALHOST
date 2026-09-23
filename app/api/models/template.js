@@ -62,6 +62,11 @@ const widgetSchema = new Schema({
     gaugeMin:      { type: Number },
     gaugeMax:      { type: Number },
 
+    // DEC-REF-108 F3 (#80): widget "avanzado" — solo visible en la vista
+    // Técnico de la página de sitio (status words, bitmaps, setpoints…).
+    // default false = visible en ambas vistas (Operador y Técnico).
+    advanced:         { type: Boolean, default: false },
+
     icon:          { type: String },
     class:         { type: String },
     column:        { type: String },
