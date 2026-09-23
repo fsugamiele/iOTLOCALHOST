@@ -166,6 +166,10 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { resolveWidget } from '@/components/Widgets/resolver.js';
 import SiteHealthHeader from '@/components/Site/SiteHealthHeader.vue';
+// DEC-REF-108 F2 (#80): el proyecto NO registra Element UI globalmente —
+// cada página importa sus componentes (patrón admin.vue). Sin esto los tabs
+// no renderizan (custom element desconocido, silencioso en build).
+import { Tabs, TabPane } from 'element-ui';
 
 // Colores de severidad — mismo criterio que pages/sites/index.vue (DEC-REF-27).
 const STATUS_COLOR = {
@@ -177,7 +181,7 @@ const STATUS_COLOR = {
 export default {
   name: 'SiteDetail',
   middleware: 'authenticated',
-  components: { SiteHealthHeader },
+  components: { SiteHealthHeader, 'el-tabs': Tabs, 'el-tab-pane': TabPane },
 
   data() {
     return {
