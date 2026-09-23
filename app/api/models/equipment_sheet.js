@@ -29,6 +29,10 @@ const equipmentSheetSchema = new Schema({
   manufacturer: { type: String },
   model:        { type: String },
   origin:       { type: String, enum: ['own', 'third_party'] },  // enum cerrado (DEC-REF-94)
+  // DEC-REF-108 F2 (#80): dominio funcional del equipo — arma los tabs de la
+  // página de sitio (Energía / Grupo / Seguridad / Infraestructura).
+  // Enum cerrado + '' = sin clasificar (cae en tab "General").
+  domain:       { type: String, enum: ['', 'energia', 'grupo', 'seguridad', 'infraestructura'], default: '' },
   version:      { type: Number, default: 1 },                    // reservado sin fijación (Fork III de -92)
   manual:       { type: Schema.Types.ObjectId, default: null },  // ref nullable; modelo Manual no existe aún (fuera de -91)
   variables:    { type: [VariableSchema], default: [] },

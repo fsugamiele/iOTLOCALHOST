@@ -37,7 +37,7 @@
           <base-table
             v-else
             :data="sheets"
-            :columns="['deviceType', 'fabricante', 'modelo', 'origen', 'variables', 'creada', 'acciones']"
+            :columns="['deviceType', 'fabricante', 'modelo', 'origen', 'dominio', 'variables', 'creada', 'acciones']"
             thead-classes="text-primary"
           >
             <template slot-scope="{ row }">
@@ -49,6 +49,7 @@
                   {{ row.origin === 'own' ? 'propio' : (row.origin === 'third_party' ? 'tercero' : '—') }}
                 </span>
               </td>
+              <td>{{ domainLabel(row.domain) }}</td>
               <td>{{ (row.variables || []).length }}</td>
               <td>{{ formatDate(row.createdTime) }}</td>
               <td>
@@ -121,6 +122,19 @@
         <div class="col-md-6 form-group">
           <label>Modelo</label>
           <base-input v-model="newSheet.model" placeholder="ej. PowerCommand 1.1" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 form-group">
+          <!-- DEC-REF-108 F2 (#80): el dominio arma los tabs de la página de sitio. -->
+          <label>Dominio (tab del sitio)</label>
+          <select v-model="newSheet.domain" class="form-control">
+            <option value="">— Sin clasificar (tab General) —</option>
+            <option value="energia">Energía y red</option>
+            <option value="grupo">Grupo y combustible</option>
+            <option value="seguridad">Seguridad física</option>
+            <option value="infraestructura">Infraestructura</option>
+          </select>
         </div>
       </div>
 
@@ -258,6 +272,7 @@
         <p>
           <strong>{{ detailSheet.manufacturer || '—' }} {{ detailSheet.model || '' }}</strong>
           · origen {{ detailSheet.origin === 'own' ? 'propio' : 'tercero' }}
+          · dominio {{ domainLabel(detailSheet.domain) }}
           · versión {{ detailSheet.version || 1 }}
         </p>
         <base-table
@@ -400,7 +415,17 @@ export default {
       return new Date(value).toLocaleString();
     },
     emptySheet() {
-      return { deviceType: '', manufacturer: '', model: '', origin: 'own', variables: [] };
+      return { deviceType: '', manufacturer: '', model: '', origin: 'own', domain: '', variables: [] };
+    },
+    // DEC-REF-108 F2 (#80): label legible del dominio (tab del sitio).
+    domainLabel(domain) {
+      const LABELS = {
+        energia: 'Energía y red',
+        grupo: 'Grupo y combustible',
+        seguridad: 'Seguridad física',
+        infraestructura: 'Infraestructura',
+      };
+      return LABELS[domain] || '—';
     },
     openCreateModal() {
       this.newSheet = this.emptySheet();
@@ -419,6 +444,7 @@ export default {
         manufacturer: c.manufacturer || '',
         model: c.model || '',
         origin: c.origin || 'own',
+        domain: c.domain || '',
         variables: (c.variables || []).map(v => ({
           name: v.name || '',
           label: v.label || '',
@@ -532,6 +558,7 @@ export default {
           manufacturer: this.newSheet.manufacturer || undefined,
           model: this.newSheet.model || undefined,
           origin: this.newSheet.origin,
+          domain: this.newSheet.domain || '',
           variables: this.newSheet.variables.map(v => ({
             name: v.name.trim(),
             label: v.label || undefined,

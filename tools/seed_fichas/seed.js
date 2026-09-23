@@ -38,7 +38,7 @@ const V = (name, label, type, unit, deadband, limits) => {
 };
 
 const FICHAS = [
-  { deviceType: 'cummins-pcc', manufacturer: 'Cummins', model: 'PowerCommand (PCC)', origin: 'third_party', variables: [
+  { deviceType: 'cummins-pcc', manufacturer: 'Cummins', model: 'PowerCommand (PCC)', origin: 'third_party', domain: 'grupo', variables: [
     // limits con evidencia: LOP ~25 psi (sensor-engine); fuel/temp de
     // registros_consolidado_gef.md §4 (manual InteliGen/Cummins NFPA110).
     V('oil_pressure', 'Presión aceite', 'float', 'psi', 1, [{ kind: 'trip', op: 'lt', value: 25, unit: 'psi', source: 'Cummins PCC — LOP setpoint' }]),
@@ -59,7 +59,7 @@ const FICHAS = [
     V('coolant_temp_setpoint', 'Setpoint temp. refrigerante', 'float', '°C', null),
     V('oil_pressure_setpoint', 'Setpoint presión aceite', 'float', 'psi', null),
   ] },
-  { deviceType: 'ATS', manufacturer: 'ComAp', model: 'InteliATS²', origin: 'third_party', variables: [
+  { deviceType: 'ATS', manufacturer: 'ComAp', model: 'InteliATS²', origin: 'third_party', domain: 'energia', variables: [
     V('transfer_state', 'Estado de transferencia', 'categorical', '', null),
     V('mains_voltage', 'Tensión red', 'float', 'V', 2),
     V('mains_freq', 'Frecuencia red', 'float', 'Hz', 0.1),
@@ -68,13 +68,13 @@ const FICHAS = [
     V('load_kw', 'Carga activa', 'float', 'kW', 0.5),
     V('gen_status', 'Estado del generador', 'categorical', '', null),
   ] },
-  { deviceType: 'ELTEK', manufacturer: 'Eltek', model: 'Smartpack S', origin: 'third_party', variables: [
+  { deviceType: 'ELTEK', manufacturer: 'Eltek', model: 'Smartpack S', origin: 'third_party', domain: 'energia', variables: [
     V('dc_bus_voltage', 'Tensión DC bus', 'float', 'V', 0.3),
     V('dc_load_current', 'Corriente carga', 'float', 'A', 1),
     V('temperature', 'Temperatura sistema', 'float', '°C', 0.5, [
       { kind: 'trip', op: 'gt', value: 60, unit: '°C', source: 'Eltek Smartpack S — rango operativo (mapeo_modbus_drivers.md)' }]),
   ] },
-  { deviceType: 'SEC', manufacturer: 'Wanomi', model: 'WN-SITE-SEC (Sense)', origin: 'own', variables: [
+  { deviceType: 'SEC', manufacturer: 'Wanomi', model: 'WN-SITE-SEC (Sense)', origin: 'own', domain: 'seguridad', variables: [
     V('door_shelter', 'Puerta shelter', 'bool', '', null),
     V('door_front', 'Puerta frente', 'bool', '', null),
     V('door_rear', 'Puerta trasera', 'bool', '', null),
@@ -86,7 +86,7 @@ const FICHAS = [
     V('battery_beacons_count', 'Baterías presentes (BLE beacons)', 'int', 'uni', null),
     V('shelter_temp', 'Temperatura shelter', 'float', '°C', 0.5),
   ] },
-  { deviceType: 'GEN', manufacturer: 'Genérico', model: 'Generador genérico', origin: 'third_party', variables: [
+  { deviceType: 'GEN', manufacturer: 'Genérico', model: 'Generador genérico', origin: 'third_party', domain: 'grupo', variables: [
     V('fuel_level', 'Nivel combustible', 'float', '%', 1, [
       { kind: 'warning', op: 'lt', value: 25, unit: '%', source: 'registros_consolidado_gef.md §4 (NFPA b0)' },
       { kind: 'trip', op: 'lt', value: 10, unit: '%', source: 'registros_consolidado_gef.md §4 (NFPA b0)' }]),

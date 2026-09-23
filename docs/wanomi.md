@@ -12445,3 +12445,7 @@ Franco trajo propuesta UX (progressive disclosure, header de salud, tabs por dom
 ### Carry-over
 
 F2–F5 pendientes en orden · push acumulado (#76–#80) sigue esperando orden explícita · #80 candidato lateral: publicar al cruzar niveles de ficha (rincón deadband/umbral documentado en #79-b).
+
+### Adenda #80-b — F2 · Tabs por dominio (implementado y verificado)
+
+La página de sitio agrupa los widgets en tabs por dominio funcional, afuera la sopa plana. Cadena: `equipment_sheet.domain` (enum cerrado: energia/grupo/seguridad/infraestructura, default '' → tab General) editable en el form de fichas (alta y edición, PUT whitelist actualizado) → `/site/:code/full` devuelve `deviceType`+`domain` por equipo (join template→ficha, 1 query) → la página arma un tab por dominio presente (orden operativo fijo: Energía y red → Grupo y combustible → Seguridad física → Infraestructura → General), cada uno con su grilla arrastrable y su layout persistido aparte (`site-<code>-<dominio>` — las claves viejas `site-<code>` quedan huérfanas, sin migración: solo Franco las usaba). Dominios sembrados: ATS/ELTEK→energia, GEN/cummins-pcc→grupo, SEC→seguridad (DB + tools/seed_fichas/seed.js). Verificado: /full devuelve los 3 dominios para CR00061 (tabs: Energía, Grupo, Seguridad), UI 200. Observación lateral: CR00061 tiene 6 devices (ELTEK-01 fue eliminado de la base entre sesiones — queda registrado, no restaurado).

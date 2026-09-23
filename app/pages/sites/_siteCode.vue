@@ -79,8 +79,23 @@
            arrastrable/redimensionable por widget; el layout se persiste por
            usuario y por sitio (/panellayout?dashboard=site-<code>). Reusa el
            andamiaje del Panel NOC (DEC-REF-101 D-7/D-8). Cada widget es un
-           ítem: el tamaño ahora es real (antes `column` no se respetaba). -->
+           ítem: el tamaño ahora es real (antes `column` no se respetaba).
+           DEC-REF-108 F2 (#80): los widgets se agrupan en TABS por dominio
+           funcional (ficha.domain del equipo); cada tab tiene su propia
+           grilla y su propio layout persistido (site-<code>-<dominio>). -->
       <template v-if="devices.length > 0">
+        <div class="row" v-if="domains.length > 1">
+          <div class="col-12">
+            <el-tabs v-model="activeTab" @tab-click="onTabChange">
+              <el-tab-pane
+                v-for="d in domains"
+                :key="d.key"
+                :label="d.label"
+                :name="d.key"
+              />
+            </el-tabs>
+          </div>
+        </div>
         <div class="row">
           <div class="col-12 site-panel-toolbar">
             <base-button
@@ -186,6 +201,8 @@ export default {
       layout: [],
       panelSettings: {},
       lastLayout: null,
+      // DEC-REF-108 F2 (#80): tab de dominio activo ('general' = sin ficha/dominio).
+      activeTab: 'general',
     };
   },
 
@@ -200,24 +217,37 @@ export default {
       return this.site && (this.site.direccion || this.site.localidad || this.site.provincia);
     },
 
-    // DEC-REF-107 (Paso 4): clave de layout por sitio (y por usuario en la API).
-    panelKey() {
-      return 'site-' + this.siteCode;
+    // DEC-REF-108 F2 (#80): dominios presentes en el sitio, en orden fijo de
+    // operación (energía primero, grupo después...). Fuente: ficha.domain de
+    // cada equipo (viaja en /full); sin ficha/dominio ⇒ 'general'.
+    domains() {
+      const ORDER = ['energia', 'grupo', 'seguridad', 'infraestructura', 'general'];
+      const present = new Set((this.devices || []).map(d => d.domain || 'general'));
+      return ORDER.filter(k => present.has(k)).map(k => ({ key: k, label: this.domainLabel(k) }));
     },
-    // Un ítem de grilla por (device, widget). `i` estable: dId::índice.
+
+    // DEC-REF-107 (Paso 4) + DEC-REF-108 F2: clave de layout por sitio Y
+    // dominio (cada tab tiene su grilla propia) — y por usuario en la API.
+    panelKey() {
+      return 'site-' + this.siteCode + '-' + this.activeTab;
+    },
+    // Un ítem de grilla por (device, widget) DEL DOMINIO ACTIVO.
+    // `i` estable: dId::índice.
     widgetItems() {
       const items = [];
-      (this.devices || []).forEach((device) => {
-        (device.templateWidgets || []).forEach((widget, j) => {
-          items.push({
-            i: device.dId + '::' + j,
-            device,
-            widget,
-            defW: this.colToW(widget.column),
-            defH: this.hFor(widget),
+      (this.devices || [])
+        .filter(d => (d.domain || 'general') === this.activeTab)
+        .forEach((device) => {
+          (device.templateWidgets || []).forEach((widget, j) => {
+            items.push({
+              i: device.dId + '::' + j,
+              device,
+              widget,
+              defW: this.colToW(widget.column),
+              defH: this.hFor(widget),
+            });
           });
         });
-      });
       return items;
     },
     itemMap() {
@@ -284,6 +314,12 @@ export default {
 
         this.site = fullRes.data.data.site;
         this.devices = fullRes.data.data.devices || [];
+
+        // DEC-REF-108 F2 (#80): el tab inicial es el primer dominio presente
+        // (orden operativo fijo: energía → grupo → seguridad → …).
+        if (this.domains.length && !this.domains.some(d => d.key === this.activeTab)) {
+          this.activeTab = this.domains[0].key;
+        }
 
         // Status del site puntual. Si no aparece (sin notifs recientes), default 'ok'.
         const statusList = (statusRes.data && statusRes.data.data) || [];
@@ -379,6 +415,26 @@ export default {
     },
 
     resolveWidget,
+
+    // DEC-REF-108 F2 (#80): label legible del dominio (tabs del sitio).
+    domainLabel(key) {
+      const LABELS = {
+        energia: 'Energía y red',
+        grupo: 'Grupo y combustible',
+        seguridad: 'Seguridad física',
+        infraestructura: 'Infraestructura',
+        general: 'General',
+      };
+      return LABELS[key] || key;
+    },
+
+    // Cambio de tab: sale del modo personalizar y arma la grilla del nuevo
+    // dominio (su layout persistido viaja en la clave site-<code>-<dominio>).
+    async onTabChange() {
+      this.customizing = false;
+      this.gridReady = false;
+      await this.setupGrid();
+    },
 
     // ── DEC-REF-107 (Paso 4): panel de widgets con grilla ──────────────
     // col-N → ancho de grilla (3..12); default 4. El tamaño ahora es real.

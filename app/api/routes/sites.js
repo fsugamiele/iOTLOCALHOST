@@ -8,6 +8,7 @@ import Site   from "../models/site.js";
 import Device from "../models/device.js";
 import Template from "../models/template.js";
 import Notification from "../models/notifications.js";
+import EquipmentSheet from "../models/equipment_sheet.js";
 
 const TIPO_ENUM             = ['BTS', 'shelter', 'repeater'];
 const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
@@ -58,19 +59,36 @@ router.get("/site/:siteCode/full", checkAuth, async (req, res) => {
     const templates = await Template.find({ _id: { $in: templateIds } }).lean();
     const widgetsByTemplateId = {};
     const nameByTemplateId = {};
+    const deviceTypeByTemplateId = {};
     templates.forEach(t => {
       widgetsByTemplateId[t._id.toString()] = t.widgets || [];
       nameByTemplateId[t._id.toString()] = t.name || "";
+      deviceTypeByTemplateId[t._id.toString()] = t.deviceType || "";
     });
 
+    // 3b. DEC-REF-108 F2 (#80) — dominio por equipo: template.deviceType →
+    // ficha.domain. Una sola query a equipmentsheets, indexada en memoria.
+    // Sin ficha o sin dominio ⇒ '' (cae en el tab "General" de la página).
+    const deviceTypes = [...new Set(Object.values(deviceTypeByTemplateId).filter(Boolean))];
+    const sheets = deviceTypes.length
+      ? await EquipmentSheet.find({ deviceType: { $in: deviceTypes } }, { deviceType: 1, domain: 1, _id: 0 }).lean()
+      : [];
+    const domainByDeviceType = {};
+    sheets.forEach(s => { domainByDeviceType[s.deviceType] = s.domain || ""; });
+
     // 4. Devices enriquecidos (shape que DevicePanel consume)
-    const enriched = devices.map(d => ({
-      dId: d.dId,
-      name: d.name,
-      siteId: d.siteId,
-      templateName: d.templateId ? (nameByTemplateId[d.templateId.toString()] || "") : "",
-      templateWidgets: d.templateId ? (widgetsByTemplateId[d.templateId.toString()] || []) : []
-    }));
+    const enriched = devices.map(d => {
+      const deviceType = d.templateId ? (deviceTypeByTemplateId[d.templateId.toString()] || "") : "";
+      return {
+        dId: d.dId,
+        name: d.name,
+        siteId: d.siteId,
+        templateName: d.templateId ? (nameByTemplateId[d.templateId.toString()] || "") : "",
+        deviceType,
+        domain: deviceType ? (domainByDeviceType[deviceType] || "") : "",
+        templateWidgets: d.templateId ? (widgetsByTemplateId[d.templateId.toString()] || []) : []
+      };
+    });
 
     // 5. Respuesta: site + devices enriquecidos en un solo viaje
     const cleanSite = JSON.parse(JSON.stringify(site));

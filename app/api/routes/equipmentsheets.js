@@ -102,6 +102,7 @@ router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
     if ('manufacturer' in upd) sheet.manufacturer = upd.manufacturer;
     if ('model' in upd) sheet.model = upd.model;
     if ('origin' in upd) sheet.origin = upd.origin;
+    if ('domain' in upd) sheet.domain = upd.domain || '';   // DEC-REF-108 F2 (#80): dominio → tabs del sitio
     if (Array.isArray(upd.variables)) sheet.variables = upd.variables;
     sheet.version = (Number(sheet.version) || 1) + 1;
     await sheet.save();
@@ -126,8 +127,9 @@ router.get("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
 // DELETE — superadmin only. Guarda de referencia (espejo de templates.js:107-118):
 // una ficha referenciada por templates o rulepacks NO se borra (409 con conteos) —
 // borrarla dejaría packs apuntando a un deviceType fantasma y la consola S5 dando
-// 400 sin causa visible. NO existe PUT: la ficha no se edita (DEC-REF-97 D-1;
-// Fork III de DEC-REF-92 sigue diferido — referencia viva sin fijación de versión).
+// 400 sin causa visible. El PUT de edición existe desde DEC-REF-111 (campos
+// whitelisteados arriba, línea ~102); la fijación de versión sigue diferida
+// (Fork III de DEC-REF-92 — referencia viva).
 router.delete("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
   try {
     const grants = req.userData.grants || [];
