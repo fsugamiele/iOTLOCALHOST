@@ -50,7 +50,7 @@ export default {
           data: this.points,
           showSymbol: false,
           smooth: true,
-          lineStyle: { width: 2, color: '#1d8cf8' },
+          lineStyle: { width: 2, color: '#00bf9a' },
           areaStyle: { color: 'rgba(29,140,248,0.15)' },
         }],
       };

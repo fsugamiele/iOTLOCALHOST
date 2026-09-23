@@ -48,9 +48,9 @@ export default {
 .multi-state__label { font-size: 1.3em; font-weight: 600; }
 .multi-state__raw { margin-left: 6px; font-size: 0.7em; opacity: 0.6; }
 
-.multi-state           { color: #1d8cf8; }
+.multi-state           { color: #00bf9a; }
 .multi-state--ok       { color: #00bf9a; }
-.multi-state--info     { color: #1d8cf8; }
+.multi-state--info     { color: #00bf9a; }
 .multi-state--warning  { color: #ff8d72; }
 .multi-state--critical { color: #fd5d93; }
 .multi-state--unknown  { color: #6b7280; }

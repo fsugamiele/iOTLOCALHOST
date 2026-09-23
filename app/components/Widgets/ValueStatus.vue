@@ -101,7 +101,7 @@ export default {
 
 <style scoped>
 /* Cromo/tipografía base en azul primario (DEC-REF-70 g). */
-.value-status              { color: #1d8cf8; }
+.value-status              { color: #00bf9a; }
 .value-status__unit        { color: #6b7280; }
 .value-status__nodata      { color: #6b7280; opacity: 0.7; font-style: italic; }
 .value-status__na          { color: #6b7280; opacity: 0.7; }
@@ -112,7 +112,7 @@ export default {
 .value-status--critical    { color: #fd5d93; }
 
 /* Sin umbrales cargados o valor no evaluable → cromo neutro (azul base). */
-.value-status--unknown     { color: #1d8cf8; }
+.value-status--unknown     { color: #00bf9a; }
 .value-status--nodata      { color: #6b7280; }
 .value-status--na          { color: #6b7280; }
 </style>

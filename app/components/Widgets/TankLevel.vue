@@ -63,6 +63,8 @@ export default {
     chartOption() {
       const color = this.statusColor;
       const frac = this.pct / 100;
+      // DEC-REF-112 — etiqueta legible en modo claro cuando el nivel está bajo (texto fuera del líquido).
+      const isLight = typeof document !== 'undefined' && document.body.classList.contains('white-content');
       return {
         series: [{
           type: 'liquidFill',
@@ -83,7 +85,7 @@ export default {
             formatter: () => this.pct + '%',
             fontSize: 22,
             fontWeight: '600',
-            color: '#fff',
+            color: isLight ? '#2b3553' : '#fff',
             insideColor: '#0b0f19',
           },
         }],

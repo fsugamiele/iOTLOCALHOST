@@ -2,10 +2,10 @@
   <div class="sidebar" :data="backgroundColor">
     <div class="sidebar-wrapper" ref="sidebarScrollArea">
       <div class="logo">
-        <a href="https://ioticos.org" class="simple-text logo-mini">
-          <img src="/img/favicon.png" alt="app-logo" />
+        <a href="/dashboard" class="simple-text logo-mini">
+          <img src="/img/wanomi-isotipo.svg" alt="wanomi" />
         </a>
-        <a href="https://ioticos.org" class="simple-text logo-normal">
+        <a href="/dashboard" class="simple-text logo-normal">
           {{ title }}
         </a>
       </div>

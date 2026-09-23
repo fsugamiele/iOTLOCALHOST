@@ -76,6 +76,8 @@ export default {
       return seen;
     },
     chartOption() {
+      // DEC-REF-112 — texto del valor legible en modo claro (se relee en cada tick de dato).
+      const isLight = typeof document !== 'undefined' && document.body.classList.contains('white-content');
       return {
         series: [{
           type: 'gauge',
@@ -96,7 +98,7 @@ export default {
           detail: {
             valueAnimation: true,
             formatter: () => this.label,
-            color: '#fff',
+            color: isLight ? '#2b3553' : '#fff',
             fontSize: 15,
             fontWeight: '600',
             offsetCenter: [0, '42%'],

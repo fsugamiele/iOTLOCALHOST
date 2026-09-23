@@ -99,7 +99,7 @@ $default-color-opacity:      rgba(182, 182, 182, .6) !default;
 $orange-color:               #f96332 !default;
 
 $default:       #344675 !default;
-$primary:       #e14eca !default;
+$primary:       #00f2c3 !default;   // DEC-REF-112 — primary = verde/teal del sidebar (antes #e14eca púrpura)
 $secondary:     #f4f5f7 !default;
 $success:       #00f2c3 !default;
 $info:          #1d8cf8 !default;
@@ -110,7 +110,7 @@ $vue:           #42b883 !default;
 
 // gradient
 $default-states:       #263148 !default;
-$primary-states:       #ba54f5 !default;
+$primary-states:       #00c9a7 !default;   // DEC-REF-112 — teal más oscuro: el botón primary lee VERDE/teal (no azul); el sidebar green conserva su gradiente celeste→verde propio
 $success-states:       #0098f0 !default;
 $info-states:          #3358f4 !default;
 $warning-states:       #ff6491 !default;
@@ -123,7 +123,7 @@ $background-states-black:    #1e1e24 !default;
 
 // opacity
 $default-opacity:      rgba(182, 182, 182, .6) !default;
-$primary-opacity:      rgba(249, 99, 50, .3) !default;
+$primary-opacity:      rgba(0, 242, 195, .3) !default;   // DEC-REF-112 — sombra del primary en verde/teal
 $success-opacity:      rgba(24, 206, 15, .3) !default;
 $info-opacity:         rgba(44, 168, 255, .3) !default;
 $warning-opacity:      rgba(255, 178, 54, .3) !default;

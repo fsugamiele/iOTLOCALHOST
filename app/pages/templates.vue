@@ -181,7 +181,7 @@
       <div class="col-12" style="margin-bottom:10px">
         <h6 class="text-muted">
           <i class="fa fa-th" style="margin-right:6px"></i>Widgets en esta plantilla
-          <span style="background:#e14eca; color:#fff; border-radius:10px; padding:1px 8px; font-size:12px; margin-left:6px">{{ widgets.length }}</span>
+          <span style="background:#00f2c3; color:#fff; border-radius:10px; padding:1px 8px; font-size:12px; margin-left:6px">{{ widgets.length }}</span>
         </h6>
       </div>
       <div
@@ -316,13 +316,13 @@
 
             <el-table-column label="Widgets" align="center" width="90">
               <template slot-scope="{ row }">
-                <span style="background:#e14eca; color:#fff; border-radius:10px; padding:2px 10px; font-size:12px">
+                <span style="background:#00f2c3; color:#fff; border-radius:10px; padding:2px 10px; font-size:12px">
                   {{ row.widgets.length }}
                 </span>
               </template>
             </el-table-column>
 
-            <el-table-column header-align="right" align="right" label="Acciones" width="120">
+            <el-table-column header-align="right" align="right" label="Acciones" width="160">
               <div slot-scope="{ row }" class="text-right table-actions">
                 <el-tooltip content="Ver detalle" effect="light" :open-delay="300" placement="top">
                   <base-button @click="viewTemplate(row)" type="info" icon size="sm" class="btn-link">
@@ -976,4 +976,7 @@ export default {
   align-items: center;
   justify-content: center;
 }
+
+/* DEC-REF-112 — modo claro */
+.white-content .widget-preview-box { border-color: rgba(0, 0, 0, 0.1); background: rgba(0, 0, 0, 0.02); }
 </style>

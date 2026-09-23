@@ -1291,7 +1291,7 @@ export default {
   color: #9a9a9a;
 }
 .wiz-step.active {
-  background: #e14eca;
+  background: #00f2c3;
   color: #fff;
 }
 .wiz-step.done {
@@ -1327,7 +1327,7 @@ export default {
   cursor: pointer;
 }
 .wiz-sev.active {
-  border-color: #e14eca;
+  border-color: #00f2c3;
   background: rgba(225, 78, 202, 0.08);
 }
 .wiz-sev input[type="radio"] {
@@ -1350,4 +1350,8 @@ export default {
   margin-left: 4px;
   padding-left: 14px;
 }
+
+/* DEC-REF-112 — modo claro */
+.white-content .wiz-step { background: rgba(0, 0, 0, 0.06); color: #525f7f; }
+.white-content .wiz-sentence { background: rgba(0, 0, 0, 0.03); }
 </style>

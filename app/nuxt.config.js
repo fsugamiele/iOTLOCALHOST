@@ -18,7 +18,9 @@ export default {
       { rel: 'stylesheet', href: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.10.2/css/all.min.css' }
     ],
     bodyAttrs: {
-      class: '' // Add `white-content` class here to enable "white" mode.
+      // DEC-REF-112 (#83) — modo LIGHT por defecto. vue-meta fija esta clase en
+      // el <body> desde el primer paint; el switch del engranaje la togglea.
+      class: 'white-content'
     }
   },
   router: {

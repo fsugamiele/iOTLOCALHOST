@@ -105,4 +105,8 @@ export default {
 .power-cascade__node--off     { color: #fd5d93; }
 .power-cascade__node--waiting { color: #6b7280; }
 .power-cascade__node--waiting .power-cascade__dot { border-style: dashed; }
+
+/* DEC-REF-112 — modo claro */
+.white-content .power-cascade__dot { background: rgba(0, 0, 0, 0.05); }
+.white-content .power-cascade__label { color: #525f7f; }
 </style>

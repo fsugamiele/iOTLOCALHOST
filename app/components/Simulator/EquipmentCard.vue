@@ -473,7 +473,7 @@ export default {
 }
 
 .dirty-flag {
-  color: #e14eca;
+  color: #00f2c3;
   margin-top: 0.3rem;
 }
 
@@ -491,7 +491,7 @@ export default {
 
 .scenarios-title i {
   margin-right: 0.4rem;
-  color: #e14eca;
+  color: #00f2c3;
 }
 
 .scenario-status {
@@ -503,7 +503,7 @@ export default {
 
 .status-running {
   font-size: 0.9rem;
-  color: #e14eca;
+  color: #00f2c3;
 }
 
 .status-running i {
@@ -529,7 +529,7 @@ export default {
 
 .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #e14eca, #ff8d72);
+  background: linear-gradient(90deg, #00f2c3, #0098f0);
   transition: width 0.5s linear;
 }
 
@@ -610,4 +610,22 @@ export default {
   margin-left: 0.6rem;
   flex-shrink: 0;
 }
+
+/* DEC-REF-112 — modo claro: el componente asume fondo oscuro (rgba blanco).
+   En .white-content se invierte a tinte oscuro sobre fondo claro. */
+.white-content .var-card,
+.white-content .progress-bar-wrapper,
+.white-content .scenario-button { background: rgba(0, 0, 0, 0.03); border-color: rgba(0, 0, 0, 0.1); }
+.white-content .var-label,
+.white-content .equipment-note,
+.white-content .scenario-status,
+.white-content .scenario-description,
+.white-content .scenario-duration,
+.white-content .status-idle { color: rgba(0, 0, 0, 0.55); }
+.white-content .live-value,
+.white-content .scenarios-title,
+.white-content .scenario-name,
+.white-content .scenario-button { color: rgba(0, 0, 0, 0.85); }
+.white-content .var-control .el-input__inner { color: #2b3553; }
+.white-content .scenarios-separator { border-top-color: rgba(0, 0, 0, 0.1); }
 </style>

@@ -65,7 +65,7 @@ export const ICON_OPTIONS = [
 
 export const COLOR_OPTIONS = [
   { value: 'success', label: 'Verde',   hex: '#00f2c3' },
-  { value: 'primary', label: 'Morado',  hex: '#e14eca' },
+  { value: 'primary', label: 'Primario (teal)', hex: '#00f2c3' },
   { value: 'info',    label: 'Azul',    hex: '#1d8cf8' },
   { value: 'warning', label: 'Naranja', hex: '#ff8d72' },
   { value: 'danger',  label: 'Rojo',    hex: '#fd5d93' },

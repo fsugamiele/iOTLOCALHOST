@@ -109,4 +109,8 @@ export default {
 }
 .counter-pump__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }
 .counter-pump__na     { color: #6b7280; opacity: 0.7; font-size: 1.4em; }
+
+/* DEC-REF-112 — modo claro: la etiqueta sobre la card (el display surtidor
+   queda oscuro a propósito, como un display real). */
+.white-content .counter-pump__head { color: #525f7f; }
 </style>

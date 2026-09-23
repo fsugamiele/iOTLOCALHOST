@@ -82,7 +82,7 @@
                 </span>
               </template>
             </el-table-column>
-            <el-table-column header-align="right" align="right" label="Acciones" width="130">
+            <el-table-column header-align="right" align="right" label="Acciones" width="170">
               <div slot-scope="{ row }" class="text-right table-actions">
                 <el-tooltip content="Ver detalle" effect="light" :open-delay="300" placement="top">
                   <base-button @click="$router.push('/sites/' + row.siteCode)" type="info" icon size="sm" class="btn-link">

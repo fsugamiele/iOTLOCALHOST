@@ -103,4 +103,10 @@ export default {
 
 .active-rec__ok { color: #00bf9a; }
 .active-rec__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }
+
+/* DEC-REF-112 — modo claro */
+.white-content .active-rec__box { background: rgba(0, 0, 0, 0.03); }
+.white-content .active-rec__head { color: #525f7f; }
+.white-content .active-rec__badge { background: rgba(0, 0, 0, 0.08); }
+.white-content .active-rec__text { color: #2b3553; }
 </style>

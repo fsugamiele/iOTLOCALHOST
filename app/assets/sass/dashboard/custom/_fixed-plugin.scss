@@ -123,8 +123,10 @@
     li.header-title,
     li.button-container{
         width: 100%;
-        height: 50px;
-        min-height: inherit;
+        height: auto;          // DEC-REF-112 — antes 50px fijo: el float + alto fijo
+        min-height: 50px;      // superponía la fila del switch sobre los swatches
+        clear: both;           // cada sección arranca debajo de la anterior
+        overflow: visible;
     }
 
     li.button-container{

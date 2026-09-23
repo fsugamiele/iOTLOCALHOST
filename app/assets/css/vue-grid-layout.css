@@ -23,7 +23,7 @@
 }
 
 .vue-grid-item.vue-grid-placeholder {
-  background: #e14eca;
+  background: #00f2c3;
   opacity: 0.2;
   transition-duration: 100ms;
   z-index: 2;

@@ -31,7 +31,7 @@
         <li class="adjustments-line">
           <div class="togglebutton switch-change-color mt-3">
             <span class="label-switch">LIGHT MODE</span>
-            <base-switch v-model="darkMode" @input="toggleMode"></base-switch>
+            <base-switch v-model="darkMode" @input="toggleMode" on-text="🌙" off-text="☀"></base-switch>
             <span class="label-switch label-right">DARK MODE</span>
           </div>
         </li>
@@ -56,7 +56,7 @@
         // El sync inicial en mounted() alinea el switch con el
         // estado real del body (evita mostrar posición equivocada
         // si el usuario recarga con tema claro persistido).
-        darkMode: true,
+        darkMode: false,   // DEC-REF-112 — default LIGHT (body con .white-content)
         isOpen: false,
         // DEC-REF-70 (g) · #50 — default AZUL (`value:'blue'` → CSS
         // `.badge-info` → hex $info=#1d8cf8 en _variables.scss:105).
@@ -65,8 +65,8 @@
         sidebarColors: [
           { color: 'primary', active: false, value: 'primary' },
           { color: 'vue',     active: false, value: 'vue'     },
-          { color: 'info',    active: true,  value: 'blue'    },
-          { color: 'success', active: false, value: 'green'   }
+          { color: 'info',    active: false, value: 'blue'    },
+          { color: 'success', active: true,  value: 'green'   }   // DEC-REF-112 default
         ]
       };
     },

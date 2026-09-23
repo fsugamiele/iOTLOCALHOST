@@ -56,7 +56,7 @@ export default {
         series: [{
           name: this.unit ? this.variableFullName + ' (' + this.unit + ')' : this.variableFullName,
           data,
-          color: '#e14eca',
+          color: '#00f2c3',
         }],
         legend: { itemStyle: { color: '#d4d2d2' } },
         responsive: {

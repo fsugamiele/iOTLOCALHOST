@@ -53,7 +53,7 @@ export default {
 </script>
 
 <style scoped>
-.icon-value { display: flex; align-items: center; gap: 12px; color: #1d8cf8; }
+.icon-value { display: flex; align-items: center; gap: 12px; color: #00bf9a; }
 .icon-value__icon { font-size: 2em; opacity: 0.9; }
 .icon-value__body { display: flex; align-items: baseline; gap: 4px; }
 .icon-value__num { font-size: 1.6em; font-weight: 600; }
@@ -62,7 +62,7 @@ export default {
 .icon-value--ok       { color: #00bf9a; }
 .icon-value--warning  { color: #ff8d72; }
 .icon-value--critical { color: #fd5d93; }
-.icon-value--unknown  { color: #1d8cf8; }
+.icon-value--unknown  { color: #00bf9a; }
 .icon-value--nodata, .icon-value--na { color: #6b7280; }
 .icon-value__nodata { font-style: italic; opacity: 0.7; }
 </style>

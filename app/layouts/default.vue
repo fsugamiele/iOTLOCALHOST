@@ -4,8 +4,8 @@
 
     <side-bar
       :background-color="sidebarBackground"
-      short-title="IX"
-      title="IoTix"
+      short-title="wa"
+      title="wanomi"
     >
       <template slot-scope="props" slot="links">
         <!-- DEC-REF-70 (a) · #50 — sidebar operador final, orden fijo:
@@ -166,9 +166,9 @@ export default {
   },
   data() {
     return {
-      // DEC-REF-70 (g) · #50 — default AZUL (identidad visual Wanomi).
-      // Set del template: blue|vue|orange|green|red|primary.
-      sidebarBackground: "blue",
+      // DEC-REF-112 (#83) — default GREEN (identidad visual Wanomi: teal/verde
+      // tornasolado, mismo color que el primary). Set: blue|vue|green|primary.
+      sidebarBackground: "green",
       client: null,
       options: {
         host: "",

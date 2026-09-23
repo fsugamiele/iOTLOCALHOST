@@ -107,6 +107,13 @@
   line-height: 11px;
   width: 50% !important;
 }
+/* DEC-REF-112 — el lado ON sin clase de color (BaseSwitch no mapea `type`)
+   quedaba transparente = blanco en modo claro. Default primary/teal; las clases
+   específicas (bootstrap-switch-brown/green/...) siguen ganando por especificidad. */
+.bootstrap-switch .bootstrap-switch-handle-on {
+  background: $brand-primary;
+  color: #fff;
+}
 .bootstrap-switch .bootstrap-switch-handle-on.bootstrap-switch-brown,
 .bootstrap-switch .bootstrap-switch-handle-off.bootstrap-switch-brown {
   color: #fff;

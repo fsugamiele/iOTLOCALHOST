@@ -92,4 +92,9 @@ export default {
 .dc-plant__cell--critical { border-left-color: #fd5d93; }
 .dc-plant__cell--unknown  { border-left-color: #1d8cf8; }
 .dc-plant__cell--nodata   { border-left-color: #4a5160; }
+
+/* DEC-REF-112 — modo claro */
+.white-content .dc-plant__cell { background: rgba(0, 0, 0, 0.03); }
+.white-content .dc-plant__value { color: #2b3553; }
+.white-content .dc-plant__label { color: #525f7f; }
 </style>

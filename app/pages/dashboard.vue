@@ -447,4 +447,7 @@ export default {
 .skeleton-map      { height: 400px; }
 .skeleton-chart    { height: 340px; }
 @keyframes skeleton-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* DEC-REF-112 — modo claro: skeletons de carga visibles sobre fondo claro */
+.white-content .skeleton { background: rgba(0, 0, 0, 0.06); }
 </style>

@@ -436,4 +436,7 @@ export { stripEditorKeys };
   max-height: 120px;
   overflow: auto;
 }
+
+/* DEC-REF-112 — modo claro */
+.white-content .cross-child { background: rgba(0, 0, 0, 0.03); }
 </style>

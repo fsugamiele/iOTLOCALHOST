@@ -567,6 +567,10 @@ export default {
   outline: 1px dashed rgba(255, 255, 255, 0.25);
   border-radius: 8px;
 }
+
+/* DEC-REF-112 — modo claro */
+.white-content .site-grid-cell__cap { color: #525f7f; }
+.white-content .site-grid-cell--customizing { outline-color: rgba(0, 0, 0, 0.2); }
 </style>
 
 <!-- DEC-REF-70 (f) · #50 — .site-pin vive en assets/sass/dashboard/custom/_leaflet-pins.scss (global). -->

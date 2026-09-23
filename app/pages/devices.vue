@@ -98,12 +98,12 @@
           <el-table-column label="Type" width="110">
             <template slot-scope="{ row }">
               <span v-if="row.firmwareType === 'tasmota'" style="background:#1d8cf8;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Tasmota (legacy)</span>
-              <span v-else-if="row.firmwareType === 'wanomi-sim'" style="background:#e14eca;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Simulado</span>
+              <span v-else-if="row.firmwareType === 'wanomi-sim'" style="background:#ff8d72;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Simulado</span>
               <span v-else style="background:#00f2c3;color:#1a1a2e;border-radius:8px;padding:2px 8px;font-size:11px">Wanomi</span>
             </template>
           </el-table-column>
 
-          <el-table-column label="Actions">
+          <el-table-column label="Acciones" width="240">
             <div slot-scope="{ row }">
               <el-tooltip content="Guardar datos en BD" style="margin-right:10px">
                 <i
