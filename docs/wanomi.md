@@ -12431,3 +12431,17 @@ Build `docker_nuxt_build.yml` **exit 0**; strings en `dist/_nuxt` (`counter-pump
 1. Push acumulado #76–#83 (requiere orden de Franco).
 2. Deuda ECharts (Gauge/Tank) sin refresh de tema en caliente + posibles rincones de light-mode no reportados (tablas element-ui, algún modal).
 3. Pendientes vivos: limits ATS/battery/Eltek-DC, click-through visual general.
+
+## Sesión #80 — 2026-09-23 · Área 1 · DEC-REF-108: rediseño UX sitio+panel (propuesta Franco analizada, diseño propio F1–F5) · F1 header de salud implementado
+
+### Marco
+
+Franco trajo propuesta UX (progressive disclosure, header de salud, tabs por dominio, operador/técnico, widgets semánticos). Análisis contra el inventario real: gran parte YA existía como widgets Wanomi 3.0 sin desplegar (projectedAutonomy, miniTrend, powerCascade, activeRecommendation). **Sin librerías nuevas**: Highcharts (sparklines/bandas), echarts-liquidfill (tanque), Element UI (tabs), SVG/D3 (plano 2D) ya están instaladas. Temas: Black Dashboard oscuro + white-content claro, patrón isLight obligatorio en lo nuevo. Orden aprobado por Franco: F1 header → F2 tabs por dominio → F3 operador/técnico (toggle persistido por usuario) → F4 upgrade widgets (autonomy/miniTrend a plantillas + banda factoryRange + powerCascade animado + dedup alarmas) → F5 plano 2D.
+
+### F1 · Header de salud del sitio (implementado y verificado)
+
+`components/Site/SiteHealthHeader.vue` como top banner de `sites/_siteCode.vue`: (1) semáforo global (misma fuente que el pin del mapa); (2) **alimentación activa** — convención canónica: la variable fuente (gen_status → transfer_state fallback) se declara en el template con enumValues (label+severidad) y el header la renderiza vivo por MQTT + siembra /get-last-data, cero hardcodeo de etiquetas; (3) **alarma prioritaria** con recomendación — reuse de /dashboard/noc?phase=vivo (episodios activos correlacionados), refresh por wanomi:notif del sitio. Datos corregidos: ATS gen_status tenía enumValues VACÍO y transfer_state enum stale (STOPPED/RUNNING vs valor real AUTO) — sembrados en DB y en seed.js (Red eléctrica/Arranque/Grupo). Verificado: /full sirve los enums, /get-last-data devuelve STOPPED → "Red eléctrica" verde; UI 200; bundle con el componente.
+
+### Carry-over
+
+F2–F5 pendientes en orden · push acumulado (#76–#80) sigue esperando orden explícita · #80 candidato lateral: publicar al cruzar niveles de ficha (rincón deadband/umbral documentado en #79-b).

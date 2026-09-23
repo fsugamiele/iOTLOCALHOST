@@ -74,13 +74,26 @@ const ATS_TEMPLATE = {
   name: 'WN-ATS-InteliATS-PWR',
   description: 'ComAp InteliATS PWR — estado de transferencia, tensiones y frecuencias de red y generador.',
   widgets: [
-    { variable: 'transfer_state', variableFullName: 'Estado de transferencia',        variableType: 'categorical', variableSendFreq: 30 },
+    // enumValues (DEC-REF-108, #80-F1): la semántica de la fuente de
+    // alimentación vive en el template — el header de salud del sitio la
+    // renderiza sin hardcodear etiquetas.
+    { variable: 'transfer_state', variableFullName: 'Estado de transferencia',        variableType: 'categorical', variableSendFreq: 30,
+      enumValues: [
+        { value: 'AUTO',  label: 'Automático',        severity: 'ok' },
+        { value: 'MAINS', label: 'Red eléctrica',     severity: 'ok' },
+        { value: 'GEN',   label: 'Grupo electrógeno', severity: 'warning' },
+      ] },
     { variable: 'mains_voltage',  variableFullName: 'Tensión red (V)',                variableType: 'float',       variableSendFreq: 60 },
     { variable: 'mains_freq',     variableFullName: 'Frecuencia red (Hz)',            variableType: 'float',       variableSendFreq: 60 },
     { variable: 'gen_voltage',    variableFullName: 'Tensión generador (V)',          variableType: 'float',       variableSendFreq: 60 },
     { variable: 'gen_freq',       variableFullName: 'Frecuencia generador (Hz)',      variableType: 'float',       variableSendFreq: 60 },
     { variable: 'load_kw',        variableFullName: 'Carga activa (kW)',              variableType: 'float',       variableSendFreq: 60 },
-    { variable: 'gen_status',     variableFullName: 'Estado del generador',          variableType: 'categorical', variableSendFreq: 30 },
+    { variable: 'gen_status',     variableFullName: 'Estado del generador',          variableType: 'categorical', variableSendFreq: 30,
+      enumValues: [
+        { value: 'STOPPED',  label: 'Red eléctrica',     severity: 'ok' },
+        { value: 'STARTING', label: 'Arranque de grupo', severity: 'warning' },
+        { value: 'RUNNING',  label: 'Grupo electrógeno', severity: 'warning' },
+      ] },
   ],
 };
 

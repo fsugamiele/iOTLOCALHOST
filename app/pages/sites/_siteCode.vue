@@ -40,6 +40,15 @@
 
     <!-- Contenido -->
     <template v-else>
+      <!-- F1 (#80 · DEC-REF-108) — Header de salud: semáforo global +
+           alimentación activa + alarma prioritaria con recomendación.
+           Primer elemento del contenido (top banner de la página). -->
+      <div class="row">
+        <div class="col-12">
+          <SiteHealthHeader :status="status" :site-code="siteCode" :devices="devices" />
+        </div>
+      </div>
+
       <!-- Mapa + metadata del sitio -->
       <div class="row">
         <div class="col-12">
@@ -141,6 +150,7 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { resolveWidget } from '@/components/Widgets/resolver.js';
+import SiteHealthHeader from '@/components/Site/SiteHealthHeader.vue';
 
 // Colores de severidad — mismo criterio que pages/sites/index.vue (DEC-REF-27).
 const STATUS_COLOR = {
@@ -152,6 +162,7 @@ const STATUS_COLOR = {
 export default {
   name: 'SiteDetail',
   middleware: 'authenticated',
+  components: { SiteHealthHeader },
 
   data() {
     return {
