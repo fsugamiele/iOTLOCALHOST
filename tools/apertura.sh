@@ -35,9 +35,9 @@ echo
 echo "--- INGESTA ---"
 bash tools/healthcheck_demo.sh 2>&1
 echo "healthcheck exit=$?"
-ps -ef | grep device_simulator | grep -v grep >/dev/null 2>&1 \
-  && echo "sim: VIVO" \
-  || echo "sim: CAÍDO — relanzar con el comando de abajo"
+docker ps --filter name=wanomi-sim --filter status=running -q 2>/dev/null | grep -q . \
+  && echo "sim: VIVO (contenedor wanomi-sim)" \
+  || echo "sim: CAÍDO — levantar con el comando de abajo"
 echo
 echo "=========================================="
 echo " PEGAR ESTO EN LA SALA (Claude web)"
@@ -48,10 +48,11 @@ echo "Sin push: ${AHEAD} · modificados: ${DIRTY}"
 echo "Bitácora: ${BITACORA}"
 echo "=========================================="
 echo
-echo "Si el sim está caído, ESTE es el único arranque válido"
-echo "(vía supervisor: relanza solo si el sim muere — NO lanzar run.js directo):"
+echo "El sim es un CONTENEDOR (DEC-REF-109): se auto-recupera con restart:always"
+echo "tras corte de luz, igual que el resto del stack. Si estuviera caído:"
 cat <<'ARRANQUE'
-setsid nohup bash tools/device_simulator/supervisor.sh >> logs/sim-CR00061.log 2>&1 < /dev/null &
+docker compose -f docker_compose_production.yml up -d --no-deps wanomi-sim
+# log: docker logs -f wanomi-sim   (ya no logs/sim-CR00061.log)
 ARRANQUE
 echo
 echo "Recordatorio: si commiteaste corpus, RE-SUBIR WanomiRefactor.md"

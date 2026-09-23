@@ -180,3 +180,48 @@ services:
       node /home/edge/edge-engine/index.js 2>&1
       | tee -a /home/edge/logs/edge-$${SITE_ID}.log"
 
+  # DEC-REF-109 (#81) — simulador CONTENERIZADO (reversa DEC-STRAT-5).
+  # El sim deja de ser proceso de host (supervisor.sh lanzado a mano por
+  # apertura.sh) y pasa a servicio con `restart: always`, para auto-recuperarse
+  # tras un corte de luz igual que el resto del stack. Era la ÚNICA pieza fuera
+  # del auto-arranque: los 4 contenedores vuelven solos, el sim quedaba caído y
+  # dejaba los sitios offline por horas (DEC-REF-105/#79, reincidente 21 y 22/09).
+  wanomi-sim:
+    container_name: wanomi-sim
+    image: "node:14"
+    restart: always
+
+    working_dir: /home/sim
+
+    environment:
+      # Resuelve a sus vecinos por hostname de servicio (cero deriva localhost).
+      # MQTT por TCP 1883 (NO 8083 = WebSocket). API (node) para el bootstrap de
+      # credenciales de cada device.
+      MQTT_HOST: emqx
+      MQTT_PORT: 1883
+      API_HOST: node
+      API_PORT: 3001
+
+    volumes:
+      # Autocontenido: tools/device_simulator trae su propio node_modules
+      # (mqtt + deps). app/.env solo-lectura para que supervisor.sh grepee las
+      # credenciales TEST_USER (NUNCA sourcear el archivo — MQTT_PORT ahí es WS).
+      - ./tools:/home/sim/tools
+      - ./app/.env:/home/sim/app/.env:ro
+      - ./logs:/home/sim/logs
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+
+    # supervisor.sh (PID1) mapea credenciales, setea SIMULATOR_MODE y corre
+    # run.js con backoff. Dos capas de resiliencia: crash de run.js → supervisor
+    # lo relanza en el acto (sin ciclo de contenedor); muerte del supervisor/
+    # contenedor → `restart: always`; reboot del host → el daemon lo levanta con
+    # el resto del stack. Sin `| tee` a propósito: el pipe dejaba a run.js
+    # huérfano manteniendo abierto el fd y PID1 no salía limpio. Log = `docker
+    # logs wanomi-sim`.
+    command: bash tools/device_simulator/supervisor.sh
+
