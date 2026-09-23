@@ -57,6 +57,15 @@
                 </base-button>
                 <base-button
                   v-if="isSuperadmin"
+                  type="warning"
+                  size="sm"
+                  @click="openEditModal(row)"
+                  title="Editar"
+                >
+                  <i class="tim-icons icon-pencil"></i>
+                </base-button>
+                <base-button
+                  v-if="isSuperadmin"
                   type="danger"
                   size="sm"
                   @click="openDeleteModal(row.deviceType)"
@@ -78,7 +87,7 @@
     <!-- NUEVA FICHA — DEC-REF-97. El deviceType ES la identidad (DEC-REF-91);
          se escribe una sola vez y no se edita. -->
     <el-dialog
-      title="Nueva ficha de equipo"
+      :title="editing ? 'Editar ficha de equipo' : 'Nueva ficha de equipo'"
       :visible.sync="createModal"
       width="720px"
       :close-on-click-modal="false"
@@ -94,7 +103,7 @@
       <div class="row">
         <div class="col-md-6 form-group">
           <label>deviceType <span class="text-danger">*</span> (identificador, no se edita)</label>
-          <base-input v-model="newSheet.deviceType" placeholder="ej. cummins-pcc" />
+          <base-input v-model="newSheet.deviceType" placeholder="ej. cummins-pcc" :disabled="editing" />
         </div>
         <div class="col-md-6 form-group">
           <label>Origen <span class="text-danger">*</span></label>
@@ -234,7 +243,7 @@
       <div slot="footer">
         <base-button type="secondary" @click="createModal = false">Cancelar</base-button>
         <base-button type="primary" @click="submitCreate" :disabled="creating || !canCreate">
-          {{ creating ? 'Creando...' : 'Crear ficha' }}
+          {{ creating ? 'Guardando...' : (editing ? 'Guardar cambios' : 'Crear ficha') }}
         </base-button>
       </div>
     </el-dialog>
@@ -334,6 +343,7 @@ export default {
       sheets: [],
       createModal: false,
       creating: false,
+      editing: false,   // DEC-REF-111 — el modal reusa el form para editar
       newSheet: this.emptySheet(),
       detailModal: false,
       detailSheet: null,
@@ -396,6 +406,39 @@ export default {
       this.newSheet = this.emptySheet();
       this.pdfDraftName = '';
       this.rawCandidates = [];
+      this.editing = false;
+      this.createModal = true;
+    },
+
+    // DEC-REF-111 — edición de ficha. Reusa el modal del alta con el form
+    // precargado; deviceType queda disabled (inmutable, es el identificador).
+    openEditModal(row) {
+      const c = JSON.parse(JSON.stringify(row));
+      this.newSheet = {
+        deviceType: c.deviceType,
+        manufacturer: c.manufacturer || '',
+        model: c.model || '',
+        origin: c.origin || 'own',
+        variables: (c.variables || []).map(v => ({
+          name: v.name || '',
+          label: v.label || '',
+          type: v.type || 'float',
+          unit: v.unit || '',
+          factoryRange: v.factoryRange || '',
+          cadence: v.cadence || '',
+          deadband: v.deadband == null ? '' : v.deadband,
+          limits: (v.limits || []).map(l => ({
+            kind: l.kind || 'warning',
+            op: l.op || '',
+            value: l.value == null ? '' : l.value,
+            unit: l.unit || '',
+            source: l.source || '',
+          })),
+        })),
+      };
+      this.pdfDraftName = '';
+      this.rawCandidates = [];
+      this.editing = true;
       this.createModal = true;
     },
 
@@ -506,13 +549,19 @@ export default {
             })),
           })),
         };
-        await this.$axios.post('/equipmentsheet', { newEquipmentSheet: payload }, this.headers());
+        // DEC-REF-111 — PUT si editás una ficha existente; POST si es nueva.
+        if (this.editing) {
+          await this.$axios.put('/equipmentsheet/' + encodeURIComponent(payload.deviceType), { newEquipmentSheet: payload }, this.headers());
+        } else {
+          await this.$axios.post('/equipmentsheet', { newEquipmentSheet: payload }, this.headers());
+        }
         this.$notify({
           type: 'success',
           icon: 'tim-icons icon-check-2',
-          message: `Ficha ${payload.deviceType} creada.`,
+          message: `Ficha ${payload.deviceType} ${this.editing ? 'actualizada' : 'creada'}.`,
         });
         this.createModal = false;
+        this.editing = false;
         await this.loadSheets();
       } catch (e) {
         this.$notify({

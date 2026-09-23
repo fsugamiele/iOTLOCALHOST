@@ -74,6 +74,44 @@ router.post("/equipmentsheet/extract", checkAuth, async (req, res) => {
 });
 
 
+// PUT /equipmentsheet/:deviceType — DEC-REF-111 (#82). Edición de ficha,
+// superadmin only. Cierra el hueco declarado en #81 (fichas inmutables por
+// falta de PUT + DELETE bloqueado por referencias). **El `deviceType` es el
+// IDENTIFICADOR y es INMUTABLE** — renombrarlo orfanaría templates/packs/devices
+// que lo referencian por string. Editar el resto es seguro: la ficha es
+// catálogo; los templates COPIAN sus variables al crearse (getDeviceCredentials
+// lee del template, NO de la ficha en runtime), así que editar una ficha solo
+// afecta la creación FUTURA de templates/packs, no lo ya creado. `.save()` corre
+// la validación Mongoose (enum origin, limits kind/op, name requerido).
+router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
+  try {
+    const grants = req.userData.grants || [];
+    if (!grants.some(g => g.role === 'superadmin')) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
+    }
+    const { deviceType } = req.params;
+    const upd = req.body.newEquipmentSheet;
+    if (!upd) return res.status(400).json({ status: "error", error: "newEquipmentSheet es requerido" });
+    if (upd.deviceType && upd.deviceType !== deviceType) {
+      return res.status(400).json({ status: "error", error: "el deviceType es el identificador y no se puede renombrar (creá otra ficha)" });
+    }
+    const sheet = await EquipmentSheet.findOne({ deviceType });
+    if (!sheet) return res.status(404).json({ status: "error", error: "equipmentSheet not found" });
+
+    // deviceType y createdTime NO se tocan. version se bumpea (auditoría simple).
+    if ('manufacturer' in upd) sheet.manufacturer = upd.manufacturer;
+    if ('model' in upd) sheet.model = upd.model;
+    if ('origin' in upd) sheet.origin = upd.origin;
+    if (Array.isArray(upd.variables)) sheet.variables = upd.variables;
+    sheet.version = (Number(sheet.version) || 1) + 1;
+    await sheet.save();
+    return res.json({ status: "success", deviceType: sheet.deviceType, version: sheet.version });
+  } catch (error) {
+    console.log("ERROR UPDATING EQUIPMENT SHEET"); console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
 router.get("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
   try {
     const sheet = await EquipmentSheet.findOne({ deviceType: req.params.deviceType }).lean();
