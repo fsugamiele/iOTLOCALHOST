@@ -12229,3 +12229,185 @@ Build exit 0 · node restart · sim relanzado por el supervisor bootea con el co
 ### Adenda #79-d — Bug: entrar a la página del simulador reseteaba las variables a default
 
 **Reporte de Franco:** al entrar al simulador, las variables vuelven solas a valores por default. **Causa (código):** `demo/simulator.vue` disparaba un burst `POST /simulator/reset` a TODOS los devices al cargar — herencia de la era de cadencia fija, para que las tarjetas pintaran valores sin esperar el próximo ciclo. El comando `reset` restaura `_initialState` completo: pisaba escenarios en curso y valores cargados a mano. **Fix:** comando nuevo `snapshot` en el sim (republica el estado ACTUAL de todas las variables, como el latido pero bajo demanda, sin tocar valores ni timers) + endpoint `POST /simulator/snapshot` (misma guarda de scope que /reset) + la página ahora llama snapshot. El botón "Reset" de la tarjeta de equipo se mantiene como acción explícita. **Verificación E2E:** fuel=42 cargado a mano → snapshot → sigue 42 (antes volvía a 75).
+
+## Sesión #80 — 2026-09-19/21 · Área 2 · DEC-REF-107 (RECONSTRUIDO desde git) — refactor del sistema de widgets: registro de descriptores + editor por-widget + familia numérica + multi-fuente + panel del sitio arrastrable por-widget
+
+> **⚠️ ENTRADA RECONSTRUIDA — no escrita en vivo.** La bitácora de esta(s)
+> sesión(es) se perdió por un corte de luz sin cierre (DEC-PROC-8 no se
+> ejecutó). Este bloque se reconstruyó el 2026-09-21 a partir de **git** (9
+> commits del tramo `6178d45..6a00667`) + **lectura del código resultante**,
+> únicas fuentes que sobrevivieron. **Lo que NO se puede reconstruir y se
+> declara perdido:** el mandato textual de Franco y el disenso de sala que
+> firmaron el diseño; el desglose D-1..D-x original; y **todo registro de
+> verificación** (build/E2E). El desglose de abajo sigue los **Pasos que
+> nombran los commits**, no el diseño firmado. El trabajo abarcó al menos dos
+> días (Pasos 1-3+5 el 19/09; Paso 4 el 21/09) — los límites exactos de sesión
+> también se perdieron; se consolidan como #80.
+
+### Origen (mandato restituido por Franco 2026-09-21)
+
+Franco reabrió el tema hoy con el mismo pedido que originó el tramo: los widgets incorporados a Wanomi 3.0 "no sirven / no se adaptan a las necesidades técnicas y gráficas"; hay que **crear un pack de widgets funcional y eliminar los que no sirven**; poder **editar los widgets de una plantilla ya creada** (variable, gráfica, tamaño y ubicación) desde un **botón en la tabla de plantillas**; y que la personalización de **tamaño/ubicación sea POR-WIDGET** — no la tarjeta que engloba varios como en el Panel NOC (vue-grid-layout de DEC-REF-101) — preferentemente **desde la página del sitio**, incluso si los widgets están dentro de una tarjeta de dispositivo. La coincidencia entre este pedido y lo que los commits ya implementan es lo que permitió atribuir el tramo a este mandato.
+
+### Qué quedó implementado (por Pasos de git)
+
+**Paso 1 — registro de descriptores + formulario genérico** (`672a5de`, `03bc651`).
+`components/Widgets/widgetRegistry.js` (nuevo): fuente única de verdad por tipo de widget — cada tipo declara `fields[]`, `defaultConfig()`, `normalize()` y metadata (`label/icon/group/isVariableWidget/dedupeKey`). Retira los 11 mini-formularios `v-if` calcados de `templates.vue`. `WidgetConfigForm.vue` (nuevo): formulario genérico dirigido por el descriptor (field kinds text/number/variable/select/icon/color/size/enumRepeater/sourceRepeater/help; campos condicionales `showIf`; rutas anidadas `thresholds.criticalLow` vía get/setByPath). El propio archivo declara la invariante: el sub-documento guardado sale idéntico al del flujo previo (transcripción 1:1, incl. `deadband` de DEC-REF-105 y las guardas de dedupe DEC-REF-76/-97/-98).
+
+**Paso 2 — familia 'Valor Numérico' + editor por-widget + ECharts** (`4e9f3e8`, `c7926f3`, `11f0b35`, `554d655`).
+Tipo `numeric` = **un solo tipo por forma de dato**; la representación gráfica la elige el usuario en el campo `render` (valueStatus | gauge | tank[liquidFill] | counter | sparkline | icon) — desacople representación↔tipo de dato. `echartsBase.js` (mixin ECharts init/setOption/resize/dispose; `echarts` + `echarts-liquidfill` sumados a package.json) + componentes `Gauge`, `TankLevel`, `Sparkline`, `CounterPump`, `IconValue`, `NumericValue` (dispatcher por render), `NumericLive`, `NumericEditor`. Modelo `template.js`: enum +`'numeric'` y campos `render`, `gaugeMin`, `gaugeMax`. **Editor por-widget in-situ** en `templates.vue`: la tabla de plantillas ya cargaba la plantilla en el builder (DEC-REF-100 F4); ahora cada widget del builder tiene un lápiz → `openEditWidget(i)` abre un modal con `WidgetConfigForm` + preview vivo; `saveEditWidget` corre el mismo dedupe (`findDuplicateMessage`) y `normalize` que el alta; orden por flechas (`moveWidget`). Preview con datos de muestra.
+
+**Paso 3 — multi-fuente (schema)** (parte de `f45d27c`).
+`sourceSchema` en `template.js`: cada `source` ata UNA variable del mismo `dId` (`key/variable/variableFullName/unit/variableType/role`) y el widget compone N. Campo `sources: [sourceSchema]`. `MultiLiveValue.vue` (nuevo) suscribe N variables por MQTT.
+
+**Paso 5 — Cascada de Energía + Planta DC + Recomendación Activa + sparkline** (`8d9eb5f`, `f45d27c`).
+`powerCascade` (multi-fuente con `role` mains→ats→genset→rectifier: la cadena de energía leída como un evento de sitio — alineado con el pitch DEC-GTM-2) · `dcPlant` (multi-fuente sin rol: tensión/corriente/batería) · `activeRecommendation` (SIN variable: su fuente es el feed de alarmas del sitio, muestra la acción sugerida de la alarma activa más severa; uno por plantilla, dedupeKey `type`) · representación `sparkline` sumada a la familia numérica. Componentes Live/Editor de cada uno + registro en `resolver.js` (con fallback DEC-REF-75 §2 a valueStatus).
+
+**Paso 4 — panel del SITIO arrastrable POR-WIDGET** (`6a00667`, 21/09).
+`pages/sites/_siteCode.vue`: grilla `vue-grid-layout` con **un ítem por (device × widget)** (`i = dId::índice`) — NO una tarjeta que engloba varios; cada widget se arrastra y redimensiona por separado, incluso los de un mismo dispositivo. Esto cierra el reclamo explícito de Franco contra el Panel NOC (DEC-REF-101 agrupa 4 widgets fijos en tarjetas). Persistencia por usuario+sitio reusando `/panellayout` con `dashboard="site-<code>"`; `panellayouts.js` extendido a dashboards de sitio con ítems dinámicos (valida forma/geometría, no catálogo de widgets; el NOC sigue estricto). `column` del template pasa a ser el ancho **default** (`colToW`); el layout guardado del usuario lo sobrescribe — el tamaño del widget ahora es real (antes `column` no se respetaba en la vista del sitio). Guarda anti-loop en `onLayoutUpdated` (lección DEC-REF-101/#76: la lib muta el array in place, no reasignar). Botón "Personalizar"/"Listo" + "Restablecer".
+
+**Legado — decisión PARCIAL.** Los tipos legacy (numberchart, indicator, switch, button, campos Tasmota) fueron **ocultados del selector de altas nuevas** de `templates.vue` (curado por grupos: Valor Numérico · Estado · Sitio · Multi-fuente · Control · salida) pero **retenidos en registry/resolver** para renderizar plantillas viejas. El "eliminar los que no sirven" del mandato quedó **a medias**: ocultado ≠ borrado.
+
+**Bundle en el tramo:** `570afc3` (#79-d, ya narrado arriba en su adenda).
+
+### Verificación post-reconstrucción (2026-09-21, corrida tras la reconstrucción)
+
+El registro de verificación original se perdió; se **re-verificó de cero** el 2026-09-21 (sin headless en el host, mismo límite arrastrado desde #72):
+
+- **Build `docker_nuxt_build.yml` exit 0.** 13 rutas generadas (incl. `/templates`, `/sites`, `/demo/simulator`). Warnings benignos: tamaño de chunk (ECharts pesa) y el error EMQX espurio del ServerMiddleware en build (documentado en el compose). Dependencias `echarts`/`echarts-liquidfill`/`vue-grid-layout` presentes en `node_modules`.
+- **Todos los componentes del tramo compilaron.** Chunks emitidos por webpack (`components/gauge`, `components/numeric-value`, `components/widget-shell`…) + strings distintivos medidos en `dist/_nuxt`: "Cascada de energía", "Planta DC", "Acción recomendada", `liquidFill`, `gaugeMin`, `sourceRepeater`, `grid-layout`, `grid-item`, `layout-updated`, `panellayout`, `"::"`, `site-`. Un `.vue` roto habría volteado el build, no emitido chunk.
+- **`node --check` verde** en los 7 JS backend/registry del tramo.
+- **Runtime:** `docker restart node` limpio (sin errores de arranque en log); UI 200 en `/templates`, `/sites`, `/dashboard`; rutas API montadas y guardadas (401 sin token, incl. `/panellayout?dashboard=site-*`).
+- **Paso 4 backend — E2E autenticado (token de TEST_USER):** PUT `site-VERIFY107` con ítems dinámicos `dId::i` → **200** y round-trip por GET; geometría inválida (w=99) → **400** "layout fuera de rango"; rama estricta del NOC intacta (widget desconocido → **400** "widget desconocido en layout"); DELETE de limpieza → 200. Prueba que la rama `isSiteDash` coexiste con la estricta del NOC sin romperla.
+
+**PENDIENTE de verificar (sigue carry-over, requiere browser):** que gauge/tanque/sparkline rendericen a píxel, que el drag/resize por-widget del grid del sitio funcione a la vista, y que los widgets muestren dato vivo; round-trip de una plantilla con widget `numeric`/multi-fuente por la UI (el schema compila y declara los campos, pero no se ejercitó el POST para no ensuciar datos).
+
+### Deuda (lo que la reconstrucción encontró SIN cerrar)
+
+1. **Verificación visual pendiente** (ver arriba): el build + smoke de API pasó, pero el click-through en browser sigue sin correr (deuda #72+). Riesgos conocidos de vue-grid-layout que golpearon en #76 (registro de componentes named-export + loop `layout-updated`): el build no los delata y el `_siteCode.vue` trae la guarda anti-loop, pero solo el browser lo confirma.
+2. **`WIDGET_SELECTOR_GROUPS`** en `widgetRegistry.js` quedó como **código muerto** (templates.vue hardcodea su selector) y desactualizado (lista numberchart/valueStatus, no incluye numeric/powerCascade/dcPlant/activeRecommendation).
+3. Comentario **stale** en `resolver.js:67-68` (dice "sumar counter/miniTrend/activeRecommendation/dcPlant/powerCascade" cuando ya están).
+4. **Solape sin decidir:** `numeric[render=valueStatus]` ↔ tipo `valueStatus`, y `numberchart`, sin decisión de deprecación formal.
+5. **Tamaño duplicado sin documentar:** `column` (template) vs `w/h` (grid del sitio). Hoy `column`=default y el grid lo sobrescribe; falta firmarlo como decisión.
+6. **Limpieza de legacy pendiente** (mandato a medias — ver arriba).
+
+### Carry-over para #81, en orden
+
+1. **Verificar el tramo DEC-REF-107** (build + click-through del editor por-widget en /templates y del grid por-widget en /sites/:code) — es lo único que sigue sin respaldo de verificación.
+2. **Cerrar el mandato:** decidir limpieza de legacy (borrar vs. solo-lectura) + solape numeric/valueStatus/numberchart + los puntos de deuda 2-5.
+3. Push pendiente de #76–#80 — requiere orden explícita de Franco.
+4. Carry-over #79 sigue vivo (booleanDwell/equipmentAlarms con datos reales, credenciales fuera de /tmp, ficha cummins-pcc en prod, archivos sin trackear; límite de clareo de DEC-REF-106 al latido).
+5. **Método:** el corte de luz sin cierre costó una bitácora entera reconstruida a mano. DEC-PROC-8 (bitácora → corpus → versión → commit → push) debe correr al cierre de CADA sesión, no acumular.
+
+## Sesión #81 — 2026-09-22 · Área 2 · DEC-REF-108: limpieza de legacy SIN borrar widgets — `counter` arreglado + higiene de código
+
+### Apertura — incidente operativo resuelto (sitios offline)
+
+Franco reportó dispositivos offline + `edge-engine Error MQTT: connect ECONNREFUSED 172.18.0.4:1883` en loop. Diagnóstico medido (no supuestos):
+
+- **El `ECONNREFUSED` era falsa pista** — `172.18.0.4` es la IP que ahora tiene **mongo**, no EMQX (172.18.0.2, escuchando OK en 1883). Stale de DNS/IP de Docker durante el shuffle de reinicios; `mqtt.js` de edge se recuperó solo (0 errores al medir, DNS y TCP OK).
+- **Causa real: el simulador estaba MUERTO** ~5,9 h (último doc en `db.data` a 21184s, 0 tráfico en `+/+/+/sdata`, sin proceso de sim ni supervisor). Patrón DEC-REF-105: el sim es un **proceso de HOST** (`supervisor.sh`) sin restart-policy → tras el corte de luz los 4 contenedores volvieron solos pero el sim no.
+- **Fix:** relanzado por el arranque canónico de `tools/apertura.sh` (`setsid nohup bash …/supervisor.sh …`). Verificado E2E: ingesta vuelve en ~40s, 13 devices publicando, **4/4 sitios `ok`**. Lección a memoria (primer sospechoso de "offline con stack sano" = sim caído; medir IP real antes de perseguir el ECONNREFUSED).
+
+### Decisión (Franco): NO se borra ningún widget
+
+Franco revierte el "eliminar los que no sirven" de DEC-REF-107: *"creo que no debemos borrar ningún widget"*. Los legacy Tasmota (numberchart, indicator, switch, button) quedan retenidos (compat + posible control futuro), a lo sumo ocultos del selector de altas nuevas. **Medición base (DB dev, 6 plantillas):** valueStatus 16 · numeric 9 · booleanDwell 9 · equipmentAlarms 4 · counter 3 · tankLevel 2 · multiState 2; los 4 Tasmota **0 en DB**. PROD no medido (declarado). Con esto la "limpieza" pasa de *borrar* a *arreglar lo roto + higiene sin quitar nada* → **DEC-REF-108**.
+
+### Qué se hizo (DEC-REF-108)
+
+**Arreglo de `counter` (el único roto).** Estaba en el enum y en 3 widgets reales pero sin descriptor ni componente → renderizaba por fallback como valueStatus y su editor quedaba vacío. En vez de borrarlo/migrarlo (sería quitar el tipo), se lo hace tipo de primera clase **reusando la maquinaria numérica**: descriptor `counter` nuevo (`widgetRegistry.js`); `resolver.js` enruta `counter`→`NumericLive`/`NumericEditor`; `NumericValue.vue` calcula render efectivo (`config.render || (widget==='counter'?'counter':null)`) → dibuja `CounterPump` (surtidor); `NumericEditor.vue` con valor de muestra correcto (12480). Sin migración de datos, sin borrar. `counter` NO se agrega al selector (nuevo counter = `numeric[render=counter]`; el tipo existe para render/edición de los que ya están).
+
+**Higiene de código (no toca ningún widget).** (a) removido el export muerto `WIDGET_SELECTOR_GROUPS` (nadie lo importaba); (b) comentario stale de `resolver.js` corregido; (c) fantasma `miniTrend` fuera del enum de `template.js` (sin componente/uso, superado por `numeric[render=sparkline]`, 0 en DB).
+
+### Verificación
+
+Build `docker_nuxt_build.yml` **exit 0**; strings en `dist/_nuxt` (`counter-pump`, `Contador Surtidor`, `effectiveRender`, `gas-pump`; `WIDGET_SELECTOR_GROUPS` ausente); `node --check` verde en los 3 JS; `docker restart node` limpio (modelo con enum nuevo carga sin error); UI 200 (/templates,/sites); ingesta viva (12 docs/90s); sim vivo. **PENDIENTE:** click-through visual de que un `counter` se ve como surtidor (deuda sin headless #72+).
+
+### Carry-over para #82, en orden
+
+1. **Click-through visual** del counter (surtidor) + lo arrastrado de DEC-REF-107 (editor por-widget, grid del sitio).
+2. **Deuda declarada, sin decisión:** solape `numeric[render=valueStatus]` ↔ `valueStatus` (16) / `numberchart` — retenidos por la decisión de no borrar; consolidar es decisión futura de Franco.
+3. **Medir PROD** antes de cualquier deploy (los tipos legacy y counter en las plantillas de producción no se midieron).
+4. Push pendiente de #76–#81 — requiere orden explícita de Franco.
+5. Carry-over #79/#80 vivos (booleanDwell/equipmentAlarms con datos reales, credenciales fuera de /tmp, ficha cummins-pcc en prod, archivos sin trackear, límite de clareo DEC-REF-106).
+
+### Adenda #81-b — DEC-REF-109: simulador contenerizado (fix de raíz del auto-arranque)
+
+**Disparador (Franco):** otro corte de luz dejó los sitios offline. Pedido: *"solucionar de raíz el reinicio del stack, debe hacerlo automáticamente"*.
+
+**Diagnóstico medido.** Los 4 contenedores (mongo/emqx/node/wanomi-edge) tienen `restart: always` y Docker Desktop arranca en el login de Windows → vuelven solos. El **simulador era la única pieza fuera de ese mecanismo**: proceso de HOST (`supervisor.sh` a mano) sin restart-policy → caído tras cada corte (12 h el 19/09, ~5,9 h el 21 y 22/09). El `edge ECONNREFUSED 172.18.0.4:1883` reportado era **falsa pista** (172.18.0.4 = mongo, no EMQX; stale de IP Docker, `mqtt.js` se recuperó solo).
+
+**Decisión de Franco:** contenerizar el sim (reversa **DEC-STRAT-5**), elegida sobre la alternativa de un servicio `systemd` — porque el auto-arranque de Docker Desktop está PROBADO (los 4 contenedores volvieron 2×) mientras que systemd dependía de que la distro WSL booteara (no probado). → **DEC-REF-109**.
+
+**Implementación.** Servicio `wanomi-sim` en `docker_compose_production.yml`: node:14, `restart: always`, red `iotlocalhost_default`, `depends_on` mongo/emqx healthy. Autocontenido (mount `./tools` con su `node_modules`; `./app/.env:ro` solo para grepear TEST_USER; `./logs`). Env `MQTT_HOST=emqx MQTT_PORT=1883 API_HOST=node API_PORT=3001`. `command: bash tools/device_simulator/supervisor.sh` (PID1 directo, sin `| tee` — el pipe dejaba a run.js huérfano y PID1 no salía limpio; log = `docker logs wanomi-sim`).
+
+**Verificación E2E.** Handoff limpio: host sim detenido por PID (no pkill) → 0 procesos → `up -d --no-deps --no-recreate wanomi-sim`. 12 devices de 4 sitios bootstrapean, **105 docs/30s**, **4/4 sitios `ok`**, sin doble publicación. **Test A** (kill run.js dentro del contenedor → supervisor lo relanza PID 22→80, contenedor intacto) PASS. Recreado sin tee → árbol limpio PID1=supervisor→run.js, ingesta OK. **Semántica declarada:** `docker kill/stop` NO reinician (parada manual — medido exited/rc=0); restart:always actúa ante salida inesperada y ante arranque del daemon (el caso corte de luz).
+
+**Consecuencias.** `apertura.sh` actualizado (chequea el contenedor; arranque = `docker compose up -d wanomi-sim`); log migra a `docker logs wanomi-sim`; el comando `setsid nohup supervisor.sh` de host queda obsoleto (el `supervisor.sh` se reusa como command del contenedor). Memoria de recuperación post-reboot actualizada.
+
+**Pendiente:** el mismo tratamiento para el sim de P2 (si se quiere; hoy P2 no tiene sim contenerizado) — no abordado.
+
+### Adenda #81-c — Catálogo de fichas de equipo poblado (5 equipos, todas las variables)
+
+**Pedido de Franco:** crear fichas de todos los equipos que Wanomi maneja hoy, con todas sus variables. El catálogo `equipmentsheets` (entidad madre DEC-REF-91) estaba **vacío** (solo una ficha basura `kernel`, que Franco borró por la UI durante la sesión — confirma de paso que el DELETE de fichas por UI funciona). **Fuente autoritativa (cruzada template ↔ `sensor-engine.js`, coincidentes):** 5 equipos. Creadas por la **API** (`POST /equipmentsheet`, validación Mongoose = path productivo) firmando un JWT con `JWT_SECRET` para el `_id` del superadmin `admin@wanomi.com` (el middleware relee grants de DB → RBAC pasa sin password; patrón seed F3). Seed en `scratchpad/seed_fichas.js`.
+
+| deviceType | Fabricante / Modelo | origin | vars |
+|---|---|---|---|
+| `cummins-pcc` | Cummins / PowerCommand (PCC) | third_party | 13 |
+| `ATS` | ComAp / InteliATS² | third_party | 7 |
+| `ELTEK` | Eltek / Smartpack S | third_party | 3 |
+| `SEC` | Wanomi / WN-SITE-SEC (Sense) | own | 10 |
+| `GEN` | Genérico / Generador genérico | third_party | 9 |
+
+`cummins-pcc` y `ATS` se nombraron para **matchear los deviceType del rule pack** `cummins-pcc-v1` (linkeo edge↔reglas). **Correcciones de tipo respecto de los templates:** `vibration_signature` → categorical (publica 'normal'/'warning'/'anomaly'; el template decía int) · `crank_attempts_failed` → int. Deadbands tomados de los templates (criterio físico DEC-REF-105). `limits` (warning/trip) vacíos (schema lo permite; poblar luego desde specs/reglas).
+
+**Revisión ficha↔template↔device + linkeo (mismo pedido, segunda parte).** La verificación cruzó las variables de cada template contra su ficha candidata: **match 1:1 exacto en los 5** (sin variables de más/menos). Los devices reales ya traían `deviceType` puesto (por eso las alarmas andaban): SEC×4, GEN×4, ATS×1, cummins-pcc×1, **ELTEK×3**. Destapó que la ficha `eltek-smartpack` NO coincidía con los equipos (`ELTEK`) — habría roto el matching de un futuro pack Eltek. **Corregido:** ficha renombrada `eltek-smartpack` → **`ELTEK`** (DELETE + POST por API; no hay PUT de ficha, DEC-REF-97). **Linkeo aplicado** (`updateOne` de `template.deviceType` en los 5, = el deviceType que el device ya tenía): SEC, GEN, ATS, cummins-pcc, ELTEK. Como `template.deviceType` = `device.deviceType`, el deviceType EFECTIVO del edge (template con fallback a device, siteState.js) **no cambia** → alarmas Cummins/ATS intactas. Verificado: cadena consistente en los 5 (ficha=✓ · device alinea), edge running, ingesta viva, 0 errores.
+
+**Cierre de pendientes (segunda tanda del mismo pedido).** (i) **Tipos corregidos en el template `WN-SITE-GEN v2`:** `crank_attempts_failed` int (era float, sigue widget numeric — es un conteo) · `vibration_signature` → **widget multiState + categorical** con catálogo de 4 estados (normal/warning/anomaly/critical con severidades) — era `numeric[int]` y no podía dibujar un valor de texto; ahora template y ficha coinciden. (ii) **Seed reproducible** consolidado e idempotente en `tools/seed_fichas/seed.js` (GET previo + saltea existentes; crea las 5 por API con JWT superadmin; incluye los limits Cummins; `rename_eltek.js` no se promueve — era migración one-off, el seed crea `ELTEK` directo). (iii) **`limits` — parcial con evidencia:** solo se poblaron los **2 valores de fábrica documentados** (Cummins `oil_pressure` trip lt 25 psi = LOP · `coolant_temp` trip gt 95 °C = HET, del sensor-engine). El resto NO se inventa (DEC-PRED-1): las reglas del pack son alarmas OPERATIVAS compuestas (ej. A0 `rpm>300 AND oil<2`), no límites de fábrica; la fuente correcta son los datasheets (`docsRefactor/_biblioteca_campo/*.pdf`, extraíbles por `POST /equipmentsheet/extract`). (iv) **Edge reiniciado** (Reconstruct 7/8, pack cargado, 0 errores) — lee `template.deviceType`; efectivo sin cambios.
+
+**Hallazgo (posible backlog): las fichas no tienen camino de edición.** No hay `PUT /equipmentsheet` (DEC-REF-97 D-1) y el `DELETE` da 409 si un template la referencia (ahora todas linkeadas) ⇒ una ficha referenciada es **inmutable por el producto**. Los limits Cummins se aplicaron por `updateOne` directo (declarado; único camino). Agregar/editar variables o limits de una ficha en uso hoy exige DB directa — candidato a una ruta de edición con las mismas guardas fail-closed que templates.
+
+## Sesión #82 — 2026-09-23 · Área 2 · DEC-REF-110: el simulador toma su roster desde la DB (polling), no de un archivo fijo
+
+### Consulta de Franco (origen)
+
+*"Si creo un template con una ficha, luego un device con ese template, y le asigno un sitio, ¿los widgets reciben datos del simulador?"* **Respuesta medida: NO.** `run.js` leía una lista FIJA de `devices_state.json` (13 dId hardcodeados) y bootstrapeaba solo esos; un device nuevo (dId nuevo) no existe para el sim ⇒ los widgets quedan en "sin dato" aunque el cableado (template/sitio/suscripción `${owner}/${dId}/${var}/sdata`) esté perfecto. En dev/demo el sim es la única fuente (Connect/Sense es solo-diseño). Franco pidió que el sim tome los devices de la base.
+
+### Decisiones (Franco)
+
+- **D-1 · Alcance = solo `firmwareType:'wanomi-sim'`** (elegido sobre "cualquier device con rol conocido"): mantiene la distinción sim/real, a prueba de futuro con devices reales. Para que un device nuevo entre, se marca en el alta → **toggle 'Dispositivo simulado' en `devices.vue`**.
+- **D-2 · Refresco = polling automático**: el sim re-consulta la DB cada `SIM_POLL_SEC` (45s) y suma/saca devices en caliente, sin reiniciar.
+
+### Implementación
+
+- **`GET /simulator/roster`** (`simulator.js`): M2M, gate por header `token`=`EMQX_API_TOKEN` (mismo secreto que webhooks, NO checkAuth) + `ENABLE_SIMULATOR_API=true`; SIN filtro de tenencia (el sim ve todo el parque simulado, multi-owner). Devuelve `[{dId, password, deviceType, siteId}]` de los `wanomi-sim`.
+- **`run.js` reescrito**: de bootstrap único → **roster + reconciliación**. Al arrancar y cada poll: `getRoster()` → agrega los que no están (bootstrap por `getDeviceCredentials`, mapea `deviceType→rol`: SEC/GEN/ATS/ELTEK directo, **`cummins-pcc→CUMMINS`**) y desconecta los que salieron. deviceType fuera de los 5 roles → saltea con aviso único. Scheduler del ejercicio semanal itera los ATS ACTUALES en cada tick (toma los nuevos). `sharedState` por site persistente. Muerte visible (uncaught/unhandled) conservada.
+- **`lib/api.js`**: `getRoster(token)` nuevo. **`supervisor.sh`**: exporta `EMQX_API_TOKEN` (grep de app/.env). **`devices.vue`**: switch 'Dispositivo simulado' → `firmwareType:'wanomi-sim'` en el POST. `devices_state.json` **obsoleto** (no se lee; se conserva como histórico).
+
+### Verificación E2E
+
+- Roster bootstrapea los 13 al arrancar (105 docs/30s), todos los sitios.
+- **Alta en caliente:** device `TEST-SIM-POLL` creado por API (`firmwareType:wanomi-sim`, template SEC) → aparece en el roster → el sim lo toma en el poll (~10 s), 10 vars online, **10 docs/60s** publicados con su dId.
+- **Baja en caliente:** device borrado → el sim loguea "salió del roster — desconectando" y deja de publicar (0 docs); roster vuelve a 13.
+- Gate: 401 sin token / token malo. `node --check` + `bash -n` verdes. Build exit 0 (toggle).
+
+### Declarado
+
+1. **Límite:** el sim solo simula los 5 roles conocidos (física hardcodeada por rol en `sensor-engine`). Un equipo con ficha/deviceType nuevo entra al roster pero se saltea hasta que el sensor-engine sepa su física.
+2. El device de prueba se creó **sin bindear a sitio** → apareció como `UNKNOWN/SEC` (el `siteId` alimenta el siteCode); en el flujo real con sitio asignado, el siteCode viaja correcto.
+3. Passwords de device en texto plano (ya existente) — el roster los expone gated; aceptable en dev/demo, mismo dato que ya consumía `getDeviceCredentials`.
+
+### Adenda #82-b — bugfix del toggle 'Dispositivo simulado' + badge de tabla
+
+**Reporte de Franco:** el toggle no muestra estado on/off, no asigna `wanomi-sim` (el device sale `wanomi` en ambas posiciones), y la columna Type muestra "Wanomi" no "Simulado". **Causa (medida):** el `base-switch` que agregué no llevaba `on-text`/`off-text` ⇒ el `bootstrap-switch` colapsa a ancho cero (los handles renderizan `{{onText}}`/`{{offText}}` vacíos) → sin área clickeable ni estado visible → `newDevice.simulated` queda `false` → POST siempre `firmwareType:'wanomi'`. No era cache (el chunk servido tenía el código; `SidebarSharePlugin.vue` prueba que v-model+base-switch funciona CON textos). **Fix:** `on-text="Sí" off-text="No"` en el switch + columna Type distingue `wanomi-sim`→badge "Simulado" (antes todo no-tasmota decía "Wanomi"). Rebuild exit 0 (chunk `fae7204.js` con on-text/off-text/Simulado), node restart, UI 200. Los 2 devices `tes` (flipeados a wanomi-sim en el diagnóstico) publican OK (6 docs/400s, cadencia por-cambio+latido con motor quieto). Pendiente del lado usuario: hard-refresh para tomar el bundle nuevo.
+
+### Adenda #82-c — A (limits de fábrica) + B (edición de fichas, DEC-REF-111)
+
+**A · limits con evidencia (ejecución de carry-over, no decisión).** Fuente: docs de campo que citan los manuales oficiales (`registros_consolidado_gef.md` §4 "extraído de manuales InteliGen/Cummins NFPA110", `mapeo_modbus_drivers.md` Eltek). Aplicados por `updateOne` (única vía — la ficha no tenía PUT aún) + baked en el seed: **cummins-pcc** fuel_level warn<25/trip<10 % · coolant_temp warn>95/trip>105 °C · oil_pressure trip<25 psi (LOP) · **GEN** fuel_level warn<25/trip<10 % · **ELTEK** temperature trip>60 °C. **Descartados por falta de evidencia unit-consistente (DEC-PRED-1):** battery (§4 es 24V; las fichas modelan 12V del sim) · ATS tensión/frecuencia (el doc da direcciones de registro + normativa "sin atribuir" DEC-REF-80) · dc_bus_voltage/dc_load_current Eltek (mapa de registros pendiente, doc 350020.073). Los datasheets PDF (HMI211, ComAp InteliLite NT) no aportaron valores extra sobre los `.md` ya destilados.
+
+**B · edición de fichas → DEC-REF-111.** Cerró el hueco declarado en #81 (ficha referenciada = inmutable). `PUT /equipmentsheet/:deviceType` (superadmin, deviceType inmutable, `.save()` con validación, bump de version) + botón "Editar" en `fichas.vue` que reusa el modal del alta precargado con deviceType disabled. **Seguro** porque la ficha es catálogo: los templates copian sus variables al crearse (getDeviceCredentials lee del template), así que editar una ficha no toca lo ya creado — solo la creación futura. **Verificado E2E:** edición válida 200 (version 2), rename de deviceType 400, RBAC cellowner 403, variables/limits intactos tras editar solo metadata, build exit 0 con `openEditModal` en el bundle. (Necesita hard-refresh del navegador para ver el botón, como siempre.)
+
+### Carry-over para #83
+
+1. ✅ **A y B HECHOS** en adenda #82-c (limits con evidencia + edición de fichas DEC-REF-111). Sigue abierto: `limits` de ATS/battery/Eltek-DC cuando aparezcan los setpoints reales del sitio / doc 350020.073.
+2. **Push acumulado #76–#82** (requiere orden de Franco) — mucho sin respaldo en git.
+3. Click-through visual (deuda #72+): toggle 'simulado', botón Editar ficha, counter surtidor, editor por-widget, grid del sitio.
