@@ -113,9 +113,21 @@ async function bindDevice(token, dId, siteCode) {
   return r.body;
 }
 
+// DEC-REF-110 (#82) — roster del sim desde la DB. Gate M2M por EMQX_API_TOKEN
+// (header `token`), NO JWT. Devuelve [{ dId, password, deviceType, siteId }]
+// de los devices firmwareType='wanomi-sim'. Reemplaza devices_state.json.
+async function getRoster(rosterToken) {
+  const r = await request('GET', '/api/simulator/roster', null, rosterToken);
+  if (r.status === 401) throw new Error('getRoster: unauthorized (EMQX_API_TOKEN)');
+  if (r.status === 404) throw new Error('getRoster: /simulator/roster not found (ENABLE_SIMULATOR_API=false?)');
+  if (r.body?.status !== 'success') throw new Error(`getRoster failed: ${r.body?.error ?? `HTTP ${r.status}`}`);
+  return r.body.data; // [{ dId, password, deviceType, siteId }]
+}
+
 module.exports = {
   login,
   getDeviceCredentials,
+  getRoster,
   getSites,
   createSite,
   getTemplates,

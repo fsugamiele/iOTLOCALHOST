@@ -41,6 +41,16 @@
           </div>
         </div>
 
+        <!-- DEC-REF-110 — dispositivo simulado: nace firmwareType='wanomi-sim'
+             y el simulador lo toma en su próximo poll (si su deviceType es un
+             rol simulable: SEC/GEN/ATS/cummins-pcc/ELTEK). -->
+        <div class="row">
+          <div class="col-12" style="display:flex; align-items:center; gap:10px; margin-bottom:6px">
+            <base-switch v-model="newDevice.simulated" on-text="Sí" off-text="No"></base-switch>
+            <span style="font-size:13px">Dispositivo simulado <small class="text-muted">(recibe datos del simulador)</small></span>
+          </div>
+        </div>
+
         <div class="row">
           <div class="col-12">
             <p class="text-muted" style="font-size:12px">
@@ -88,6 +98,7 @@
           <el-table-column label="Type" width="110">
             <template slot-scope="{ row }">
               <span v-if="row.firmwareType === 'tasmota'" style="background:#1d8cf8;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Tasmota (legacy)</span>
+              <span v-else-if="row.firmwareType === 'wanomi-sim'" style="background:#e14eca;color:#fff;border-radius:8px;padding:2px 8px;font-size:11px">Simulado</span>
               <span v-else style="background:#00f2c3;color:#1a1a2e;border-radius:8px;padding:2px 8px;font-size:11px">Wanomi</span>
             </template>
           </el-table-column>
@@ -257,7 +268,8 @@ export default {
       newDevice: {
         name: "",
         templateId: "",
-        templateName: ""
+        templateName: "",
+        simulated: false   // DEC-REF-110 — marca firmwareType='wanomi-sim' (lo toma el simulador)
       },
       // Credenciales post-alta (DEC-REF-98 D-2)
       credentialsModal: false,
@@ -417,6 +429,8 @@ export default {
           name: this.newDevice.name,
           templateId: this.newDevice.templateId,
           templateName: this.newDevice.templateName,
+          // DEC-REF-110 — 'wanomi-sim' hace que el simulador lo tome; si no, device real.
+          firmwareType: this.newDevice.simulated ? "wanomi-sim" : "wanomi",
         } }, axiosHeaders);
 
         if (res.data.status != "success") return;
@@ -437,6 +451,7 @@ export default {
 
         this.$store.dispatch("getDevices");
         this.newDevice.name = "";
+        this.newDevice.simulated = false;
         this.selectedIndexTemplate = null;
       } catch (e) {
         console.log(e);

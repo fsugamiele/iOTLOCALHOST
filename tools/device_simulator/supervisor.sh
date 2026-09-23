@@ -31,8 +31,15 @@ fi
 
 E=$(grep -E '^TEST_USER_EMAIL=' app/.env | cut -d= -f2- | tr -d '"'"'"'\r')
 W=$(grep -E '^TEST_USER_PWD='   app/.env | cut -d= -f2- | tr -d '"'"'"'\r')
+# DEC-REF-110 — token M2M del roster (/simulator/roster). Mismo secreto que los
+# webhooks EMQX; se lee de app/.env (NUNCA sourcear el archivo).
+T=$(grep -E '^EMQX_API_TOKEN=' app/.env | cut -d= -f2- | tr -d '"'"'"'\r')
 if [ -z "$E" ] || [ -z "$W" ]; then
   echo "[supervisor] $(date -u +%FT%TZ) TEST_USER_EMAIL/TEST_USER_PWD no encontrados en app/.env — salgo"
+  exit 1
+fi
+if [ -z "$T" ]; then
+  echo "[supervisor] $(date -u +%FT%TZ) EMQX_API_TOKEN no encontrado en app/.env (roster DEC-REF-110) — salgo"
   exit 1
 fi
 
@@ -42,7 +49,7 @@ MIN_LIFE_OK_S=15
 while true; do
   echo "[supervisor] $(date -u +%FT%TZ) lanzando simulador"
   start=$(date +%s)
-  USER_EMAIL="$E" USER_PASSWORD="$W" SIMULATOR_MODE=true node tools/device_simulator/run.js
+  USER_EMAIL="$E" USER_PASSWORD="$W" EMQX_API_TOKEN="$T" SIMULATOR_MODE=true node tools/device_simulator/run.js
   rc=$?
   lived=$(( $(date +%s) - start ))
   echo "[supervisor] $(date -u +%FT%TZ) simulador terminó rc=$rc tras ${lived}s — reinicio en ${BACKOFF}s"

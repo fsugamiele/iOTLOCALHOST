@@ -1,152 +1,141 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+// DEC-REF-110 (#82) — el roster del simulador viene de la DB, no de un archivo
+// fijo. Al arrancar y cada SIM_POLL_SEC, pide GET /simulator/roster (devices
+// firmwareType='wanomi-sim') y RECONCILIA: bootstrapea los nuevos y desconecta
+// los que ya no están. Así un device 'wanomi-sim' creado por la UI entra al sim
+// en el próximo poll, sin reiniciar. Reemplaza el viejo devices_state.json.
+
 const api = require('./lib/api.js');
 const { SimulatedDevice } = require('./lib/device.js');
 const engine = require('./lib/sensor-engine.js');
 
-const STATE_FILE = path.join(__dirname, 'devices_state.json');
+const ROSTER_TOKEN = process.env.EMQX_API_TOKEN;   // gate M2M del roster (mismo secreto que webhooks)
+const POLL_MS = (Number(process.env.SIM_POLL_SEC) || 45) * 1000;
 
-const EMAIL = process.env.USER_EMAIL;
-const PASSWORD = process.env.USER_PASSWORD;
-
-if (!EMAIL || !PASSWORD) {
-  console.error('ERROR: USER_EMAIL y USER_PASSWORD son requeridos');
+if (!ROSTER_TOKEN) {
+  console.error('ERROR: EMQX_API_TOKEN es requerido (auth del roster /simulator/roster)');
   process.exit(1);
 }
 
-if (!fs.existsSync(STATE_FILE)) {
-  console.error('ERROR: devices_state.json no encontrado — correr "node seed.js" primero');
-  process.exit(1);
+// deviceType de la ficha (DEC-REF-108) → rol que el sensor-engine sabe simular.
+// Un deviceType fuera de este mapa no es simulable (la física está por rol).
+const ROLE_BY_DEVICETYPE = { SEC: 'SEC', GEN: 'GEN', ATS: 'ATS', 'cummins-pcc': 'CUMMINS', ELTEK: 'ELTEK' };
+
+const devices = new Map();   // dId -> SimulatedDevice (activos)
+const siteShared = {};       // siteCode -> estado compartido (misma ref por site, BUG-SIM-1)
+const skipped = new Set();   // dId sin rol simulable — avisar una sola vez
+
+function roleFor(deviceType) {
+  return ROLE_BY_DEVICETYPE[deviceType] || null;
 }
 
-// Filtro opcional: --site=CR00015 para correr solo ese site
-const args = process.argv.slice(2);
-const siteFilter = (args.find(a => a.startsWith('--site=')) || '').replace('--site=', '') || null;
+async function bootstrapOne(entry) {
+  const { dId, password, deviceType, siteId } = entry;
+  const siteCode = siteId || 'UNKNOWN';
+  const role = roleFor(deviceType);
+  if (!role) {
+    if (!skipped.has(dId)) {
+      console.warn(`skip ${siteCode}/${dId}: deviceType "${deviceType || '(vacío)'}" sin rol simulable`);
+      skipped.add(dId);
+    }
+    return;
+  }
+  try {
+    const creds = await api.getDeviceCredentials(dId, password);   // { username, password, topic, variables, heartbeatSec }
+    const userId = creds.topic.split('/')[0];
+    if (!siteShared[siteCode]) siteShared[siteCode] = {};
+    const dev = new SimulatedDevice({
+      dId,
+      role,
+      siteCode,
+      mqttUsername: creds.username,
+      mqttPassword: creds.password,   // NUNCA logueado
+      userId,
+      variables: creds.variables,
+      sharedState: siteShared[siteCode],
+      heartbeatSec: creds.heartbeatSec,
+    });
+    await dev.connect();
+    dev.startPublishing();
+    devices.set(dId, dev);
+    console.log(`+ ${siteCode}/${role} (${dId}) online — ${creds.variables.length} vars`);
+  } catch (err) {
+    console.error(`Failed to bootstrap ${siteCode}/${deviceType} (${dId}): ${err.message}`);
+    // No se agrega a `devices`: el próximo poll reintenta (p.ej. si aún no tenía template).
+  }
+}
+
+// Reconciliación: agrega los del roster que no estén, saca los que ya no están.
+async function reconcile() {
+  let roster;
+  try {
+    roster = await api.getRoster(ROSTER_TOKEN);
+  } catch (err) {
+    console.error(`reconcile: getRoster falló (se conserva el estado actual): ${err.message}`);
+    return;
+  }
+  const rosterIds = new Set(roster.map(r => r.dId));
+
+  for (const entry of roster) {
+    if (!devices.has(entry.dId)) await bootstrapOne(entry);
+  }
+  for (const dId of [...devices.keys()]) {
+    if (!rosterIds.has(dId)) {
+      const dev = devices.get(dId);
+      console.log(`- ${dev.tag} salió del roster — desconectando`);
+      try { await dev.disconnect(); } catch (e) { /* best-effort */ }
+      devices.delete(dId);
+    }
+    skipped.delete(dId);   // por si vuelve con deviceType válido
+  }
+  // Limpia del set `skipped` los que ya no están en el roster.
+  for (const dId of [...skipped]) if (!rosterIds.has(dId)) skipped.delete(dId);
+}
 
 async function main() {
-  console.log('=== WN-SITE-SEC/GEN Simulator ===\n');
+  console.log('=== Wanomi Simulator (roster desde DB · DEC-REF-110) ===');
+  console.log(process.env.SIMULATOR_MODE === 'true'
+    ? 'SIMULATOR_MODE=true — control channel ACTIVE'
+    : 'SIMULATOR_MODE not set — control channel DISABLED');
 
-  const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-  let entries = Object.entries(state);
+  await reconcile();
+  console.log(`\n${devices.size} device(s) online. Poll cada ${POLL_MS / 1000}s. Ctrl+C para parar.\n`);
 
-  if (siteFilter) {
-    entries = entries.filter(([siteCode]) => siteCode === siteFilter);
-    if (entries.length === 0) {
-      console.error(`ERROR: site "${siteFilter}" no encontrado en devices_state.json`);
-      process.exit(1);
-    }
-  }
-
-  // Aplanar a lista de devices: [{ siteCode, role, dId, password, sharedState }]
-  // sharedState: un objeto por site, MISMA referencia para todos sus devices (BUG-SIM-1).
-  const configs = [];
-  for (const [siteCode, roles] of entries) {
-    const siteShared = {};
-    for (const [role, dev] of Object.entries(roles)) {
-      configs.push({ siteCode, role, dId: dev.dId, password: dev.password, sharedState: siteShared });
-    }
-  }
-
-  console.log(`Bootstrapping ${configs.length} devices...`);
-  if (process.env.SIMULATOR_MODE === 'true') {
-    console.log('SIMULATOR_MODE=true — control channel ACTIVE');
-  } else {
-    console.log('SIMULATOR_MODE not set — control channel DISABLED (devices publish autonomously)');
-  }
-  console.log('');
-
-  // Bootstrap: para cada device, llamar al mismo endpoint que un ESP32 real
-  // y obtener credenciales MQTT en plain.
-  const devices = [];
-  for (const cfg of configs) {
-    try {
-      console.log(`Bootstrapping ${cfg.siteCode}/${cfg.role} (${cfg.dId})...`);
-      const creds = await api.getDeviceCredentials(cfg.dId, cfg.password);
-      // El topic viene como "userId/dId/" — extraemos el userId
-      const userId = creds.topic.split('/')[0];
-
-      devices.push(new SimulatedDevice({
-        dId: cfg.dId,
-        role: cfg.role,
-        siteCode: cfg.siteCode,
-        mqttUsername: creds.username,
-        mqttPassword: creds.password, // NUNCA logueado
-        userId,
-        variables: creds.variables,
-        sharedState: cfg.sharedState,
-        heartbeatSec: creds.heartbeatSec, // P2 (#79) — latido desde el template
-      }));
-    } catch (err) {
-      console.error(`Failed to bootstrap ${cfg.siteCode}/${cfg.role}: ${err.message}`);
-    }
-  }
-
-  if (devices.length === 0) {
-    console.error('\nNo devices bootstrapped. Verificar:');
-    console.error('  - Backend está corriendo y accesible en el puerto correcto');
-    console.error('  - devices_state.json contiene devices que existen en el backend');
-    process.exit(1);
-  }
-
-  // Conectar todos en paralelo
-  console.log(`\nConnecting ${devices.length} device(s) to MQTT...`);
-  await Promise.all(devices.map(d => d.connect()));
-
-  console.log(`\n${devices.length} devices online. Publishing started. Ctrl+C to stop.\n`);
-  devices.forEach(d => d.startPublishing());
-
-  // DEC-REF-77-A + DEC-REF-79-B (a) — scheduler del ciclo de ejercicio
-  // semanal. Cadencia default 30 min de wallclock (para la demo Claro);
-  // parametrizable via env WEEKLY_EXERCISE_INTERVAL_MIN — DECLARADO en el
-  // config, no escondido. Solo se activa con SIMULATOR_MODE=true (mismo
-  // criterio que el control channel — evita disparo accidental en prod).
-  // Se dispara sobre el ATS de cada site; el propio escenario propaga por
-  // sharedState.gen_running al Cummins (ver comentario del scenario).
-  //
-  // GUARDA · cadencia >= duración + margen. Si intervalMs <= duration_ms
-  // un nuevo disparo cancela _cancelActiveTimers() del anterior, el step
-  // final (gen_status STOPPED) nunca ejecuta, y el motor no para nunca —
-  // contradice DEC-REF-79 (iii) (grupo de RESPALDO, no continuo).
-  // Margen 1 min mínimo entre ciclos: da al operador un reposo visible.
+  // DEC-REF-77-A / -79-B — scheduler del ejercicio semanal. Itera los ATS
+  // ACTUALES en cada tick (así toma los que entren por poll). Guarda de
+  // cadencia >= duración + margen 1 min (si no, un disparo cancela el apagado
+  // del anterior y el motor no para — DEC-REF-79 iii).
   if (process.env.SIMULATOR_MODE === 'true') {
     const intervalMin = Number(process.env.WEEKLY_EXERCISE_INTERVAL_MIN) || 30;
-    const intervalMs  = intervalMin * 60 * 1000;
+    const intervalMs = intervalMin * 60 * 1000;
     const exerciseDurationMs = engine.SCENARIOS.weekly_exercise.duration_ms;
-    const MIN_MARGIN_MS      = 60 * 1000;  // 1 min de reposo mínimo
-    const minCadenceMs       = exerciseDurationMs + MIN_MARGIN_MS;
-    const minCadenceMin      = Math.ceil(minCadenceMs / 60000);
-    const atsDevices         = devices.filter(d => d.role === 'ATS');
-
+    const minCadenceMs = exerciseDurationMs + 60 * 1000;
     if (intervalMs < minCadenceMs) {
       console.error(
         `Weekly exercise scheduler ABORTED — WEEKLY_EXERCISE_INTERVAL_MIN=${intervalMin} ` +
-        `es menor que el mínimo ${minCadenceMin} min (duración escenario ${exerciseDurationMs/60000} min ` +
-        `+ margen ${MIN_MARGIN_MS/60000} min). Con esa cadencia, cada disparo cancelaría el step de ` +
-        `apagado del ciclo anterior y el motor no pararía. Reiniciar con WEEKLY_EXERCISE_INTERVAL_MIN>=${minCadenceMin}.`
+        `es menor que el mínimo ${Math.ceil(minCadenceMs / 60000)} min.`
       );
-    } else if (atsDevices.length > 0) {
-      console.log(
-        `Weekly exercise scheduler ACTIVE — cadence: ${intervalMin} min · ` +
-        `${atsDevices.length} ATS device(s) · duration ${exerciseDurationMs/60000} min\n`
-      );
+    } else {
+      console.log(`Weekly exercise scheduler ACTIVE — cadence ${intervalMin} min · duración ${exerciseDurationMs / 60000} min\n`);
       setInterval(() => {
-        for (const ats of atsDevices) {
-          console.log(`${ats.tag} weekly_exercise triggered by scheduler`);
-          ats.runScenario('weekly_exercise');
+        for (const dev of devices.values()) {
+          if (dev.role === 'ATS') {
+            console.log(`${dev.tag} weekly_exercise triggered by scheduler`);
+            dev.runScenario('weekly_exercise');
+          }
         }
       }, intervalMs);
-    } else {
-      console.log('Weekly exercise scheduler skipped — no ATS devices in bootstrap.\n');
     }
   }
 
-  // Shutdown limpio
+  // Poll de reconciliación (DEC-REF-110 D-2): altas/bajas en caliente.
+  setInterval(() => { reconcile().catch(e => console.error('reconcile error:', e.message)); }, POLL_MS);
+
   async function shutdown() {
     console.log('\nShutting down...');
-    await Promise.all(devices.map(d => d.disconnect()));
+    await Promise.all([...devices.values()].map(d => d.disconnect().catch(() => {})));
     console.log('All devices disconnected.');
     process.exit(0);
   }
@@ -159,10 +148,8 @@ main().catch(err => {
   process.exit(1);
 });
 
-// Muerte VISIBLE (P1 · #79): un throw dentro de un timer de publicación o una
-// promise sin catch mataba el proceso sin dejar rastro (así murió el sim el
-// 2026-09-19 01:24 UTC: log limpio, proceso desaparecido, 12 h de sitios
-// offline). Log + exit(1): el supervisor (supervisor.sh) lo relanza solo.
+// Muerte VISIBLE (P1 · #79): un throw en un timer o una promise sin catch mataba
+// el proceso sin rastro. Log + exit(1): el supervisor lo relanza.
 process.on('uncaughtException', err => {
   console.error('\nUNCAUGHT EXCEPTION — el supervisor relanzará el sim:', err && err.stack || err);
   process.exit(1);

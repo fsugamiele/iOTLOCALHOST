@@ -133,6 +133,32 @@ async function resolveDeviceAndTemplate(req, dId) {
 }
 
 // ────────── GET /devices ──────────────────────────────────────────
+// DEC-REF-110 (#82) — ROSTER para el simulador contenerizado. El sim (proceso
+// M2M, sin JWT de usuario) obtiene de la DB TODOS los devices con
+// firmwareType='wanomi-sim' que debe simular, con lo mínimo para el bootstrap:
+// dId + password (texto plano, el mismo que ya consume getDeviceCredentials) +
+// deviceType (→ rol del sensor-engine) + siteId (siteCode). SIN filtro de
+// tenencia — el sim simula todo el parque simulado (multi-owner). Gate M2M por
+// EMQX_API_TOKEN (mismo secreto que los webhooks; el sim lo lee de app/.env),
+// NO checkAuth. Solo con ENABLE_SIMULATOR_API=true. Reemplaza el roster fijo
+// de devices_state.json: cualquier device 'wanomi-sim' creado por la UI entra
+// al sim en el próximo poll (DEC-REF-110 D-2).
+router.get('/simulator/roster', async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  if (!process.env.EMQX_API_TOKEN || req.get('token') !== process.env.EMQX_API_TOKEN) {
+    return res.status(401).json({ status: 'error', error: 'unauthorized' });
+  }
+  try {
+    const devices = await Device.find(
+      { firmwareType: 'wanomi-sim' },
+      { dId: 1, password: 1, deviceType: 1, siteId: 1, _id: 0 }
+    ).lean();
+    return res.json({ status: 'success', data: devices });
+  } catch (error) {
+    return internalError(res, error);
+  }
+});
+
 router.get('/simulator/devices', checkAuth, async (req, res) => {
   if (!isApiEnabled()) return notFound(res);
   try {
