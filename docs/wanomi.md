@@ -12411,3 +12411,23 @@ Build `docker_nuxt_build.yml` **exit 0**; strings en `dist/_nuxt` (`counter-pump
 1. ✅ **A y B HECHOS** en adenda #82-c (limits con evidencia + edición de fichas DEC-REF-111). Sigue abierto: `limits` de ATS/battery/Eltek-DC cuando aparezcan los setpoints reales del sitio / doc 350020.073.
 2. **Push acumulado #76–#82** (requiere orden de Franco) — mucho sin respaldo en git.
 3. Click-through visual (deuda #72+): toggle 'simulado', botón Editar ficha, counter surtidor, editor por-widget, grid del sitio.
+
+## Sesión #83 — 2026-09-23 · Área 2 · DEC-REF-112: theme visual Wanomi (sidebar verde-teal, modo claro default, logo isotipo, "wanomi", primary teal)
+
+**Mandato (Franco):** cambio estético — sidebar al swatch verde/teal tornasolado (el último después del azul), modo LIGHT por defecto, logo = `isotipo_transparente.svg`, "IOTIX"→"wanomi", primary = color del sidebar, y adaptar TODAS las páginas al modo claro.
+
+**Ejecución iterativa (7 builds con feedback visual de Franco, sin headless en el host).**
+
+- **Estructural:** sidebar `blue`→`green` (`$success #00f2c3`, gradiente celeste→verde); título "wanomi" (sidebar + login); logo → SVG isotipo (copiado a `static/img/wanomi-isotipo.svg`); `$primary` `#e14eca`→`#00f2c3`, `$primary-states`→`#00c9a7` (teal, para que el botón lea verde no azul); 19 `#e14eca` literales → verde (badge "Simulado" a naranja, distinto del verde "Wanomi").
+- **Modo claro default — causa raíz:** `nuxt.config bodyAttrs.class` vacío que vue-meta usaba para PISAR el `white-content` que agregaba el `created()` del layout → por eso arrancaba dark con el switch en light. Fix: `bodyAttrs.class='white-content'`.
+- **base-switch (dos bugs):** (i) sin `on-text`/`off-text` colapsa a ancho cero (el LIGHT/DARK del engranaje no se veía + "config desproporcionado") → 🌙/☀; (ii) el ON solo se colorea con clase `bootstrap-switch-<color>` que `BaseSwitch` no aplica → ON transparente = **blanco en claro** → fondo `$brand-primary` default al `handle-on`.
+- **Fixed-plugin:** float + alto fijo superponía el switch sobre los swatches → `height:auto`+`clear:both`. **Columnas** de acciones ensanchadas.
+- **Light-mode (overrides `.white-content .clase` en `<style scoped>` — Vue scopea solo el target):** azul default→teal (ValueStatus/IconValue/MultiState/Sparkline); texto/fondo blanco→oscuro en EquipmentCard, simulator, DcPlant, PowerCascade, ActiveRecommendation, templates, rulepacks, dashboard (skeletons), CrossExprNode, sites/_siteCode, CounterPump; Gauge/Tanque: valor theme-aware por `body.classList`.
+
+**Verificación:** builds exit 0, `<body class="white-content">` servido, páginas 200. **Declarado:** ECharts no reaccionan al toggle en caliente (se actualizan al próximo dato); Noc* ya eran light-aware (prop `isLight`, observer en dashboard.vue). 31 archivos.
+
+### Carry-over para #84
+
+1. Push acumulado #76–#83 (requiere orden de Franco).
+2. Deuda ECharts (Gauge/Tank) sin refresh de tema en caliente + posibles rincones de light-mode no reportados (tablas element-ui, algún modal).
+3. Pendientes vivos: limits ATS/battery/Eltek-DC, click-through visual general.
