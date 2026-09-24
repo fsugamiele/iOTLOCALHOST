@@ -105,6 +105,9 @@ const RENDER_OPTIONS = [
   { value: 'counter',     label: 'Contador surtidor (litros, horas, kWh…)' },
   { value: 'sparkline',   label: 'Sparkline — mini tendencia (historial)' },
   { value: 'icon',        label: 'Ícono + valor (estilo clásico)' },
+  // DEC-REF-114 (#85) — la autonomía deja de ser un tipo legacy inalcanzable:
+  // es una representación más, con sus umbrales en horas configurables.
+  { value: 'autonomy',    label: 'Autonomía — horas restantes (la publica el equipo)' },
 ];
 // Helper de visibilidad condicional por representación.
 const renderIn = (...vals) => (cfg) => vals.includes(cfg.render);
@@ -156,10 +159,15 @@ export const WIDGET_REGISTRY = {
       { kind: 'number',   model: 'chartTimeAgo', label: 'Ventana de historial (min)', showIf: renderIn('sparkline') },
       { kind: 'number',   model: 'tankCapacity', label: 'Capacidad del tanque (opcional)', showIf: renderIn('tank') },
       { kind: 'text',     model: 'tankUnit', label: 'Unidad de capacidad (ej: L)', showIf: renderIn('tank') },
-      { kind: 'number',   model: 'thresholds.criticalLow',  label: 'Umbral crítico bajo (color)',  showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon') },
-      { kind: 'number',   model: 'thresholds.warningLow',   label: 'Umbral warning bajo (color)',   showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon') },
+      { kind: 'number',   model: 'thresholds.criticalLow',  label: 'Umbral crítico bajo (color)',  showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon', 'autonomy') },
+      { kind: 'number',   model: 'thresholds.warningLow',   label: 'Umbral warning bajo (color)',   showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon', 'autonomy') },
       { kind: 'number',   model: 'thresholds.warningHigh',  label: 'Umbral warning alto (color)',   showIf: renderIn('valueStatus', 'gauge', 'icon') },
       { kind: 'number',   model: 'thresholds.criticalHigh', label: 'Umbral crítico alto (color)',   showIf: renderIn('valueStatus', 'gauge', 'icon') },
+      // DEC-REF-114 (#85) — factoryRange editable (antes solo se copiaba de
+      // la ficha al crear; no había forma de ajustarlo desde la UI).
+      { kind: 'text',     model: 'factoryRange', label: 'Rango normal de fábrica (min-max, ej: 10.5-14.5)', showIf: renderIn('valueStatus') },
+      // DEC-REF-114 (#85) — guía de la representación autonomía.
+      { kind: 'help', text: 'Autonomía: la calcula y publica el EQUIPO en horas (la ficha declara la variable); los umbrales son en horas y lo crítico es ABAJO (poco tiempo restante).', showIf: renderIn('autonomy') },
       { kind: 'help', text: 'La representación no cambia el dato: elegís cómo se dibuja el mismo sensor. Los umbrales pintan el color/zonas del gráfico.' },
       { kind: 'size',     model: 'column' },
     ],
@@ -400,6 +408,14 @@ export const WIDGET_REGISTRY = {
       { kind: 'number',   model: 'variableSendFreq', label: 'Frecuencia de Envío (seg)' },
       { kind: 'number',   model: 'deadband',         label: 'Umbral de cambio (opcional — publica solo si el valor varía al menos esto)' },
       { kind: 'number',   model: 'decimalPlaces',    label: 'Decimales (opcional; vacío = default por tipo)' },
+      // DEC-REF-114 (#85) — los widgets valueStatus EXISTENTES (pre-familia
+      // numérica) se editan in-situ con ESTE descriptor: sus umbrales y su
+      // rango de fábrica también tienen que ser configurables acá.
+      { kind: 'number',   model: 'thresholds.criticalLow',  label: 'Umbral crítico bajo (color)' },
+      { kind: 'number',   model: 'thresholds.warningLow',   label: 'Umbral warning bajo (color)' },
+      { kind: 'number',   model: 'thresholds.warningHigh',  label: 'Umbral warning alto (color)' },
+      { kind: 'number',   model: 'thresholds.criticalHigh', label: 'Umbral crítico alto (color)' },
+      { kind: 'text',     model: 'factoryRange',     label: 'Rango normal de fábrica (min-max, ej: 10.5-14.5)' },
       { kind: 'icon',     model: 'icon' },
       { kind: 'size',     model: 'column' },
     ],
@@ -414,11 +430,19 @@ export const WIDGET_REGISTRY = {
       icon: 'fa-signal',
       column: 'col-4',
       widget: 'valueStatus',
+      thresholds: { criticalLow: null, warningLow: null, warningHigh: null, criticalHigh: null },
     }),
     normalize(cfg) {
       cfg.deadband = toNumOrNull(cfg.deadband);
       cfg.decimalPlaces = toNumOrNull(cfg.decimalPlaces);
       cfg.variableSendFreq = Number.isFinite(cfg.variableSendFreq) ? cfg.variableSendFreq : 60;
+      const t = cfg.thresholds || {};
+      cfg.thresholds = {
+        criticalLow:  toNumOrNull(t.criticalLow),
+        warningLow:   toNumOrNull(t.warningLow),
+        warningHigh:  toNumOrNull(t.warningHigh),
+        criticalHigh: toNumOrNull(t.criticalHigh),
+      };
     },
   },
 

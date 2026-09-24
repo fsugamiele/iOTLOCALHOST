@@ -27,6 +27,9 @@ export default {
       switch (render) {
         case 'tank':    return 62;
         case 'counter': return 12480;
+        // DEC-REF-114 (#85) — autonomía de muestra: 5,5 h (zona sana con
+        // umbrales típicos de 4 h / 2 h; la aguja y las zonas se ven).
+        case 'autonomy': return 5.5;
         case 'gauge': {
           const max = Number(this.config.gaugeMax);
           return Number.isFinite(max) && max > 0 ? Math.round(max * 0.62) : 42;

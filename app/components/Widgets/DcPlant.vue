@@ -30,6 +30,18 @@ export default {
   computed: {
     metrics() {
       if (this.context === 'editor') {
+        // DEC-REF-114 (#85) — preview VIVA: con fuentes cargadas muestra LAS
+        // REALES (etiqueta, unidad, decimales, color por SUS umbrales) con un
+        // valor de muestra; sin fuentes, el mock de muestra.
+        const src = (this.config.sources || []).filter((s) => s && s.variable);
+        if (src.length) {
+          return src.map((s) => ({
+            label: s.variableFullName || s.variable,
+            unit: s.unit || '',
+            display: this.fmt(42, s),
+            status: this.statusOf(42, s),
+          }));
+        }
         return [
           { label: 'Tensión barra', display: '54.2', unit: 'V', status: 'ok' },
           { label: 'Corriente',     display: '12.3', unit: 'A', status: 'ok' },

@@ -12510,3 +12510,34 @@ Layout a dos columnas: mapa (xl-7) + **grilla de datos del sitio** (xl-5): códi
 2. **Modificaciones ajenas a esta sesión quedaron FUERA del commit** (restos sin commitear de #81–#83: `devices.js` toggle simulado +7/-1, refactor de rulepacks + `app/components/rules/` + `docsRefactor/Software/spec_reglas_monitoreo.md` [430+/1005-], `docsRefactor/Marketing/wanomi_brand/`) — decidir a qué sesión/commit pertenecen.
 3. Click-through visual de Franco sobre las 7 fases (tooltip sparkline, plano editable, cascada viva, grilla de datos, medición).
 4. Deuda viva: refresh de tema ECharts en caliente · rincón deadband/umbral (#79-b) · limits ATS/battery/Eltek-DC · archivos sin trackear (backups/, *.jfif, PDFs).
+
+## Sesión #85 — 2026-09-24 · Área 1 · DEC-REF-114: autonomía configurable + auditoría de configurabilidad de widgets y previews vivas
+
+### Marco
+
+Franco preguntó cómo se calcula la autonomía y detectó que no es configurable desde la UI ("nada hardcodeado, producto no demo") + pidió auditar TODOS los widgets: cada parámetro configurable y la preview reflejando los cambios en vivo. Reconoció el trabajo de Sitios ("muy bueno"); esta sesión pule Templates.
+
+**Respuesta (diseño vigente DEC-REF-108 F4):** la autonomía la calcula y publica EL EQUIPO en horas (el controlador del generador; la ficha declara la variable `autonomy_hours`). La plataforma NO estima consumo. En el simulador se deriva del nivel de combustible (tanque lleno ≈ 10 h Cummins / 8 h GEN). El widget solo muestra con umbrales en horas (lo crítico es ABAJO).
+
+### Hallazgos de la auditoría (antes de tocar código)
+
+1. `projectedAutonomy` era un tipo LEGACY: no se podía crear ni configurar desde la UI (afuera del select desde DEC-REF-107).
+2. `factoryRange` solo se copiaba de la ficha al crear el widget — no había forma de editarlo por UI (ni en numeric ni en el descriptor legacy valueStatus, que tampoco exponía los 4 umbrales).
+3. Previews: la familia numérica (NumericEditor inyecta muestra por render), multiState, dataFreshness, booleanDwell y siteMap YA eran vivas. Las DOS multi-fuente NO: powerCascade y dcPlant usaban un mock fijo que ignoraba las fuentes configuradas.
+
+### Implementado y verificado
+
+**Autonomía como representación:** `render='autonomy'` nuevo en la familia numérica (reusa el presenter ProjectedAutonomy via NumericValue) — se crea y configura por UI como cualquier representación: umbrales en horas (criticalLow/warningLow visibles para autonomy), help que documenta que la publica el equipo. Muestra del editor: 5,5 h (aguja y zonas visibles). Migración idempotente `seeds/migrate_autonomy_render.js`: los 2 widgets legacy (Cummins + GEN) → `numeric/render=autonomy` conservando variable/umbrales/deadband; quedan 0 legacy en DB (el tipo sigue resolviendo por compat).
+
+**factoryRange editable:** campo en el descriptor numeric (showIf valueStatus) + el descriptor legacy valueStatus gana los 4 umbrales y factoryRange (los widgets valueStatus pre-existentes se editan in-situ con ese descriptor — ahora TODO su parámetro operativo es configurable).
+
+**Previews vivas multi-fuente:** powerCascade en editor muestra LAS FUENTES REALES (etiqueta, ícono por rol, orden, "activo si" — cada etapa en estado activo de muestra con su primer activeWhen o 1); dcPlant igual (etiqueta, unidad, decimales, color por SUS umbrales con valor de muestra 42). Sin fuentes cargadas, mock de muestra como antes.
+
+**Verificación:** build exit 0, UI 200, `render=autonomy` en chunks y en DB (WN-SITE-GEN v2 + WN-GEN-Cummins), 0 widgets projectedAutonomy legacy.
+
+### Carry-over para #86
+
+1. Push acumulado (#76–#85) — requiere orden explícita.
+2. Restos sin commitear de #81–#83 (devices.js, refactor rulepacks + components/rules/ + spec, wanomi_brand/) — pendiente decidir destino (ítem 2 del carry-over #84).
+3. Click-through visual de Franco: autonomía configurable en Templates, previews vivas de cascada/planta DC, y todo lo de #84.
+4. Deuda viva: refresh de tema ECharts en caliente · rincón deadband/umbral (#79-b) · limits ATS/battery/Eltek-DC.

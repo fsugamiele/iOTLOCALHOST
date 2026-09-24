@@ -46,6 +46,19 @@ export default {
   computed: {
     stages() {
       if (this.context === 'editor') {
+        // DEC-REF-114 (#85) — preview VIVA: con fuentes cargadas muestra LAS
+        // REALES (etiqueta, ícono por rol, orden, "activo si"), cada una en
+        // estado activo de muestra (su primer activeWhen o 1). Sin fuentes,
+        // el mock de muestra.
+        const src = (this.config.sources || []).filter((s) => s && (s.variable || s.role));
+        if (src.length) {
+          return src.map((s) => this.toStage(
+            s.variableFullName || s.role || s.variable,
+            s.role,
+            Array.isArray(s.activeWhen) && s.activeWhen.length ? s.activeWhen[0] : 1,
+            s.activeWhen,
+          ));
+        }
         return EDITOR_MOCK.map((m) => this.toStage(m.label, m.role, m.v));
       }
       return (this.config.sources || []).map((s) => {
