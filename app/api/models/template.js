@@ -66,6 +66,10 @@ const widgetSchema = new Schema({
     // Técnico de la página de sitio (status words, bitmaps, setpoints…).
     // default false = visible en ambas vistas (Operador y Técnico).
     advanced:         { type: Boolean, default: false },
+    // DEC-REF-108 F4 (#80): rango normal del fabricante ("min-max", puede
+    // ser negativo: "-58--42"). Nace en la ficha; valueStatus lo dibuja como
+    // banda de rango bajo el valor. String, no parseado en el schema.
+    factoryRange:     { type: String },
 
     icon:          { type: String },
     class:         { type: String },

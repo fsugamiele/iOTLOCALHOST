@@ -6,7 +6,8 @@
         <div class="power-cascade__label">{{ st.label }}</div>
         <div class="power-cascade__state">{{ st.text }}</div>
       </div>
-      <div v-if="i < stages.length - 1" :key="'a' + i" class="power-cascade__arrow">
+      <div v-if="i < stages.length - 1" :key="'a' + i" class="power-cascade__arrow"
+           :class="{ 'power-cascade__arrow--flow': st.state === 'ok' && stages[i + 1] && stages[i + 1].state === 'ok' }">
         <i class="fa fa-chevron-right"></i>
       </div>
     </template>
@@ -99,6 +100,16 @@ export default {
 .power-cascade__label { margin-top: 5px; font-size: 0.75em; color: #c7ccd4; }
 .power-cascade__state { font-size: 0.68em; opacity: 0.8; }
 .power-cascade__arrow { color: #4a5160; font-size: 0.9em; }
+
+/* DEC-REF-108 F4 (#80) — flujo vivo: la flecha entre dos etapas ACTIVAS
+   pulsa y se desplaza (la corriente "circula" visualmente por la cadena).
+   Sin animación entre etapas inactivas o en espera: el movimiento informa. */
+.power-cascade__arrow--flow { color: #00bf9a; animation: pc-flow 1.1s ease-in-out infinite; }
+@keyframes pc-flow {
+  0%   { opacity: 0.35; transform: translateX(-3px); }
+  50%  { opacity: 1; }
+  100% { opacity: 0.35; transform: translateX(3px); }
+}
 .power-cascade__empty { color: #6b7280; font-style: italic; opacity: 0.7; }
 
 .power-cascade__node--ok      { color: #00bf9a; }

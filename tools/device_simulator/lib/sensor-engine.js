@@ -45,6 +45,10 @@ function initialSecState() {
 function initialGenState() {
   return {
     fuel_level: 75.0,
+    // DEC-REF-108 F4 (#80) — autonomía estimada [h]. La publica el equipo
+    // (criterio projectedAutonomy: la calcula el controlador, la plataforma
+    // no estima); en el sim se deriva del nivel: combustible al 100% = 8 h.
+    autonomy_hours: 6.0,
     genset_running: 0,
     exhaust_temp: 25.0,
     vibration_signature: 'normal',
@@ -78,6 +82,9 @@ function initialCumminsState(siteCode) {
     run_hours:       0.0,
     battery_voltage: 12.6,
     fuel_level:      75.0,
+    // DEC-REF-108 F4 (#80) — autonomía estimada [h] publicada por el equipo
+    // (Cummins PCC la calcula; en el sim: tanque lleno = 10 h a carga típica).
+    autonomy_hours:  7.5,
     fault_code:      0,
     bitmap_42100:    0,
     bitmap_42101:    0,
@@ -219,6 +226,16 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 
     case 'shelter_temp':
       return clamp(currentValue + jitter(0.3), 18, 30);
+
+    case 'autonomy_hours': {
+      // DEC-REF-108 F4 (#80) — la autonomía la DERIVA el equipo del nivel de
+      // combustible (como hace el controlador real): tanque lleno = 10 h en
+      // Cummins, 8 h en el GEN genérico. Sigue al fuel_level del estado, así
+      // escenarios y consumo la mueven coherentemente.
+      const fullH = deviceState && deviceState.deviceType === 'CUMMINS' ? 10 : 8;
+      const fuel = deviceState && Number.isFinite(deviceState.fuel_level) ? deviceState.fuel_level : 0;
+      return Math.round(clamp(fuel, 0, 100) / 100 * fullH * 100) / 100;
+    }
 
     case 'exhaust_temp': {
       if (deviceState && deviceState.genset_running) {

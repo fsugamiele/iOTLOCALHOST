@@ -665,6 +665,9 @@ export default {
       // P2 (#79): el umbral de cambio nace en la ficha (precisión del
       // fabricante). Si el config del widget lo soporta, se hereda.
       if ("deadband" in cfg) cfg.deadband = Number.isFinite(v.deadband) ? v.deadband : null;
+      // DEC-REF-108 F4 (#80): el rango normal del fabricante también viaja
+      // (valueStatus lo dibuja como banda bajo el valor).
+      if (v.factoryRange) cfg.factoryRange = v.factoryRange;
       // valueStatus declara variableType propio: se adopta el de la ficha
       // solo si es uno de los 4 que el widget entiende.
       if (

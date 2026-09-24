@@ -18,16 +18,20 @@
       </span>
     </template>
     <template v-else>
-      <span class="equipment-alarms__item" v-for="a in alarms.slice(0, 5)" :key="a.ruleId"
+      <!-- DEC-REF-108 F4 (#80) — consolidación: el mismo texto repetido
+           (varios bits de un status word con el mismo label) se agrupa en UN
+           ítem con contador ×N. La gravedad y la edad se conservan del grupo. -->
+      <span class="equipment-alarms__item" v-for="a in groupedAlarms.slice(0, 5)" :key="a.ruleId"
             :class="'equipment-alarms--' + (a.severity || 'info')">
         <span class="equipment-alarms__badge">{{ a.severity || 'info' }}</span>
         <span class="equipment-alarms__label">{{ a.label || a.variableFullName || a.variable }}</span>
+        <span v-if="a.count > 1" class="equipment-alarms__count">×{{ a.count }}</span>
         <span class="equipment-alarms__age">hace {{ ageLabel(a.time) }}</span>
         <!-- DEC-REF-100 D-4 — recomendación de la regla (ya viaja en el feed) -->
         <span v-if="a.recommendation" class="equipment-alarms__rec">→ {{ a.recommendation }}</span>
       </span>
-      <span v-if="alarms.length > 5" class="equipment-alarms__more">
-        +{{ alarms.length - 5 }} más
+      <span v-if="groupedAlarms.length > 5" class="equipment-alarms__more">
+        +{{ groupedAlarms.length - 5 }} más
       </span>
     </template>
   </span>
@@ -54,6 +58,23 @@ export default {
         { severity: 'warning',  label: 'Nivel de combustible bajo', age: '1 h 5 min' },
       ],
     };
+  },
+  computed: {
+    // DEC-REF-108 F4 (#80) — agrupa por (severidad + label): N bits de un
+    // status word con el mismo texto son UN evento para el operador, con
+    // contador. Orden estable: primera aparición en el feed (ya viene
+    // ordenado por tiempo desc desde Live).
+    groupedAlarms() {
+      const list = Array.isArray(this.alarms) ? this.alarms : [];
+      const map = new Map();
+      for (const a of list) {
+        const key = (a.severity || 'info') + '|' + (a.label || a.variableFullName || a.variable || '');
+        const cur = map.get(key);
+        if (cur) cur.count += 1;
+        else map.set(key, { ...a, count: 1 });
+      }
+      return [...map.values()];
+    },
   },
   methods: {
     ageLabel(t) {
@@ -85,6 +106,11 @@ export default {
 .equipment-alarms--warning  { color: #ff8d72; }
 .equipment-alarms--info     { color: #1d8cf8; }
 .equipment-alarms__label { color: #d3d7e0; flex: 1; }
+.equipment-alarms__count {
+  background: rgba(255, 255, 255, 0.12); color: #d3d7e0;
+  font-size: 0.8em; font-weight: 700; border-radius: 8px; padding: 0 6px;
+}
+.white-content .equipment-alarms__count { background: rgba(0, 0, 0, 0.08); color: #525f7f; }
 .equipment-alarms__age { color: #6b7280; font-size: 0.85em; white-space: nowrap; }
 .equipment-alarms__rec { flex-basis: 100%; color: #9aa0b4; font-size: 0.85em; font-style: italic; margin-left: 66px; }
 .equipment-alarms__more { color: #6b7280; font-size: 0.85em; font-style: italic; }

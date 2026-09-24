@@ -10,6 +10,14 @@
     </template>
     <template v-else-if="isNumeric">
       <span class="value-status__num">{{ display }}</span><small v-if="unit" class="ml-1 value-status__unit">{{ unit }}</small>
+      <!-- DEC-REF-108 F4 (#80) — banda de rango normal del fabricante
+           (factoryRange de la ficha, "min-max" — soporta negativos: "-58--42").
+           El punto marca dónde cae el valor dentro del rango sano. -->
+      <span v-if="range" class="value-status__range">
+        <span class="value-status__range-track"></span>
+        <span class="value-status__range-marker" :style="{ left: rangePct + '%' }"></span>
+        <span class="value-status__range-ends">{{ range.min }} · {{ range.max }}</span>
+      </span>
     </template>
     <template v-else-if="isBool">
       <span class="value-status__bool">{{ boolLabel }}</span>
@@ -70,6 +78,24 @@ export default {
       return (v === true || v === 1 || v === '1' || v === 'true') ? 'Activo' : 'Inactivo';
     },
     thresholds() { return this.config.thresholds || {}; },
+    // DEC-REF-108 F4 (#80) — parseo de factoryRange ("min-max", admite
+    // negativos y decimales: "-58--42", "10.5-14.5"). null si no parsea.
+    range() {
+      const raw = this.config.factoryRange;
+      if (!raw || typeof raw !== 'string') return null;
+      const m = raw.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (!m) return null;
+      const min = Number(m[1]), max = Number(m[2]);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+      return { min, max };
+    },
+    rangePct() {
+      if (!this.range || !this.hasData) return 0;
+      const n = Number(this.value);
+      if (!Number.isFinite(n)) return 0;
+      const pct = ((n - this.range.min) / (this.range.max - this.range.min)) * 100;
+      return Math.max(0, Math.min(100, Math.round(pct * 10) / 10));
+    },
     hasAnyThreshold() {
       const t = this.thresholds;
       return t.criticalLow != null || t.warningLow != null ||
@@ -115,4 +141,30 @@ export default {
 .value-status--unknown     { color: #00bf9a; }
 .value-status--nodata      { color: #6b7280; }
 .value-status--na          { color: #6b7280; }
+
+/* DEC-REF-108 F4 (#80) — banda de rango normal (factoryRange de la ficha). */
+.value-status__range {
+  display: block;
+  position: relative;
+  height: 4px;
+  margin-top: 6px;
+}
+.value-status__range-track {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.white-content .value-status__range-track { background: rgba(0, 0, 0, 0.12); }
+.value-status__range-marker {
+  position: absolute; top: -2px;
+  width: 4px; height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.value-status__range-ends {
+  position: absolute; top: 8px; left: 0; right: 0;
+  font-size: 0.62em; color: #6b7280;
+  display: block; text-align: center;
+}
 </style>
