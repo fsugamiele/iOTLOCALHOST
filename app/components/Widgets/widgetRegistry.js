@@ -655,6 +655,36 @@ export const WIDGET_REGISTRY = {
     },
   },
 
+  // ── PLANO DEL SITIO (DEC-REF-108 F5, #80) ────────────────────────────
+  // Plano 2D fijo (shelter + cerco) con un punto por fuente; la posición la
+  // fija el ROLE (mapa canónico de la geometría de la instalación, no del
+  // sitio). Convención: 1 = evento (puerta abierta/movimiento) → rojo.
+  siteMap: {
+    type: 'siteMap',
+    label: 'Plano del Sitio — puntos de seguridad sobre el esquema (multi-fuente)',
+    icon: 'fa-map-marked-alt',
+    group: 'wanomi',
+    isVariableWidget: false,
+    dedupeKey: 'type',
+    fields: [
+      { kind: 'text', model: 'variableFullName', label: 'Título del Widget' },
+      { kind: 'sourceRepeater', model: 'sources', label: 'Puntos del plano', withRole: true,
+        help: 'Cada punto = una señal booleana (puerta, movimiento, cerco). El rol define dónde cae en el plano: door_front, door_rear, door_shelter, door_battery_cabinet, pir, fence. Convención: 1 = evento.' },
+      { kind: 'icon', model: 'icon' },
+      { kind: 'size', model: 'column' },
+    ],
+    defaultConfig: () => ({
+      variableFullName: 'Plano del sitio',
+      icon: 'fa-map-marked-alt',
+      column: 'col-6',
+      widget: 'siteMap',
+      sources: [],
+    }),
+    normalize(cfg) {
+      cfg.sources = (cfg.sources || []).filter((s) => s && (s.variable || '').trim());
+    },
+  },
+
   dcPlant: {
     type: 'dcPlant',
     label: 'Planta DC — tensión / corriente / batería (multi-fuente)',

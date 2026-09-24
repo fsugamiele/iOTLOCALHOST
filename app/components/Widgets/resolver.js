@@ -44,6 +44,9 @@ import PowerCascadeLive           from '@/components/Widgets/PowerCascadeLive.vu
 import PowerCascadeEditor         from '@/components/Widgets/PowerCascadeEditor.vue';
 import DcPlantLive                from '@/components/Widgets/DcPlantLive.vue';
 import DcPlantEditor              from '@/components/Widgets/DcPlantEditor.vue';
+// DEC-REF-108 F5 (#80) — plano 2D del sitio (multi-fuente con role→posición).
+import SiteMapLive                from '@/components/Widgets/SiteMapLive.vue';
+import SiteMapEditor              from '@/components/Widgets/SiteMapEditor.vue';
 
 const LEGACY = {
   numberchart: Rtnumberchart,
@@ -60,6 +63,7 @@ const CATALOG_LIVE = {
   activeRecommendation: ActiveRecommendationLive,
   powerCascade:      PowerCascadeLive,
   dcPlant:           DcPlantLive,
+  siteMap:           SiteMapLive,
   valueStatus:       ValueStatusLive,
   tankLevel:         TankLevelLive,
   multiState:        MultiStateLive,
@@ -75,6 +79,7 @@ const CATALOG_EDITOR = {
   activeRecommendation: ActiveRecommendationEditor,
   powerCascade:      PowerCascadeEditor,
   dcPlant:           DcPlantEditor,
+  siteMap:           SiteMapEditor,
   valueStatus:       ValueStatusEditor,
   tankLevel:         TankLevelEditor,
   multiState:        MultiStateEditor,

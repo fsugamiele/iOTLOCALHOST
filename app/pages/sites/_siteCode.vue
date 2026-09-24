@@ -520,7 +520,7 @@ export default {
       }
       const H = {
         powerCascade: 6, dcPlant: 7, equipmentAlarms: 8, activeRecommendation: 5,
-        numberchart: 8, tankLevel: 8, projectedAutonomy: 8,
+        numberchart: 8, tankLevel: 8, projectedAutonomy: 8, siteMap: 9,
         valueStatus: 4, multiState: 4, dataFreshness: 4, booleanDwell: 4,
         indicator: 4, switch: 4, button: 4,
       };

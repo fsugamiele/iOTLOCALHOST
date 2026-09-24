@@ -49,6 +49,8 @@ const widgetSchema = new Schema({
             // DEC-REF-107 (Paso 2): tipo por FORMA DE DATO; la visual la elige
             // el usuario en `render` (desacople representación↔tipo).
             'numeric',
+            // DEC-REF-108 F5 (#80): plano 2D del sitio (multi-fuente).
+            'siteMap',
         ],
     },
 
