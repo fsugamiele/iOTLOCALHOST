@@ -52,51 +52,22 @@
               placeholder="Widget"
               style="width: 100%;"
             >
-              <!-- DEC-REF-107 (Paso 2): tipos por FORMA DE DATO. Los numéricos
-                   (valor+luz, gauge, tanque, contador, ícono) se unifican en
-                   'Valor Numérico' + representación. Los tipos numéricos legacy
-                   (numberchart, valueStatus, tankLevel, projectedAutonomy)
-                   siguen resolviéndose para plantillas ya guardadas, pero no se
-                   ofrecen para altas nuevas. -->
-              <el-option value="numeric" label="Valor Numérico — sensor (gauge / tanque / contador / valor)">
-                <i class="fa fa-tachometer-alt" style="margin-right:8px"></i>Valor Numérico — sensor (gauge / tanque / contador / valor)
-              </el-option>
-              <el-option-group label="Estado">
-                <el-option value="indicator" label="Indicador Booleano — On/Off">
-                  <i class="fa fa-toggle-on" style="margin-right:8px"></i>Indicador Booleano — On/Off
-                </el-option>
-                <el-option value="booleanDwell" label="Permanencia Booleana — cuánto lleva en este estado">
-                  <i class="fa fa-clock" style="margin-right:8px"></i>Permanencia Booleana — cuánto lleva en este estado
-                </el-option>
-                <el-option value="multiState" label="Estado Múltiple — estado nombrado con catálogo">
-                  <i class="fa fa-toggle-on" style="margin-right:8px"></i>Estado Múltiple — estado nombrado con catálogo
-                </el-option>
-                <el-option value="dataFreshness" label="Frescura de Datos — hace cuánto llegó el dato">
-                  <i class="fa fa-sync" style="margin-right:8px"></i>Frescura de Datos — hace cuánto llegó el dato
-                </el-option>
-              </el-option-group>
-              <el-option-group label="Sitio">
-                <el-option value="activeRecommendation" label="Recomendación Activa — la acción sugerida del equipo">
-                  <i class="fa fa-lightbulb" style="margin-right:8px"></i>Recomendación Activa — la acción sugerida del equipo
-                </el-option>
-                <el-option value="equipmentAlarms" label="Alarmas del Equipo — feed del sitio filtrado">
-                  <i class="fa fa-bell" style="margin-right:8px"></i>Alarmas del Equipo — feed del sitio filtrado
-                </el-option>
-              </el-option-group>
-              <el-option-group label="Multi-fuente">
-                <el-option value="powerCascade" label="Cascada de Energía — red → ATS → grupo → rectificador">
-                  <i class="fa fa-bolt" style="margin-right:8px"></i>Cascada de Energía — red → ATS → grupo → rectificador
-                </el-option>
-                <el-option value="dcPlant" label="Planta DC — tensión / corriente / batería">
-                  <i class="fa fa-car-battery" style="margin-right:8px"></i>Planta DC — tensión / corriente / batería
-                </el-option>
-              </el-option-group>
-              <el-option-group label="Control (salida →)">
-                <el-option value="switch" label="Switch — Control On/Off">
-                  <i class="fa fa-power-off" style="margin-right:8px"></i>Switch — Control On/Off
-                </el-option>
-                <el-option value="button" label="Botón — Envío de Comando">
-                  <i class="fa fa-hand-pointer" style="margin-right:8px"></i>Botón — Envío de Comando
+              <!-- DEC-REF-113 F5 (#84): opciones generadas desde el
+                   WIDGET_REGISTRY (WIDGET_SELECT_GROUPS) — un tipo nuevo se
+                   ofrece declarándolo en el registry, no editando este
+                   select. Los legacy numéricos resuelven pero no se ofrecen. -->
+              <el-option-group
+                v-for="grp in widgetSelectGroups"
+                :key="grp.label"
+                :label="grp.label"
+              >
+                <el-option
+                  v-for="d in grp.descriptors"
+                  :key="d.type"
+                  :value="d.type"
+                  :label="d.label"
+                >
+                  <i class="fa" :class="d.icon" style="margin-right:8px"></i>{{ d.label }}
                 </el-option>
               </el-option-group>
             </el-select>
@@ -478,6 +449,8 @@ import {
   colorHex,
   colorLabel,
   columnLabel,
+  WIDGET_REGISTRY,
+  WIDGET_SELECT_GROUPS,
 } from "@/components/Widgets/widgetRegistry.js";
 
 export default {
@@ -526,6 +499,14 @@ export default {
   },
 
   computed: {
+    // DEC-REF-113 F5 (#84): grupos del select de widget, resueltos del
+    // registry (label + icon del descriptor).
+    widgetSelectGroups() {
+      return WIDGET_SELECT_GROUPS.map((g) => ({
+        label: g.label,
+        descriptors: g.types.map((t) => WIDGET_REGISTRY[t]).filter(Boolean),
+      }));
+    },
     // DEC-REF-107: descriptor del tipo de widget activo (fuente de campos,
     // defaults, dedupe y normalización).
     activeDescriptor() {

@@ -171,8 +171,22 @@
             class="select-primary"
             style="width:130px"
           >
-            <el-option v-for="r in roleOptions" :key="r.value" :value="r.value" :label="r.label" />
+            <!-- DEC-REF-113 F5 (#84): roles por descriptor (siteMap declara
+                 los suyos); sin declarar, los de energía de abajo. -->
+            <el-option v-for="r in (field.roleOptions || roleOptions)" :key="r.value" :value="r.value" :label="r.label" />
           </el-select>
+          <!-- DEC-REF-113 F4 (#84) — semántica de "activo" por fuente
+               (cascada): lista de valores que encienden la etapa; vacío =
+               regla automática (on/1/true o número > 0). -->
+          <el-input
+            v-if="field.withActiveWhen"
+            :value="(src.activeWhen || []).join(', ')"
+            @input="$set(src, 'activeWhen', $event.split(',').map((x) => x.trim()).filter(Boolean))"
+            placeholder="activo si = …"
+            size="small"
+            style="width:130px"
+            title="Valores que significan activo, separados por coma (ej: RUNNING). Vacío = automático (on/1 o número > 0)."
+          />
           <base-button size="sm" type="danger" icon @click="removeSource(field.model, idx)">
             <i class="fa fa-trash"></i>
           </base-button>

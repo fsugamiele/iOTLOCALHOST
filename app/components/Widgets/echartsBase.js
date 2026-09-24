@@ -16,8 +16,15 @@ import 'echarts-liquidfill';
 export default {
   mounted() {
     this.$nextTick(this.$_renderChart);
+    // DEC-REF-113 F2 (#84) — re-dibujar cuando cambia el TAMAÑO DE LA CELDA
+    // (drag/resize de la grilla, cambio de tab): antes solo se escuchaba
+    // window.resize, y el gráfico quedaba distorsionado dentro de la celda.
+    if (typeof ResizeObserver !== 'undefined') {
+      this._ro = new ResizeObserver(() => this.$_resizeChart());
+    }
   },
   beforeDestroy() {
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
     this.$_disposeChart();
     window.removeEventListener('resize', this.$_resizeChart);
   },
@@ -40,6 +47,8 @@ export default {
       if (!this._chart) {
         this._chart = echarts.init(el);
         window.addEventListener('resize', this.$_resizeChart);
+        // DEC-REF-113 F2 (#84) — observar la celda real del gráfico.
+        if (this._ro) { this._ro.disconnect(); this._ro.observe(el); }
       }
       if (this.chartOption) this._chart.setOption(this.chartOption, true);
     },

@@ -638,8 +638,8 @@ export const WIDGET_REGISTRY = {
     dedupeKey: 'type',
     fields: [
       { kind: 'text', model: 'variableFullName', label: 'Título del Widget' },
-      { kind: 'sourceRepeater', model: 'sources', label: 'Etapas de la cascada', withRole: true,
-        help: 'Cada etapa = una señal del equipo (red / ATS / grupo / rectificador). El orden es el de la cadena; el estado (activo/inactivo) sale del valor de cada señal.' },
+      { kind: 'sourceRepeater', model: 'sources', label: 'Etapas de la cascada', withRole: true, withActiveWhen: true,
+        help: 'Cada etapa = una señal del equipo (red / ATS / grupo / rectificador). El orden es el de la cadena. "Activo si" define qué valores encienden la etapa (ej: RUNNING); vacío = automático (on/1/true o número > 0, p.ej. tensión de red).' },
       { kind: 'icon', model: 'icon' },
       { kind: 'size', model: 'column' },
     ],
@@ -652,6 +652,12 @@ export const WIDGET_REGISTRY = {
     }),
     normalize(cfg) {
       cfg.sources = (cfg.sources || []).filter((s) => s && (s.variable || '').trim());
+      // DEC-REF-113 F4 (#84) — plantillas viejas sin `key` quedaban mudas
+      // (MultiLiveValue salta sources sin key); activeWhen siempre array.
+      cfg.sources.forEach((s) => {
+        if (!s.key) s.key = 's' + Math.random().toString(36).slice(2, 9);
+        if (!Array.isArray(s.activeWhen)) s.activeWhen = [];
+      });
     },
   },
 
@@ -669,7 +675,17 @@ export const WIDGET_REGISTRY = {
     fields: [
       { kind: 'text', model: 'variableFullName', label: 'Título del Widget' },
       { kind: 'sourceRepeater', model: 'sources', label: 'Puntos del plano', withRole: true,
-        help: 'Cada punto = una señal booleana (puerta, movimiento, cerco). El rol define dónde cae en el plano: door_front, door_rear, door_shelter, door_battery_cabinet, pir, fence. Convención: 1 = evento.' },
+        // DEC-REF-113 F5 (#84) — roles del plano (antes solo había roles de
+        // energía: los puntos de seguridad no se podían configurar por UI).
+        roleOptions: [
+          { value: 'door_front',           label: 'Puerta frontal' },
+          { value: 'door_rear',            label: 'Puerta trasera' },
+          { value: 'door_shelter',         label: 'Puerta shelter' },
+          { value: 'door_battery_cabinet', label: 'Gabinete baterías' },
+          { value: 'pir',                  label: 'Movimiento (PIR)' },
+          { value: 'fence',                label: 'Cerco perimetral' },
+        ],
+        help: 'Cada punto = una señal booleana (puerta, movimiento, cerco). El rol define dónde cae en el plano. Convención: 1 = evento.' },
       { kind: 'icon', model: 'icon' },
       { kind: 'size', model: 'column' },
     ],
@@ -682,6 +698,10 @@ export const WIDGET_REGISTRY = {
     }),
     normalize(cfg) {
       cfg.sources = (cfg.sources || []).filter((s) => s && (s.variable || '').trim());
+      // DEC-REF-113 F4 (#84) — misma guarda de key que powerCascade.
+      cfg.sources.forEach((s) => {
+        if (!s.key) s.key = 's' + Math.random().toString(36).slice(2, 9);
+      });
     },
   },
 
@@ -708,6 +728,10 @@ export const WIDGET_REGISTRY = {
     }),
     normalize(cfg) {
       cfg.sources = (cfg.sources || []).filter((s) => s && (s.variable || '').trim());
+      // DEC-REF-113 F4 (#84) — misma guarda de key que powerCascade.
+      cfg.sources.forEach((s) => {
+        if (!s.key) s.key = 's' + Math.random().toString(36).slice(2, 9);
+      });
     },
   },
 };
@@ -715,5 +739,19 @@ export const WIDGET_REGISTRY = {
 export function getDescriptor(type) {
   return WIDGET_REGISTRY[type] || null;
 }
+
+// DEC-REF-113 F5 (#84) — select de "Widget" del editor de plantillas dirigido
+// por el registry (antes: opciones hardcodeadas en templates.vue — los tipos
+// nuevos como siteMap/counter no aparecían). Tipo nuevo = se agrega acá.
+// Los tipos legacy numéricos (numberchart, valueStatus, tankLevel,
+// projectedAutonomy) siguen resolviéndose para plantillas guardadas pero NO
+// se ofrecen para altas nuevas (criterio DEC-REF-107 Paso 2).
+export const WIDGET_SELECT_GROUPS = [
+  { label: 'Numérico',           types: ['numeric', 'counter'] },
+  { label: 'Estado',             types: ['indicator', 'booleanDwell', 'multiState', 'dataFreshness'] },
+  { label: 'Sitio',              types: ['activeRecommendation', 'equipmentAlarms', 'siteMap'] },
+  { label: 'Multi-fuente',       types: ['powerCascade', 'dcPlant'] },
+  { label: 'Control (salida →)', types: ['switch', 'button'] },
+];
 
 export default WIDGET_REGISTRY;

@@ -31,7 +31,9 @@ export default {
 
 <style scoped>
 .widget-shell__body {
-  font-size: 1.5em;
+  /* DEC-REF-113 F2 (#84) — 1.5em desbordaba la celda y forzaba scrollbar;
+     con 1.15em el contenido entra en el alto default de cada widget. */
+  font-size: 1.15em;
   padding: 0.25em 0;
 }
 </style>

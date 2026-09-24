@@ -25,6 +25,13 @@ const sourceSchema = new Schema({
     unit:             { type: String },
     variableType:     { type: String },
     role:             { type: String },
+    // DEC-REF-113 F4 (#84) — cascada: valores que significan "activo" para
+    // esta señal (vacío = regla automática on/1/número>0). Sin este campo el
+    // schema strict lo recortaba al guardar el template desde la UI.
+    activeWhen:       { type: [String], default: undefined },
+    // DEC-REF-113 F6 (#84) — plano del sitio: posición del punto en %
+    // (editable arrastrando en el editor; sin pos, cae en la canónica por rol).
+    pos:              { x: { type: Number }, y: { type: Number } },
 }, { _id: false });
 
 const widgetSchema = new Schema({

@@ -51,20 +51,33 @@ export default {
       return (this.config.sources || []).map((s) => {
         const entry = this.values[s.key];
         const v = entry ? entry.value : undefined;
-        return this.toStage(s.variableFullName || s.role || s.variable, s.role, v);
+        return this.toStage(s.variableFullName || s.role || s.variable, s.role, v, s.activeWhen);
       });
     },
   },
   methods: {
-    toStage(label, role, v) {
+    toStage(label, role, v, activeWhen) {
       let state = 'waiting';
       let text = '—';
       if (v !== undefined && v !== null) {
-        const on = v === true || v === 1 || v === '1' || v === 'true' || v === 'on' || v === 'ok';
+        const on = this.isActive(v, activeWhen);
         state = on ? 'ok' : 'off';
         text = on ? 'Activo' : 'Inactivo';
       }
       return { label, state, text, icon: ROLE_ICON[role] || 'fa-circle' };
+    },
+    // DEC-REF-113 F4 (#84) — semántica de "activo" CONFIGURABLE por fuente:
+    // `activeWhen` (lista de valores que significan activo para ESTA señal)
+    // manda cuando está declarada. Si no, regla genérica: los literales
+    // clásicos (true/1/'on'/'ok') o CUALQUIER NÚMERO > 0 — una tensión de
+    // red de 220 V ES "hay red". La regla vieja solo aceptaba los literales
+    // y dejaba la cascada entera en "Inactivo" con datos reales.
+    isActive(v, activeWhen) {
+      if (Array.isArray(activeWhen) && activeWhen.length) {
+        return activeWhen.some((a) => String(v) === String(a));
+      }
+      if (typeof v === 'number' && Number.isFinite(v)) return v > 0;
+      return v === true || v === 1 || v === '1' || v === 'true' || v === 'on' || v === 'ok';
     },
   },
 };

@@ -106,6 +106,8 @@ export default {
 .equipment-alarms--warning  { color: #ff8d72; }
 .equipment-alarms--info     { color: #1d8cf8; }
 .equipment-alarms__label { color: #d3d7e0; flex: 1; }
+/* DEC-REF-113 F1 (#84) — modo claro: el label era gris casi blanco (invisible). */
+.white-content .equipment-alarms__label { color: #2b3553; }
 .equipment-alarms__count {
   background: rgba(255, 255, 255, 0.12); color: #d3d7e0;
   font-size: 0.8em; font-weight: 700; border-radius: 8px; padding: 0 6px;
@@ -113,6 +115,7 @@ export default {
 .white-content .equipment-alarms__count { background: rgba(0, 0, 0, 0.08); color: #525f7f; }
 .equipment-alarms__age { color: #6b7280; font-size: 0.85em; white-space: nowrap; }
 .equipment-alarms__rec { flex-basis: 100%; color: #9aa0b4; font-size: 0.85em; font-style: italic; margin-left: 66px; }
+.white-content .equipment-alarms__rec { color: #525f7f; }
 .equipment-alarms__more { color: #6b7280; font-size: 0.85em; font-style: italic; }
 .equipment-alarms__ok { color: #00bf9a; }
 .equipment-alarms__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }

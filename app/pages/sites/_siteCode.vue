@@ -51,7 +51,9 @@
 
       <!-- Mapa + metadata del sitio -->
       <div class="row">
-        <div class="col-12">
+        <!-- DEC-REF-113 F7 (#84): mapa a la izquierda, grilla de datos del
+             sitio a la derecha (apilado en pantallas chicas). -->
+        <div class="col-12 col-xl-7">
           <card>
             <h4 class="card-title mb-1">
               {{ site.nombre }}
@@ -63,6 +65,27 @@
               <span v-if="site.provincia"> ({{ site.provincia }})</span>
             </p>
 
+            <!-- DEC-REF-113 F7 (#84): acciones del mapa — editar ubicación
+                 (pin arrastrable → PUT /site) y medir distancias (2 clics). -->
+            <div class="map-actions">
+              <base-button v-if="hasCoords && !editingLocation" size="sm" type="default" @click="toggleEditLocation">
+                <i class="fa fa-map-marker-alt" style="margin-right:4px"></i>Editar ubicación
+              </base-button>
+              <template v-if="editingLocation">
+                <base-button size="sm" type="success" @click="saveLocation">
+                  <i class="fa fa-check" style="margin-right:4px"></i>Guardar
+                </base-button>
+                <base-button size="sm" type="default" @click="cancelEditLocation">Cancelar</base-button>
+                <span class="map-actions__hint">Arrastrá el pin a la posición correcta</span>
+              </template>
+              <base-button v-if="hasCoords && !editingLocation" size="sm" :type="measuring ? 'primary' : 'default'" @click="toggleMeasure">
+                <i class="fa fa-ruler" style="margin-right:4px"></i>{{ measuring ? 'Midiendo — 2 clics en el mapa' : 'Medir distancia' }}
+              </base-button>
+              <base-button v-if="measurePoints.length && !editingLocation" size="sm" type="default" icon @click="clearMeasure" title="Limpiar medición">
+                <i class="fa fa-eraser"></i>
+              </base-button>
+            </div>
+
             <div v-if="hasCoords" ref="mapEl" class="site-detail-map"></div>
             <p v-else class="text-muted">Este sitio no tiene coordenadas cargadas.</p>
 
@@ -71,6 +94,44 @@
               <span class="legend-item"><span class="dot dot-warning"></span> Atención</span>
               <span class="legend-item"><span class="dot dot-ok"></span> Normal</span>
             </div>
+          </card>
+        </div>
+
+        <!-- DEC-REF-113 F7 (#84): grilla de datos relevantes del sitio —
+             ficha del sitio, equipos que lo conforman, operador/responsable
+             y sitios cercanos con distancia calculada (haversine). -->
+        <div class="col-12 col-xl-5">
+          <card>
+            <h5 class="card-category">Datos del sitio</h5>
+            <dl class="site-data-grid">
+              <div><dt>Código</dt><dd>{{ site.siteCode }}</dd></div>
+              <div><dt>Tipo</dt><dd>{{ site.tipo || '—' }}</dd></div>
+              <div><dt>Localidad</dt><dd>{{ [site.localidad, site.provincia].filter(Boolean).join(', ') || '—' }}</dd></div>
+              <div><dt>Coordenadas</dt><dd>{{ coordsLabel }}</dd></div>
+              <div><dt>Operador</dt><dd>{{ site.operatorCode || '—' }}</dd></div>
+              <div><dt>Zona</dt><dd>{{ site.zoneCode || '—' }}</dd></div>
+              <div v-if="site.cellOwner"><dt>Responsable</dt><dd>{{ site.cellOwner }}</dd></div>
+            </dl>
+
+            <h5 class="card-category site-data-section">Equipos ({{ devices.length }})</h5>
+            <div v-if="devices.length" class="site-data-devices">
+              <div v-for="d in devices" :key="d.dId" class="site-data-device">
+                <span class="site-data-device__name">{{ d.name }}</span>
+                <span class="site-data-device__meta">
+                  {{ d.deviceType || d.templateName || '—' }}<template v-if="d.domain"> · {{ domainLabel(d.domain) }}</template>
+                </span>
+              </div>
+            </div>
+            <p v-else class="text-muted mb-0" style="font-size:0.85em">Sin equipos asociados.</p>
+
+            <h5 class="card-category site-data-section">Sitios cercanos</h5>
+            <div v-if="nearestSites.length">
+              <div v-for="s in nearestSites" :key="s.siteCode" class="site-data-near">
+                <nuxt-link :to="'/sites/' + s.siteCode">{{ s.nombre || s.siteCode }}</nuxt-link>
+                <span class="site-data-near__km">{{ s.km }} km</span>
+              </div>
+            </div>
+            <p v-else class="text-muted mb-0" style="font-size:0.85em">Sin otros sitios con coordenadas cargadas.</p>
           </card>
         </div>
       </div>
@@ -231,6 +292,13 @@ export default {
       // DEC-REF-108 F3 (#80): vista 'operador' (sin widgets advanced) o
       // 'tecnico' (todo). Se carga/persiste por usuario (site-prefs-viewmode).
       viewMode: 'operador',
+      // DEC-REF-113 F7 (#84): mapa — edición de ubicación, medición de
+      // distancias y lista de sitios (para los cercanos por haversine).
+      editingLocation: false,
+      measuring: false,
+      measurePoints: [],
+      measureLayer: null,
+      allSites: [],
     };
   },
 
@@ -243,6 +311,21 @@ export default {
     },
     hasAddress() {
       return this.site && (this.site.direccion || this.site.localidad || this.site.provincia);
+    },
+    // DEC-REF-113 F7 (#84): coordenadas legibles + sitios cercanos por
+    // haversine (client-side, sin librerías nuevas).
+    coordsLabel() {
+      if (!this.hasCoords) return '—';
+      return `${Number(this.site.lat).toFixed(5)}, ${Number(this.site.lng).toFixed(5)}`;
+    },
+    nearestSites() {
+      if (!this.hasCoords || !this.allSites.length) return [];
+      const me = { lat: Number(this.site.lat), lng: Number(this.site.lng) };
+      return this.allSites
+        .filter((s) => s.siteCode !== this.siteCode && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lng)))
+        .map((s) => ({ siteCode: s.siteCode, nombre: s.nombre, km: Math.round(this.haversineKm(me, { lat: Number(s.lat), lng: Number(s.lng) }) * 10) / 10 }))
+        .sort((a, b) => a.km - b.km)
+        .slice(0, 3);
     },
 
     // DEC-REF-108 F2 (#80): dominios presentes en el sitio, en orden fijo de
@@ -294,6 +377,7 @@ export default {
     await this.loadViewMode();
     await this.setupGrid();
     await this.loadAlarms();
+    this.loadAllSites();  // DEC-REF-113 F7 (#84) — sitios cercanos (no bloquea)
 
     // Real-time-lite (DEC-REF-44/54/55): re-fetch acotado del feed al recibir
     // una notif por MQTT. Usa la ACL browser existente (DEC-REF-38); NO abre
@@ -318,6 +402,7 @@ export default {
       this.$nuxt.$off('wanomi:notif', this._notifHandler);
       this._notifHandler = null;
     }
+    if (this._mapRO) { this._mapRO.disconnect(); this._mapRO = null; }
     if (this.map) {
       this.map.remove();
       this.map = null;
@@ -412,6 +497,102 @@ export default {
       this.marker = L.marker([this.site.lat, this.site.lng], { icon: this.iconForStatus(this.status) })
         .addTo(this.map)
         .bindTooltip(`${this.site.nombre || this.site.siteCode} (${this.site.siteCode})`);
+
+      // DEC-REF-113 F2 (#84) — autoajuste del mapa: Leaflet no escucha el
+      // resize del contenedor (grilla, sidebar, tabs) → tiles grises/cortados.
+      if (typeof ResizeObserver !== 'undefined') {
+        this._mapRO = new ResizeObserver(() => { if (this.map) this.map.invalidateSize(); });
+        this._mapRO.observe(this.$refs.mapEl);
+      }
+
+      // DEC-REF-113 F7 (#84) — clics del modo "Medir distancia".
+      this.map.on('click', this.onMapClick);
+    },
+
+    // ── DEC-REF-113 F7 (#84) — ubicación editable + medición + cercanos ──
+    haversineKm(a, b) {
+      const R = 6371;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLng = toRad(b.lng - a.lng);
+      const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(s));
+    },
+    async loadAllSites() {
+      try {
+        const res = await this.$axios.get('/site', { headers: { token: this.$store.state.auth.token } });
+        if (res.data && res.data.status === 'success' && Array.isArray(res.data.data)) {
+          this.allSites = res.data.data;
+        }
+      } catch (e) {
+        // Silencioso: sin la lista, la grilla solo pierde "sitios cercanos".
+      }
+    },
+    toggleEditLocation() {
+      if (!this.map || !this.marker) return;
+      this.editingLocation = true;
+      this.measuring = false;
+      this.clearMeasure();
+      this.marker.dragging.enable();
+    },
+    async saveLocation() {
+      if (!this.marker) return;
+      const ll = this.marker.getLatLng();
+      try {
+        const res = await this.$axios.put(
+          '/site',
+          { site: { siteCode: this.siteCode, lat: ll.lat, lng: ll.lng } },
+          { headers: { token: this.$store.state.auth.token } },
+        );
+        if (res.data && res.data.status === 'success') {
+          this.site.lat = ll.lat;
+          this.site.lng = ll.lng;
+          this.editingLocation = false;
+          this.marker.dragging.disable();
+        }
+      } catch (e) {
+        console.warn('[SiteDetail] saveLocation failed', e.message || e);
+      }
+    },
+    cancelEditLocation() {
+      if (this.marker) {
+        this.marker.setLatLng([this.site.lat, this.site.lng]);
+        this.marker.dragging.disable();
+      }
+      this.editingLocation = false;
+    },
+    toggleMeasure() {
+      this.measuring = !this.measuring;
+      if (!this.measuring) this.clearMeasure();
+    },
+    onMapClick(e) {
+      if (!this.measuring || this.editingLocation) return;
+      // Tercer clic reinicia la medición.
+      if (this.measurePoints.length >= 2) this.clearMeasure();
+      this.measurePoints.push(e.latlng);
+      this.drawMeasure();
+    },
+    drawMeasure() {
+      if (!this.map) return;
+      if (this.measureLayer) { this.map.removeLayer(this.measureLayer); this.measureLayer = null; }
+      if (!this.measurePoints.length) return;
+      const pts = this.measurePoints;
+      const items = pts.map((p) => L.circleMarker(p, { radius: 5, color: '#1d8cf8', fillOpacity: 0.9 }));
+      if (pts.length === 2) {
+        const km = this.map.distance(pts[0], pts[1]) / 1000;
+        const label = km >= 1 ? km.toFixed(2) + ' km' : Math.round(km * 1000) + ' m';
+        items.push(L.polyline(pts, { color: '#1d8cf8', dashArray: '6 4' }));
+        const mid = L.latLng((pts[0].lat + pts[1].lat) / 2, (pts[0].lng + pts[1].lng) / 2);
+        items.push(L.marker(mid, {
+          interactive: false,
+          icon: L.divIcon({ className: 'measure-label', html: `<span>${label}</span>` }),
+        }));
+      }
+      this.measureLayer = L.layerGroup(items).addTo(this.map);
+    },
+    clearMeasure() {
+      this.measurePoints = [];
+      if (this.measureLayer && this.map) { this.map.removeLayer(this.measureLayer); this.measureLayer = null; }
     },
 
     iconForStatus(status) {
@@ -656,6 +837,68 @@ export default {
   font-size: 0.85rem;
 }
 
+/* DEC-REF-113 F7 (#84) — acciones del mapa + grilla de datos del sitio. */
+.map-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.map-actions__hint { font-size: 0.8rem; color: #9aa5b1; }
+.white-content .map-actions__hint { color: #525f7f; }
+
+.site-data-section { margin-top: 18px; }
+.site-data-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 18px;
+  margin: 0;
+}
+.site-data-grid dt {
+  font-size: 0.68rem;
+  color: #9aa5b1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.white-content .site-data-grid dt { color: #525f7f; }
+.site-data-grid dd { margin: 0; font-weight: 600; font-size: 0.95rem; }
+
+.site-data-devices { display: flex; flex-direction: column; gap: 6px; }
+.site-data-device {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(110, 118, 140, 0.18);
+}
+.site-data-device:last-child { border-bottom: none; }
+.site-data-device__name { font-weight: 600; font-size: 0.9rem; }
+.site-data-device__meta { font-size: 0.78rem; color: #9aa5b1; text-align: right; }
+.white-content .site-data-device__meta { color: #525f7f; }
+
+.site-data-near {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(110, 118, 140, 0.18);
+}
+.site-data-near:last-child { border-bottom: none; }
+.site-data-near__km { font-weight: 700; color: #1d8cf8; font-size: 0.9rem; }
+
+/* Etiqueta de la medición (divIcon creado por Leaflet → ::v-deep). */
+.site-detail-map ::v-deep .measure-label span {
+  background: rgba(29, 140, 248, 0.92);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
 .legend-item {
   display: inline-flex;
   align-items: center;
@@ -699,7 +942,21 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.site-grid-cell__body { flex: 1 1 auto; overflow: auto; }
+/* DEC-REF-113 F2 (#84) — afuera las barras de scroll internas: la celda
+   oculta el desborde y el contenido se autoajusta (cadena flex de abajo). */
+.site-grid-cell__body { flex: 1 1 auto; overflow: hidden; }
+/* Cadena flex: el card y el cuerpo del widget llenan el alto de la celda,
+   así los gráficos (gauge, sparkline, autonomía) crecen con el resize
+   en lugar de quedar fijos en 150 px (::v-deep porque el estilo es scoped
+   y esos nodos viven en componentes hijos). */
+.site-grid-cell__body ::v-deep .card { height: 100%; display: flex; flex-direction: column; }
+.site-grid-cell__body ::v-deep .card .card-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.site-grid-cell__body ::v-deep .widget-shell__body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+.site-grid-cell__body ::v-deep .widget-shell__body > * { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+/* DEC-REF-113 F3 (#84) — el gauge de autonomía llena su celda (antes canvas
+   fijo de 150 px × 220 px: los valores quedaban pegados y distorsionados). */
+.site-grid-cell__body ::v-deep .projected-autonomy { width: 100%; height: 100%; }
+.site-grid-cell__body ::v-deep .projected-autonomy__canvas { width: 100%; height: 100%; min-height: 130px; max-width: none; }
 .site-grid-cell--customizing {
   outline: 1px dashed rgba(255, 255, 255, 0.25);
   border-radius: 8px;

@@ -44,7 +44,25 @@ export default {
         grid: { left: 2, right: 2, top: 6, bottom: 2 },
         xAxis: { type: 'time', show: false },
         yAxis: { type: 'value', show: false, scale: true },
-        tooltip: { show: false },
+        // DEC-REF-113 F1 (#84) — valores al pasar el puntero sobre la línea
+        // (pedido de Franco: la mini tendencia también informa el punto).
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'line', lineStyle: { color: '#6b7280', width: 1 } },
+          backgroundColor: 'rgba(30, 30, 47, 0.92)',
+          borderWidth: 0,
+          textStyle: { color: '#fff', fontSize: 11 },
+          formatter: (ps) => {
+            const p = Array.isArray(ps) ? ps[0] : ps;
+            if (!p || !p.value) return '';
+            const d = new Date(p.value[0]);
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            const v = Number(p.value[1]);
+            const val = Number.isFinite(v) ? v.toFixed(this.decimals) : p.value[1];
+            return `${hh}:${mm} — <b>${val}</b> ${this.unit}`;
+          },
+        },
         series: [{
           type: 'line',
           data: this.points,
@@ -104,6 +122,8 @@ export default {
 .sparkline { width: 100%; display: flex; flex-direction: column; }
 .sparkline__canvas { width: 100%; height: 70px; }
 .sparkline__last { text-align: right; font-weight: 600; color: #fff; font-size: 1.1em; }
+/* DEC-REF-113 F1 (#84) — modo claro: el último valor era blanco (invisible). */
+.white-content .sparkline__last { color: #2b3553; }
 .sparkline__last small { color: #6b7280; font-size: 0.7em; }
 .sparkline__nodata { color: #6b7280; font-style: italic; opacity: 0.7; text-align: center; }
 </style>

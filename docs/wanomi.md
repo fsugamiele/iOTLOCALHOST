@@ -12465,3 +12465,48 @@ Cinco mejoras, todas verificadas en vivo: **(1) Sparklines** — 12 widgets anal
 **Autostart:** `wanomi-sim.service` instalada y habilitada en el host dev (After=docker, Restart=always; copia versionada en `tools/device_simulator/wanomi-sim.service`). Cierra el incidente del 22/09 (supervisor muerto tras reboot del host). Verificado: maté al supervisor y systemd lo relanzó solo (PID nuevo en <15 s).
 
 **F5 · Plano 2D del sitio:** widget nuevo `siteMap` — plano fijo del shelter + cerco en SVG (cero librerías nuevas) con un punto por fuente configurada; la posición la fija el `role` (mapa canónico por geometría de instalación: door_front/door_rear/door_shelter/door_battery_cabinet/pir/fence), no el sitio. Convención: 1 = evento (rojo con pulso) · 0 = normal (verde) · sin dato = gris. Multi-fuente con el andamiaje existente (MultiLiveValue + sourceRepeater con role, igual que powerCascade). Registrado en schema/resolver/registry; agregado al template SEC con los 6 puntos canónicos vía `seeds/migrate_sitemap_f5.js` (idempotente). Verificado E2E: door_front=1 → punto rojo (dato fluye y se siembra), restore a 0. Cae en el tab Seguridad física por el dominio de la ficha (F2) — la composición completa del rediseño funciona integrada.
+
+## Sesión #84 — 2026-09-24 · Área 1 · DEC-REF-113: correcciones UX post-rediseño (feedback de Franco) — F1–F7 implementadas y verificadas
+
+### Marco
+
+Franco revisó en vivo el rediseño (DEC-REF-108 + theme DEC-REF-112) y reportó 8 puntos: valores invisibles (claro sobre claro), barras de scroll en widgets, cascada de energía muda, widgets nuevos ausentes del select de templates, gauge de autonomía distorsionado, plano del sitio poco profesional/no editable, sparkline sin valores al hover, y mapa geográfico sin autoajuste/edición/datos/distancias. Relevamiento con causa raíz medida en código y DB → plan de 7 fases aprobado. Sin librerías nuevas.
+
+### F1 · Legibilidad en modo claro + sparkline hover (verificado)
+
+Barrida de texto `#fff`/casi-blanco fijo que quedó fuera de la adaptación light de #83: `ProjectedAutonomy` (detail del gauge, patrón isLight de Gauge.vue), `Sparkline` (`__last`), `EquipmentAlarms` (`__label`/`__rec`). DcPlant y ActiveRecommendation YA estaban cubiertos por DEC-REF-112 (verificado, no tocados). Sparkline gana tooltip ECharts (trigger axis: hora + valor + unidad al pasar el puntero).
+
+### F2 · Widgets autoajustables sin barras (verificado)
+
+`overflow:auto`→`hidden` en la celda (afuera las scrollbars internas) + cadena flex `::v-deep` (el estilo de página es scoped) para que card/cuerpo/widget llenen el alto de la celda + `WidgetShell` font-size 1.5→1.15em (desbordaba el alto default) + **ResizeObserver en `echartsBase.js`**: los ECharts (gauge, sparkline, tanque, autonomía) se re-dibujan al cambiar el tamaño de la CELDA (antes solo window.resize → distorsión tras drag/resize de la grilla). Leaflet gana ResizeObserver → `invalidateSize()`.
+
+### F3 · Gauge de autonomía (verificado)
+
+Geometría anti-distorsión: radio 95→80%, splitNumber 4 con etiquetas enteras (antes "4,8 / 9,6 / 14,4" solapados), canvas que llena la celda (afuera el fijo 150px×220px), detail 18px.
+
+### F4 · Cascada de energía funcional (verificado — causa raíz en DB)
+
+La regla vieja solo aceptaba `true/1/'on'/'ok'` pero las fuentes reales publican `mains_voltage=220` (numérico) y enums (`transfer_state=AUTO`, `gen_status=RUNNING`) → toda la cascada en "Inactivo". Fix de producto (nada hardcodeado): campo **`activeWhen` por fuente** (lista de valores que significan activo, editable en el sourceRepeater) + regla genérica nueva: **número finito > 0 = activo** (una tensión de red de 220 V ES "hay red"). `normalize` garantiza `key` en sources viejas (sin key, MultiLiveValue las saltaba mudas). `sourceSchema` ganó `activeWhen` y `pos` — **el strict de Mongoose los recortaba al guardar desde la UI** (hallazgo transversal, afectaba también al plano). Migración idempotente `seeds/migrate_cascade_f84.js` aplicada: ATS transfer_state→[AUTO,MANUAL], gen_status→[RUNNING], mains_voltage→[] (regla automática). Sim seed.js no define la cascada (patrón base+migraciones) — sin cambio.
+
+### F5 · Select de templates desde el registry (verificado)
+
+Afuera las opciones hardcodeadas de `templates.vue`: nuevo `WIDGET_SELECT_GROUPS` en `widgetRegistry.js` (Numérico/Estado/Sitio/Multi-fuente/Control) y el select se genera desde los descriptores — **un tipo nuevo se ofrece declarándolo en el registry, no editando el select**. Aparecen `siteMap` y `counter` para altas nuevas. Roles por descriptor: el sourceRepeater de siteMap declara los suyos (door_front/door_rear/door_shelter/door_battery_cabinet/pir/fence) — antes solo había roles de energía y el plano no era configurable por UI.
+
+### F6 · Plano del sitio profesional, autoajustable y editable (verificado)
+
+Reescritura de `SiteMap.vue`: de SVG fijo 400×260 a **HTML/CSS responsive** (posiciones en % → autoajuste real a cualquier celda): grilla de fondo, cerco punteado, shelter, chips circulares con ícono por rol (puerta/PIR/cerco/batería), pulso en evento, tooltip nativo (nombre+estado), tema claro/oscuro. **Edición visual**: en el editor de plantillas los puntos se arrastran sobre el plano y escriben `source.pos` {x,y} en % (persiste al guardar; sin pos, fallback a la canónica por rol). El mock de muestra queda solo para editor sin fuentes.
+
+### F7 · Mapa geográfico del sitio (verificado)
+
+Layout a dos columnas: mapa (xl-7) + **grilla de datos del sitio** (xl-5): código/tipo/localidad/coordenadas/operador/zona/responsable + equipos que lo conforman (nombre, deviceType, dominio — de `/full`) + **sitios cercanos** (top 3 por haversine client-side desde GET /site, con distancia en km y link). **Editar ubicación**: pin arrastrable → PUT /site (lat/lng ya permitidos; verificado no-destructivo 200). **Medir distancia**: modo de 2 clics en el mapa → línea punteada + etiqueta km/m (tercer clic reinicia).
+
+### Verificación general
+
+4 builds exit 0, node reiniciado, UI 200 en /sites/CR00061 y /templates, chunks con el código nuevo en dist, migración de cascada aplicada (1 template), schema probe confirma que activeWhen/pos sobreviven el strict de Mongoose, PUT /site 200. Pendiente el click-through visual de Franco (no hay headless en el host).
+
+### Carry-over para #85
+
+1. **Push acumulado (#76–#84)** — requiere orden explícita de Franco.
+2. **Modificaciones ajenas a esta sesión quedaron FUERA del commit** (restos sin commitear de #81–#83: `devices.js` toggle simulado +7/-1, refactor de rulepacks + `app/components/rules/` + `docsRefactor/Software/spec_reglas_monitoreo.md` [430+/1005-], `docsRefactor/Marketing/wanomi_brand/`) — decidir a qué sesión/commit pertenecen.
+3. Click-through visual de Franco sobre las 7 fases (tooltip sparkline, plano editable, cascada viva, grilla de datos, medición).
+4. Deuda viva: refresh de tema ECharts en caliente · rincón deadband/umbral (#79-b) · limits ATS/battery/Eltek-DC · archivos sin trackear (backups/, *.jfif, PDFs).

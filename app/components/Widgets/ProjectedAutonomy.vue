@@ -59,30 +59,37 @@ export default {
       return segs;
     },
     chartOption() {
+      // DEC-REF-113 F1 (#84) — texto del valor legible en modo claro
+      // (mismo patrón que Gauge.vue: se relee en cada tick de dato).
+      const isLight = typeof document !== 'undefined' && document.body.classList.contains('white-content');
       return {
         series: [{
           type: 'gauge',
           min: 0,
           max: this.gaugeMax,
-          radius: '95%',
-          center: ['50%', '60%'],
+          // DEC-REF-113 F3 (#84) — geometría anti-distorsión: radio 80% (el
+          // 95% pegaba los números al borde), 4 divisiones con etiquetas
+          // enteras (antes labels solapados tipo "4,8 / 9,6 / 14,4").
+          radius: '80%',
+          center: ['50%', '58%'],
           startAngle: 210,
           endAngle: -30,
+          splitNumber: 4,
           progress: { show: false },
           pointer: { width: 4, length: '62%', itemStyle: { color: 'auto' } },
           axisLine: { lineStyle: { width: 10, color: this.axisSegments } },
           axisTick: { show: false },
           splitLine: { length: 10, lineStyle: { color: '#3a4150', width: 1 } },
-          axisLabel: { color: '#6b7280', fontSize: 9, distance: 12 },
+          axisLabel: { color: '#6b7280', fontSize: 10, distance: 14, formatter: (v) => String(Math.round(v)) },
           anchor: { show: false },
           title: { show: false },
           detail: {
             valueAnimation: true,
             formatter: () => this.formatted,
-            color: '#fff',
-            fontSize: 16,
+            color: isLight ? '#2b3553' : '#fff',
+            fontSize: 18,
             fontWeight: '600',
-            offsetCenter: [0, '42%'],
+            offsetCenter: [0, '40%'],
           },
           data: [{ value: this.hours }],
         }],
@@ -96,11 +103,14 @@ export default {
 .projected-autonomy {
   display: flex;
   justify-content: center;
+  width: 100%;
 }
 .projected-autonomy__canvas {
+  /* DEC-REF-113 F3 (#84) — llenar la celda; min-height por si la cadena
+     flex no resuelve alto (editor/preview). */
   width: 100%;
-  height: 150px;
-  max-width: 220px;
+  height: 100%;
+  min-height: 140px;
 }
 .projected-autonomy__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }
 .projected-autonomy__na     { color: #6b7280; opacity: 0.7; font-size: 1.4em; }
