@@ -155,6 +155,47 @@ function validateS(rule) {
   return { ok: true };
 }
 
+// ─── typeM · spec_motor_m.md (Ola M1: slope/acceleration/projection) ──
+const M_METRICS = [
+  'slope', 'acceleration', 'projection', 'baseline', 'variance',
+  'ratio', 'divergence', 'spread',
+  'accumulator', 'dutyCycle', 'cumulativeSince',
+  'flatline', 'staleness', 'stepJump',
+];
+// Sub-familias que consumen una ventana temporal (buffer/serie).
+const M_TEMPORAL = [
+  'slope', 'acceleration', 'projection', 'baseline', 'variance',
+  'flatline', 'stepJump', 'dutyCycle', 'cumulativeSince', 'staleness',
+];
+function validateM(rule) {
+  if (!rule.metric || !M_METRICS.includes(rule.metric)) {
+    return { ok: false, reason: `typeM: metric inválido '${rule.metric}' (esperado uno de ${M_METRICS.join('/')})` };
+  }
+  const c = rule.condition;
+  if (!c || !c.op) return { ok: false, reason: 'typeM: condition (umbral sobre la métrica) ausente o sin op' };
+  if (!ALL_OPS.includes(c.op)) {
+    return { ok: false, reason: `typeM: condition.op inválido '${c.op}' (esperado uno de ${ALL_OPS.join('/')})` };
+  }
+  if (ARITHMETIC_OPS.includes(c.op) && !isNumber(c.value)) {
+    return { ok: false, reason: `typeM: condition.value debe ser numérico para op '${c.op}'` };
+  }
+  if (M_TEMPORAL.includes(rule.metric)) {
+    const w = rule.mWindow;
+    if (!w || !isNumber(w.durationSec) || w.durationSec <= 0) {
+      return { ok: false, reason: `typeM: mWindow.durationSec debe ser número > 0 (métrica temporal '${rule.metric}')` };
+    }
+    if (!isNumber(w.minSamples) || w.minSamples < 2 || !Number.isInteger(w.minSamples)) {
+      return { ok: false, reason: 'typeM: mWindow.minSamples debe ser entero ≥ 2' };
+    }
+  }
+  if (rule.metric === 'projection' && !isNumber(rule.mParams && rule.mParams.target)) {
+    return { ok: false, reason: 'typeM: projection requiere mParams.target numérico' };
+  }
+  // Multivariante (ratio/divergence/spread) y acumuladores se validan al
+  // implementar sus olas (M2/M3). En M1 solo llegan slope/acceleration/projection.
+  return { ok: true };
+}
+
 // ─── Despacho por tipo · DEC-REF-66 ───────────────────────────────────
 // Retorna { ok:true, warnings:[] } (agregado de warnings de todas las reglas
 // que pasaron) o { ok:false, ruleId, reason } con el primer error.
@@ -164,6 +205,7 @@ function validateRule(rule) {
     case 'D':     return validateD(rule);
     case 'C':     return validateC(rule);
     case 'S':     return validateS(rule);
+    case 'M':     return validateM(rule);
     default:      return { ok: false, reason: `type desconocido: '${rule.type}'` };
   }
 }
@@ -205,6 +247,7 @@ module.exports = {
   validateD,
   validateC,
   validateS,
+  validateM,
   validateRule,
   collectCrossLeafRefs,
   ALL_OPS,

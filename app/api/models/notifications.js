@@ -28,7 +28,7 @@ const notificationSchema = new Schema({
     reason:          { type: String },
     source:          { type: String },   // 'emqx' | 'edge-engine'
     // DEC-REF-66-B (#45/R22) suma 'resolve-by-setpoint-recovered' — paridad con notificationRouter.js.
-    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross', 'resolve-by-edit', 'resolve-by-condition', 'resolve-by-setpoint-recovered'] },
+    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross', 'M', 'resolve-by-edit', 'resolve-by-condition', 'resolve-by-setpoint-recovered'] },
     thresholdUsed: { type: Number },
     unit:          { type: String },
     correlationParent: { type: String, default: null },  // DEC-REF-50

@@ -34,6 +34,10 @@ const siteState    = new Map();
 const cooldownState = new Map();
 const windowState   = new Map();
 const crossState    = new Map();
+// spec_motor_m.md — mState: buffer/serie por regla:device para el tipo M
+// (soft sensors). Espejo de windowState; viaja a processMessage y se limpia
+// en el reload igual que el resto del estado.
+const mState        = new Map();
 // SF-4 · DEC-REF-64.a — activeState: Map<ruleId, timestamp del fire vigente>.
 // Se popula en fireAlarm y se limpia en fireResolve o al detectar la
 // transición activa→inactiva. Vive en el mismo closure que los otros Maps;
@@ -103,7 +107,7 @@ async function start() {
       }
 
       const { deletedCount, resolvedRuleIds } = cleanupStateForRules(toClean, {
-        cooldownState, windowState, crossState, activeState, siteCode: SITE_ID,
+        cooldownState, windowState, crossState, activeState, mState, siteCode: SITE_ID,
       });
 
       // SF-4 · DEC-REF-64.a — emitir resolve-by-edit por cada regla que
@@ -212,7 +216,7 @@ async function start() {
     if (!deviceState._lastUpdate) deviceState._lastUpdate = {};
     deviceState._lastUpdate[variable] = eventTs;
 
-    processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, eventTs });
+    processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, mState, eventTs });
   });
 
   client.on('error', err => {

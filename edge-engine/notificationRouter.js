@@ -23,7 +23,7 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     // ── tipo C: modo de disparo + umbral efectivo (DEC-REF-24, #22) ──
     // DEC-REF-64 amplía el enum con 'resolve-by-edit' y 'resolve-by-condition'.
     // DEC-REF-66-B (#45/R22) suma 'resolve-by-setpoint-recovered' para el reset EDGE-2.
-    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross', 'resolve-by-edit', 'resolve-by-condition', 'resolve-by-setpoint-recovered'], default: 'direct' },
+    mode:          { type: String, enum: ['direct', 'calibrated', 'fallback', 'no-ref', 'window', 'cross', 'M', 'resolve-by-edit', 'resolve-by-condition', 'resolve-by-setpoint-recovered'], default: 'direct' },
     thresholdUsed: { type: Number, default: null },
     unit:          { type: String, default: '' },
     // DEC-REF-46 / DEC-REF-54 — ACK auditable. El motor no los llena; los

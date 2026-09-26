@@ -31,7 +31,7 @@ const RuleDefinitionSchema = new Schema({
   unit:          { type: String },               // unidad de medida (ej. 'kPa', 'h', '%', 'rpm')
   inferenceId: { type: String, required: true },
 
-  type: { type: String, enum: ['D', 'C', 'S', 'cross'], required: true },
+  type: { type: String, enum: ['D', 'C', 'S', 'cross', 'M'], required: true },
 
   severity:          { type: String, enum: ['info', 'warning', 'critical'], required: true },
   recommendation:    { type: String, default: '' },
@@ -64,6 +64,20 @@ const RuleDefinitionSchema = new Schema({
   // 0/undefined = comportamiento anterior (resolve inmediato al primer falso).
   // Configurable por regla, consumido por ruleEngine.js (type D) y typeCross.js.
   resolveGraceSec: { type: Number, default: 0 },
+
+  // ── Tipo M (soft sensors / reglas predictivas) · spec_motor_m.md ──
+  // El evaluador (edge/evaluators/typeM.js) calcula una MÉTRICA DERIVADA sobre
+  // la serie reciente (buffer `mState`) o sobre varias variables del sitio, y
+  // compara el RESULTADO contra `condition` (arriba). `metric` = sub-familia;
+  // `mWindow` = ventana de la serie; `inputs` = variables multivariante (M2+);
+  // `mParams` = params específicos (ej. projection.target).
+  metric:  { type: String, default: null },
+  mWindow: {
+    durationSec: { type: Number },
+    minSamples:  { type: Number },
+  },
+  inputs:  { type: Array, default: undefined },
+  mParams: { type: Schema.Types.Mixed, default: null },
 
   source_filter:  { type: String, enum: ['physical', 'inferred', 'connect', null], default: null },
   on_missing_ref: { type: String, enum: ['ignore', 'alarm'], default: 'ignore' },

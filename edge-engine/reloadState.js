@@ -88,7 +88,7 @@ function diffSnapshots(oldSnap, newSnap) {
 //
 // Nuevos formatos de key en el futuro deben agregarse acá o el reload los
 // dejaría zombies.
-function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState, activeState, siteCode }) {
+function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState, activeState, mState, siteCode }) {
   let deletedCount = 0;
   const resolvedRuleIds = [];
   for (const ruleId of ruleIds) {
@@ -97,6 +97,14 @@ function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState,
     if (cooldownState.delete(`${ruleId}:no-setpoint:start`)) deletedCount++;
     if (cooldownState.delete(`${ruleId}:no-setpoint:escalated`)) deletedCount++;
     if (windowState.delete(ruleId)) deletedCount++;
+    // spec_motor_m.md — mState usa claves `${ruleId}:${dId}` (buffer por device):
+    // se limpian por prefijo para no dejar series huérfanas de una regla M editada/eliminada.
+    if (mState) {
+      const prefix = `${ruleId}:`;
+      for (const k of mState.keys()) {
+        if (k === ruleId || k.startsWith(prefix)) { mState.delete(k); deletedCount++; }
+      }
+    }
     if (siteCode) {
       if (crossState.delete(`${siteCode}:${ruleId}:start`)) deletedCount++;
       if (crossState.delete(`${siteCode}:${ruleId}:fired`)) deletedCount++;

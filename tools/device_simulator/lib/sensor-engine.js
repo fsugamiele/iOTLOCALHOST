@@ -272,8 +272,13 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 
     // ── Eltek Smartpack S (SF-6 · DEC-REF-65.c) ──────────────────────
     case 'dc_bus_voltage':
-      // -48 VDC nominal con jitter menor. En scenario eltek_bus_alarm
-      // (futuro) puede bajar a -46 (undervoltage) — no en R15.
+      // -48 VDC nominal con jitter menor.
+      // scenario eltek_dc_descarga (spec_motor_m.md · M1): rampa de descarga —
+      // la tensión SUBE (menos negativa, cae la magnitud) hacia el LVD (~-43),
+      // para disparar los soft sensors slope/projection del motor M.
+      if (sharedState.eltek_discharge) {
+        return clamp(currentValue + 0.4 + jitter(0.05), -49.5, -42.0);
+      }
       return clamp(currentValue + jitter(0.15), -49.5, -46.5);
 
     // ── Setpoints Cummins PCC (DEC-REF-66.d + EDGE-2) ────────────
@@ -495,6 +500,31 @@ const SCENARIOS = {
     noCleanup: true,
     steps: [
       { at: 0, sharedSet: { eltek_load_high: false } },
+    ],
+  },
+
+  // spec_motor_m.md · Ola M1 — demostración del motor M (soft sensors).
+  // Rampa de descarga del bus DC: `evolve('dc_bus_voltage')` sube la tensión
+  // hacia el LVD mientras el flag está activo. Dispara reglas M `slope`
+  // (tensión cayendo) y `projection` (tiempo al LVD). Duración larga para que
+  // el buffer del soft sensor acumule la ventana.
+  eltek_dc_descarga: {
+    description: 'Planta DC en descarga — tensión de bus hacia el LVD (demo motor M)',
+    roles: ['ELTEK'],
+    duration_ms: 180000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { eltek_discharge: true } },
+    ],
+  },
+
+  eltek_dc_recupera: {
+    description: 'Planta DC recupera — tensión de bus vuelve a nominal',
+    roles: ['ELTEK'],
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { eltek_discharge: false } },
     ],
   },
 

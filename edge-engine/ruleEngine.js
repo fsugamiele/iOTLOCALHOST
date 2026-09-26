@@ -2,9 +2,10 @@ const { evaluateD } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
 const { evaluateS } = require('./evaluators/typeS');
 const { evaluateCross } = require('./evaluators/typeCross');
+const { evaluateM } = require('./evaluators/typeM');
 const { notify }    = require('./notificationRouter');
 
-function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, eventTs }) {
+function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, mState, eventTs }) {
   const deviceState = siteState.get(dId) || {};
   const deviceType  = deviceState._deviceType || null;
   const siteCode    = deviceState._siteCode   || null;
@@ -169,6 +170,26 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
               rule, deviceId: dId,
               reason: 'window-cleared',
               mode: 'resolve-by-condition',
+              cooldownState, siteState, activeState,
+            });
+          }
+          continue;
+        }
+        case 'M': {
+          // spec_motor_m.md — soft sensor: métrica derivada vs condition.
+          const res = evaluateM(rule, value, { mState, dId, eventTs });
+          if (res.detail) continue;   // insufficient/maturing/unsupported → sin señal
+          if (res.fired) {
+            fireAlarm({
+              rule, value: res.metricValue, deviceId: dId,
+              reason: 'soft-sensor', mode: 'M',
+              thresholdUsed: rule.condition ? rule.condition.value : null,
+              cooldownState, siteState, activeState,
+            });
+          } else if (activeState.has(rule.ruleId)) {
+            fireResolve({
+              rule, deviceId: dId,
+              reason: 'soft-sensor-cleared', mode: 'M',
               cooldownState, siteState, activeState,
             });
           }
