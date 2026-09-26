@@ -61,550 +61,56 @@
               </ul>
             </div>
 
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
-              <div>
-                <!-- DEC-REF-100 D-7 (F6): el alta guiada es el camino
-                     principal; el formulario completo queda como modo
-                     avanzado (F7) para C/S/cross y parámetros finos. -->
-                <base-button type="default" size="sm" @click="openNewRule">
-                  <i class="tim-icons icon-settings"></i> Modo avanzado
-                </base-button>
-                <base-button type="primary" size="sm" @click="openWizardNew">
-                  <i class="tim-icons icon-simple-add"></i> Nueva regla
-                </base-button>
+            <!-- DEC-REF-114 (#83, B1) — página de 3 zonas: lista de cards +
+                 editor-frase inline. El "Modo experto" (modal ruleDraft, abajo)
+                 se conserva para cross/C/S y parámetros finos. -->
+            <div class="rules-layout">
+              <!-- Zona izquierda: cards -->
+              <div class="rules-list">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
+                  <base-button v-if="!editorOpen" type="primary" size="sm" @click="openSentenceNew">
+                    <i class="tim-icons icon-simple-add"></i> Nueva regla
+                  </base-button>
+                </div>
+
+                <rule-card
+                  v-for="(row, index) in (pack.rules || [])"
+                  :key="row.ruleId + '-' + index"
+                  :rule="row"
+                  :index="index"
+                  :sheets="sheets"
+                  @edit="onCardEdit"
+                  @delete="openDeleteRule"
+                />
+
+                <p v-if="!(pack.rules || []).length" class="text-muted">
+                  Este pack no tiene reglas todavía. Usá "Nueva regla" para empezar.
+                </p>
+              </div>
+
+              <!-- Zona derecha: editor-frase inline -->
+              <div class="rules-editor">
+                <card v-if="editorOpen">
+                  <sentence-editor
+                    :pack="pack"
+                    :sheets="sheets"
+                    :rule="editorRule"
+                    :editing-index="editorIndex"
+                    @save="onSentenceSave"
+                    @cancel="onSentenceCancel"
+                  />
+                </card>
+                <div v-else class="rules-editor__empty text-muted">
+                  <i class="tim-icons icon-bulb-63" style="font-size:1.6rem"></i>
+                  <p class="mt-2">Elegí <b>Nueva regla</b> o editá una para configurarla acá.</p>
+                </div>
               </div>
             </div>
-
-            <!-- DEC-REF-100 D-7 (F6): tabla legible — qué hace cada regla
-                 en lenguaje de usuario, sin jerga técnica a la vista. -->
-            <base-table
-              v-if="(pack.rules || []).length > 0"
-              :data="pack.rules"
-              :columns="['Regla', 'Qué hace', 'Severidad', 'Acciones']"
-              thead-classes="text-primary"
-            >
-              <template slot-scope="{ row, index }">
-                <td>
-                  <strong>{{ row.label }}</strong><br />
-                  <small class="text-muted">{{ row.ruleId }} · tipo {{ row.type }}</small>
-                </td>
-                <td>
-                  {{ ruleSentence(row) }}
-                  <div v-if="row.recommendation" class="text-muted" style="font-size:12px">
-                    <i class="fa fa-wrench" style="margin-right:4px"></i>{{ row.recommendation }}
-                  </div>
-                </td>
-                <td>
-                  <span class="badge" :class="severityBadge(row.severity)">
-                    {{ row.severity }}
-                  </span>
-                </td>
-                <td>
-                  <base-button
-                    type="info"
-                    size="sm"
-                    @click="openEditRule(index)"
-                    title="Editar regla"
-                  >
-                    <i class="tim-icons icon-pencil"></i>
-                  </base-button>
-                  <base-button
-                    type="danger"
-                    size="sm"
-                    @click="openDeleteRule(index)"
-                    title="Borrar regla"
-                  >
-                    <i class="tim-icons icon-simple-remove"></i>
-                  </base-button>
-                </td>
-              </template>
-            </base-table>
-
-            <p v-else class="text-muted">
-              Este pack no tiene reglas todavía. Usá "Nueva regla" para agregarlas.
-            </p>
           </template>
         </card>
       </div>
     </div>
-
-    <!-- MODAL: form de regla (nueva o edición) -->
-    <el-dialog
-      :title="ruleModalTitle"
-      :visible.sync="ruleModal"
-      width="720px"
-      :close-on-click-modal="false"
-    >
-      <template v-if="ruleDraft">
-        <!-- SF-7 parte 2 · DEC-REF-66.a/.b — mini-forms C y S incorporados
-             (R23). El stub anterior "edición en roadmap futuro" queda
-             obsoleto: ahora los 4 types se editan con paridad. -->
-        <!-- DEC-REF-100 D-7 (F7) — modo avanzado: arriba lo esencial
-             (nombre, severidad, tipo, equipo, variable, recomendación);
-             la identidad técnica (ruleId/inferenceId), los tiempos y las
-             configs de C/S/cross viven en la sección desplegable. -->
-        <div class="row">
-          <div class="col-md-6">
-            <label>Nombre de la regla <span class="text-danger">*</span></label>
-            <base-input v-model="ruleDraft.label" placeholder="Presión de aceite baja" />
-          </div>
-          <div class="col-md-3">
-            <label>Importancia <span class="text-danger">*</span></label>
-            <select v-model="ruleDraft.severity" class="form-control">
-              <option value="info">Informativa</option>
-              <option value="warning">Atención</option>
-              <option value="critical">Crítica</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label>Tipo <span class="text-danger">*</span></label>
-            <select v-model="ruleDraft.type" class="form-control">
-              <option value="D">Umbral simple</option>
-              <option value="cross">Combinada (entre equipos)</option>
-              <option value="C">Autocalibrada (setpoint)</option>
-              <option value="S">Ventana de eventos</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="col-md-6">
-            <label>Equipo <span class="text-danger">*</span></label>
-            <!-- S6 — el deviceType de la REGLA también es referencia a ficha
-                 (DEC-REF-91 adenda #60: 2ª superficie de texto libre; la 3ª,
-                 CrossExprNode, sigue fuera de la rebanada). Default: la ficha
-                 del pack (emptyRule). Mismo patrón que el selector de pack
-                 (index.vue, S5). -->
-            <el-select
-              v-model="ruleDraft.deviceType"
-              class="select-primary"
-              style="width:100%"
-              filterable
-              :disabled="sheets.length === 0"
-            >
-              <el-option
-                v-for="s in sheets"
-                :key="s.deviceType"
-                :label="s.manufacturer ? `${s.deviceType} — ${s.manufacturer} ${s.model || ''}`.trim() : s.deviceType"
-                :value="s.deviceType"
-              />
-            </el-select>
-            <small v-if="sheets.length === 0" class="text-warning">
-              No hay fichas de equipo cargadas (o no se pudieron cargar).
-            </small>
-          </div>
-          <div class="col-md-6">
-            <label>Variable <span class="text-danger">*</span></label>
-            <!-- S6 — variables de la ficha del deviceType elegido en la regla.
-                 Estricto cuando la ficha declara variables (decisión Franco,
-                 #70); texto libre cuando no — espejo del criterio de warnings
-                 del backend (rulepacks.js: una ficha con variables:[] no
-                 tiene contra qué validar). -->
-            <el-select
-              v-if="draftVariables.length > 0"
-              v-model="ruleDraft.variable"
-              placeholder="Elegir variable de la ficha"
-              class="select-primary"
-              style="width:100%"
-              filterable
-            >
-              <el-option
-                v-for="v in draftVariables"
-                :key="v.name"
-                :label="v.label ? `${v.name} — ${v.label}` : v.name"
-                :value="v.name"
-              />
-            </el-select>
-            <base-input v-else v-model="ruleDraft.variable" placeholder="oil_pressure" />
-            <small v-if="ruleSheet && draftVariables.length === 0" class="text-warning">
-              La ficha {{ ruleDraft.deviceType }} no declara variables — texto libre.
-            </small>
-          </div>
-        </div>
-
-        <!-- DEC-REF-100 D-7 — recommendation editable también en el form
-             clásico (en el wizard vive en el paso 4). Es el texto que
-             acompaña la notificación (F2). -->
-        <div class="row">
-          <div class="col-md-12">
-            <label>Recomendación — qué hacer cuando dispara (opcional)</label>
-            <textarea
-              v-model="ruleDraft.recommendation"
-              class="form-control"
-              rows="2"
-              placeholder="ej: Coordinar recarga de combustible con el proveedor"
-            ></textarea>
-          </div>
-        </div>
-
-        <!-- typeD → condition simple (visible: es la esencia de la regla) -->
-        <div v-if="ruleDraft.type === 'D'" class="mt-3">
-          <h5>Condición</h5>
-          <div class="row">
-            <div class="col-md-4">
-              <label>avisar cuando la variable esté</label>
-              <select
-                class="form-control"
-                :value="(ruleDraft.condition || {}).op || 'gt'"
-                @change="setConditionField('op', $event.target.value)"
-              >
-                <option v-for="op in WIZ_OPS" :key="op" :value="op">{{ OPERATOR_LABELS[op] }}</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label>este valor</label>
-              <base-input
-                type="number"
-                :value="(ruleDraft.condition || {}).value !== undefined ? ruleDraft.condition.value : ''"
-                @input="setConditionField('value', numericOrRaw($event))"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- DEC-REF-100 D-7 (F7) — opciones avanzadas desplegables:
-             identidad técnica (ruleId/inferenceId), tiempos y las
-             configuraciones de cross/C/S. Cerrado por default; se abre
-             solo si el tipo elegido lo requiere (watch ruleDraft.type)
-             o si el usuario viene desde "Opciones avanzadas" del wizard. -->
-        <div class="adv-toggle mt-4" @click="advancedOpen = !advancedOpen">
-          <i class="fa" :class="advancedOpen ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
-          Opciones avanzadas
-          <span class="text-muted" style="font-weight:400">
-            — identificadores técnicos, tiempos{{ ruleDraft.type !== 'D' ? ', configuración del tipo elegido' : '' }}
-          </span>
-        </div>
-
-        <div v-show="advancedOpen" class="adv-body">
-        <div class="row mt-3">
-          <div class="col-md-6">
-            <label>ruleId <span class="text-danger">*</span></label>
-            <base-input
-              v-model="ruleDraft.ruleId"
-              placeholder="cummins-A0-oil-pressure-low"
-              :disabled="editingIndex !== null"
-            />
-          </div>
-          <div class="col-md-6">
-            <label>inferenceId <span class="text-danger">*</span></label>
-            <base-input v-model="ruleDraft.inferenceId" placeholder="A0" />
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="col-md-4">
-            <label>cooldownSec</label>
-            <base-input v-model.number="ruleDraft.cooldownSec" type="number" />
-          </div>
-          <div class="col-md-4" v-if="ruleDraft.type === 'cross'">
-            <label>graceSec</label>
-            <base-input v-model.number="ruleDraft.graceSec" type="number" />
-          </div>
-          <!-- DEC-REF-102 D-2 (#77) — persistencia del cierre: segundos que la
-               condición debe permanecer SIN cumplirse antes de emitir el
-               resolve. 0 = cierre inmediato (comportamiento anterior).
-               Aplica a type D y cross (C/S tienen su propia temporalidad). -->
-          <div class="col-md-4" v-if="ruleDraft.type === 'D' || ruleDraft.type === 'cross'">
-            <label>resolveGraceSec</label>
-            <base-input v-model.number="ruleDraft.resolveGraceSec" type="number" />
-          </div>
-        </div>
-
-        <!-- typecross → CrossExprNode -->
-        <div v-if="ruleDraft.type === 'cross'" class="mt-3">
-          <h5>Condición combinada entre equipos</h5>
-          <p class="text-muted small">
-            Armá grupos "TODAS estas condiciones" (AND) o "CUALQUIERA de
-            estas condiciones" (OR), con condiciones sobre variables de
-            cualquier equipo del sitio. Límite de anidamiento: 8 niveles
-            (validateCrossTree en el backend). También podés sumar una
-            variable entre equipos del mismo tipo ("Agregar suma").
-          </p>
-          <cross-expr-node
-            v-if="ruleDraft.crossExpr"
-            :value="ruleDraft.crossExpr"
-            :depth="0"
-            :max-depth="8"
-            :is-root="true"
-            @input="ruleDraft.crossExpr = $event"
-          />
-        </div>
-
-        <!-- typeC → setpointSource + flags EDGE-2 + condition (DEC-REF-66.a) -->
-        <div v-if="ruleDraft.type === 'C' && ruleDraft.setpointSource && ruleDraft.condition" class="mt-3">
-          <h5>Autocalibrado (typeC)</h5>
-          <div class="row">
-            <div class="col-md-6">
-              <label>setpointSource.variable <span class="text-danger">*</span></label>
-              <base-input
-                v-model="ruleDraft.setpointSource.variable"
-                placeholder="key de siteState, ej: setpoint_oil_pressure"
-              />
-            </div>
-            <div class="col-md-3">
-              <label>fallbackToD</label>
-              <div>
-                <base-checkbox v-model="ruleDraft.fallbackToD">
-                  Fallback a umbral fijo si falta setpoint
-                </base-checkbox>
-              </div>
-            </div>
-            <div class="col-md-3">
-              <label>on_missing_ref</label>
-              <select v-model="ruleDraft.on_missing_ref" class="form-control">
-                <option value="ignore">ignore</option>
-                <option value="alarm">alarm</option>
-              </select>
-            </div>
-          </div>
-
-          <p class="text-muted small mt-3 mb-2">
-            Umbral de respaldo — lo exige el backend si Fallback está activo o al faltar referencia se alarma.
-          </p>
-          <div class="row">
-            <div class="col-md-4">
-              <label>condition.op</label>
-              <select
-                class="form-control"
-                :value="(ruleDraft.condition || {}).op || 'gt'"
-                @change="setConditionField('op', $event.target.value)"
-              >
-                <option value="lt">lt</option>
-                <option value="lte">lte</option>
-                <option value="gt">gt</option>
-                <option value="gte">gte</option>
-                <option value="eq">eq</option>
-                <option value="neq">neq</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label>condition.value</label>
-              <base-input
-                type="number"
-                :value="(ruleDraft.condition || {}).value !== undefined ? ruleDraft.condition.value : ''"
-                @input="setConditionField('value', numericOrRaw($event))"
-              />
-            </div>
-            <div class="col-md-4">
-              <label
-                title="Minutos consecutivos sin setpoint antes de escalar el aviso de configuración de INFO a ATENCIÓN. Escala la notificación de 'falta referencia', no la alarma operativa del equipo. Vacío = escalada desactivada."
-              >
-                escalateAfterMinutes
-                <i class="tim-icons icon-alert-circle-exc"></i>
-              </label>
-              <base-input
-                type="number"
-                placeholder="vacío = desactivado"
-                :value="ruleDraft.escalateAfterMinutes !== null && ruleDraft.escalateAfterMinutes !== undefined ? ruleDraft.escalateAfterMinutes : ''"
-                @input="setEscalateAfterMinutes($event)"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- typeS → window (durationSec, countThreshold, matchCondition) (DEC-REF-66.b) -->
-        <div v-if="ruleDraft.type === 'S' && ruleDraft.window" class="mt-3">
-          <h5>Ventana (typeS)</h5>
-          <div class="row">
-            <div class="col-md-4">
-              <label>window.durationSec <span class="text-danger">*</span></label>
-              <base-input
-                type="number"
-                v-model.number="ruleDraft.window.durationSec"
-              />
-            </div>
-            <div class="col-md-4">
-              <label>window.countThreshold <span class="text-danger">*</span></label>
-              <base-input
-                type="number"
-                v-model.number="ruleDraft.window.countThreshold"
-              />
-            </div>
-          </div>
-
-          <h6 class="mt-3">matchCondition</h6>
-          <div class="row">
-            <div class="col-md-4">
-              <label>op</label>
-              <select
-                class="form-control"
-                :value="((ruleDraft.window || {}).matchCondition || {}).op || 'gt'"
-                @change="setWindowConditionField('op', $event.target.value)"
-              >
-                <option value="lt">lt</option>
-                <option value="lte">lte</option>
-                <option value="gt">gt</option>
-                <option value="gte">gte</option>
-                <option value="eq">eq</option>
-                <option value="neq">neq</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label>value</label>
-              <base-input
-                type="number"
-                :value="(((ruleDraft.window || {}).matchCondition || {}).value !== undefined ? ruleDraft.window.matchCondition.value : '')"
-                @input="setWindowConditionField('value', numericOrRaw($event))"
-              />
-            </div>
-          </div>
-        </div>
-        </div><!-- /adv-body -->
-
-      </template>
-
-      <div slot="footer">
-        <base-button type="secondary" @click="closeRuleModal">Cancelar</base-button>
-        <base-button
-          type="primary"
-          @click="submitRule"
-          :disabled="saving || !isRuleReady"
-        >
-          {{ saving ? 'Guardando...' : (editingIndex !== null ? 'Guardar cambios' : 'Agregar regla') }}
-        </base-button>
-      </div>
-    </el-dialog>
-
-    <!-- WIZARD guiado · DEC-REF-100 D-7 (F6) — alta/edición de reglas de
-         umbral (type D) en 4 pasos de lenguaje de usuario. ruleId e
-         inferenceId se autogeneran y no se muestran. Lo que el wizard no
-         cubre (C/S/cross, tiempos finos) va por "Opciones avanzadas",
-         que abre el formulario clásico con lo ya cargado. -->
-    <el-dialog
-      :title="wizEditingIndex !== null ? 'Editar regla' : 'Nueva regla'"
-      :visible.sync="wizardOpen"
-      width="640px"
-      :close-on-click-modal="false"
-    >
-      <div class="wiz-steps mb-4">
-        <span
-          v-for="(name, i) in wizStepNames"
-          :key="i"
-          class="wiz-step"
-          :class="{ active: wizardStep === i + 1, done: wizardStep > i + 1 }"
-        >
-          {{ i + 1 }}. {{ name }}
-        </span>
-      </div>
-
-      <!-- Paso 1 · equipo -->
-      <div v-if="wizardStep === 1">
-        <h5>¿Sobre qué equipo es la regla?</h5>
-        <el-select
-          v-model="wiz.deviceType"
-          class="select-primary"
-          style="width:100%"
-          filterable
-          :disabled="sheets.length === 0"
-        >
-          <el-option
-            v-for="s in sheets"
-            :key="s.deviceType"
-            :label="s.manufacturer ? `${s.deviceType} — ${s.manufacturer} ${s.model || ''}`.trim() : s.deviceType"
-            :value="s.deviceType"
-          />
-        </el-select>
-        <small class="text-muted">
-          Por defecto es el equipo del pack; podés elegir otro si la regla vigila un equipo distinto.
-        </small>
-      </div>
-
-      <!-- Paso 2 · variable -->
-      <div v-if="wizardStep === 2">
-        <h5>¿Qué variable querés vigilar?</h5>
-        <el-select
-          v-if="wizVariables.length > 0"
-          v-model="wiz.variable"
-          class="select-primary"
-          style="width:100%"
-          filterable
-          placeholder="Elegir variable"
-        >
-          <el-option
-            v-for="v in wizVariables"
-            :key="v.name"
-            :label="v.label ? `${v.label} (${v.name})` : v.name"
-            :value="v.name"
-          />
-        </el-select>
-        <base-input v-else v-model="wiz.variable" placeholder="ej: fuel_level" />
-        <small v-if="wiz.deviceType && wizVariables.length === 0" class="text-warning">
-          La ficha {{ wiz.deviceType }} no declara variables — texto libre.
-        </small>
-      </div>
-
-      <!-- Paso 3 · condición en lenguaje natural -->
-      <div v-if="wizardStep === 3">
-        <h5>¿Cuándo debe avisar?</h5>
-        <div class="wiz-sentence">
-          <span>Avisame cuando</span>
-          <strong>{{ wizVariableLabel }}</strong>
-          <span>esté</span>
-          <el-select v-model="wiz.op" class="select-primary wiz-op">
-            <el-option v-for="op in WIZ_OPS" :key="op" :value="op" :label="OPERATOR_LABELS[op]" />
-          </el-select>
-          <input v-model.number="wiz.value" type="number" class="form-control wiz-value" />
-          <span v-if="wizVariableUnit">{{ wizVariableUnit }}</span>
-        </div>
-        <small class="text-muted">
-          Ejemplo: "Avisame cuando Nivel de combustible esté menor que 30 %".
-        </small>
-      </div>
-
-      <!-- Paso 4 · aviso -->
-      <div v-if="wizardStep === 4">
-        <h5>¿Cómo te avisamos?</h5>
-        <base-input v-model="wiz.label" label="Nombre de la regla" placeholder="ej: Combustible bajo" />
-
-        <label class="mt-3 d-block">Importancia</label>
-        <div class="wiz-severities">
-          <label
-            v-for="opt in WIZ_SEVERITIES"
-            :key="opt.value"
-            class="wiz-sev"
-            :class="{ active: wiz.severity === opt.value }"
-          >
-            <input type="radio" v-model="wiz.severity" :value="opt.value" />
-            <span class="badge" :class="severityBadge(opt.value)">{{ opt.label }}</span>
-            <small class="d-block text-muted mt-1">{{ opt.help }}</small>
-          </label>
-        </div>
-
-        <label class="mt-3 d-block">Recomendación — qué hacer cuando dispara (opcional)</label>
-        <textarea
-          v-model="wiz.recommendation"
-          class="form-control"
-          rows="2"
-          placeholder="ej: Coordinar recarga de combustible con el proveedor"
-        ></textarea>
-      </div>
-
-      <div slot="footer">
-        <base-button type="link" @click="wizardToAdvanced">
-          <i class="tim-icons icon-settings"></i> Opciones avanzadas
-        </base-button>
-        <base-button type="secondary" :disabled="wizardStep === 1" @click="wizardStep--">
-          Atrás
-        </base-button>
-        <base-button
-          v-if="wizardStep < 4"
-          type="primary"
-          :disabled="!wizStepReady"
-          @click="wizardStep++"
-        >
-          Siguiente
-        </base-button>
-        <base-button
-          v-else
-          type="primary"
-          :disabled="!wizStepReady || saving"
-          @click="submitWizard"
-        >
-          {{ saving ? 'Guardando...' : (wizEditingIndex !== null ? 'Guardar cambios' : 'Crear regla') }}
-        </base-button>
-      </div>
-    </el-dialog>
 
     <!-- MODAL: borrar regla (confirmación simple, sin fricción de escritura —
          menor riesgo que borrar pack porque son parte del mismo pack que
@@ -634,7 +140,10 @@
 </template>
 
 <script>
-import CrossExprNode, { stripEditorKeys } from '@/components/CrossExprNode.vue';
+import { Dialog } from 'element-ui';
+import { stripEditorKeys } from '@/components/CrossExprNode.vue';
+import RuleCard from '@/components/rules/RuleCard.vue';           // DEC-REF-114 (#83, B1)
+import SentenceEditor from '@/components/rules/SentenceEditor.vue';
 
 // DEC-REF-100 D-7 (F6) — capa de presentación del wizard: mismos labels que
 // OPERATOR_LABELS del backend (api/models/rule_definition.js — la identidad
@@ -682,16 +191,20 @@ const WIZ_STEP_NAMES = ['Equipo', 'Variable', 'Condición', 'Aviso'];
 export default {
   middleware: ['authenticated', 'superadmin'],
   name: 'rulepacks-detail',
-  components: { CrossExprNode },
+  components: { [Dialog.name]: Dialog, RuleCard, SentenceEditor },
   data() {
     return {
       loading: true,
       pack: null,
       // Form modal
       ruleModal: false,
-      ruleDraft: null,      // regla que se está editando/creando
+      ruleDraft: null,      // regla que se está editando/creando (Modo experto)
       editingIndex: null,   // null = new, número = índice de la regla en pack.rules
       saving: false,
+      // DEC-REF-114 (#83, B1) — editor-frase inline (type D).
+      editorOpen: false,
+      editorRule: null,     // regla D a editar, o null (nueva)
+      editorIndex: null,
       // Delete rule modal
       deleteRuleModal: false,
       deleteRuleTargetIndex: null,
@@ -1043,6 +556,44 @@ export default {
         crossExpr: null
       };
     },
+    // ── DEC-REF-114 (#83, B1): editor-frase (type D) ──────────────────
+    openSentenceNew() {
+      this.editorRule = null;
+      this.editorIndex = null;
+      this.editorOpen = true;
+    },
+    onCardEdit(index) {
+      // B2 (todo inline): el editor-frase maneja D/S/C/cross-plano Y cross
+      // anidado (CrossExprNode embebido). Ya no hay modal experto.
+      this.editorRule = this.pack.rules[index];
+      this.editorIndex = index;
+      this.editorOpen = true;
+    },
+    onCardExpert(index) {
+      this.editorOpen = false;
+      this.openEditRule(index);   // form experto existente (ruleDraft)
+    },
+    async onSentenceSave({ rule, index }) {
+      // Camino canónico: submitRule limpia por tipo + PUT del pack + bump + reload edge.
+      this.ruleDraft = rule;
+      this.editingIndex = index;
+      this.editorOpen = false;
+      await this.submitRule();
+    },
+    onSentenceCancel() {
+      this.editorOpen = false;
+      this.editorRule = null;
+      this.editorIndex = null;
+    },
+    onSentenceExpert(rule) {
+      // Escala del editor-frase al form completo conservando lo cargado.
+      this.ruleDraft = rule;
+      this.editingIndex = this.editorIndex;
+      this.ensureShapeForType(rule.type || 'D');
+      this.advancedOpen = true;
+      this.editorOpen = false;
+      this.ruleModal = true;
+    },
     openNewRule() {
       this.editingIndex = null;
       this.ruleDraft = this.emptyRule();
@@ -1354,4 +905,15 @@ export default {
 /* DEC-REF-112 — modo claro */
 .white-content .wiz-step { background: rgba(0, 0, 0, 0.06); color: #525f7f; }
 .white-content .wiz-sentence { background: rgba(0, 0, 0, 0.03); }
+
+/* DEC-REF-114 (#83, B1) — página de 3 zonas (cards | editor) */
+.rules-layout { display: flex; gap: 20px; align-items: flex-start; }
+.rules-list { flex: 1 1 42%; min-width: 0; }
+.rules-editor { flex: 1 1 58%; min-width: 0; }
+.rules-editor__empty {
+  border: 1px dashed rgba(0, 0, 0, 0.12); border-radius: 10px;
+  padding: 28px; text-align: center;
+}
+body:not(.white-content) .rules-editor__empty { border-color: rgba(255, 255, 255, 0.12); }
+@media (max-width: 991px) { .rules-layout { flex-direction: column; } .rules-list, .rules-editor { flex-basis: auto; width: 100%; } }
 </style>

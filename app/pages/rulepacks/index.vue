@@ -4,7 +4,10 @@
       <div class="col-12">
         <card>
           <div slot="header" class="d-flex justify-content-between align-items-center">
-            <h3 class="card-title mb-0">Reglas de monitoreo</h3>
+            <div>
+              <h3 class="card-title mb-0">Reglas de monitoreo</h3>
+              <p class="card-category mb-0">Un pack agrupa las reglas de monitoreo de un tipo de equipo.</p>
+            </div>
             <base-button type="primary" size="sm" @click="openCreateModal">
               <i class="tim-icons icon-simple-add"></i> Nuevo pack
             </base-button>
@@ -15,38 +18,22 @@
           <base-table
             v-else
             :data="packs"
-            :columns="['packId', 'deviceType', 'version', 'reglas', 'canary', 'actualizado', 'acciones']"
+            :columns="['pack', 'equipo', 'reglas', 'actualizado', 'acciones']"
             thead-classes="text-primary"
           >
             <template slot-scope="{ row }">
-              <td>{{ row.packId }}</td>
-              <td>{{ row.deviceType }}</td>
-              <td>{{ row.version }}</td>
-              <td>{{ (row.rules || []).length }}</td>
               <td>
-                <span
-                  class="badge"
-                  :class="row.canary ? 'badge-warning' : 'badge-secondary'"
-                >
-                  {{ row.canary ? 'canary' : 'prod' }}
-                </span>
+                <span class="pack-name">{{ row.packId }}</span>
+                <div v-if="row.description" class="pack-desc text-muted">{{ row.description }}</div>
               </td>
-              <td>{{ formatDate(row.updatedAt) }}</td>
-              <td>
-                <base-button
-                  type="info"
-                  size="sm"
-                  @click="viewPack(row.packId)"
-                  title="Ver / Editar"
-                >
+              <td>{{ row.deviceType }}</td>
+              <td>{{ (row.rules || []).length }}</td>
+              <td class="text-muted">{{ formatDate(row.updatedAt) }}</td>
+              <td class="text-right">
+                <base-button type="info" size="sm" @click="viewPack(row.packId)" title="Ver / editar reglas">
                   <i class="tim-icons icon-notes"></i>
                 </base-button>
-                <base-button
-                  type="danger"
-                  size="sm"
-                  @click="openDeleteModal(row.packId)"
-                  title="Borrar"
-                >
+                <base-button type="danger" size="sm" @click="openDeleteModal(row.packId)" title="Borrar pack">
                   <i class="tim-icons icon-trash-simple"></i>
                 </base-button>
               </td>
@@ -54,109 +41,61 @@
           </base-table>
 
           <p v-if="!loading && packs.length === 0" class="text-muted mt-3">
-            No hay packs. Usá "Nuevo pack" para crear el primero.
+            No hay packs todavía. Usá <b>"Nuevo pack"</b> para crear el primero.
           </p>
         </card>
       </div>
     </div>
 
-    <!-- NUEVO PACK — form de metadata. El pack se crea con rules: [];
-         reglas individuales llegan en Capa 3 (editor crossExpr). -->
-    <el-dialog
-      title="Nuevo pack"
-      :visible.sync="createModal"
-      width="500px"
-      :close-on-click-modal="false"
-    >
+    <!-- NUEVO PACK — metadata. El pack nace con rules: []; las reglas se
+         cargan adentro con el editor. -->
+    <el-dialog title="Nuevo pack" :visible.sync="createModal" width="480px" :close-on-click-modal="false" append-to-body>
       <div class="form-group">
-        <label>packId <span class="text-danger">*</span></label>
-        <base-input
-          v-model="newPack.packId"
-          placeholder="ej. cummins-pcc-v1"
-        />
+        <label>Nombre del pack <span class="text-danger">*</span></label>
+        <base-input v-model="newPack.packId" placeholder="ej. cummins-pcc-v1" />
       </div>
       <div class="form-group">
-        <label>deviceType <span class="text-danger">*</span></label>
-        <!-- S5 — selector de ficha: el deviceType del pack ES una referencia
-             a equipmentsheets (DEC-REF-91) y el backend la exige (400 si no
-             existe). Sin texto libre. -->
+        <label>Equipo <span class="text-danger">*</span></label>
         <el-select
           v-model="newPack.deviceType"
-          placeholder="Elegir ficha de equipo"
-          class="select-primary"
-          style="width:100%"
-          filterable
+          placeholder="Elegí la ficha del equipo"
+          class="select-primary" style="width:100%" filterable
           :disabled="sheets.length === 0"
         >
           <el-option
-            v-for="s in sheets"
-            :key="s.deviceType"
+            v-for="s in sheets" :key="s.deviceType"
             :label="s.manufacturer ? `${s.deviceType} — ${s.manufacturer} ${s.model || ''}`.trim() : s.deviceType"
             :value="s.deviceType"
           />
         </el-select>
         <small v-if="sheets.length === 0" class="text-warning">
-          No hay fichas de equipo cargadas — el pack no se puede crear sin una.
+          No hay fichas de equipo cargadas — cargá una en "Fichas" antes de crear el pack.
         </small>
       </div>
       <div class="form-group">
-        <label>Descripción</label>
-        <base-input
-          v-model="newPack.description"
-          placeholder="opcional"
-        />
-      </div>
-      <div class="form-group">
-        <base-checkbox v-model="newPack.canary">
-          canary (excluido del motor edge — útil para probar reglas)
-        </base-checkbox>
+        <label>Descripción <span class="text-muted">(opcional)</span></label>
+        <base-input v-model="newPack.description" placeholder="Para qué sirve este pack" />
       </div>
       <div slot="footer">
-        <base-button type="secondary" @click="createModal = false">
-          Cancelar
-        </base-button>
-        <base-button
-          type="primary"
-          @click="submitCreate"
-          :disabled="creating || !newPack.packId || !newPack.deviceType"
-        >
-          {{ creating ? 'Creando...' : 'Crear' }}
+        <base-button type="secondary" @click="createModal = false">Cancelar</base-button>
+        <base-button type="primary" @click="submitCreate" :disabled="creating || !newPack.packId || !newPack.deviceType">
+          {{ creating ? 'Creando...' : 'Crear pack' }}
         </base-button>
       </div>
     </el-dialog>
 
-    <!-- BORRAR — fricción explícita. El usuario escribe el packId a
-         mano; el botón "Borrar definitivo" queda disabled hasta que
-         el texto matchee exacto. Evita clicks accidentales; el
-         hot-reload SF-3 hace efectivo el DELETE al instante. -->
-    <el-dialog
-      title="Confirmar borrado"
-      :visible.sync="deleteModal"
-      width="500px"
-      :close-on-click-modal="false"
-    >
+    <!-- BORRAR PACK — confirmación simple (sin tipeo). -->
+    <el-dialog title="Borrar pack" :visible.sync="deleteModal" width="440px" :close-on-click-modal="false" append-to-body>
       <p>
-        Estás por borrar el pack
-        <code>{{ deleteTarget }}</code>. El motor edge lo recargará al
-        instante (SF-3) — el pack deja de aplicarse en producción.
+        ¿Seguro que querés borrar el pack <code>{{ deleteTarget }}</code>?
       </p>
       <p class="text-muted">
-        Para confirmar, escribí el packId exacto abajo:
+        Deja de aplicarse en producción al instante y se pierden sus reglas. Esta acción no se puede deshacer.
       </p>
-      <base-input
-        v-model="deleteConfirmInput"
-        :placeholder="deleteTarget"
-      />
       <div slot="footer">
-        <base-button type="secondary" @click="closeDeleteModal">
-          Cancelar
-        </base-button>
-        <base-button
-          type="danger"
-          @click="submitDelete"
-          :disabled="deleting || deleteConfirmInput !== deleteTarget"
-        >
-          {{ deleting ? 'Borrando...' : 'Borrar definitivo' }}
+        <base-button type="secondary" @click="closeDeleteModal">Cancelar</base-button>
+        <base-button type="danger" @click="submitDelete" :disabled="deleting">
+          {{ deleting ? 'Borrando...' : 'Borrar pack' }}
         </base-button>
       </div>
     </el-dialog>
@@ -164,9 +103,12 @@
 </template>
 
 <script>
+import { Dialog, Select, Option } from 'element-ui';
+
 export default {
   middleware: ['authenticated', 'superadmin'],
   name: 'rulepacks-index',
+  components: { [Dialog.name]: Dialog, [Select.name]: Select, [Option.name]: Option },
   data() {
     return {
       loading: true,
@@ -177,17 +119,10 @@ export default {
       newPack: this.emptyPack(),
       deleteModal: false,
       deleteTarget: '',
-      deleteConfirmInput: '',
       deleting: false
     };
   },
   async mounted() {
-    // DEC-REF-62.a — revalidación de rol contra DB fresca al montar la
-    // consola. El middleware `superadmin.js` valida grants del store
-    // (que persistieron desde el último login). Un grant revocado
-    // POST-login no aparece en el store hasta próximo re-login, así
-    // que la consola pega a `/me` una vez al montar para cortar ese
-    // caso. Página normal (non-consola) no paga este costo.
     const revalidated = await this.revalidateSuperadmin();
     if (!revalidated) return;
     await this.loadPacks();
@@ -212,7 +147,6 @@ export default {
         }
         return true;
       } catch (e) {
-        // Token vencido u otro problema de auth → volver a login
         this.$router.push('/login');
         return false;
       }
@@ -235,8 +169,6 @@ export default {
       }
     },
     async loadSheets() {
-      // S5 — catálogo de fichas para el selector de deviceType. Lectura
-      // global (D-1). Si falla, el selector queda vacío y el modal avisa.
       try {
         const res = await this.$axios.get('/equipmentsheet', {
           headers: { token: this.$store.state.auth.token }
@@ -253,11 +185,10 @@ export default {
     },
     formatDate(value) {
       if (!value) return '';
-      const d = new Date(value);
-      return d.toLocaleString();
+      return new Date(value).toLocaleString();
     },
     emptyPack() {
-      return { packId: '', deviceType: '', description: '', canary: false };
+      return { packId: '', deviceType: '', description: '' };
     },
     openCreateModal() {
       this.newPack = this.emptyPack();
@@ -268,9 +199,6 @@ export default {
       this.creating = true;
       const packId = this.newPack.packId.trim();
       try {
-        // El pack se crea sin reglas — Capa 3 alta las reglas.
-        // Backend acepta rules: [] (schema default; validatePackCrossRules
-        // no falla con array vacío — verificado antes de aplicar).
         await this.$axios.put(
           `/rulepacks/${encodeURIComponent(packId)}`,
           {
@@ -278,7 +206,7 @@ export default {
               packId,
               deviceType: this.newPack.deviceType.trim(),
               description: this.newPack.description || '',
-              canary: !!this.newPack.canary,
+              canary: false,
               rules: []
             }
           },
@@ -287,10 +215,11 @@ export default {
         this.$notify({
           type: 'success',
           icon: 'tim-icons icon-check-2',
-          message: `Pack ${packId} creado. El motor edge recargó automáticamente (SF-3).`
+          message: `Pack ${packId} creado.`
         });
         this.createModal = false;
         await this.loadPacks();
+        this.viewPack(packId);   // entra directo a cargar reglas
       } catch (e) {
         this.$notify({
           type: 'danger',
@@ -306,16 +235,13 @@ export default {
     },
     openDeleteModal(packId) {
       this.deleteTarget = packId;
-      this.deleteConfirmInput = '';
       this.deleteModal = true;
     },
     closeDeleteModal() {
       this.deleteModal = false;
       this.deleteTarget = '';
-      this.deleteConfirmInput = '';
     },
     async submitDelete() {
-      if (this.deleteConfirmInput !== this.deleteTarget) return;
       this.deleting = true;
       const packId = this.deleteTarget;
       try {
@@ -326,7 +252,7 @@ export default {
         this.$notify({
           type: 'success',
           icon: 'tim-icons icon-check-2',
-          message: `Pack ${packId} borrado. El motor edge recargó (SF-3).`
+          message: `Pack ${packId} borrado.`
         });
         this.closeDeleteModal();
         await this.loadPacks();
@@ -343,3 +269,8 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.pack-name { font-weight: 600; }
+.pack-desc { font-size: 0.78rem; margin-top: 2px; }
+</style>

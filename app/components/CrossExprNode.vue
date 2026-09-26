@@ -1,259 +1,178 @@
 <template>
-  <div class="cross-node" :class="'depth-' + depth">
-    <!-- HEADER: tipo de nodo + acciones -->
-    <div class="d-flex align-items-center mb-2">
-      <select
-        class="form-control form-control-sm mr-2"
-        style="max-width: 180px;"
-        :value="nodeType"
-        @change="onTypeChange($event.target.value)"
-      >
-        <!-- DEC-REF-100 D-7 (F7): frases de usuario para los grupos
-             lógicos — la identidad interna sigue siendo AND/OR. -->
-        <option value="AND">TODAS estas condiciones (AND)</option>
-        <option value="OR">CUALQUIERA de estas condiciones (OR)</option>
-        <option value="leafDevice">Condición de equipo</option>
-        <!-- SF-6 · DEC-REF-65.e — hoja suma editable desde R16. Antes
-             estaba con v-if="isSumLeaf" (solo si el nodo YA era sum).
-             Ahora se ofrece siempre para permitir convertir. -->
-        <option value="leafSum">Suma entre equipos</option>
-      </select>
+  <!-- DEC-REF-114 (#83) — editor visual de condiciones combinadas (crossExpr).
+       Rediseño de PRESENTACIÓN (Franco #83, híbrido "B-compacto"):
+         · raíz  = tarjeta con encabezado de color pleno (teal=Y / ámbar=O)
+         · anida = riel de color + badge (no acumula cajas al profundizar)
+       La hoja usa los MISMOS selects de ficha que el modo simple (equipo y
+       variable salen de las equipmentsheets). Lenguaje de operador, sin jerga.
+       El CONTRATO de datos (nodo que entra/sale, stripEditorKeys, maxDepth)
+       queda idéntico al original DEC-REF-62/63/65 — sin riesgo de regresión. -->
+  <div class="cn" :class="[isRoot ? 'cn--root' : 'cn--sub', opClass]">
 
-      <base-button
-        v-if="!isRoot"
-        type="danger"
-        size="sm"
-        @click="$emit('remove')"
-        title="Quitar este nodo"
+    <!-- ══════════ GRUPO LÓGICO (Y / O) ══════════ -->
+    <div v-if="isLogical" class="cn-group" :class="isRoot ? 'cn-group--root' : 'cn-group--sub'">
+      <div class="cn-ghead">
+        <span v-if="isRoot" class="cn-banner">Se dispara cuando {{ opWord }}</span>
+        <span v-else class="cn-chip" :class="opClass"><span class="cn-dot"></span>{{ opChip }}</span>
+
+        <span class="cn-seg" role="group" aria-label="conector lógico">
+          <button type="button" class="y" :class="{ on: nodeType === 'AND' }" @click="setGroupOp('AND')">TODAS</button>
+          <button type="button" class="o" :class="{ on: nodeType === 'OR' }" @click="setGroupOp('OR')">CUALQUIERA</button>
+        </span>
+
+        <base-button v-if="!isRoot" type="danger" size="sm" class="cn-rm-group" @click="$emit('remove')" title="Quitar este grupo">
+          <i class="tim-icons icon-simple-remove"></i>
+        </base-button>
+      </div>
+
+      <div class="cn-gbody">
+        <div v-for="(child, i) in localChildren" :key="child.__editorKey" class="cn-child">
+          <cross-expr-node
+            :value="child"
+            :depth="depth + 1"
+            :max-depth="maxDepth"
+            :sheets="sheets"
+            @input="onChildInput(i, $event)"
+            @remove="onChildRemove(i)"
+          />
+        </div>
+
+        <p v-if="localChildren.length === 0" class="cn-empty">
+          <i class="fa fa-info-circle"></i> Este grupo está vacío — agregá al menos una condición.
+        </p>
+
+        <div class="cn-actions">
+          <base-button type="primary" size="sm" @click="addLeafDevice">
+            <i class="tim-icons icon-simple-add"></i> condición
+          </base-button>
+          <base-button
+            type="default" size="sm"
+            :disabled="depth + 1 >= maxDepth"
+            @click="addLogicalGroup"
+            :title="depth + 1 >= maxDepth ? 'Llegaste al máximo de anidamiento' : 'Combiná varias condiciones bajo su propia lógica Y/O'"
+          >
+            <i class="tim-icons icon-vector"></i> agrupar condiciones
+          </base-button>
+          <base-button type="default" size="sm" class="cn-sumbtn" @click="addLeafSum" title="Sumar una medición entre varios equipos del sitio">
+            Σ sumar entre equipos
+          </base-button>
+        </div>
+
+        <p v-if="localChildren.length" class="cn-hint">{{ opHint }}</p>
+      </div>
+    </div>
+
+    <!-- ══════════ HOJA: CONDICIÓN DE UN EQUIPO ══════════ -->
+    <div v-else-if="isLeafDevice" class="cn-leaf">
+      <el-select
+        v-if="sheets.length"
+        :value="value.deviceType || ''" size="small" filterable class="select-info cn-equipo"
+        placeholder="equipo" @change="onLeafEquipo"
       >
+        <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="s.deviceType" />
+      </el-select>
+      <el-input v-else :value="value.deviceType || ''" size="small" class="cn-equipo" placeholder="equipo" @input="onLeafEquipo" />
+
+      <el-select
+        v-if="leafVariables.length"
+        :value="value.variable || ''" size="small" filterable class="select-info cn-var"
+        placeholder="variable" @change="onLeafVariable"
+      >
+        <el-option v-for="v in leafVariables" :key="v.name" :value="v.name" :label="varLabel(v)" />
+      </el-select>
+      <el-input v-else :value="value.variable || ''" size="small" class="cn-var" placeholder="variable técnica" @input="onLeafVariable" />
+
+      <el-select :value="condOp" size="small" class="select-primary cn-op" @change="updateCondition('op', $event)">
+        <el-option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op" :label="lbl" />
+      </el-select>
+
+      <el-select v-if="leafValueType === 'bool'" :value="condValue" size="small" class="cn-val" @change="updateCondition('value', $event)">
+        <el-option :value="1" label="verdadero" />
+        <el-option :value="0" label="falso" />
+      </el-select>
+      <el-input
+        v-else :value="condValue === undefined ? '' : condValue" size="small" class="cn-val"
+        :type="leafValueType === 'categorical' || leafValueType === 'string' ? 'text' : 'number'"
+        :placeholder="leafUnit ? ('valor (' + leafUnit + ')') : 'valor'"
+        @input="updateCondition('value', numericOrRaw($event))"
+      />
+      <span v-if="leafUnit" class="cn-unit">{{ leafUnit }}</span>
+
+      <base-button type="danger" size="sm" icon class="cn-rm" @click="$emit('remove')" title="Quitar condición">
         <i class="tim-icons icon-simple-remove"></i>
       </base-button>
     </div>
 
-    <!-- NODO LÓGICO (AND/OR) -->
-    <div v-if="isLogical" class="cross-logical pl-3">
-      <div
-        v-for="(child, i) in localChildren"
-        :key="child.__editorKey"
-        class="cross-child mb-2"
-      >
-        <cross-expr-node
-          :value="child"
-          :depth="depth + 1"
-          :max-depth="maxDepth"
-          @input="onChildInput(i, $event)"
-          @remove="onChildRemove(i)"
-        />
+    <!-- ══════════ HOJA: SUMA ENTRE EQUIPOS ══════════ -->
+    <div v-else-if="isSumLeaf" class="cn-sum">
+      <div class="cn-sum-head">
+        <span class="cn-sum-title">Σ Suma entre equipos</span>
+        <base-button type="danger" size="sm" icon class="cn-rm" @click="$emit('remove')" title="Quitar suma">
+          <i class="tim-icons icon-simple-remove"></i>
+        </base-button>
       </div>
+      <p class="cn-sum-desc">
+        Suma el total de una medición entre varios equipos del sitio
+        (ej: la carga DC total de todos los rectificadores) y compara ese total contra un valor.
+      </p>
 
-      <div class="cross-actions mt-2">
-        <base-button
-          type="info"
-          size="sm"
-          @click="addLeafDevice"
-          title="Agregar hoja equipo (deviceType + variable + condición)"
+      <div v-for="(term, i) in localSumTerms" :key="term.__editorKey" class="cn-sum-term">
+        <el-select
+          v-if="sheets.length"
+          :value="term.deviceType || ''" size="small" filterable class="select-info cn-equipo"
+          placeholder="equipo" @change="onSumTermDevice(i, $event)"
         >
-          <i class="tim-icons icon-simple-add"></i> Agregar condición
-        </base-button>
-        <base-button
-          type="info"
-          size="sm"
-          :disabled="depth + 1 >= maxDepth"
-          @click="addLogicalGroup"
-          :title="depth + 1 >= maxDepth
-            ? 'Profundidad máxima ' + maxDepth + ' alcanzada (validateCrossTree en el backend rechaza más)'
-            : 'Anidar un grupo AND/OR'"
+          <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="s.deviceType" />
+        </el-select>
+        <el-input v-else :value="term.deviceType || ''" size="small" class="cn-equipo" placeholder="equipo" @input="updateSumTerm(i, 'deviceType', $event)" />
+
+        <el-select
+          v-if="variablesFor(term.deviceType).length"
+          :value="term.variable || ''" size="small" filterable class="select-info cn-var"
+          placeholder="variable" @change="updateSumTerm(i, 'variable', $event)"
         >
-          <i class="tim-icons icon-vector"></i> Agregar grupo
-        </base-button>
-        <!-- SF-6 · DEC-REF-65.e — hoja de suma editable desde R16.
-             Es una hoja terminal (no anida), así que no consume depth
-             más allá de +1 (mismo criterio que "Agregar condición"). -->
-        <base-button
-          type="info"
-          size="sm"
-          @click="addLeafSum"
-          title="Agregar hoja de suma (total sumado de una variable en N devices del mismo deviceType)"
-        >
-          <i class="tim-icons icon-simple-add"></i> Agregar suma
+          <el-option v-for="v in variablesFor(term.deviceType)" :key="v.name" :value="v.name" :label="varLabel(v)" />
+        </el-select>
+        <el-input v-else :value="term.variable || ''" size="small" class="cn-var" placeholder="variable técnica" @input="updateSumTerm(i, 'variable', $event)" />
+
+        <base-button type="danger" size="sm" icon class="cn-rm" :disabled="localSumTerms.length <= 1" @click="removeSumTerm(i)"
+          :title="localSumTerms.length <= 1 ? 'Se necesita al menos un equipo' : 'Quitar este equipo de la suma'">
+          <i class="tim-icons icon-simple-remove"></i>
         </base-button>
       </div>
 
-      <p v-if="localChildren.length === 0" class="text-muted small mt-2">
-        Grupo vacío. Agregá al menos una condición o el backend
-        rechazará con "{{ nodeType }} sin children".
-      </p>
-      <p v-else class="text-muted small mt-2 mb-0">
-        <i class="fa fa-info-circle"></i>
-        {{ nodeType === 'AND'
-          ? 'El grupo se cumple cuando TODAS las condiciones de abajo se cumplen a la vez.'
-          : 'El grupo se cumple cuando CUALQUIERA de las condiciones de abajo se cumple.' }}
-      </p>
-    </div>
+      <base-button type="default" size="sm" class="cn-sum-add" @click="addSumTerm">
+        <i class="tim-icons icon-simple-add"></i> agregar equipo a la suma
+      </base-button>
 
-    <!-- HOJA EQUIPO (deviceType, variable, condition) -->
-    <div v-else-if="isLeafDevice" class="cross-leaf pl-3">
-      <div class="row">
-        <div class="col-md-4">
-          <label class="small">equipo</label>
-          <base-input
-            :value="value.deviceType || ''"
-            placeholder="cummins-pcc"
-            @input="updateLeaf('deviceType', $event)"
-          />
-        </div>
-        <div class="col-md-4">
-          <label class="small">variable</label>
-          <base-input
-            :value="value.variable || ''"
-            placeholder="oil_pressure"
-            @input="updateLeaf('variable', $event)"
-          />
-        </div>
-        <div class="col-md-2">
-          <label class="small">condición</label>
-          <select
-            class="form-control"
-            :value="value.condition && value.condition.op || 'gt'"
-            @change="updateCondition('op', $event.target.value)"
-          >
-            <!-- Set exacto de ops que typeD.js soporta (OPS en línea 1-8). -->
-            <option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op">{{ lbl }}</option>
-          </select>
-        </div>
-        <div class="col-md-2">
-          <label class="small">valor</label>
-          <base-input
-            type="number"
-            :value="value.condition && value.condition.value !== undefined ? value.condition.value : ''"
-            @input="updateCondition('value', numericOrRaw($event))"
-          />
-        </div>
+      <div class="cn-sum-cond">
+        <span class="cn-sum-cond-lbl">El total sumado es</span>
+        <el-select :value="condOp" size="small" class="select-primary cn-op" @change="updateCondition('op', $event)">
+          <el-option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op" :label="lbl" />
+        </el-select>
+        <el-input :value="condValue === undefined ? '' : condValue" size="small" type="number" class="cn-val" placeholder="valor"
+          @input="updateCondition('value', numericOrRaw($event))" />
       </div>
     </div>
 
-    <!-- HOJA SUMA — EDITABLE (SF-6 · DEC-REF-65.e) -->
-    <div v-else-if="isSumLeaf" class="cross-sum pl-3">
-      <p class="text-info small mb-2">
-        <i class="tim-icons icon-notes"></i>
-        Suma = Σ (variable) sobre todos los devices del deviceType en
-        el site. Añadí renglones para sumar más de un deviceType.
-      </p>
-
-      <!-- Renglones dinámicos de (deviceType, variable) -->
-      <div
-        v-for="(term, i) in localSumTerms"
-        :key="term.__editorKey"
-        class="row mb-2 align-items-end"
-      >
-        <div class="col-md-5">
-          <label class="small">deviceType</label>
-          <base-input
-            :value="term.deviceType || ''"
-            placeholder="ELTEK"
-            @input="updateSumTerm(i, 'deviceType', $event)"
-          />
-        </div>
-        <div class="col-md-5">
-          <label class="small">variable</label>
-          <base-input
-            :value="term.variable || ''"
-            placeholder="dc_load_current"
-            @input="updateSumTerm(i, 'variable', $event)"
-          />
-        </div>
-        <div class="col-md-2">
-          <base-button
-            type="danger"
-            size="sm"
-            :disabled="localSumTerms.length <= 1"
-            @click="removeSumTerm(i)"
-            :title="localSumTerms.length <= 1 ? 'Se requiere al menos un renglón' : 'Quitar este renglón'"
-          >
-            <i class="tim-icons icon-simple-remove"></i>
-          </base-button>
-        </div>
-      </div>
-
-      <div class="mb-3">
-        <base-button
-          type="info"
-          size="sm"
-          @click="addSumTerm"
-          title="Agregar otro par (deviceType, variable) a la suma"
-        >
-          <i class="tim-icons icon-simple-add"></i> Agregar renglón
-        </base-button>
-      </div>
-
-      <!-- Condition del total -->
-      <p class="small mb-1">Condición sobre el total sumado:</p>
-      <div class="row">
-        <div class="col-md-4">
-          <label class="small">condición</label>
-          <select
-            class="form-control"
-            :value="(value.condition && value.condition.op) || 'gt'"
-            @change="updateCondition('op', $event.target.value)"
-          >
-            <option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op">{{ lbl }}</option>
-          </select>
-        </div>
-        <div class="col-md-4">
-          <label class="small">valor</label>
-          <base-input
-            type="number"
-            :value="value.condition && value.condition.value !== undefined ? value.condition.value : ''"
-            @input="updateCondition('value', numericOrRaw($event))"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- FALLBACK: nodo desconocido -->
-    <div v-else class="text-danger small pl-3">
-      Nodo con forma no reconocida — el backend lo rechazará al guardar.
+    <!-- FALLBACK -->
+    <div v-else class="cn-unknown">
+      Esta condición tiene una forma no reconocida y no se podrá guardar.
     </div>
   </div>
 </template>
 
 <script>
-// SF-5 Capa 3 · DEC-REF-62.e — editor visual recursivo de crossExpr.
-// Renderiza y edita el árbol AND/OR + hoja equipo. Hoja de suma
-// modelada pero NO creable desde la UI (activada en SF-6, DEC-REF-63);
-// el componente sí la renderiza read-only para robustez si viniera en
-// datos.
-//
-// Recursión Vue: `name: 'cross-expr-node'` permite auto-referencia en
-// el template. Es el PRIMER patrón recursivo del codebase — atención a
-// `key` estable en el v-for de children (índice NO alcanza si hay
-// remove; usar id local generado `__editorKey`).
-//
-// Contrato:
-//   - v-model: recibe/emite el nodo COMPLETO cada vez que cambia.
-//     El padre reemplaza referencia (immutable style) → Vue re-render.
-//   - depth (Number): profundidad actual, empieza en 0 en el root.
-//   - maxDepth (Number, default 8): límite de anidamiento
-//     (ruleValidation.js:18 rechaza con "profundidad > 8" en el backend).
-//     Botón "Agregar grupo" queda disabled con tooltip explicativo al
-//     llegar al límite — aviso client-side ANTES del submit.
-//   - isRoot (Boolean, default false): oculta el botón "Quitar" en la
-//     raíz (el editor de reglas la reemplaza con "Convertir a typeD"
-//     si el usuario cambia de mente).
-//
-// El nodo se persiste en Mongo como Mixed (`crossExpr: Mixed` en
-// rule_definition.js:42); mongoose acepta cualquier shape. Al guardar,
-// se strippean los `__editorKey` (helper `stripEditorKeys` — llamado
-// desde el padre en pages/rulepacks/_packId.vue).
+// DEC-REF-114 (#83) — rediseño de presentación del editor de crossExpr.
+// El contrato de datos NO cambia: v-model del nodo completo (estilo inmutable),
+// depth/maxDepth, isRoot, y stripEditorKeys al guardar (desde el padre).
+// NUEVO: prop `sheets` (equipmentsheets) para poblar equipo/variable con los
+// mismos selects que el modo simple (ConditionRow). Si un equipo no tiene
+// ficha, cae a input de texto libre (mismo fallback que ConditionRow).
+import { Select, Option, Input } from 'element-ui';
 
-const uid = (() => {
-  let n = 0;
-  return () => `k${++n}`;
-})();
+const uid = (() => { let n = 0; return () => `k${++n}`; })();
 
-// DEC-REF-100 D-7 (F7) — labels de usuario para los comparadores (misma
-// capa de presentación que fichas.vue / rulepacks/_packId.vue; la
-// identidad interna lt/gt/... no se toca).
 const OPERATOR_LABELS = {
   gt: 'mayor que', gte: 'mayor o igual que',
   lt: 'menor que', lte: 'menor o igual que',
@@ -261,25 +180,24 @@ const OPERATOR_LABELS = {
 };
 
 function ensureKey(node) {
-  if (node && typeof node === 'object' && !node.__editorKey) {
-    node.__editorKey = uid();
-  }
+  if (node && typeof node === 'object' && !node.__editorKey) node.__editorKey = uid();
   return node;
 }
 
 export default {
   name: 'cross-expr-node',
+  components: { [Select.name]: Select, [Option.name]: Option, [Input.name]: Input },
   props: {
     value: { type: Object, required: true },
     depth: { type: Number, default: 0 },
     maxDepth: { type: Number, default: 8 },
-    isRoot: { type: Boolean, default: false }
+    isRoot: { type: Boolean, default: false },
+    sheets: { type: Array, default: () => [] },
   },
-  data() {
-    return { OPERATOR_LABELS };
-  },
+  data() { return { OPERATOR_LABELS }; },
   computed: {
-    nodeType() {      if (this.value.op === 'AND') return 'AND';
+    nodeType() {
+      if (this.value.op === 'AND') return 'AND';
       if (this.value.op === 'OR')  return 'OR';
       if (Array.isArray(this.value.sum)) return 'leafSum';
       return 'leafDevice';
@@ -287,156 +205,171 @@ export default {
     isLogical()    { return this.nodeType === 'AND' || this.nodeType === 'OR'; },
     isLeafDevice() { return this.nodeType === 'leafDevice'; },
     isSumLeaf()    { return this.nodeType === 'leafSum'; },
-    // Enriquece children con __editorKey estable in-place. Vue 2 no
-    // avisa por mutar campos internos de objetos prop; el emit
-    // posterior al padre no se ve afectado porque el key se strippea
-    // al guardar.
-    localChildren() {
-      const children = this.value.children || [];
-      return children.map(ensureKey);
-    },
-    // SF-6 · DEC-REF-65.e — igual patrón que localChildren pero sobre el
-    // array `sum` de renglones {deviceType, variable}. `key` estable para
-    // que Vue no reordene al remover.
-    localSumTerms() {
-      const terms = this.value.sum || [];
-      return terms.map(ensureKey);
-    }
+    opClass()  { return this.nodeType === 'OR' ? 'o' : 'y'; },
+    opWord()   { return this.nodeType === 'OR' ? 'AL MENOS UNA de estas condiciones se cumple:' : 'TODAS estas condiciones se cumplen:'; },
+    opChip()   { return this.nodeType === 'OR' ? 'O · al menos una' : 'Y · todas'; },
+    opHint()   { return this.nodeType === 'OR'
+      ? 'Se cumple cuando al menos una de las condiciones de adentro se cumple.'
+      : 'Se cumple cuando todas las condiciones de adentro se cumplen a la vez.'; },
+
+    condOp()    { return (this.value.condition && this.value.condition.op) || 'gt'; },
+    condValue() { return this.value.condition ? this.value.condition.value : undefined; },
+
+    localChildren() { return (this.value.children || []).map(ensureKey); },
+    localSumTerms() { return (this.value.sum || []).map(ensureKey); },
+
+    sheetByType() { const m = {}; for (const s of this.sheets) m[s.deviceType] = s; return m; },
+    leafVariables() { const s = this.sheetByType[this.value.deviceType]; return (s && s.variables) || []; },
+    leafSelectedVar() { return this.leafVariables.find(v => v.name === this.value.variable) || null; },
+    leafValueType() { return (this.leafSelectedVar && this.leafSelectedVar.type) || 'float'; },
+    leafUnit() { return (this.leafSelectedVar && this.leafSelectedVar.unit) || ''; },
   },
   methods: {
-    emitUpdate(next) {
-      this.$emit('input', ensureKey(next));
-    },
-    onTypeChange(newType) {
-      // Reset estructural: cambiar de tipo resetea la forma. Preservar
-      // solo lo que tenga sentido (nada compatible entre AND/OR/leaf).
-      let next;
-      if (newType === 'AND' || newType === 'OR') {
-        next = { op: newType, children: [] };
-      } else if (newType === 'leafDevice') {
-        next = { deviceType: '', variable: '', condition: { op: 'gt', value: 0 } };
-      } else if (newType === 'leafSum') {
-        // SF-6 · DEC-REF-65.e — shape aceptado por ruleValidation.js:32-45:
-        // sum array no vacío + condition con op y value numérico.
-        next = { sum: [{ deviceType: '', variable: '' }], condition: { op: 'gt', value: 0 } };
-      }
-      this.emitUpdate(next);
-    },
+    varLabel(v) { return (v.label || v.name) + (v.unit ? ` [${v.unit}]` : ''); },
+    variablesFor(deviceType) { const s = this.sheetByType[deviceType]; return (s && s.variables) || []; },
+
+    emitUpdate(next) { this.$emit('input', ensureKey(next)); },
+    setGroupOp(op) { if (this.nodeType === op) return; this.emitUpdate({ ...this.value, op }); },
+
     onChildInput(i, newChild) {
-      const nextChildren = this.value.children.slice();
-      nextChildren[i] = newChild;
-      this.emitUpdate({ ...this.value, children: nextChildren });
+      const next = this.value.children.slice(); next[i] = newChild;
+      this.emitUpdate({ ...this.value, children: next });
     },
     onChildRemove(i) {
-      const nextChildren = this.value.children.slice();
-      nextChildren.splice(i, 1);
-      this.emitUpdate({ ...this.value, children: nextChildren });
+      const next = this.value.children.slice(); next.splice(i, 1);
+      this.emitUpdate({ ...this.value, children: next });
     },
     addLeafDevice() {
       const leaf = { deviceType: '', variable: '', condition: { op: 'gt', value: 0 } };
-      this.emitUpdate({
-        ...this.value,
-        children: [...(this.value.children || []), ensureKey(leaf)]
-      });
+      this.emitUpdate({ ...this.value, children: [...(this.value.children || []), ensureKey(leaf)] });
     },
     addLogicalGroup() {
       if (this.depth + 1 >= this.maxDepth) return;
       const group = { op: 'AND', children: [] };
-      this.emitUpdate({
-        ...this.value,
-        children: [...(this.value.children || []), ensureKey(group)]
-      });
+      this.emitUpdate({ ...this.value, children: [...(this.value.children || []), ensureKey(group)] });
     },
-    // SF-6 · DEC-REF-65.e — agregar hoja de suma como hijo del nodo
-    // lógico actual. Shape mismo que en onTypeChange('leafSum').
     addLeafSum() {
       const leaf = { sum: [{ deviceType: '', variable: '' }], condition: { op: 'gt', value: 0 } };
-      this.emitUpdate({
-        ...this.value,
-        children: [...(this.value.children || []), ensureKey(leaf)]
-      });
+      this.emitUpdate({ ...this.value, children: [...(this.value.children || []), ensureKey(leaf)] });
     },
-    // SF-6 · DEC-REF-65.e — mutaciones sobre el array `sum` de la hoja.
-    // Cada mutation emite el nodo completo (immutable style) al padre.
-    addSumTerm() {
-      const term = { deviceType: '', variable: '' };
-      this.emitUpdate({
-        ...this.value,
-        sum: [...(this.value.sum || []), ensureKey(term)]
-      });
-    },
-    removeSumTerm(i) {
-      // ruleValidation exige sum no vacío — no permitir quitar el último.
-      if ((this.value.sum || []).length <= 1) return;
-      const nextSum = this.value.sum.slice();
-      nextSum.splice(i, 1);
-      this.emitUpdate({ ...this.value, sum: nextSum });
-    },
-    updateSumTerm(i, field, value) {
-      const nextSum = this.value.sum.slice();
-      nextSum[i] = { ...nextSum[i], [field]: value };
-      this.emitUpdate({ ...this.value, sum: nextSum });
-    },
-    updateLeaf(field, value) {
-      this.emitUpdate({ ...this.value, [field]: value });
-    },
+
+    // hoja equipo
+    onLeafEquipo(dt) { this.emitUpdate({ ...this.value, deviceType: dt, variable: '' }); },
+    onLeafVariable(v) { this.emitUpdate({ ...this.value, variable: v }); },
+    updateLeaf(field, value) { this.emitUpdate({ ...this.value, [field]: value }); },
     updateCondition(field, value) {
       const cond = { ...(this.value.condition || {}), [field]: value };
       this.emitUpdate({ ...this.value, condition: cond });
     },
+
+    // hoja suma
+    addSumTerm() {
+      const term = { deviceType: '', variable: '' };
+      this.emitUpdate({ ...this.value, sum: [...(this.value.sum || []), ensureKey(term)] });
+    },
+    removeSumTerm(i) {
+      if ((this.value.sum || []).length <= 1) return;
+      const next = this.value.sum.slice(); next.splice(i, 1);
+      this.emitUpdate({ ...this.value, sum: next });
+    },
+    updateSumTerm(i, field, value) {
+      const next = this.value.sum.slice(); next[i] = { ...next[i], [field]: value };
+      if (field === 'deviceType') next[i].variable = '';
+      this.emitUpdate({ ...this.value, sum: next });
+    },
+    onSumTermDevice(i, dt) { this.updateSumTerm(i, 'deviceType', dt); },
+
     numericOrRaw(v) {
-      // Preservar string vacío para no romper "" → 0; parsear cuando
-      // hay contenido no vacío. Valores no-numéricos (para eq/neq con
-      // strings tipo 'RUNNING') pasan como string.
       if (v === '' || v === null || v === undefined) return '';
-      const n = Number(v);
-      return Number.isFinite(n) ? n : v;
-    }
-  }
+      const n = Number(v); return Number.isFinite(n) ? n : v;
+    },
+  },
 };
 
-// Helper para strip de __editorKey antes de guardar. Recursivo,
-// immutable. Exportado como named export además del componente
-// default para import desde la página del editor.
 function stripEditorKeys(node) {
   if (!node || typeof node !== 'object') return node;
   const out = {};
   for (const key of Object.keys(node)) {
     if (key === '__editorKey') continue;
     const v = node[key];
-    if (Array.isArray(v)) {
-      out[key] = v.map(stripEditorKeys);
-    } else if (v && typeof v === 'object') {
-      out[key] = stripEditorKeys(v);
-    } else {
-      out[key] = v;
-    }
+    if (Array.isArray(v)) out[key] = v.map(stripEditorKeys);
+    else if (v && typeof v === 'object') out[key] = stripEditorKeys(v);
+    else out[key] = v;
   }
   return out;
 }
-
 export { stripEditorKeys };
 </script>
 
 <style scoped>
-.cross-node {
-  border-left: 2px solid rgba(255,255,255,0.1);
-  padding-left: 8px;
-  margin-bottom: 4px;
-}
-.cross-node.depth-0 { border-left-color: rgba(88, 103, 221, 0.6); }
-.cross-node.depth-1 { border-left-color: rgba(88, 103, 221, 0.45); }
-.cross-node.depth-2 { border-left-color: rgba(88, 103, 221, 0.3); }
-.cross-child {
-  padding: 4px;
-  background: rgba(255,255,255,0.02);
-  border-radius: 4px;
-}
-.cross-sum pre {
-  max-height: 120px;
-  overflow: auto;
-}
+/* DEC-REF-114 — paleta: teal = Y (todas) · ámbar = O (al menos una) */
+.cn { --teal:#00bf9a; --teal-d:#00806c; --teal-soft:rgba(0,191,154,.10); --teal-soft2:rgba(0,191,154,.18);
+      --amber:#f5a623; --amber-d:#b9791a; --amber-soft:rgba(245,166,35,.12); --amber-soft2:rgba(245,166,35,.22);
+      --line:#e6e9f0; --muted:#8898aa; }
 
-/* DEC-REF-112 — modo claro */
-.white-content .cross-child { background: rgba(0, 0, 0, 0.03); }
+/* ── grupo raíz: tarjeta con encabezado de color pleno ── */
+.cn-group--root { border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+.cn-group--root > .cn-ghead { padding:9px 12px; color:#fff; }
+.cn--root.y .cn-group--root > .cn-ghead { background:var(--teal); }
+.cn--root.o .cn-group--root > .cn-ghead { background:var(--amber); }
+.cn-group--root > .cn-gbody { padding:10px 12px 12px; }
+.cn-banner { font-size:12px; font-weight:600; letter-spacing:.02em; flex:1; }
+
+/* ── grupo anidado: riel de color + badge ── */
+.cn-group--sub { position:relative; padding:6px 0 6px 14px; margin:6px 0; border-radius:0 8px 8px 0; }
+.cn-group--sub::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:4px; }
+.cn--sub.y .cn-group--sub::before { background:var(--teal); }
+.cn--sub.o .cn-group--sub::before { background:var(--amber); }
+.cn--sub.y .cn-group--sub { background:linear-gradient(90deg,var(--teal-soft),transparent 55%); }
+.cn--sub.o .cn-group--sub { background:linear-gradient(90deg,var(--amber-soft),transparent 55%); }
+
+.cn-ghead { display:flex; align-items:center; gap:10px; }
+.cn-group--sub > .cn-ghead { margin-bottom:6px; }
+
+.cn-chip { display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; border-radius:20px; padding:3px 12px; flex:1; }
+.cn-chip .cn-dot { width:8px; height:8px; border-radius:50%; }
+.cn-chip.y { color:var(--teal-d); background:var(--teal-soft2); } .cn-chip.y .cn-dot { background:var(--teal); }
+.cn-chip.o { color:var(--amber-d); background:var(--amber-soft2); } .cn-chip.o .cn-dot { background:var(--amber); }
+
+/* toggle segmentado Y/O */
+.cn-seg { display:inline-flex; border:1px solid rgba(255,255,255,.5); border-radius:20px; overflow:hidden; font-size:11px; font-weight:600; }
+.cn-group--sub .cn-seg { border-color:var(--line); }
+.cn-seg button { border:none; background:transparent; color:inherit; opacity:.75; padding:3px 11px; cursor:pointer; font-family:inherit; font-weight:600; }
+.cn-group--sub .cn-seg button { color:var(--muted); opacity:1; }
+.cn-seg button.on.y { background:var(--teal); color:#fff; opacity:1; }
+.cn-seg button.on.o { background:var(--amber); color:#fff; opacity:1; }
+.cn-rm-group { flex-shrink:0; }
+
+.cn-child { margin-bottom:4px; }
+.cn-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.cn-sumbtn { border-style:dashed !important; }
+.cn-hint { font-size:11px; color:var(--muted); margin:8px 2px 0; }
+.cn-empty { font-size:12px; color:var(--muted); margin:6px 2px; }
+
+/* ── hoja condición ── */
+.cn-leaf { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:4px 0; }
+.cn-equipo { width:120px; } .cn-var { width:160px; } .cn-op { width:140px; } .cn-val { width:96px; }
+.cn-unit { font-size:12px; color:var(--muted); }
+.cn-rm { flex-shrink:0; }
+
+/* ── hoja suma ── */
+.cn-sum { border:1px dashed var(--amber); border-radius:10px; padding:10px 12px; background:var(--amber-soft); margin:4px 0; }
+.cn-sum-head { display:flex; align-items:center; justify-content:space-between; }
+.cn-sum-title { font-size:12px; font-weight:600; color:var(--amber-d); }
+.cn-sum-desc { font-size:11.5px; color:var(--muted); margin:4px 0 10px; line-height:1.5; }
+.cn-sum-term { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+.cn-sum-add { margin:2px 0 10px; }
+.cn-sum-cond { display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:10px; }
+.cn-sum-cond-lbl { font-size:12px; color:var(--muted); }
+
+.cn-unknown { color:#fd5d93; font-size:12px; padding:6px 0; }
+
+/* ── modo oscuro (el tema por defecto es claro, DEC-REF-112) ── */
+body:not(.white-content) .cn-group--root { border-color:rgba(255,255,255,.12); }
+body:not(.white-content) .cn-hint,
+body:not(.white-content) .cn-empty,
+body:not(.white-content) .cn-unit,
+body:not(.white-content) .cn-sum-desc,
+body:not(.white-content) .cn-sum-cond-lbl { color:rgba(255,255,255,.5); }
+body:not(.white-content) .cn-sum-cond { border-top-color:rgba(255,255,255,.12); }
 </style>
