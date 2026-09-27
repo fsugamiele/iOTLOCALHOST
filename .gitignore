@@ -81,3 +81,6 @@ docsRefactor/Hardware/*.pdf
 # Entorno P2 (DEC-REF-92) — envs con secretos y logs propios
 p2/
 logs-p2/
+
+# Backups locales de sesiones (no versionar)
+backups/
