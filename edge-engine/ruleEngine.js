@@ -177,18 +177,21 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
         }
         case 'M': {
           // spec_motor_m.md — soft sensor: métrica derivada vs condition.
-          const res = evaluateM(rule, value, { mState, dId, eventTs });
+          // M2 multivariante (spread) puede devolver `outlierDId` = el equipo
+          // puntual a intervenir (A+B): la alarma se ancla a ESE device.
+          const res = evaluateM(rule, value, { mState, dId, eventTs, siteState, siteCode });
           if (res.detail) continue;   // insufficient/maturing/unsupported → sin señal
+          const targetDId = res.outlierDId || dId;
           if (res.fired) {
             fireAlarm({
-              rule, value: res.metricValue, deviceId: dId,
+              rule, value: res.metricValue, deviceId: targetDId,
               reason: 'soft-sensor', mode: 'M',
               thresholdUsed: rule.condition ? rule.condition.value : null,
               cooldownState, siteState, activeState,
             });
           } else if (activeState.has(rule.ruleId)) {
             fireResolve({
-              rule, deviceId: dId,
+              rule, deviceId: targetDId,
               reason: 'soft-sensor-cleared', mode: 'M',
               cooldownState, siteState, activeState,
             });

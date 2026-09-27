@@ -94,7 +94,7 @@ evaluateM(rule, value, { mState, siteState, dId, eventTs }) → { fired, metricV
 |---|---|---|---|
 | `ratio` | inputs[0] ÷ inputs[1] | 2 | eficiencia (kW/consumo) |
 | `divergence` | \|inputs[0] − inputs[1]\| | 2 | dos señales que deberían ir juntas |
-| `spread` | max − min de todos los inputs | N (≥2) | spread de celdas / balance de rectificadores |
+| `spread` | max − min de la variable entre TODOS los devices del deviceType en el site | 1 var (N devices) | spread de celdas / balance de rectificadores. **A+B (firma Franco #86):** dispara a nivel conjunto (detecta el desbalance) **y** señala el equipo puntual a intervenir = el **outlier** (el más alejado de la mediana del grupo); la alarma se ancla a ESE `deviceId`. Con 2 devices avisa sin culpar; con 3+ el culpable es claro. |
 
 **D · Acumulación (acumulador en mState):**
 | metric | Cálculo | mParams | Notas |

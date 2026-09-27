@@ -191,8 +191,20 @@ function validateM(rule) {
   if (rule.metric === 'projection' && !isNumber(rule.mParams && rule.mParams.target)) {
     return { ok: false, reason: 'typeM: projection requiere mParams.target numérico' };
   }
-  // Multivariante (ratio/divergence/spread) y acumuladores se validan al
-  // implementar sus olas (M2/M3). En M1 solo llegan slope/acceleration/projection.
+  // Ola M2 — multivariante instantáneo (lee siteState).
+  if (rule.metric === 'ratio' || rule.metric === 'divergence') {
+    const inp = rule.inputs;
+    if (!Array.isArray(inp) || inp.length !== 2 || inp.some(i => !i || !i.variable)) {
+      return { ok: false, reason: `typeM: ${rule.metric} requiere inputs[2], cada uno con variable` };
+    }
+  }
+  if (rule.metric === 'spread') {
+    const inp = (rule.inputs && rule.inputs[0]) || {};
+    const variable = inp.variable || rule.variable;
+    if (!variable) {
+      return { ok: false, reason: 'typeM: spread requiere una variable (rule.variable o inputs[0].variable) a comparar entre los equipos del site' };
+    }
+  }
   return { ok: true };
 }
 

@@ -54,7 +54,72 @@ function computeMetric(rule, buf) {
   }
 }
 
-function evaluateM(rule, value, { mState, dId, eventTs }) {
+// ── M2 · multivariante instantáneo (lee siteState, sin buffer) ──────────
+const INSTANT_METRICS = ['ratio', 'divergence', 'spread'];
+
+function median(vals) {
+  const s = vals.slice().sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+// Valor actual de una {deviceType, variable} en el site: prioriza el device que
+// disparó (mismo equipo, caso ratio/divergence), si no el primero de su tipo.
+function readOne(siteState, siteCode, dId, input, fallbackDt) {
+  const dt = (input && input.deviceType) || fallbackDt;
+  const variable = input && input.variable;
+  const self = siteState.get(dId);
+  if (self && Number.isFinite(Number(self[variable]))) return Number(self[variable]);
+  for (const [, st] of siteState) {
+    if (st && st._siteCode === siteCode && st._deviceType === dt && Number.isFinite(Number(st[variable]))) return Number(st[variable]);
+  }
+  return null;
+}
+
+function evaluateInstant(rule, { siteState, dId, siteCode }) {
+  if (!siteState) return { fired: false, metricValue: null, detail: 'insufficient' };
+  const inputs = (rule.inputs && rule.inputs.length) ? rule.inputs : [{ deviceType: rule.deviceType, variable: rule.variable }];
+
+  if (rule.metric === 'spread') {
+    // A+B (firma Franco): desbalance del conjunto + equipo puntual a intervenir.
+    const dt = inputs[0].deviceType || rule.deviceType;
+    const variable = inputs[0].variable || rule.variable;
+    const members = [];
+    for (const [id, st] of siteState) {
+      if (st && st._siteCode === siteCode && st._deviceType === dt) {
+        const n = Number(st[variable]);
+        if (Number.isFinite(n)) members.push({ dId: id, v: n });
+      }
+    }
+    if (members.length < 2) return { fired: false, metricValue: null, detail: 'insufficient' };
+    let maxM = members[0], minM = members[0];
+    for (const m of members) { if (m.v > maxM.v) maxM = m; if (m.v < minM.v) minM = m; }
+    const spread = maxM.v - minM.v;
+    const fired = evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, spread);
+    // culpable = el más alejado de la mediana del grupo (alto o bajo)
+    const med = median(members.map(m => m.v));
+    let outlier = members[0];
+    for (const m of members) if (Math.abs(m.v - med) > Math.abs(outlier.v - med)) outlier = m;
+    return { fired, metricValue: spread, outlierDId: outlier.dId };
+  }
+
+  // ratio / divergence: dos entradas (típicamente dos variables del mismo equipo)
+  const a = readOne(siteState, siteCode, dId, inputs[0], rule.deviceType);
+  const b = readOne(siteState, siteCode, dId, inputs[1] || inputs[0], rule.deviceType);
+  if (a == null || b == null) return { fired: false, metricValue: null, detail: 'insufficient' };
+  let metricValue;
+  if (rule.metric === 'ratio') {
+    if (b === 0) return { fired: false, metricValue: Infinity };
+    metricValue = a / b;
+  } else {
+    metricValue = Math.abs(a - b);   // divergence
+  }
+  const fired = evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, metricValue);
+  return { fired, metricValue };
+}
+
+function evaluateM(rule, value, ctx) {
+  if (INSTANT_METRICS.includes(rule.metric)) return evaluateInstant(rule, ctx);
+  const { mState, dId, eventTs } = ctx;
   const w = rule.mWindow || {};
   if (!w.durationSec || value === null || value === undefined) {
     return { fired: false, metricValue: null, detail: 'insufficient' };
