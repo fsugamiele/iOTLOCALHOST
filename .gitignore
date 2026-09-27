@@ -84,3 +84,10 @@ logs-p2/
 
 # Backups locales de sesiones (no versionar)
 backups/
+
+# Biblioteca de campo — binarios NO versionados (INDICE: "el rar NO se versiona")
+docsRefactor/_biblioteca_campo/*.pdf
+docsRefactor/_biblioteca_campo/*.jpeg
+docsRefactor/_biblioteca_campo/*.crdownload*
+docsRefactor/Hardware/fotos/
+backups/
