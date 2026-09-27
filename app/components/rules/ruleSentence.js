@@ -55,6 +55,19 @@ export function summarize(r, opts = {}) {
     }
     return 'condición combinada entre equipos';
   }
+  if (r.type === 'M') {
+    const u = r.unit ? ` ${r.unit}` : '';
+    if (r.metric === 'slope') {
+      const c = r.condition || {};
+      const dir = c.op === 'gt' ? 'sube' : 'baja';
+      return `${varName} ${dir} más de ${Math.abs(c.value)}${u}`;
+    }
+    if (r.metric === 'projection') {
+      const tgt = r.mParams && r.mParams.target;
+      return `${varName} va a llegar a ${tgt} en menos de ${(r.condition || {}).value} h`;
+    }
+    return `${varName} · soft sensor (${r.metric})`;
+  }
   return varName;
 }
 
@@ -196,6 +209,8 @@ export function emptySentence(deviceType) {
   return {
     conditions: [emptyCondition(deviceType)],
     join: 'AND', temporal: null, setpoint: null,
+    // M (soft sensors, Ola M1): trend=slope · projection=projection.
+    trend: null, projection: null, mPreset: false,
     severity: 'warning', recommendation: '', label: '', nested: false,
   };
 }
@@ -203,6 +218,7 @@ export function emptySentence(deviceType) {
 // Tipo inferido de la frase (nunca lo elige el usuario).
 export function inferType(s) {
   if ((s.conditions || []).length >= 2) return 'cross';
+  if (s.trend || s.projection) return 'M';
   if (s.setpoint) return 'C';
   if (s.temporal) return 'S';
   return 'D';
@@ -248,6 +264,21 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       countThreshold: Number(s.temporal.count) || 1,
       matchCondition: { op: c0.op, value: coerceValue(c0.value, c0.variableType) },
     };
+  } else if (type === 'M') {
+    // Ola M1 — tendencia (slope) / proyección (projection).
+    if (s.trend) {
+      const rate = Math.abs(Number(s.trend.rate) || 0);
+      rule.metric = 'slope';
+      rule.condition = { op: s.trend.direction === 'up' ? 'gt' : 'lt', value: s.trend.direction === 'up' ? rate : -rate };
+      rule.mWindow = { durationSec: Math.round((Number(s.trend.windowMin) || 0) * 60), minSamples: 3 };
+      rule.unit = `${c0.unit || ''}/min`.replace(/^\//, '');
+    } else {
+      rule.metric = 'projection';
+      rule.mParams = { target: Number(s.projection.target) };
+      rule.condition = { op: 'lt', value: Number(s.projection.hoursThreshold) || 0 };
+      rule.mWindow = { durationSec: Math.round((Number(s.projection.windowMin) || 0) * 60), minSamples: 3 };
+      rule.unit = 'h';
+    }
   } else { // D
     rule.condition = { op: c0.op, value: coerceValue(c0.value, c0.variableType) };
   }
@@ -262,6 +293,7 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
 export function ruleToSentence(rule) {
   const base = {
     conditions: [], join: 'AND', temporal: null, setpoint: null,
+    trend: null, projection: null, mPreset: false,
     severity: rule.severity || 'warning', recommendation: rule.recommendation || '',
     label: rule.label || '', nested: false,
   };
@@ -285,6 +317,17 @@ export function ruleToSentence(rule) {
     const mc = rule.window.matchCondition || {};
     base.conditions = [leaf(rule.variable, mc.op, mc.value)];
     base.temporal = { durationMin: Math.round((rule.window.durationSec || 0) / 60), count: rule.window.countThreshold || 1 };
+  } else if (rule.type === 'M') {
+    base.conditions = [leaf(rule.variable, 'lt', '')];
+    const wMin = Math.round(((rule.mWindow && rule.mWindow.durationSec) || 0) / 60);
+    if (rule.metric === 'slope') {
+      const c = rule.condition || {};
+      base.trend = { direction: c.op === 'gt' ? 'up' : 'down', rate: Math.abs(c.value != null ? c.value : 0), windowMin: wMin || 10 };
+    } else if (rule.metric === 'projection') {
+      base.projection = { target: (rule.mParams && rule.mParams.target), hoursThreshold: (rule.condition || {}).value, windowMin: wMin || 30 };
+    } else {
+      base.mPreset = true;   // acceleration/otras técnicas → preset (umbral editable)
+    }
   } else { // D
     base.conditions = [leaf(rule.variable, (rule.condition || {}).op, (rule.condition || {}).value)];
   }

@@ -48,6 +48,10 @@ export default {
     badge()    { return severityBadge(this.rule.severity); },
     // Etiqueta de tipo secundaria (disenso de Motor: trazabilidad, no protagonista).
     typeHint() {
+      if (this.rule.type === 'M') {
+        const mm = { slope: 'tendencia', projection: 'proyección', acceleration: 'aceleración' };
+        return mm[this.rule.metric] || 'soft sensor';
+      }
       const m = { D: 'umbral', cross: 'combinada', C: 'contra setpoint', S: 'en el tiempo' };
       return m[this.rule.type] || this.rule.type;
     },

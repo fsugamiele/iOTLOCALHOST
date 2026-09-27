@@ -32,8 +32,10 @@
           <div class="se-mods">
             <base-button size="sm" type="primary" @click="addCondition"><i class="fa fa-plus"></i> condición</base-button>
             <template v-if="s.conditions.length === 1">
-              <base-button size="sm" :type="s.temporal ? 'primary' : 'default'" :disabled="!!s.setpoint" @click="toggleTemporal"><i class="fa fa-clock"></i> durante un tiempo</base-button>
-              <base-button size="sm" :type="s.setpoint ? 'primary' : 'default'" :disabled="!!s.temporal" @click="toggleSetpoint"><i class="fa fa-sliders-h"></i> vs valor del equipo</base-button>
+              <base-button size="sm" :type="s.temporal ? 'primary' : 'default'" :disabled="!!s.setpoint || !!s.trend || !!s.projection" @click="toggleTemporal"><i class="fa fa-clock"></i> durante un tiempo</base-button>
+              <base-button size="sm" :type="s.setpoint ? 'primary' : 'default'" :disabled="!!s.temporal || !!s.trend || !!s.projection" @click="toggleSetpoint"><i class="fa fa-sliders-h"></i> vs valor del equipo</base-button>
+              <base-button size="sm" :type="s.trend ? 'primary' : 'default'" :disabled="!!s.temporal || !!s.setpoint || !!s.projection" @click="toggleTrend"><i class="fa fa-chart-line"></i> tendencia</base-button>
+              <base-button size="sm" :type="s.projection ? 'primary' : 'default'" :disabled="!!s.temporal || !!s.setpoint || !!s.trend" @click="toggleProjection"><i class="fa fa-bullseye"></i> proyección</base-button>
             </template>
             <base-button v-if="s.conditions.length > 1" size="sm" type="default" @click="toGrouped" title="Combinar en grupos anidados (Y/O dentro de Y/O)"><i class="fa fa-sitemap"></i> agrupar condiciones</base-button>
           </div>
@@ -49,6 +51,29 @@
               <el-option v-for="v in variablesOfFirst" :key="v.name" :value="v.name" :label="v.label || v.name" />
             </el-select>
             <el-input v-else v-model="s.setpoint.variable" size="small" class="se-sp" placeholder="variable del setpoint" />
+          </div>
+
+          <!-- M · tendencia (slope) -->
+          <div v-if="s.trend" class="se-extra">
+            … su <b>tendencia</b>:
+            <el-select v-model="s.trend.direction" size="small" class="se-dir">
+              <el-option value="down" label="baja" />
+              <el-option value="up" label="sube" />
+            </el-select>
+            más de
+            <el-input v-model.number="s.trend.rate" size="small" type="number" class="se-mini" />
+            {{ trendUnit }}/min, medido en los últimos
+            <el-input v-model.number="s.trend.windowMin" size="small" type="number" class="se-mini" /> min.
+          </div>
+
+          <!-- M · proyección (projection) -->
+          <div v-if="s.projection" class="se-extra">
+            … va a <b>llegar a</b>
+            <el-input v-model.number="s.projection.target" size="small" type="number" class="se-mini" /> {{ trendUnit }}
+            en menos de
+            <el-input v-model.number="s.projection.hoursThreshold" size="small" type="number" class="se-mini" /> h
+            <span class="text-muted">(ventana</span>
+            <el-input v-model.number="s.projection.windowMin" size="small" type="number" class="se-mini" /> <span class="text-muted">min)</span>.
           </div>
         </template>
 
@@ -188,7 +213,14 @@ export default {
     },
     sevLabel() { return severityLabel(this.s.severity); },
     badge() { return severityBadge(this.s.severity); },
-    typeHint() { this.tick; return this.advanced ? TYPE_HINT.cross : (TYPE_HINT[inferType(this.s)] || ''); },
+    trendUnit() { return (this.s.conditions[0] && this.s.conditions[0].unit) || ''; },
+    typeHint() {
+      this.tick;
+      if (this.advanced) return TYPE_HINT.cross;
+      if (this.s.trend) return 'tendencia';
+      if (this.s.projection) return 'proyección';
+      return TYPE_HINT[inferType(this.s)] || '';
+    },
     // Respaldo en lenguaje natural, unificado: cualquier cross (simple 2+ o
     // avanzado) pasa por describeCross (labels de ficha); D/S/C por summarize.
     naturalText() {
@@ -204,10 +236,12 @@ export default {
       if (!conds.length) return false;
       for (const c of conds) {
         if (!c.variable) return false;
-        if (!this.s.setpoint && (c.value === '' || c.value === null || c.value === undefined)) return false;
+        if (!this.s.setpoint && !this.s.trend && !this.s.projection && (c.value === '' || c.value === null || c.value === undefined)) return false;
       }
       if (this.s.setpoint && !this.s.setpoint.variable) return false;
       if (this.s.temporal && (!(this.s.temporal.durationMin > 0) || !(this.s.temporal.count >= 1))) return false;
+      if (this.s.trend && (!(this.s.trend.rate > 0) || !(this.s.trend.windowMin > 0))) return false;
+      if (this.s.projection && (this.s.projection.target === '' || this.s.projection.target == null || !(this.s.projection.hoursThreshold > 0) || !(this.s.projection.windowMin > 0))) return false;
       return true;
     },
   },
@@ -215,11 +249,14 @@ export default {
     touch() { this.tick++; },
     addCondition() {
       this.s.conditions.push(emptyCondition((this.pack && this.pack.deviceType) || ''));
-      this.s.temporal = null; this.s.setpoint = null; this.touch();
+      this.s.temporal = null; this.s.setpoint = null; this.s.trend = null; this.s.projection = null; this.touch();
     },
     removeCondition(i) { this.s.conditions.splice(i, 1); this.touch(); },
-    toggleTemporal() { this.s.temporal = this.s.temporal ? null : { durationMin: 5, count: 1 }; if (this.s.temporal) this.s.setpoint = null; this.touch(); },
-    toggleSetpoint() { this.s.setpoint = this.s.setpoint ? null : { variable: '' }; if (this.s.setpoint) this.s.temporal = null; this.touch(); },
+    toggleTemporal() { this.s.temporal = this.s.temporal ? null : { durationMin: 5, count: 1 }; if (this.s.temporal) { this.s.setpoint = null; this.s.trend = null; this.s.projection = null; } this.touch(); },
+    toggleSetpoint() { this.s.setpoint = this.s.setpoint ? null : { variable: '' }; if (this.s.setpoint) { this.s.temporal = null; this.s.trend = null; this.s.projection = null; } this.touch(); },
+    // M · tendencia (slope) y proyección (projection) — Ola M1.
+    toggleTrend() { this.s.trend = this.s.trend ? null : { direction: 'down', rate: 0.3, windowMin: 10 }; if (this.s.trend) { this.s.temporal = null; this.s.setpoint = null; this.s.projection = null; } this.touch(); },
+    toggleProjection() { this.s.projection = this.s.projection ? null : { target: '', hoursThreshold: 2, windowMin: 30 }; if (this.s.projection) { this.s.temporal = null; this.s.setpoint = null; this.s.trend = null; } this.touch(); },
     // Convierte las condiciones planas en un árbol crossExpr y pasa a avanzado.
     toGrouped() {
       const dt = (this.pack && this.pack.deviceType) || '';
@@ -273,6 +310,7 @@ export default {
 .se-mods { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .se-extra { margin: 10px 0 4px; padding: 9px 12px; border-radius: 9px; background: rgba(0,0,0,0.03); font-size: 0.9rem; line-height: 2; }
 .se-mini { width: 70px; }
+.se-dir { width: 88px; }
 .se-sp { width: 200px; }
 .se-sev { width: 220px; }
 .se-adv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9rem; }
