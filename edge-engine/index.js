@@ -11,7 +11,7 @@ const { loadPacks, hydrateSiteState } = require('./siteState');
 const { processMessage, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
-const { loadAutonomyConfigs, maybePublishAutonomy } = require('./autonomy');
+const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime } = require('./autonomy');
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -134,10 +134,13 @@ async function start() {
         });
       }
 
-      // Swap sincrónico post-await — no hay await entre estas tres líneas.
+      // Swap sincrónico post-await — no hay await entre estas líneas.
       packs = nextPacks;
       ruleSnapshot = nextSnap;
       autonomyConfigs = nextAutonomy;
+      // La config de autonomía pudo cambiar: historiales y debounce viejos
+      // quedan obsoletos (v2 híbrida — DEC-REF-115).
+      resetAutonomyRuntime();
 
       console.log(
         `[edge-engine] Reload OK — packs: ${nextPacks.map(p => p.packId).join(', ') || '(ninguno)'} · ` +
@@ -224,9 +227,10 @@ async function start() {
     if (!deviceState._lastUpdate) deviceState._lastUpdate = {};
     deviceState._lastUpdate[variable] = eventTs;
 
-    // DEC-REF-115 (#85) — si el mensaje es la variable de combustible de un
-    // equipo con autonomía configurada, derivar y publicar autonomy_hours.
-    maybePublishAutonomy({ client, configs: autonomyConfigs, dId, variable, value });
+    // DEC-REF-115 (#85) — si el mensaje es la variable de combustible (o la
+    // de marcha) de un equipo con autonomía configurada, derivar y publicar
+    // autonomy_hours (+ autonomy_source: 'measured'|'estimated').
+    maybeComputeAutonomy({ client, configs: autonomyConfigs, dId, variable, value, eventTs });
 
     processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, mState, eventTs });
   });
