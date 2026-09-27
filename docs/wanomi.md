@@ -12541,3 +12541,64 @@ Franco preguntó cómo se calcula la autonomía y detectó que no es configurabl
 2. Restos sin commitear de #81–#83 (devices.js, refactor rulepacks + components/rules/ + spec, wanomi_brand/) — pendiente decidir destino (ítem 2 del carry-over #84).
 3. Click-through visual de Franco: autonomía configurable en Templates, previews vivas de cascada/planta DC, y todo lo de #84.
 4. Deuda viva: refresh de tema ECharts en caliente · rincón deadband/umbral (#79-b) · limits ATS/battery/Eltek-DC.
+
+## Sesión #86 — 2026-09-27 · Área 2 (Software) · Cerebro de reglas: rediseño del editor + packs día-1 + motor M (soft sensors)
+
+Sesión larga, tres bloques que cierran con verificación y commits granulares. Numeración: se
+reservan **114**=autonomía/widgets (ya en corpus, #85) y **115**=override de autonomía por equipo
+(trabajo previo, en el working tree, aún sin revisar/commitear); el trabajo de #86 toma **116/117/118**.
+
+**DEC-REF-116 — Rediseño del editor de "Reglas de Monitoreo" (el cerebro).** Editor-frase inline
+que lee la regla como oración y esconde el tipo de motor (D/S/C/cross): condiciones Y/O, "durante un
+tiempo" (S), "vs valor del equipo" (C), y el cross **anidado embebido** (CrossExprNode con selects de
+ficha + estilo híbrido B-compacto teal=Y/ámbar=ámbar-O, textos de operador sin jerga). Estructura en
+**pasos numerados + confirmación** (tarjeta de alarma real como la ve el NOC + "en palabras" con labels
+de ficha), color unificado (teal=acción, gris=secundario, rojo=solo quitar). Se **retiran los modales
+muertos** (experto/wizard "por pasos") y se **registran el-dialog/select en index.vue** (bug de raíz:
+no estaban registrados → "formularios al pie de la tabla" + no se podía crear pack). Tarjetas muestran
+el **label legible** de la variable (resuelto desde la ficha, también para cross). ⚠ **Deuda declarada:**
+los comentarios de código en `components/rules/*` dicen `DEC-REF-114` (colisión con autonomía) — reconciliar
+a 116. Verificado: builds exit 0, E2E round-trip cross-plano y **cross anidado** (PUT 200 + relectura intacta).
+
+**DEC-REF-117 — Catálogo de alarmas por equipo (del análisis de la biblioteca de campo) + packs día-1
+sembrados.** Se analizó `docsRefactor/_biblioteca_campo/` (8 `.md` curados + muestreo de datasheets:
+InteliLite MRS16, grupos Wilson/DSE y Monte Ralo/John Deere, Eltek, Vertiv, batería litio, Westric).
+Entregables: `docsRefactor/Software/diseno_packs_alarmas.md` (tabla causa→señal temprana→acción precisa,
+3 mecanismos de anticipación: pre-aviso NFPA/J1939/2-niveles + SPN/FMI + tendencia) y
+`catalogo_spn_fmi_j1939.md` (diccionario código motor→acción de fábrica). **Packs día-1 sembrados** por
+el path productivo (0 warnings, variables reales de las fichas): `ats-inteliats-v1` (5, cascada),
+`eltek-smartpack-v1` (4, planta DC), `cummins-pcc-v1` (+2 → 7), y **nuevo** `gen-grupo-v1` (6:
+combustible/autonomía/batería) vía `tools/seed_packs_gen/`. Pendientes honestos: Cummins PCC registros,
+OIDs SNMP privados (Vertiv/ZTE/Delta), umbrales de spread/DC (→ reglas C auto-calibradas).
+
+**DEC-REF-118 — Motor M (soft sensors / reglas predictivas), Ola M1.** Spec firmada
+`docsRefactor/Software/spec_motor_m.md` (14 sub-familias en 5 olas; flapping/rate quedan en S; técnicas
+como preset con umbral editable — firma Franco). **Ola M1 implementada y verificada E2E:** tipo `M` en el
+schema + `validateM`; `edge-engine/evaluators/typeM.js` (**slope/acceleration/projection**) con `mState`
+(buffer/serie por regla:device, purga deslizante espejo de typeS, usa `eventTs`); dispatch en ruleEngine +
+limpieza en reload; enum `mode += 'M'` (edge y app). Escenario `eltek_dc_descarga` en el simulador (rampa
+de descarga). **UI:** toggles "tendencia"/"proyección" en el editor-frase (creables en lenguaje natural),
+mapeo frase↔M en `ruleSentence.js`. Verificaciones: unit del evaluador 7/7 (cazó bug `eventTs||Date.now()`
+con eventTs=0 → fix `!= null`); unit del mapeo frase↔M 12/12; round-trip M por API (PUT 200); **E2E en vivo:
+sim rampa → edge → typeM slope → fire/resolve `mode:M` persistido en Mongo con `metricValue` (V/min)**.
+
+**Además (fuera de M1, fix de paso):** `pages/devices.vue` estaba **roto** ("no carga") — el template del
+override de autonomía (DEC-REF-115) referenciaba métodos/data inexistentes; se **completó el `<script>`**
+(data + `openAutonomyModal`/`saveAutonomy`); endpoint `PUT /device/autonomy` verificado (set + heredar null).
+Queda **sin commitear** junto al resto de -115 (backend `device.js`+`routes/devices.js`) por revisar.
+
+**Commits #86:** `fb7368a` (editor reglas), `967ed26` (motor M), `0f3cbc2` (docs diseño), `a45cfac`
+(seed GEN), `31f0632` (UI M). Push al cerrar (orden de Franco).
+
+### Carry-over para #87
+
+1. **Revisar y commitear trabajo previo sin commitear** (Franco pidió verlo antes): override de autonomía
+   -115 (`device.js`, `routes/devices.js`, `devices.vue` ya arreglado), **panel del sitio/grilla**
+   (`dashboard.vue`, `sites/_siteCode.vue`, `PanelWidgetShell.vue`, `panellayouts.js`, `Widgets/gridSizing.js`,
+   `panel_mockup.html`), **fichas** (`equipment_sheet.js`, `equipmentsheets.js`, `fichas.vue`), y
+   `wanomi_brand/`. Ojo: `routes/devices.js` mezcla el fix DEC-113 (deviceType) con el endpoint -115.
+2. **Motor M — Olas M2-M5:** ratio/divergence/spread (M2) · accumulator/dutyCycle/cumulativeSince (M3) ·
+   flatline/staleness(tick)/stepJump (M4) · baseline/variance (M5), cada una con su escenario de simulador
+   y su exposición en UI (creable o preset).
+3. **Reconciliar la deuda de numeración** DEC-REF-114→116 en los comentarios de `components/rules/*`.
+4. Push acumulado histórico (#76–#85) sigue pendiente de orden.
