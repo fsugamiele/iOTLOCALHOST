@@ -119,6 +119,7 @@ function initialEltekState() {
     dc_bus_voltage:  -48.0,          // -48 VDC nominal telco
     dc_load_current: 30.0,           // A — carga TOTAL del banco del controlador
     temperature:     28.0,           // °C ambiente shelter
+    _divergeHigh:    false,          // flag per-device (no publicado) — escenario rect_divergencia (motor M2 spread)
   };
 }
 
@@ -290,7 +291,9 @@ function evolve(variable, currentValue, deviceState, sharedState) {
     case 'dc_load_current': {
       // Estado compartido del site controla carga alta/normal
       // (espejo del patrón mains_failure/mains_restore).
-      const target = sharedState.eltek_load_high ? 90 : 30;
+      // `_divergeHigh` (per-device, escenario rect_divergencia) hace que SOLO
+      // este rectificador suba → desbalance vs los otros del site (motor M2 spread).
+      const target = (deviceState._divergeHigh || sharedState.eltek_load_high) ? 90 : 30;
       // Drift lento hacia el target ± jitter (∼2 A/tick)
       if (Math.abs(currentValue - target) > 5) {
         return currentValue + Math.sign(target - currentValue) * 5 + jitter(1);
@@ -517,6 +520,30 @@ const SCENARIOS = {
     noCleanup: true,
     steps: [
       { at: 0, sharedSet: { eltek_discharge: false } },
+    ],
+  },
+
+  // spec_motor_m.md · Ola M2 — demo del motor M multivariante (spread).
+  // Enviar a UN Eltek del site: SOLO ese rectificador sube su carga (per-device
+  // `_divergeHigh`) mientras los otros siguen ~30 A → desbalance del conjunto.
+  // El motor M `spread` lo detecta y señala a ESTE como el equipo a intervenir.
+  rect_divergencia: {
+    description: 'Rectificador desbalanceado — un módulo se lleva mucha más carga que el resto (demo motor M2)',
+    roles: ['ELTEK'],
+    duration_ms: 180000,
+    noCleanup: true,
+    steps: [
+      { at: 0, set: { _divergeHigh: true } },
+    ],
+  },
+
+  rect_balance: {
+    description: 'Rectificadores rebalanceados — la carga vuelve a repartirse',
+    roles: ['ELTEK'],
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0, set: { _divergeHigh: false } },
     ],
   },
 
