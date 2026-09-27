@@ -6,6 +6,30 @@ import Template from "../models/template.js";
 const RulePack = require("../models/rule_pack.js");
 const { extractFromPdf } = require("../services/sheetExtractor.js");
 
+// DEC-REF-115 (#85) — el edge recarga su config de autonomía por el mismo
+// canal de control SF-3 que los packs (payload ignorado, DEC-REF-61.c).
+// Fire-and-forget: si el publish falla, el próximo reload eventual la toma.
+const RELOAD_TOPIC_BROADCAST = 'wanomi/edge/all/reload';
+function publishEdgeReload(context) {
+  if (!global.mqttClient || !global.mqttClient.connected) {
+    console.warn(`[equipmentsheets] Reload NO publicado (${context}) — global.mqttClient no conectado`);
+    return;
+  }
+  global.mqttClient.publish(RELOAD_TOPIC_BROADCAST, '{}', { qos: 1 }, (err) => {
+    if (err) console.error(`[equipmentsheets] Reload publish FALLÓ (${context}): ${err.message}`);
+  });
+}
+
+// DEC-REF-115 (#85) — guarda del bloque autonomy: o completo y válido o null
+// (la plataforma no calcula con parámetros a medias).
+function validateAutonomy(a) {
+  if (a === null || a === undefined) return null;  // limpiar = válido
+  if (!a.fuelVariable || !(Number(a.tankCapacity) > 0) || !(Number(a.consumptionLph) > 0)) {
+    return 'autonomy incompleta: fuelVariable, tankCapacity>0 y consumptionLph>0 son requeridos (o enviá autonomy:null para limpiar)';
+  }
+  return null;
+}
+
 // GET — catálogo global (D-1). SIN buildReadFilter: excepción de tenencia deliberada.
 router.get("/equipmentsheet", checkAuth, async (req, res) => {
   try {
@@ -33,6 +57,12 @@ router.post("/equipmentsheet", checkAuth, async (req, res) => {
       return res.status(409).json({ status: "error", error: `equipmentSheet '${newSheet.deviceType}' ya existe` });
     }
     newSheet.createdTime = Date.now();                        // espejo de zones.js:50
+    // DEC-REF-115 (#85): misma guarda que el PUT — autonomy completa o null.
+    if ('autonomy' in newSheet) {
+      const err = validateAutonomy(newSheet.autonomy);
+      if (err) return res.status(400).json({ status: "error", error: err });
+      if (!newSheet.autonomy) delete newSheet.autonomy;
+    }
     const sheet = await EquipmentSheet.create(newSheet);
     return res.json({ status: "success", deviceType: sheet.deviceType });
   } catch (error) {
@@ -104,8 +134,16 @@ router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
     if ('origin' in upd) sheet.origin = upd.origin;
     if ('domain' in upd) sheet.domain = upd.domain || '';   // DEC-REF-108 F2 (#80): dominio → tabs del sitio
     if (Array.isArray(upd.variables)) sheet.variables = upd.variables;
+    // DEC-REF-115 (#85): parámetros del cálculo de autonomía de la plataforma.
+    if ('autonomy' in upd) {
+      const err = validateAutonomy(upd.autonomy);
+      if (err) return res.status(400).json({ status: "error", error: err });
+      sheet.autonomy = upd.autonomy || undefined;
+    }
     sheet.version = (Number(sheet.version) || 1) + 1;
     await sheet.save();
+    // DEC-REF-115 (#85): si cambió la config de autonomía, el edge recarga.
+    if ('autonomy' in upd) publishEdgeReload(`PUT autonomy ${deviceType}`);
     return res.json({ status: "success", deviceType: sheet.deviceType, version: sheet.version });
   } catch (error) {
     console.log("ERROR UPDATING EQUIPMENT SHEET"); console.log(error);

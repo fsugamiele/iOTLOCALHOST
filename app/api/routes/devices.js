@@ -241,6 +241,51 @@ router.delete("/device", checkAuth, async (req, res) => {
 // es preferencia de sesión del usuario (localStorage), no estado del
 // device. El único cliente era dashboard-admin.vue.
 
+// DEC-REF-115 (#85) — OVERRIDE DE AUTONOMÍA por equipo instalado.
+// El tanque es de la instalación, no del modelo: pisa (parcial) al bloque
+// autonomy de la ficha. autonomy:null = heredar todo de la ficha.
+router.put("/device/autonomy", checkAuth, async (req, res) => {
+  try {
+    const dId = req.body.dId;
+    const autonomy = req.body.autonomy;
+    if (!dId) {
+      return res.status(400).json({ status: "error", error: "dId es requerido" });
+    }
+
+    // Write-gate (DEC-REF-46/54) — espejo del DELETE de arriba.
+    const writeFilter = await buildWriteFilter(req, 'Device');
+    const existing = await Device.findOne({ ...writeFilter, dId });
+    if (!existing) {
+      return res.status(404).json({ status: "error", error: "device not found" });
+    }
+
+    if (autonomy === null) {
+      await Device.updateOne({ ...writeFilter, dId }, { $unset: { autonomy: 1 } });
+    } else {
+      const t = Number(autonomy && autonomy.tankCapacity);
+      const c = Number(autonomy && autonomy.consumptionLph);
+      if (!(t > 0) || !(c > 0)) {
+        return res.status(400).json({ status: "error", error: "autonomy incompleta: tankCapacity>0 y consumptionLph>0 (o autonomy:null para heredar la ficha)" });
+      }
+      await Device.updateOne({ ...writeFilter, dId }, { $set: { autonomy: { tankCapacity: t, consumptionLph: c } } });
+    }
+
+    // El edge recarga su config de autonomía por el canal SF-3 (payload
+    // ignorado, DEC-REF-61.c) — fire-and-forget, espejo de rulepacks.js.
+    if (global.mqttClient && global.mqttClient.connected) {
+      global.mqttClient.publish('wanomi/edge/all/reload', '{}', { qos: 1 }, (err) => {
+        if (err) console.error(`[devices] Reload publish FALLÓ (PUT autonomy ${dId}): ${err.message}`);
+      });
+    }
+
+    return res.json({ status: "success", dId });
+  } catch (error) {
+    console.log("ERROR UPDATING DEVICE AUTONOMY");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
 //SAVER-RULE STATUS UPDATER
 router.put("/saver-rule", checkAuth, async (req, res) => {
   try {

@@ -35,7 +35,12 @@ class SimulatedDevice {
     this._username = mqttUsername;
     this._password = mqttPassword; // MQTT credential — NUNCA logueado
     this._userId = userId;
-    this._variables = variables;
+    // DEC-REF-115 (#85) — autonomy_hours deja de publicarla el equipo: la
+    // calcula la PLATAFORMA (edge-engine/autonomy.js) desde fuel_level +
+    // parámetros de la ficha/override. Si el sim la publicara también,
+    // dos fuentes escribirían la misma variable con valores distintos
+    // (flip-flop). El sim modela el caso real: la controladora NO la da.
+    this._variables = variables.filter(v => v.variable !== 'autonomy_hours');
     this._sharedState = sharedState || {};
     this._state = this._initialState(role);
     this._client = null;

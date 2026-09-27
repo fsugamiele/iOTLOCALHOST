@@ -137,6 +137,20 @@
                 </base-button>
               </el-tooltip>
 
+              <!-- DEC-REF-115 (#85) — override de autonomía por equipo
+                   instalado (el tanque es de la instalación, no del modelo). -->
+              <el-tooltip content="Autonomía — tanque/consumo de ESTE equipo" effect="light" :open-delay="300" placement="top">
+                <base-button
+                  type="info"
+                  icon
+                  size="sm"
+                  class="btn-link"
+                  @click="openAutonomyModal(row)"
+                >
+                  <i class="fas fa-gas-pump"></i>
+                </base-button>
+              </el-tooltip>
+
               <el-tooltip content="Delete" effect="light" :open-delay="300" placement="top">
                 <base-button
                   type="danger"
@@ -193,8 +207,52 @@
       </span>
     </el-dialog>
 
-    <!-- BIND DEVICE ↔ SITE MODAL (DEC-REF-97) -->
+    <!-- DEC-REF-115 (#85) — OVERRIDE DE AUTONOMÍA por equipo instalado:
+         tanque/consumo de ESTE device (pisa parcial a la ficha). -->
     <el-dialog
+      :title="autonomyDevice ? 'Autonomía de ' + autonomyDevice.name + ' (' + autonomyDevice.dId + ')' : ''"
+      :visible.sync="autonomyModal"
+      width="480px"
+      append-to-body
+    >
+      <div v-if="autonomyDevice">
+        <p class="text-muted" style="font-size:12px">
+          La plataforma calcula <code>autonomy_hours</code> con los parámetros de la ficha del equipo.
+          Acá se ajustan <b>solo para este equipo instalado</b> (p.ej. si su tanque difiere del estándar
+          del modelo). Con los campos vacíos, "Heredar ficha" quita el ajuste.
+        </p>
+        <div class="row">
+          <div class="col-6 form-group">
+            <label>Capacidad del tanque (L)</label>
+            <base-input v-model="autonomyForm.tankCapacity" placeholder="ej. 250" type="number" />
+          </div>
+          <div class="col-6 form-group">
+            <label>Consumo (L/h)</label>
+            <base-input v-model="autonomyForm.consumptionLph" placeholder="ej. 3.46" type="number" />
+          </div>
+        </div>
+      </div>
+      <span slot="footer">
+        <base-button type="secondary" @click="autonomyModal = false">Cancelar</base-button>
+        <base-button
+          v-if="autonomyDevice && autonomyDevice.autonomy"
+          type="danger"
+          @click="saveAutonomy(null)"
+          :disabled="autonomyLoading"
+        >
+          Heredar ficha
+        </base-button>
+        <base-button
+          type="primary"
+          @click="saveAutonomy({ tankCapacity: Number(autonomyForm.tankCapacity), consumptionLph: Number(autonomyForm.consumptionLph) })"
+          :disabled="!(Number(autonomyForm.tankCapacity) > 0) || !(Number(autonomyForm.consumptionLph) > 0) || autonomyLoading"
+        >
+          <i class="fa" :class="autonomyLoading ? 'fa-spinner fa-spin' : 'fa-check'" style="margin-right:6px"></i>Guardar
+        </base-button>
+      </span>
+    </el-dialog>
+
+    <!-- BIND DEVICE ↔ SITE MODAL (DEC-REF-97) -->    <el-dialog
       :title="bindDevice ? 'Sitio de ' + bindDevice.name + ' (' + bindDevice.dId + ')' : ''"
       :visible.sync="bindModal"
       width="480px"
@@ -280,7 +338,13 @@ export default {
       bindModal: false,
       bindDevice: null,
       bindSiteCode: "",
-      bindLoading: false
+      bindLoading: false,
+
+      // DEC-REF-115 (#85) — override de autonomía por equipo instalado
+      autonomyModal: false,
+      autonomyDevice: null,
+      autonomyForm: { tankCapacity: "", consumptionLph: "" },
+      autonomyLoading: false
     };
   },
   mounted() {
@@ -309,6 +373,43 @@ export default {
       this.bindDevice = device;
       this.bindSiteCode = device.siteId || "";
       this.bindModal = true;
+    },
+
+    // ── DEC-REF-115 (#85) — override de autonomía por equipo instalado ──
+    openAutonomyModal(device) {
+      this.autonomyDevice = device;
+      const a = device.autonomy || {};
+      this.autonomyForm = {
+        tankCapacity:   a.tankCapacity != null ? a.tankCapacity : "",
+        consumptionLph: a.consumptionLph != null ? a.consumptionLph : "",
+      };
+      this.autonomyModal = true;
+    },
+
+    async saveAutonomy(autonomy) {
+      // autonomy = { tankCapacity, consumptionLph } o null (heredar ficha).
+      if (this.autonomyLoading || !this.autonomyDevice) return;
+      this.autonomyLoading = true;
+      const dId = this.autonomyDevice.dId;
+      const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.put("/device/autonomy", { dId, autonomy }, axiosHeaders);
+        if (res.data.status == "success") {
+          this.$notify({
+            type: "success", icon: "tim-icons icon-check-2",
+            message: autonomy === null
+              ? `${dId}: autonomía heredada de la ficha`
+              : `${dId}: autonomía actualizada (tanque ${autonomy.tankCapacity} L · ${autonomy.consumptionLph} L/h)`,
+          });
+          this.autonomyModal = false;
+          this.$store.dispatch("getDevices");
+        }
+      } catch (e) {
+        const msg = (e.response && e.response.data && e.response.data.error) || "Error al guardar la autonomía";
+        this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: String(msg) });
+      } finally {
+        this.autonomyLoading = false;
+      }
     },
 
     async bindSite() {

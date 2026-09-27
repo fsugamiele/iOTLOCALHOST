@@ -24,6 +24,19 @@ const VariableSchema = new Schema({
   limits:       { type: [LimitSchema], default: [] },  // PUEDE estar vacía (DEC-REF-94, condición Backend #60)
 }, { _id: false });
 
+// DEC-REF-115 (#85) — autonomía CALCULADA POR LA PLATAFORMA (reversa de
+// DEC-REF-108 F4: las controladoras reales no garantizan esa variable y el
+// dato es crítico para la confiabilidad del sistema — Franco). Parámetros
+// físicos del cálculo que corre el edge-engine:
+//   autonomy_hours = fuelLevel[%] × tankCapacity / 100 / consumptionLph
+// Opcional: sin este bloque NO hay cálculo para el equipo (la plataforma no
+// inventa autonomía sin parámetros — el widget muestra "sin dato", honesto).
+const AutonomySchema = new Schema({
+  fuelVariable:   { type: String },  // variable de nivel de combustible (0-100 %)
+  tankCapacity:   { type: Number },  // capacidad del tanque (unidad coherente con consumptionLph)
+  consumptionLph: { type: Number },  // consumo nominal (unidades/hora) — evidencia citada en doc/limits.source
+}, { _id: false });
+
 const equipmentSheetSchema = new Schema({
   deviceType:   { type: String, required: true, unique: true },  // ES el identificador (DEC-REF-91); 409 por findOne (D-2)
   manufacturer: { type: String },
@@ -36,6 +49,8 @@ const equipmentSheetSchema = new Schema({
   version:      { type: Number, default: 1 },                    // reservado sin fijación (Fork III de -92)
   manual:       { type: Schema.Types.ObjectId, default: null },  // ref nullable; modelo Manual no existe aún (fuera de -91)
   variables:    { type: [VariableSchema], default: [] },
+  // DEC-REF-115 (#85): parámetros del cálculo de autonomía de la plataforma.
+  autonomy:     { type: AutonomySchema, default: undefined },
   createdTime:  { type: Number },                                // convención de la casa (operator.js:12, zone.js:14) — declarado
 });
 

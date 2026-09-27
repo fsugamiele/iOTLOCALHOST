@@ -11,6 +11,7 @@ const { loadPacks, hydrateSiteState } = require('./siteState');
 const { processMessage, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
+const { loadAutonomyConfigs, maybePublishAutonomy } = require('./autonomy');
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -75,8 +76,11 @@ async function start() {
   let packs = await loadPacks(SITE_ID);
   let ruleSnapshot = buildSnapshot(packs);
   await hydrateSiteState(SITE_ID, siteState);
+  // DEC-REF-115 (#85) — config de autonomía (ficha + override por equipo).
+  let autonomyConfigs = await loadAutonomyConfigs(SITE_ID);
   console.log(`[edge-engine] Packs cargados: ${packs.map(p => p.packId).join(', ') || '(ninguno)'}`);
   console.log(`[edge-engine] Dispositivos en estado: ${siteState.size}`);
+  console.log(`[edge-engine] Autonomía configurada en ${autonomyConfigs.size} equipo(s): ${[...autonomyConfigs.keys()].join(', ') || '(ninguno)'}`);
 
   // reloadPacks — handler del canal de control SF-3 (DEC-REF-58 + DEC-REF-61).
   // Payload ignorado (DEC-REF-61.c "recargar todo"). Errores no dejan al motor
@@ -88,6 +92,9 @@ async function start() {
     try {
       const nextPacks = await loadPacks(SITE_ID);
       const nextSnap  = buildSnapshot(nextPacks);
+      // DEC-REF-115 (#85) — el mismo canal SF-3 recarga la config de
+      // autonomía (PUT /equipmentsheet y PUT /device/autonomy publican acá).
+      const nextAutonomy = await loadAutonomyConfigs(SITE_ID);
       const diff      = diffSnapshots(ruleSnapshot, nextSnap);
       const toClean   = [...diff.removed, ...diff.changed];
 
@@ -127,9 +134,10 @@ async function start() {
         });
       }
 
-      // Swap sincrónico post-await — no hay await entre estas dos líneas.
+      // Swap sincrónico post-await — no hay await entre estas tres líneas.
       packs = nextPacks;
       ruleSnapshot = nextSnap;
+      autonomyConfigs = nextAutonomy;
 
       console.log(
         `[edge-engine] Reload OK — packs: ${nextPacks.map(p => p.packId).join(', ') || '(ninguno)'} · ` +
@@ -215,6 +223,10 @@ async function start() {
     // sumar. Ventana calculada en typeCross.js:evaluateSum.
     if (!deviceState._lastUpdate) deviceState._lastUpdate = {};
     deviceState._lastUpdate[variable] = eventTs;
+
+    // DEC-REF-115 (#85) — si el mensaje es la variable de combustible de un
+    // equipo con autonomía configurada, derivar y publicar autonomy_hours.
+    maybePublishAutonomy({ client, configs: autonomyConfigs, dId, variable, value });
 
     processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, mState, eventTs });
   });

@@ -138,6 +138,36 @@
         </div>
       </div>
 
+      <!-- DEC-REF-115 (#85) — parámetros del cálculo de autonomía de LA
+           PLATAFORMA: el edge-engine deriva y publica autonomy_hours como
+           variable de primera clase (widget + histórico + alarmable).
+           Las controladoras reales no garantizan esa variable (Franco). -->
+      <div class="row">
+        <div class="col-12">
+          <h5 class="mb-1 mt-2">Autonomía — la calcula la plataforma</h5>
+          <p class="text-muted" style="font-size:12px">
+            autonomy_hours = nivel de combustible [%] × capacidad del tanque / 100 / consumo.
+            Si el tanque varía por instalación, se ajusta por equipo en Devices.
+            Sin variable de combustible = no hay cálculo (el widget muestra "sin dato").
+          </p>
+        </div>
+        <div class="col-md-4 form-group">
+          <label>Variable de combustible (%)</label>
+          <select v-model="newSheet.autonomy.fuelVariable" class="form-control">
+            <option value="">— Sin cálculo —</option>
+            <option v-for="v in newSheet.variables" :key="v.name" :value="v.name">{{ v.label || v.name }}</option>
+          </select>
+        </div>
+        <div class="col-md-4 form-group">
+          <label>Capacidad del tanque (L)</label>
+          <base-input v-model="newSheet.autonomy.tankCapacity" placeholder="ej. 250" type="number" />
+        </div>
+        <div class="col-md-4 form-group">
+          <label>Consumo (L/h)</label>
+          <base-input v-model="newSheet.autonomy.consumptionLph" placeholder="ej. 3.46" type="number" />
+        </div>
+      </div>
+
       <hr />
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Variables</h5>
@@ -415,7 +445,11 @@ export default {
       return new Date(value).toLocaleString();
     },
     emptySheet() {
-      return { deviceType: '', manufacturer: '', model: '', origin: 'own', domain: '', variables: [] };
+      return {
+        deviceType: '', manufacturer: '', model: '', origin: 'own', domain: '', variables: [],
+        // DEC-REF-115 (#85): parámetros del cálculo de autonomía (vacío = sin cálculo).
+        autonomy: { fuelVariable: '', tankCapacity: '', consumptionLph: '' },
+      };
     },
     // DEC-REF-108 F2 (#80): label legible del dominio (tab del sitio).
     domainLabel(domain) {
@@ -445,6 +479,12 @@ export default {
         model: c.model || '',
         origin: c.origin || 'own',
         domain: c.domain || '',
+        // DEC-REF-115 (#85): config de autonomía (vacía si la ficha no tiene).
+        autonomy: {
+          fuelVariable: (c.autonomy && c.autonomy.fuelVariable) || '',
+          tankCapacity: (c.autonomy && c.autonomy.tankCapacity) || '',
+          consumptionLph: (c.autonomy && c.autonomy.consumptionLph) || '',
+        },
         variables: (c.variables || []).map(v => ({
           name: v.name || '',
           label: v.label || '',
@@ -559,6 +599,15 @@ export default {
           model: this.newSheet.model || undefined,
           origin: this.newSheet.origin,
           domain: this.newSheet.domain || '',
+          // DEC-REF-115 (#85): con variable de combustible → bloque completo;
+          // sin ella → null (limpia; la plataforma no calcula a medias).
+          autonomy: this.newSheet.autonomy.fuelVariable
+            ? {
+                fuelVariable: this.newSheet.autonomy.fuelVariable,
+                tankCapacity: Number(this.newSheet.autonomy.tankCapacity),
+                consumptionLph: Number(this.newSheet.autonomy.consumptionLph),
+              }
+            : null,
           variables: this.newSheet.variables.map(v => ({
             name: v.name.trim(),
             label: v.label || undefined,

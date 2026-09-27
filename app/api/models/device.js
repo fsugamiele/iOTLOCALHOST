@@ -20,7 +20,15 @@ const deviceSchema = new Schema({
     imei:         { type: String },
     apn:          { type: String },
     deviceType:   { type: String, default: '' },
-    driverConfig: { type: Object, default: {} }
+    driverConfig: { type: Object, default: {} },
+    // DEC-REF-115 (#85) — override de autonomía por EQUIPO INSTALADO: el
+    // tanque es de la instalación, no del modelo. Override PARCIAL sobre
+    // ficha.autonomy (cada campo pisa al de la ficha si > 0). Ausente =
+    // heredar todo de la ficha.
+    autonomy: {
+      tankCapacity:   { type: Number },
+      consumptionLph: { type: Number },
+    }
 });
 
 // Validator
