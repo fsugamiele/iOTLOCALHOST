@@ -18,15 +18,20 @@
           <el-dropdown-item command="rename">
             <i class="tim-icons icon-pencil"></i> Renombrar
           </el-dropdown-item>
-          <el-dropdown-item divided disabled class="pw-label">Actualizar cada</el-dropdown-item>
-          <el-dropdown-item
-            v-for="opt in refreshOptions"
-            :key="'r' + opt.value"
-            :command="'refresh:' + opt.value"
-          >
-            <i v-if="opt.value === refreshSec" class="tim-icons icon-check-2"></i>
-            {{ opt.label }}
+          <el-dropdown-item v-if="siteCode" command="goto-site">
+            <i class="tim-icons icon-pin"></i> Ir al sitio
           </el-dropdown-item>
+          <template v-if="showRefresh">
+            <el-dropdown-item divided disabled class="pw-label">Actualizar cada</el-dropdown-item>
+            <el-dropdown-item
+              v-for="opt in refreshOptions"
+              :key="'r' + opt.value"
+              :command="'refresh:' + opt.value"
+            >
+              <i v-if="opt.value === refreshSec" class="tim-icons icon-check-2"></i>
+              {{ opt.label }}
+            </el-dropdown-item>
+          </template>
           <template v-if="showWindow">
             <el-dropdown-item divided disabled class="pw-label">Ventana del gráfico</el-dropdown-item>
             <el-dropdown-item
@@ -38,6 +43,9 @@
               {{ opt.label }}
             </el-dropdown-item>
           </template>
+          <el-dropdown-item v-if="removable" divided command="remove" class="pw-danger">
+            <i class="tim-icons icon-simple-remove"></i> Quitar del Panel
+          </el-dropdown-item>
         </el-dropdown-menu>
       </el-dropdown>
     </div>
@@ -63,6 +71,12 @@ export default {
     refreshSec:  { type: Number, default: 60 },
     showWindow:  { type: Boolean, default: false },
     window:      { type: String, default: '24h' },
+    // Panel personalizable: showRefresh=false en tarjetas pineadas (viven del
+    // bus MQTT, no de polling); siteCode habilita "Ir al sitio"; removable
+    // habilita "Quitar del Panel".
+    showRefresh: { type: Boolean, default: true },
+    siteCode:    { type: String, default: null },
+    removable:   { type: Boolean, default: false },
   },
   data() {
     return {
@@ -81,7 +95,9 @@ export default {
   },
   methods: {
     onCommand(cmd) {
-      if (cmd === 'rename') return this.$emit('rename');
+      if (cmd === 'rename')    return this.$emit('rename');
+      if (cmd === 'goto-site') return this.$emit('goto-site');
+      if (cmd === 'remove')    return this.$emit('remove');
       const [kind, value] = cmd.split(':');
       if (kind === 'refresh') return this.$emit('set-refresh', Number(value));
       if (kind === 'window')  return this.$emit('set-window', value);
@@ -141,4 +157,5 @@ export default {
 .white-content .panel-widget-title { color: rgba(0, 0, 0, 0.7); }
 .white-content .panel-widget-menu-btn { color: rgba(0, 0, 0, 0.45); }
 .white-content .panel-widget-menu-btn:hover { color: #000; }
+.pw-danger { color: #fd5d93 !important; }
 </style>

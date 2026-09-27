@@ -6,15 +6,36 @@ const PanelLayout = require("../models/panel_layout.js");
 // DEC-REF-101 D-8/D-9 (#76) — persistencia del Panel diseñable por usuario.
 // El layout es POR USUARIO (req.userData._id), no por scope ni por tenant:
 // dos usuarios del mismo scope pueden disponer el Panel distinto.
-// El widget set es fijo en esta v1 (D-10: los 4 componentes actuales del
-// Panel) — el front valida contra su catálogo; el backend valida forma y
-// límites, no semántica de widgets.
+// El Panel es personalizable: widgets atómicos del catálogo (VALID_WIDGET_IDS)
+// + pineadas dinámicas pin-<dId>::<i> con config en settings.pinned[].
+// El backend valida forma y límites, no semántica de widgets.
 
-const VALID_WIDGET_IDS = ["kpis", "sites", "trend", "alarms"];
+// Catálogo de widgets atómicos del Panel (nocWidgets.js en el front —
+// mantener sincronizado). Los ids legacy 'kpis'|'sites'|'alarms' fueron
+// reemplazados al desagregar las tarjetas en indicadores individuales.
+const VALID_WIDGET_IDS = [
+  "kpi-sites", "kpi-diesel", "kpi-alerts", "kpi-uptime",
+  "map", "sites-table", "trend", "alarms-feed", "alarms-hist",
+];
 const VALID_REFRESH_SEC = [10, 30, 60, 300];
 const VALID_WINDOWS = ["24h", "7d", "30d"];
-const MAX_ITEMS = VALID_WIDGET_IDS.length;
 const MAX_TITLE = 80;
+
+// Panel personalizable (widgets pineados desde Sitios): el NOC acepta, además
+// de sus 4 tarjetas de catálogo, ítems dinámicos `pin-<dId>::<índice>` con su
+// config congelada en settings.pinned[]. Mantener VALID_PINNED_TYPES
+// sincronizada con app/components/Widgets/widgetRegistry.js.
+const PIN_ID_RE = /^pin-[A-Za-z0-9_\-]{1,40}::\d{1,3}$/;
+const VALID_PINNED_TYPES = [
+  "numeric", "counter", "numberchart", "indicator", "switch", "button",
+  "valueStatus", "tankLevel", "multiState", "projectedAutonomy",
+  "dataFreshness", "booleanDwell", "equipmentAlarms", "activeRecommendation",
+  "powerCascade", "siteMap", "dcPlant",
+];
+const NOC_MAX_ITEMS = 60;      // 9 NOC + ~50 pineadas
+const MAX_PINNED = 50;
+const MAX_PINNED_CONFIG_BYTES = 4096;
+const isPinId = (id) => PIN_ID_RE.test(id);
 
 // DEC-REF-107 (Paso 4): el panel del SITIO reusa /panellayout con dashboard
 // `site-<siteCode>`. A diferencia del NOC (4 widgets fijos), sus ítems son
@@ -26,11 +47,12 @@ const isSiteDash = (d) => typeof d === "string" && d.startsWith("site-");
 
 function validateLayout(layout, dashboard) {
   const site = isSiteDash(dashboard);
-  const maxItems = site ? SITE_MAX_ITEMS : MAX_ITEMS;
+  const noc = dashboard === "noc";
+  const maxItems = site ? SITE_MAX_ITEMS : (noc ? NOC_MAX_ITEMS : VALID_WIDGET_IDS.length);
   if (!Array.isArray(layout) || layout.length > maxItems) return "layout inválido";
   for (const it of layout) {
     if (!it || typeof it.i !== "string" || !it.i || it.i.length > MAX_I_LEN) return "widget desconocido en layout";
-    if (!site && !VALID_WIDGET_IDS.includes(it.i)) return "widget desconocido en layout";
+    if (!site && !VALID_WIDGET_IDS.includes(it.i) && !(noc && isPinId(it.i))) return "widget desconocido en layout";
     for (const k of ["x", "y", "w", "h"]) {
       if (!Number.isFinite(it[k])) return `layout.${k} debe ser número`;
     }
@@ -47,11 +69,41 @@ function validateSettings(settings, dashboard) {
   // Site: settings libres (hoy sin uso por-widget). NOC: catálogo estricto.
   if (isSiteDash(dashboard)) return null;
   for (const [id, s] of Object.entries(settings)) {
-    if (!VALID_WIDGET_IDS.includes(id)) return `settings de widget desconocido: ${id}`;
+    // Panel personalizable: settings.pinned[] guarda el snapshot de cada
+    // widget pineado desde un Sitio (config completa + identidad de fuente).
+    if (id === "pinned" && dashboard === "noc") {
+      const err = validatePinned(s);
+      if (err) return err;
+      continue;
+    }
+    const pinSettings = dashboard === "noc" && isPinId(id);
+    if (!VALID_WIDGET_IDS.includes(id) && !pinSettings) return `settings de widget desconocido: ${id}`;
     if (typeof s !== "object" || s === null || Array.isArray(s)) return "settings de widget inválido";
     if (s.title != null && (typeof s.title !== "string" || s.title.length > MAX_TITLE)) return "title inválido";
+    if (pinSettings) {
+      if (s.refreshSec != null || s.window != null) return "settings de tarjeta pineada inválido";
+      continue;
+    }
     if (s.refreshSec != null && !VALID_REFRESH_SEC.includes(s.refreshSec)) return "refreshSec inválido";
     if (s.window != null && !VALID_WINDOWS.includes(s.window)) return "window inválida";
+  }
+  return null;
+}
+
+function validatePinned(pinned) {
+  if (!Array.isArray(pinned) || pinned.length > MAX_PINNED) return "pinned inválido";
+  const seen = new Set();
+  for (const p of pinned) {
+    if (!p || typeof p !== "object" || Array.isArray(p)) return "pinned: entrada inválida";
+    if (!isPinId(p.i || "")) return "pinned: id inválido";
+    if (seen.has(p.i)) return "pinned: id duplicado";
+    seen.add(p.i);
+    for (const k of ["dId", "userId", "siteCode"]) {
+      if (typeof p[k] !== "string" || !p[k] || p[k].length > 60) return `pinned: ${k} inválido`;
+    }
+    if (!p.widget || typeof p.widget !== "object" || Array.isArray(p.widget)) return "pinned: widget inválido";
+    if (!VALID_PINNED_TYPES.includes(p.widget.widget)) return "pinned: tipo de widget desconocido";
+    if (JSON.stringify(p.widget).length > MAX_PINNED_CONFIG_BYTES) return "pinned: config demasiado grande";
   }
   return null;
 }

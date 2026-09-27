@@ -219,6 +219,16 @@
           >
             <div v-if="itemMap[item.i]" class="site-grid-cell" :class="{ 'site-grid-cell--customizing': customizing }">
               <div class="site-grid-cell__cap">{{ itemMap[item.i].device.name }}</div>
+              <button
+                type="button"
+                class="site-grid-cell__pin"
+                title="Agregar al Panel"
+                @click.stop="pinToPanel(itemMap[item.i])"
+                @mousedown.stop
+                @touchstart.stop
+              >
+                📌 Panel
+              </button>
               <div class="site-grid-cell__body">
                 <component
                   :is="resolveWidget(itemMap[item.i].widget.widget, { context: 'live' })"
@@ -247,6 +257,8 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { resolveWidget } from '@/components/Widgets/resolver.js';
+import { colToW, hFor } from '@/components/Widgets/gridSizing.js';
+import { NOC_DEFAULT_LAYOUT } from '@/components/Noc/nocWidgets.js';
 import SiteHealthHeader from '@/components/Site/SiteHealthHeader.vue';
 // DEC-REF-108 F2 (#80): el proyecto NO registra Element UI globalmente —
 // cada página importa sus componentes (patrón admin.vue). Sin esto los tabs
@@ -683,30 +695,9 @@ export default {
     },
 
     // ── DEC-REF-107 (Paso 4): panel de widgets con grilla ──────────────
-    // col-N → ancho de grilla (3..12); default 4. El tamaño ahora es real.
-    colToW(column) {
-      const m = /col-(\d+)/.exec(column || '');
-      const n = m ? parseInt(m[1], 10) : 4;
-      return Math.max(2, Math.min(12, n));
-    },
-    // Alto default por tipo/representación (unidades de fila de 30px).
-    hFor(widget) {
-      const t = widget.widget;
-      if (t === 'numeric') {
-        const r = widget.render;
-        if (r === 'gauge' || r === 'tank') return 8;
-        if (r === 'sparkline') return 6;
-        if (r === 'counter') return 5;
-        return 4; // valueStatus / icon
-      }
-      const H = {
-        powerCascade: 6, dcPlant: 7, equipmentAlarms: 8, activeRecommendation: 5,
-        numberchart: 8, tankLevel: 8, projectedAutonomy: 8, siteMap: 9,
-        valueStatus: 4, multiState: 4, dataFreshness: 4, booleanDwell: 4,
-        indicator: 4, switch: 4, button: 4,
-      };
-      return H[t] || 5;
-    },
+    // colToW/hFor viven en components/Widgets/gridSizing.js (reuso Panel).
+    colToW,
+    hFor,
     buildDefaultLayout() {
       const COLS = 12;
       let x = 0, y = 0, rowH = 0;
@@ -807,6 +798,54 @@ export default {
       const list = this.$store.state.devices || [];
       const d = list.find((x) => x.dId === dId);
       return d ? d.userId : null;
+    },
+
+    // Panel personalizable — "Agregar al Panel" (modo Personalizar): pinea
+    // este widget al dashboard 'noc' del usuario. La config viaja congelada
+    // en settings.pinned[] (snapshot) y el ítem de layout usa id
+    // pin-<dId>::<índice> con la geometría default del widget.
+    async pinToPanel(item) {
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      const pinId = 'pin-' + item.i; // item.i = <dId>::<índice>
+      const owner = this.ownerOf(item.device.dId);
+      if (!owner) {
+        this.$notify({ type: 'warning', message: 'No se pudo identificar el dueño del equipo' });
+        return;
+      }
+      try {
+        const res = await this.$axios.get('/panellayout?dashboard=noc', headers);
+        const data = (res.data && res.data.data) || {};
+        // Si el usuario nunca guardó su Panel, NO hay doc: hay que sembrar el
+        // layout por defecto del catálogo NOC (nocWidgets.js, fuente única) —
+        // si no, el primer pin dejaría el Panel solo con la tarjeta pineada.
+        const layout = Array.isArray(data.layout)
+          ? data.layout.slice()
+          : NOC_DEFAULT_LAYOUT.map(it => ({ ...it }));
+        const settings = data.settings || {};
+        const pinned = Array.isArray(settings.pinned) ? settings.pinned.slice() : [];
+        if (pinned.some((p) => p.i === pinId)) {
+          this.$notify({ type: 'info', message: 'Esa tarjeta ya está en tu Panel' });
+          return;
+        }
+        const bottomY = layout.reduce((acc, it) => Math.max(acc, it.y + it.h), 0);
+        layout.push({
+          i: pinId, x: 0, y: bottomY,
+          w: this.colToW(item.widget.column), h: this.hFor(item.widget),
+        });
+        pinned.push({
+          i: pinId,
+          dId: item.device.dId,
+          userId: owner,
+          siteCode: this.siteCode,
+          widget: item.widget,
+        });
+        settings.pinned = pinned;
+        await this.$axios.put('/panellayout', { dashboard: 'noc', layout, settings }, headers);
+        this.$notify({ type: 'success', message: 'Tarjeta agregada al Panel' });
+      } catch (err) {
+        console.warn('[SiteDetail] pinToPanel error:', err.message || err);
+        this.$notify({ type: 'danger', message: 'No se pudo agregar la tarjeta al Panel' });
+      }
     },
   },
 };
@@ -932,6 +971,7 @@ export default {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 .site-grid-cell__cap {
   font-size: 0.72rem;
@@ -941,6 +981,29 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* "Agregar al Panel" — chip dentro de la tarjeta del widget, esquina
+   superior derecha (la celda es position:relative; el caption ocupa ~18px,
+   así que top:22px cae dentro del card, sobre su header). */
+.site-grid-cell__pin {
+  position: absolute;
+  right: 6px;
+  top: 22px;
+  z-index: 10;
+  background: rgba(0, 242, 195, 0.12);
+  border: 1px solid rgba(0, 184, 148, 0.5);
+  border-radius: 20px;
+  color: #00b894;
+  cursor: pointer;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.site-grid-cell__pin:hover {
+  background: #00f2c3;
+  color: #06382d;
 }
 /* DEC-REF-113 F2 (#84) — afuera las barras de scroll internas: la celda
    oculta el desborde y el contenido se autoajusta (cadena flex de abajo). */
