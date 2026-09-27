@@ -12602,3 +12602,37 @@ Queda **sin commitear** junto al resto de -115 (backend `device.js`+`routes/devi
    y su exposición en UI (creable o preset).
 3. **Reconciliar la deuda de numeración** DEC-REF-114→116 en los comentarios de `components/rules/*`.
 4. Push acumulado histórico (#76–#85) sigue pendiente de orden.
+
+## Sesión #87 — 2026-09-27 · Área 2 · Motor M Ola M2 (multivariante) + ejecución del carry-over #87
+
+**DEC-REF-118 (Ola M2) — motor M multivariante instantáneo: ratio · divergence · spread, con criterio
+A+B (Franco).** A diferencia de M1 (series temporales sobre un device), M2 lee los valores ACTUALES de
+varias variables del `siteState` (sin buffer): `ratio` (a÷b, dos datos del mismo equipo — eficiencia),
+`divergence` (|a−b|, dos datos que deberían ir juntos — ej. valor real vs setpoint del controlador),
+`spread` (máx−mín de una variable entre TODOS los equipos del deviceType en el site — desbalance).
+**Criterio A+B firmado:** spread dispara a nivel conjunto (detecta el desbalance) **y** señala el equipo
+puntual a intervenir = el **outlier** (el más alejado de la mediana); la alarma se ancla a ESE `deviceId`.
+Con 2 equipos avisa sin culpar; con 3+ el culpable es claro. **Implementación:** `evaluateInstant` en
+`typeM.js` (lee siteState; helper de mediana para el outlier), `validateM` (inputs[2] para ratio/divergence,
+variable para spread), `ruleEngine` pasa siteState/siteCode y ancla al `outlierDId`; escenario simulador
+`rect_divergencia` (flag per-device `_divergeHigh` → un solo rectificador se despega). **UI:** toggles
+"desbalance"/"relación" en el editor-frase (creables en lenguaje natural; helper `activeMod` para la
+exclusión de los 6 modificadores). **Fix (reporte de Franco):** el "en palabras" mostraba el nombre
+técnico de la 2ª variable → `summarize` ahora resuelve el label desde la ficha (opts.sheets) y `naturalText`
+las pasa. **Verificaciones:** unit del motor multivariante 7/7 (spread+outlier, ratio, divergence, balanceado
+no dispara, insuficiente); unit del mapeo frase↔M2 12/12; round-trip por API (PUT 200); **E2E en vivo:
+`rect_divergencia` → edge → typeM spread → fire `mode:M` anclado al outlier (ELTEK-02, el que subió a ~90 A)
+persistido en Mongo con `spread` en A**. Commits: `1d849e5` (motor) + `82a729f` (sim) + UI de M2.
+
+**Ejecución del carry-over #87 (commits de Franco en paralelo — registrar, detalle pendiente en corpus):**
+`f2b6808` feat(panel): Panel 100% personalizable — widgets NOC atómicos + pin desde Sitios ·
+`fca7c2c`+`54e0ec6` DEC-REF-115: autonomía calculada por la plataforma (reversa de DEC-REF-108 F4) →
+v2 híbrida (consumo observado con respaldo nominal) · `f71f697` DEC-REF-113 fix devices (POST /device sin
+filtro userId) · `4855e50` biblioteca de campo (PDFs/fotos/marca) ahora versionada.
+
+### Carry-over para #88
+1. **Corpus:** detallar las decisiones de los commits de Franco (panel personalizable → ¿DEC-REF-119?;
+   autonomía híbrida v2 → addenda a DEC-REF-115). Reconciliar numeración con los labels de los commits.
+2. **Motor M — Olas M3-M5:** accumulator/dutyCycle/cumulativeSince (M3) · flatline/staleness(tick)/stepJump
+   (M4) · baseline/variance (M5), cada una con escenario de simulador y UI.
+3. Deuda de numeración DEC-REF-114→116 en comentarios de `components/rules/*`.
