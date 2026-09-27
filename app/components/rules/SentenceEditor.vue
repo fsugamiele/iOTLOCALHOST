@@ -32,10 +32,12 @@
           <div class="se-mods">
             <base-button size="sm" type="primary" @click="addCondition"><i class="fa fa-plus"></i> condición</base-button>
             <template v-if="s.conditions.length === 1">
-              <base-button size="sm" :type="s.temporal ? 'primary' : 'default'" :disabled="!!s.setpoint || !!s.trend || !!s.projection" @click="toggleTemporal"><i class="fa fa-clock"></i> durante un tiempo</base-button>
-              <base-button size="sm" :type="s.setpoint ? 'primary' : 'default'" :disabled="!!s.temporal || !!s.trend || !!s.projection" @click="toggleSetpoint"><i class="fa fa-sliders-h"></i> vs valor del equipo</base-button>
-              <base-button size="sm" :type="s.trend ? 'primary' : 'default'" :disabled="!!s.temporal || !!s.setpoint || !!s.projection" @click="toggleTrend"><i class="fa fa-chart-line"></i> tendencia</base-button>
-              <base-button size="sm" :type="s.projection ? 'primary' : 'default'" :disabled="!!s.temporal || !!s.setpoint || !!s.trend" @click="toggleProjection"><i class="fa fa-bullseye"></i> proyección</base-button>
+              <base-button size="sm" :type="activeMod==='temporal'?'primary':'default'" :disabled="activeMod && activeMod!=='temporal'" @click="toggleTemporal"><i class="fa fa-clock"></i> durante un tiempo</base-button>
+              <base-button size="sm" :type="activeMod==='setpoint'?'primary':'default'" :disabled="activeMod && activeMod!=='setpoint'" @click="toggleSetpoint"><i class="fa fa-sliders-h"></i> vs valor del equipo</base-button>
+              <base-button size="sm" :type="activeMod==='trend'?'primary':'default'" :disabled="activeMod && activeMod!=='trend'" @click="toggleTrend"><i class="fa fa-chart-line"></i> tendencia</base-button>
+              <base-button size="sm" :type="activeMod==='projection'?'primary':'default'" :disabled="activeMod && activeMod!=='projection'" @click="toggleProjection"><i class="fa fa-bullseye"></i> proyección</base-button>
+              <base-button size="sm" :type="activeMod==='spread'?'primary':'default'" :disabled="activeMod && activeMod!=='spread'" @click="toggleSpread"><i class="fa fa-balance-scale"></i> desbalance</base-button>
+              <base-button size="sm" :type="activeMod==='compare'?'primary':'default'" :disabled="activeMod && activeMod!=='compare'" @click="toggleCompare"><i class="fa fa-divide"></i> relación</base-button>
             </template>
             <base-button v-if="s.conditions.length > 1" size="sm" type="default" @click="toGrouped" title="Combinar en grupos anidados (Y/O dentro de Y/O)"><i class="fa fa-sitemap"></i> agrupar condiciones</base-button>
           </div>
@@ -74,6 +76,31 @@
             <el-input v-model.number="s.projection.hoursThreshold" size="small" type="number" class="se-mini" /> h
             <span class="text-muted">(ventana</span>
             <el-input v-model.number="s.projection.windowMin" size="small" type="number" class="se-mini" /> <span class="text-muted">min)</span>.
+          </div>
+
+          <!-- M2 · desbalance entre equipos (spread) -->
+          <div v-if="s.spread" class="se-extra">
+            … medido como <b>desbalance</b> (máx − mín) de esta variable entre los <b>{{ deviceTypeLabel }}</b> del sitio.
+            El valor de arriba es el umbral del desbalance; la alarma <b>señala el equipo fuera de línea</b>.
+          </div>
+
+          <!-- M2 · relación / diferencia entre dos datos (ratio / divergence) -->
+          <div v-if="s.compare" class="se-extra">
+            … comparada como
+            <el-select v-model="s.compare.kind" size="small" class="se-cmp">
+              <el-option value="ratio" label="relación (÷)" />
+              <el-option value="divergence" label="diferencia (|−|)" />
+            </el-select>
+            con
+            <el-select v-if="variablesOfFirst.length" v-model="s.compare.variable2" size="small" filterable class="se-sp">
+              <el-option v-for="v in variablesOfFirst" :key="v.name" :value="v.name" :label="v.label || v.name" />
+            </el-select>
+            <el-input v-else v-model="s.compare.variable2" size="small" class="se-sp" placeholder="segunda variable" />
+            y el resultado sea
+            <el-select v-model="s.compare.op" size="small" class="se-cmp">
+              <el-option v-for="op in operators" :key="op" :value="op" :label="opLabels[op]" />
+            </el-select>
+            <el-input v-model.number="s.compare.value" size="small" type="number" class="se-mini" />.
           </div>
         </template>
 
@@ -165,7 +192,7 @@ import CrossExprNode, { stripEditorKeys } from '@/components/CrossExprNode.vue';
 import {
   SEVERITIES, severityLabel, severityBadge, summarize, inferType, coerceValue,
   sentenceToRule, ruleToSentence, emptySentence, emptyCondition, genRuleId, genInferenceId,
-  describeCross,
+  describeCross, OPERATORS, OPERATOR_LABELS,
 } from '@/components/rules/ruleSentence.js';
 
 const TYPE_HINT = { D: 'umbral simple', S: 'condición en el tiempo', C: 'contra el valor del equipo', cross: 'condición combinada' };
@@ -214,11 +241,25 @@ export default {
     sevLabel() { return severityLabel(this.s.severity); },
     badge() { return severityBadge(this.s.severity); },
     trendUnit() { return (this.s.conditions[0] && this.s.conditions[0].unit) || ''; },
+    deviceTypeLabel() { return (this.pack && this.pack.deviceType) || 'equipos'; },
+    operators() { return OPERATORS; },
+    opLabels() { return OPERATOR_LABELS; },
+    activeMod() {
+      if (this.s.temporal) return 'temporal';
+      if (this.s.setpoint) return 'setpoint';
+      if (this.s.trend) return 'trend';
+      if (this.s.projection) return 'projection';
+      if (this.s.spread) return 'spread';
+      if (this.s.compare) return 'compare';
+      return null;
+    },
     typeHint() {
       this.tick;
       if (this.advanced) return TYPE_HINT.cross;
       if (this.s.trend) return 'tendencia';
       if (this.s.projection) return 'proyección';
+      if (this.s.spread) return 'desbalance';
+      if (this.s.compare) return this.s.compare.kind === 'ratio' ? 'relación' : 'diferencia';
       return TYPE_HINT[inferType(this.s)] || '';
     },
     // Respaldo en lenguaje natural, unificado: cualquier cross (simple 2+ o
@@ -227,7 +268,7 @@ export default {
       this.tick;
       const rule = this.buildRule();
       if (rule.type === 'cross') return describeCross(rule.crossExpr, this.sheets, this.sevLabel);
-      return { mode: 'sentence', sentence: `Se disparará una alarma de ${this.sevLabel} cuando ${summarize(rule)}.`, lines: [] };
+      return { mode: 'sentence', sentence: `Se disparará una alarma de ${this.sevLabel} cuando ${summarize(rule, { sheets: this.sheets })}.`, lines: [] };
     },
     canSave() {
       if (!this.s.label) return false;
@@ -236,27 +277,34 @@ export default {
       if (!conds.length) return false;
       for (const c of conds) {
         if (!c.variable) return false;
-        if (!this.s.setpoint && !this.s.trend && !this.s.projection && (c.value === '' || c.value === null || c.value === undefined)) return false;
+        // spread SÍ usa c.value (umbral del desbalance); setpoint/trend/projection/compare no.
+        if (!this.s.setpoint && !this.s.trend && !this.s.projection && !this.s.compare && (c.value === '' || c.value === null || c.value === undefined)) return false;
       }
       if (this.s.setpoint && !this.s.setpoint.variable) return false;
       if (this.s.temporal && (!(this.s.temporal.durationMin > 0) || !(this.s.temporal.count >= 1))) return false;
       if (this.s.trend && (!(this.s.trend.rate > 0) || !(this.s.trend.windowMin > 0))) return false;
       if (this.s.projection && (this.s.projection.target === '' || this.s.projection.target == null || !(this.s.projection.hoursThreshold > 0) || !(this.s.projection.windowMin > 0))) return false;
+      if (this.s.compare && (!this.s.compare.variable2 || this.s.compare.value === '' || this.s.compare.value === null || this.s.compare.value === undefined)) return false;
       return true;
     },
   },
   methods: {
     touch() { this.tick++; },
+    // Limpia todos los modificadores (S/C/M) y activa uno solo (garantiza exclusión).
+    clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = null; },
     addCondition() {
       this.s.conditions.push(emptyCondition((this.pack && this.pack.deviceType) || ''));
-      this.s.temporal = null; this.s.setpoint = null; this.s.trend = null; this.s.projection = null; this.touch();
+      this.clearMods(); this.touch();
     },
     removeCondition(i) { this.s.conditions.splice(i, 1); this.touch(); },
-    toggleTemporal() { this.s.temporal = this.s.temporal ? null : { durationMin: 5, count: 1 }; if (this.s.temporal) { this.s.setpoint = null; this.s.trend = null; this.s.projection = null; } this.touch(); },
-    toggleSetpoint() { this.s.setpoint = this.s.setpoint ? null : { variable: '' }; if (this.s.setpoint) { this.s.temporal = null; this.s.trend = null; this.s.projection = null; } this.touch(); },
-    // M · tendencia (slope) y proyección (projection) — Ola M1.
-    toggleTrend() { this.s.trend = this.s.trend ? null : { direction: 'down', rate: 0.3, windowMin: 10 }; if (this.s.trend) { this.s.temporal = null; this.s.setpoint = null; this.s.projection = null; } this.touch(); },
-    toggleProjection() { this.s.projection = this.s.projection ? null : { target: '', hoursThreshold: 2, windowMin: 30 }; if (this.s.projection) { this.s.temporal = null; this.s.setpoint = null; this.s.trend = null; } this.touch(); },
+    toggleTemporal() { const on = !this.s.temporal; this.clearMods(); if (on) this.s.temporal = { durationMin: 5, count: 1 }; this.touch(); },
+    toggleSetpoint() { const on = !this.s.setpoint; this.clearMods(); if (on) this.s.setpoint = { variable: '' }; this.touch(); },
+    // M1 · tendencia (slope) y proyección (projection).
+    toggleTrend() { const on = !this.s.trend; this.clearMods(); if (on) this.s.trend = { direction: 'down', rate: 0.3, windowMin: 10 }; this.touch(); },
+    toggleProjection() { const on = !this.s.projection; this.clearMods(); if (on) this.s.projection = { target: '', hoursThreshold: 2, windowMin: 30 }; this.touch(); },
+    // M2 · desbalance entre equipos (spread) y relación/diferencia (ratio/divergence).
+    toggleSpread() { const on = !this.s.spread; this.clearMods(); if (on) { this.s.spread = true; if (this.s.conditions[0]) this.s.conditions[0].op = 'gt'; } this.touch(); },
+    toggleCompare() { const on = !this.s.compare; this.clearMods(); if (on) this.s.compare = { kind: 'ratio', variable2: '', op: 'lt', value: '' }; this.touch(); },
     // Convierte las condiciones planas en un árbol crossExpr y pasa a avanzado.
     toGrouped() {
       const dt = (this.pack && this.pack.deviceType) || '';
@@ -311,6 +359,7 @@ export default {
 .se-extra { margin: 10px 0 4px; padding: 9px 12px; border-radius: 9px; background: rgba(0,0,0,0.03); font-size: 0.9rem; line-height: 2; }
 .se-mini { width: 70px; }
 .se-dir { width: 88px; }
+.se-cmp { width: 130px; }
 .se-sp { width: 200px; }
 .se-sev { width: 220px; }
 .se-adv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9rem; }

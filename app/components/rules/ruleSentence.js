@@ -66,6 +66,20 @@ export function summarize(r, opts = {}) {
       const tgt = r.mParams && r.mParams.target;
       return `${varName} va a llegar a ${tgt} en menos de ${(r.condition || {}).value} h`;
     }
+    if (r.metric === 'spread') {
+      const c = r.condition || {};
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `desbalance de ${vlabel} entre equipos ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${u}`;
+    }
+    if (r.metric === 'ratio' || r.metric === 'divergence') {
+      const i0 = (r.inputs && r.inputs[0]) || {};
+      const i1 = (r.inputs && r.inputs[1]) || {};
+      const l0 = r.variableLabel || resolveVarLabel(i0.deviceType || r.deviceType, i0.variable || r.variable, sheets);
+      const l1 = resolveVarLabel(i1.deviceType || r.deviceType, i1.variable, sheets);
+      const c = r.condition || {};
+      const join = r.metric === 'ratio' ? '÷' : '− (diferencia)';
+      return `${l0} ${join} ${l1} ${OPERATOR_LABELS[c.op] || c.op} ${c.value}`;
+    }
     return `${varName} · soft sensor (${r.metric})`;
   }
   return varName;
@@ -209,8 +223,8 @@ export function emptySentence(deviceType) {
   return {
     conditions: [emptyCondition(deviceType)],
     join: 'AND', temporal: null, setpoint: null,
-    // M (soft sensors, Ola M1): trend=slope · projection=projection.
-    trend: null, projection: null, mPreset: false,
+    // M (soft sensors): M1 trend=slope · projection=projection · M2 spread · compare=ratio/divergence.
+    trend: null, projection: null, spread: null, compare: null, mPreset: false,
     severity: 'warning', recommendation: '', label: '', nested: false,
   };
 }
@@ -218,7 +232,7 @@ export function emptySentence(deviceType) {
 // Tipo inferido de la frase (nunca lo elige el usuario).
 export function inferType(s) {
   if ((s.conditions || []).length >= 2) return 'cross';
-  if (s.trend || s.projection) return 'M';
+  if (s.trend || s.projection || s.spread || s.compare) return 'M';
   if (s.setpoint) return 'C';
   if (s.temporal) return 'S';
   return 'D';
@@ -265,19 +279,30 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       matchCondition: { op: c0.op, value: coerceValue(c0.value, c0.variableType) },
     };
   } else if (type === 'M') {
-    // Ola M1 — tendencia (slope) / proyección (projection).
-    if (s.trend) {
+    if (s.trend) {                                   // M1 · tendencia (slope)
       const rate = Math.abs(Number(s.trend.rate) || 0);
       rule.metric = 'slope';
       rule.condition = { op: s.trend.direction === 'up' ? 'gt' : 'lt', value: s.trend.direction === 'up' ? rate : -rate };
       rule.mWindow = { durationSec: Math.round((Number(s.trend.windowMin) || 0) * 60), minSamples: 3 };
       rule.unit = `${c0.unit || ''}/min`.replace(/^\//, '');
-    } else {
+    } else if (s.projection) {                       // M1 · proyección
       rule.metric = 'projection';
       rule.mParams = { target: Number(s.projection.target) };
       rule.condition = { op: 'lt', value: Number(s.projection.hoursThreshold) || 0 };
       rule.mWindow = { durationSec: Math.round((Number(s.projection.windowMin) || 0) * 60), minSamples: 3 };
       rule.unit = 'h';
+    } else if (s.spread) {                           // M2 · desbalance entre equipos
+      rule.metric = 'spread';
+      rule.condition = { op: c0.op, value: coerceValue(c0.value, c0.variableType) };
+      // deviceType + variable (c0) ya están en rule; el motor compara entre los equipos del site.
+    } else {                                         // M2 · relación/diferencia entre dos datos
+      rule.metric = s.compare.kind;                  // 'ratio' | 'divergence'
+      rule.inputs = [
+        { deviceType, variable: c0.variable },
+        { deviceType, variable: s.compare.variable2 },
+      ];
+      rule.condition = { op: s.compare.op, value: coerceValue(s.compare.value, 'float') };
+      rule.unit = s.compare.kind === 'ratio' ? '' : (c0.unit || '');
     }
   } else { // D
     rule.condition = { op: c0.op, value: coerceValue(c0.value, c0.variableType) };
@@ -293,7 +318,7 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
 export function ruleToSentence(rule) {
   const base = {
     conditions: [], join: 'AND', temporal: null, setpoint: null,
-    trend: null, projection: null, mPreset: false,
+    trend: null, projection: null, spread: null, compare: null, mPreset: false,
     severity: rule.severity || 'warning', recommendation: rule.recommendation || '',
     label: rule.label || '', nested: false,
   };
@@ -325,6 +350,14 @@ export function ruleToSentence(rule) {
       base.trend = { direction: c.op === 'gt' ? 'up' : 'down', rate: Math.abs(c.value != null ? c.value : 0), windowMin: wMin || 10 };
     } else if (rule.metric === 'projection') {
       base.projection = { target: (rule.mParams && rule.mParams.target), hoursThreshold: (rule.condition || {}).value, windowMin: wMin || 30 };
+    } else if (rule.metric === 'spread') {
+      const c = rule.condition || {};
+      base.spread = true;
+      base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
+    } else if (rule.metric === 'ratio' || rule.metric === 'divergence') {
+      const inp = rule.inputs || [];
+      base.conditions = [leaf((inp[0] && inp[0].variable) || rule.variable, 'lt', '')];
+      base.compare = { kind: rule.metric, variable2: (inp[1] && inp[1].variable) || '', op: (rule.condition || {}).op || 'lt', value: (rule.condition || {}).value };
     } else {
       base.mPreset = true;   // acceleration/otras técnicas → preset (umbral editable)
     }
