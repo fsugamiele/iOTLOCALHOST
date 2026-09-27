@@ -105,7 +105,13 @@ router.post("/device", checkAuth, async (req, res) => {
     // texto que compara el motor en ruleEngine.js:46).
     delete newDevice.deviceType;
     if (mongoose.Types.ObjectId.isValid(newDevice.templateId)) {
-      const deviceTemplate = await Template.findOne({ userId: userId, _id: newDevice.templateId });
+      // DEC-REF-113 (#84) — SIN filtro userId: los templates no están
+      // particionados por usuario (idem GET /simulator/devices), y un device
+      // puede usar un template de otro owner (p.ej. los WN-* del seed). Con el
+      // filtro, deviceType quedaba VACÍO para esos templates → el sim no sabía
+      // el rol y saltaba el device (no publicaba). La ficha sigue siendo la
+      // única autora del deviceType (viene del template, no del body).
+      const deviceTemplate = await Template.findOne({ _id: newDevice.templateId });
       if (deviceTemplate && deviceTemplate.deviceType) {
         newDevice.deviceType = deviceTemplate.deviceType;
       }
