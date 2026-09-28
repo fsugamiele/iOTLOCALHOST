@@ -49,8 +49,8 @@ export default {
     // Etiqueta de tipo secundaria (disenso de Motor: trazabilidad, no protagonista).
     typeHint() {
       if (this.rule.type === 'M') {
-        const mm = { slope: 'tendencia', projection: 'proyección', acceleration: 'aceleración', spread: 'desbalance', ratio: 'relación', divergence: 'diferencia', dutyCycle: 'uso %', cumulativeSince: 'acumulado', accumulator: 'acumulador', stepJump: 'salto abrupto', flatline: 'sensor clavado', staleness: 'deja de reportar', variance: 'variabilidad', baseline: 'anomalía (σ)' };
-        return mm[this.rule.metric] || 'soft sensor';
+        const mm = { slope: 'tendencia', projection: 'proyección', acceleration: 'aceleración', spread: 'desbalance', ratio: 'relación', divergence: 'diferencia', dutyCycle: 'uso %', cumulativeSince: 'acumulado', accumulator: 'acumulador', stepJump: 'salto abrupto', flatline: 'sensor clavado', staleness: 'deja de reportar', variance: 'inestable', baseline: 'fuera de lo normal' };
+        return mm[this.rule.metric] || 'vigilancia avanzada';
       }
       const m = { D: 'umbral', cross: 'combinada', C: 'contra setpoint', S: 'en el tiempo' };
       return m[this.rule.type] || this.rule.type;

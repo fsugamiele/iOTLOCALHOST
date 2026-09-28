@@ -39,19 +39,19 @@ const M = (o) => Object.assign({
 // ── baseline (preset auto-calibrante, z>3σ) ────────────────────────────────
 const baseline = (deviceType, variable, variableLabel) => M({
   ruleId: `${deviceType.toLowerCase()}-baseline-${variable.replace(/_/g, '-')}`,
-  label: `Anomalía de ${variableLabel}`,
+  label: `${variableLabel} fuera de lo normal`,
   inferenceId: `BASE_${variable.toUpperCase().slice(0, 12)}`,
-  severity: 'info', deviceType, variable, unit: 'σ', metric: 'baseline',
+  severity: 'info', deviceType, variable, unit: '', metric: 'baseline',
   condition: { op: 'gt', value: 3 },
   mWindow: { durationSec: 3600, minSamples: 10 }, mParams: { baselineWindowSec: 3600 },
   variableLabel,
-  recommendation: `${variableLabel} se apartó de su patrón reciente (>3σ). Señal temprana: revisar el equipo antes de que cruce los umbrales fijos.`,
+  recommendation: `El valor de ${variableLabel} se salió de lo habitual para este equipo (comparado con su propio comportamiento reciente). Señal temprana: conviene revisarlo antes de que llegue a un valor crítico.`,
 });
 
 // ── acceleration (preset, umbral conservador editable) ─────────────────────
 const acceleration = (deviceType, variable, variableLabel, unit, op, value, reco) => M({
   ruleId: `${deviceType.toLowerCase()}-accel-${variable.replace(/_/g, '-')}`,
-  label: `Aceleración de ${variableLabel}`,
+  label: `${variableLabel} empeora cada vez más rápido`,
   inferenceId: `ACCEL_${variable.toUpperCase().slice(0, 11)}`,
   severity: 'warning', deviceType, variable, unit: `${unit}/min`, metric: 'acceleration',
   condition: { op, value },
@@ -62,13 +62,13 @@ const acceleration = (deviceType, variable, variableLabel, unit, op, value, reco
 // ── accumulator (vida de aceite ponderada por temp) ────────────────────────
 const oilLife = (deviceType, tempVar) => M({
   ruleId: `${deviceType.toLowerCase()}-oil-life`,
-  label: 'Vida útil del aceite',
+  label: 'Cambio de aceite pendiente',
   inferenceId: 'OIL_LIFE',
-  severity: 'warning', deviceType, variable: tempVar, unit: 'h-eq', metric: 'accumulator',
+  severity: 'warning', deviceType, variable: tempVar, unit: '', metric: 'accumulator',
   condition: { op: 'gte', value: 250 },
   mParams: { weightVariable: tempVar, weightFn: 'arrhenius', weightRef: 90, weightStep: 10 },
-  variableLabel: 'Aceite (horas-equivalentes)',
-  recommendation: 'Vida útil del aceite consumida (horas de marcha ponderadas por temperatura). Programar cambio de aceite y reiniciar el contador al hacerlo.',
+  variableLabel: 'Desgaste del aceite',
+  recommendation: 'El aceite ya acumuló las horas de uso de su intervalo de cambio (las horas cuentan más cuando el motor trabaja caliente). Programar el cambio de aceite.',
 });
 
 // packId (por deviceType) → reglas preset a agregar.
@@ -76,12 +76,12 @@ const SEED = {
   'eltek-smartpack-v1': [
     baseline('ELTEK', 'temperature', 'temperatura del sistema'),
     acceleration('ELTEK', 'dc_bus_voltage', 'tensión DC', 'V', 'gt', 0.5,
-      'La tensión del bus DC se está moviendo cada vez más rápido (descarga acelerándose). Revisar carga/rectificador antes del LVD. [umbral inicial editable]'),
+      'La tensión del bus DC cae cada vez más rápido: la batería se está descargando de forma acelerada. Revisar carga y rectificador antes de que corte.'),
   ],
   'cummins-pcc-v1': [
     baseline('cummins-pcc', 'coolant_temp', 'temperatura de refrigerante'),
     acceleration('cummins-pcc', 'coolant_temp', 'temperatura de refrigerante', '°C', 'gt', 0.5,
-      'El refrigerante se está calentando cada vez más rápido (posible falla de refrigeración en curso). Intervenir antes de los 95/105°C. [umbral inicial editable]'),
+      'El refrigerante se está calentando cada vez más rápido: posible falla de refrigeración en curso. Intervenir antes de que llegue a temperatura crítica.'),
     oilLife('cummins-pcc', 'coolant_temp'),
   ],
   'gen-grupo-v1': [

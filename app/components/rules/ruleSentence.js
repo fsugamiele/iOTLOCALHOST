@@ -106,16 +106,23 @@ export function summarize(r, opts = {}) {
       return `el equipo deja de reportar ${vlabel} por más de ${c.value} min`;
     }
     if (r.metric === 'variance') {
-      const c = r.condition || {};
       const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
-      return `la variabilidad de ${vlabel} ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${u}`;
+      return `${vlabel} con lecturas inestables (salta más de lo habitual)`;
     }
     if (r.metric === 'baseline') {
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `${vlabel} fuera de lo normal para este equipo`;
+    }
+    if (r.metric === 'acceleration') {
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `${vlabel} empeora cada vez más rápido`;
+    }
+    if (r.metric === 'accumulator') {
       const c = r.condition || {};
       const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
-      return `${vlabel} se aparta ${OPERATOR_LABELS[c.op] || c.op} ${c.value} desvíos (σ) de su valor normal`;
+      return `${vlabel} llegó a su límite de uso (${c.value}${u})`;
     }
-    return `${varName} · soft sensor (${r.metric})`;
+    return `${varName} — vigilancia avanzada`;
   }
   return varName;
 }

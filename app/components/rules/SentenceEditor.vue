@@ -43,7 +43,7 @@
               <base-button size="sm" :type="activeMod==='stepJump'?'primary':'default'" :disabled="activeMod && activeMod!=='stepJump'" @click="toggleStepJump"><i class="fa fa-bolt"></i> salto abrupto</base-button>
               <base-button size="sm" :type="activeMod==='flatline'?'primary':'default'" :disabled="activeMod && activeMod!=='flatline'" @click="toggleFlatline"><i class="fa fa-minus"></i> sensor clavado</base-button>
               <base-button size="sm" :type="activeMod==='staleness'?'primary':'default'" :disabled="activeMod && activeMod!=='staleness'" @click="toggleStaleness"><i class="fa fa-plug"></i> deja de reportar</base-button>
-              <base-button size="sm" :type="activeMod==='variance'?'primary':'default'" :disabled="activeMod && activeMod!=='variance'" @click="toggleVariance"><i class="fa fa-wave-square"></i> variabilidad</base-button>
+              <base-button size="sm" :type="activeMod==='variance'?'primary':'default'" :disabled="activeMod && activeMod!=='variance'" @click="toggleVariance"><i class="fa fa-wave-square"></i> lecturas inestables</base-button>
             </template>
             <base-button v-if="s.conditions.length > 1" size="sm" type="default" @click="toGrouped" title="Combinar en grupos anidados (Y/O dentro de Y/O)"><i class="fa fa-sitemap"></i> agrupar condiciones</base-button>
           </div>
@@ -141,17 +141,17 @@
             Se vigila por reloj, aunque el equipo no envíe nada.
           </div>
 
-          <!-- M5 · variabilidad (variance) -->
+          <!-- M5 · lecturas inestables (variance) -->
           <div v-if="s.variance" class="se-extra">
-            … medido como la <b>variabilidad (dispersión)</b> de la lectura (el valor de arriba es el umbral),
-            en los últimos
+            … avisa cuando la lectura <b>salta u oscila mucho más de lo habitual</b> (el valor de arriba es
+            cuánto tolera), en los últimos
             <el-input v-model.number="s.variance.windowMin" size="small" type="number" class="se-mini" /> min.
-            Detecta inestabilidad/vibración anómala.
+            Sirve para detectar inestabilidad o vibración anómala.
           </div>
 
           <!-- M5/técnica · preset con umbral editable (baseline/accumulator/acceleration) -->
           <div v-if="s.mPreset" class="se-extra">
-            <i class="fa fa-lock"></i> Regla <b>preset</b> (soft sensor técnico): sólo se edita el
+            <i class="fa fa-lock"></i> Regla <b>preconfigurada</b>: sólo se edita el
             <b>umbral</b> (valor de arriba), la <b>severidad</b> y la <b>recomendación</b>. El cálculo y sus
             parámetros vienen definidos y no se tocan desde acá.
           </div>
