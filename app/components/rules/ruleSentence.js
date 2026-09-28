@@ -90,6 +90,21 @@ export function summarize(r, opts = {}) {
       const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
       return `caída acumulada de ${vlabel} desde la última recarga ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${u}`;
     }
+    if (r.metric === 'stepJump') {
+      const c = r.condition || {};
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `salto abrupto de ${vlabel} ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${u} en un solo paso`;
+    }
+    if (r.metric === 'flatline') {
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      const w = r.mWindow ? Math.round((r.mWindow.durationSec || 0) / 60) : 0;
+      return `${vlabel} sin cambios (sensor clavado) durante ${w} min`;
+    }
+    if (r.metric === 'staleness') {
+      const c = r.condition || {};
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `el equipo deja de reportar ${vlabel} por más de ${c.value} min`;
+    }
     return `${varName} · soft sensor (${r.metric})`;
   }
   return varName;
@@ -233,9 +248,10 @@ export function emptySentence(deviceType) {
   return {
     conditions: [emptyCondition(deviceType)],
     join: 'AND', temporal: null, setpoint: null,
-    // M (soft sensors): M1 trend=slope · projection=projection · M2 spread · compare=ratio/divergence.
+    // M (soft sensors): M1 trend=slope · projection=projection · M2 spread · compare=ratio/divergence
+    // · M3 dutyCycle/cumulative · M4 stepJump/flatline/staleness.
     trend: null, projection: null, spread: null, compare: null,
-    dutyCycle: null, cumulative: null, mPreset: false,
+    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, mPreset: false,
     severity: 'warning', recommendation: '', label: '', nested: false,
   };
 }
@@ -243,7 +259,8 @@ export function emptySentence(deviceType) {
 // Tipo inferido de la frase (nunca lo elige el usuario).
 export function inferType(s) {
   if ((s.conditions || []).length >= 2) return 'cross';
-  if (s.trend || s.projection || s.spread || s.compare || s.dutyCycle || s.cumulative) return 'M';
+  if (s.trend || s.projection || s.spread || s.compare || s.dutyCycle || s.cumulative
+      || s.stepJump || s.flatline || s.staleness) return 'M';
   if (s.setpoint) return 'C';
   if (s.temporal) return 'S';
   return 'D';
@@ -315,6 +332,21 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       rule.metric = 'cumulativeSince';
       rule.condition = { op: c0.op, value: coerceValue(c0.value, 'float') };  // umbral acumulado
       // sin mWindow (acumulador persistente); deviceType+variable de c0.
+    } else if (s.stepJump) {                          // M4 · salto abrupto en un paso
+      rule.metric = 'stepJump';
+      rule.condition = { op: c0.op || 'gte', value: coerceValue(c0.value, 'float') };  // umbral del salto
+      rule.mWindow = { durationSec: Math.round((Number(s.stepJump.windowMin) || 0) * 60), minSamples: 2 };
+      if (c0.unit) rule.unit = c0.unit;
+    } else if (s.flatline) {                          // M4 · sensor clavado (rango≈0)
+      rule.metric = 'flatline';
+      rule.condition = { op: 'lte', value: coerceValue(c0.value, 'float') };  // tolerancia (rango máx del valor de arriba)
+      rule.mWindow = { durationSec: Math.round((Number(s.flatline.windowMin) || 0) * 60), minSamples: 3 };
+      if (c0.unit) rule.unit = c0.unit;
+    } else if (s.staleness) {                         // M4 · pérdida de comunicación (por tick)
+      rule.metric = 'staleness';
+      rule.condition = { op: 'gte', value: coerceValue(c0.value, 'float') };  // minutos de silencio (valor de arriba)
+      rule.unit = 'min';
+      // sin mWindow — se mide por tick (ahora − último ts de mensaje).
     } else {                                         // M2 · relación/diferencia entre dos datos
       rule.metric = s.compare.kind;                  // 'ratio' | 'divergence'
       rule.inputs = [
@@ -339,7 +371,7 @@ export function ruleToSentence(rule) {
   const base = {
     conditions: [], join: 'AND', temporal: null, setpoint: null,
     trend: null, projection: null, spread: null, compare: null,
-    dutyCycle: null, cumulative: null, mPreset: false,
+    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, mPreset: false,
     severity: rule.severity || 'warning', recommendation: rule.recommendation || '',
     label: rule.label || '', nested: false,
   };
@@ -387,6 +419,18 @@ export function ruleToSentence(rule) {
       const c = rule.condition || {};
       base.cumulative = true;
       base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
+    } else if (rule.metric === 'stepJump') {
+      const c = rule.condition || {};
+      base.stepJump = { windowMin: wMin || 10 };
+      base.conditions = [leaf(rule.variable, c.op || 'gte', c.value)];
+    } else if (rule.metric === 'flatline') {
+      const c = rule.condition || {};
+      base.flatline = { windowMin: wMin || 5 };
+      base.conditions = [leaf(rule.variable, 'lte', c.value)];
+    } else if (rule.metric === 'staleness') {
+      const c = rule.condition || {};
+      base.staleness = true;
+      base.conditions = [leaf(rule.variable, 'gte', c.value)];
     } else {
       base.mPreset = true;   // accumulator/acceleration/otras técnicas → preset (umbral editable)
     }
