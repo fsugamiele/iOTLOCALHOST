@@ -105,6 +105,16 @@ export function summarize(r, opts = {}) {
       const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
       return `el equipo deja de reportar ${vlabel} por más de ${c.value} min`;
     }
+    if (r.metric === 'variance') {
+      const c = r.condition || {};
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `la variabilidad de ${vlabel} ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${u}`;
+    }
+    if (r.metric === 'baseline') {
+      const c = r.condition || {};
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `${vlabel} se aparta ${OPERATOR_LABELS[c.op] || c.op} ${c.value} desvíos (σ) de su valor normal`;
+    }
     return `${varName} · soft sensor (${r.metric})`;
   }
   return varName;
@@ -249,9 +259,9 @@ export function emptySentence(deviceType) {
     conditions: [emptyCondition(deviceType)],
     join: 'AND', temporal: null, setpoint: null,
     // M (soft sensors): M1 trend=slope · projection=projection · M2 spread · compare=ratio/divergence
-    // · M3 dutyCycle/cumulative · M4 stepJump/flatline/staleness.
+    // · M3 dutyCycle/cumulative · M4 stepJump/flatline/staleness · M5 variance (baseline=preset).
     trend: null, projection: null, spread: null, compare: null,
-    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, mPreset: false,
+    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, variance: null, mPreset: false,
     severity: 'warning', recommendation: '', label: '', nested: false,
   };
 }
@@ -260,7 +270,7 @@ export function emptySentence(deviceType) {
 export function inferType(s) {
   if ((s.conditions || []).length >= 2) return 'cross';
   if (s.trend || s.projection || s.spread || s.compare || s.dutyCycle || s.cumulative
-      || s.stepJump || s.flatline || s.staleness) return 'M';
+      || s.stepJump || s.flatline || s.staleness || s.variance || s.mPreset) return 'M';
   if (s.setpoint) return 'C';
   if (s.temporal) return 'S';
   return 'D';
@@ -347,6 +357,17 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       rule.condition = { op: 'gte', value: coerceValue(c0.value, 'float') };  // minutos de silencio (valor de arriba)
       rule.unit = 'min';
       // sin mWindow — se mide por tick (ahora − último ts de mensaje).
+    } else if (s.variance) {                          // M5 · variabilidad (σ del buffer)
+      rule.metric = 'variance';
+      rule.condition = { op: c0.op || 'gt', value: coerceValue(c0.value, 'float') };  // umbral de dispersión
+      rule.mWindow = { durationSec: Math.round((Number(s.variance.windowMin) || 0) * 60), minSamples: 3 };
+      if (c0.unit) rule.unit = c0.unit;
+    } else if (s.mPreset) {                           // M5/técnica · preset (baseline/accumulator/acceleration): SOLO umbral editable
+      rule.metric = (existing && existing.metric) || 'baseline';
+      rule.condition = { op: c0.op, value: coerceValue(c0.value, 'float') };
+      if (existing && existing.mWindow) rule.mWindow = existing.mWindow;   // params técnicos preservados
+      if (existing && existing.mParams) rule.mParams = existing.mParams;
+      if (existing && existing.unit)    rule.unit = existing.unit;
     } else {                                         // M2 · relación/diferencia entre dos datos
       rule.metric = s.compare.kind;                  // 'ratio' | 'divergence'
       rule.inputs = [
@@ -371,7 +392,7 @@ export function ruleToSentence(rule) {
   const base = {
     conditions: [], join: 'AND', temporal: null, setpoint: null,
     trend: null, projection: null, spread: null, compare: null,
-    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, mPreset: false,
+    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, variance: null, mPreset: false,
     severity: rule.severity || 'warning', recommendation: rule.recommendation || '',
     label: rule.label || '', nested: false,
   };
@@ -431,8 +452,17 @@ export function ruleToSentence(rule) {
       const c = rule.condition || {};
       base.staleness = true;
       base.conditions = [leaf(rule.variable, 'gte', c.value)];
+    } else if (rule.metric === 'variance') {
+      const c = rule.condition || {};
+      base.variance = { windowMin: wMin || 10 };
+      base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
     } else {
-      base.mPreset = true;   // accumulator/acceleration/otras técnicas → preset (umbral editable)
+      // baseline/accumulator/acceleration → preset (umbral editable): mostramos el
+      // umbral actual (condition) para que el operador lo edite; los params técnicos
+      // (mWindow/mParams) los preserva sentenceToRule desde `existing`.
+      const c = rule.condition || {};
+      base.mPreset = true;
+      base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
     }
   } else { // D
     base.conditions = [leaf(rule.variable, (rule.condition || {}).op, (rule.condition || {}).value)];

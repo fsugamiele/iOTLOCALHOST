@@ -43,6 +43,7 @@
               <base-button size="sm" :type="activeMod==='stepJump'?'primary':'default'" :disabled="activeMod && activeMod!=='stepJump'" @click="toggleStepJump"><i class="fa fa-bolt"></i> salto abrupto</base-button>
               <base-button size="sm" :type="activeMod==='flatline'?'primary':'default'" :disabled="activeMod && activeMod!=='flatline'" @click="toggleFlatline"><i class="fa fa-minus"></i> sensor clavado</base-button>
               <base-button size="sm" :type="activeMod==='staleness'?'primary':'default'" :disabled="activeMod && activeMod!=='staleness'" @click="toggleStaleness"><i class="fa fa-plug"></i> deja de reportar</base-button>
+              <base-button size="sm" :type="activeMod==='variance'?'primary':'default'" :disabled="activeMod && activeMod!=='variance'" @click="toggleVariance"><i class="fa fa-wave-square"></i> variabilidad</base-button>
             </template>
             <base-button v-if="s.conditions.length > 1" size="sm" type="default" @click="toGrouped" title="Combinar en grupos anidados (Y/O dentro de Y/O)"><i class="fa fa-sitemap"></i> agrupar condiciones</base-button>
           </div>
@@ -138,6 +139,21 @@
           <div v-if="s.staleness" class="se-extra">
             … si el equipo <b>deja de reportar</b> esa variable por más del valor de arriba (en <b>minutos</b>).
             Se vigila por reloj, aunque el equipo no envíe nada.
+          </div>
+
+          <!-- M5 · variabilidad (variance) -->
+          <div v-if="s.variance" class="se-extra">
+            … medido como la <b>variabilidad (dispersión)</b> de la lectura (el valor de arriba es el umbral),
+            en los últimos
+            <el-input v-model.number="s.variance.windowMin" size="small" type="number" class="se-mini" /> min.
+            Detecta inestabilidad/vibración anómala.
+          </div>
+
+          <!-- M5/técnica · preset con umbral editable (baseline/accumulator/acceleration) -->
+          <div v-if="s.mPreset" class="se-extra">
+            <i class="fa fa-lock"></i> Regla <b>preset</b> (soft sensor técnico): sólo se edita el
+            <b>umbral</b> (valor de arriba), la <b>severidad</b> y la <b>recomendación</b>. El cálculo y sus
+            parámetros vienen definidos y no se tocan desde acá.
           </div>
         </template>
 
@@ -293,6 +309,8 @@ export default {
       if (this.s.stepJump) return 'stepJump';
       if (this.s.flatline) return 'flatline';
       if (this.s.staleness) return 'staleness';
+      if (this.s.variance) return 'variance';
+      if (this.s.mPreset) return 'mPreset';
       return null;
     },
     typeHint() {
@@ -307,6 +325,8 @@ export default {
       if (this.s.stepJump) return 'salto abrupto';
       if (this.s.flatline) return 'sensor clavado';
       if (this.s.staleness) return 'deja de reportar';
+      if (this.s.variance) return 'variabilidad';
+      if (this.s.mPreset) return 'preset';
       return TYPE_HINT[inferType(this.s)] || '';
     },
     // Respaldo en lenguaje natural, unificado: cualquier cross (simple 2+ o
@@ -335,14 +355,15 @@ export default {
       if (this.s.dutyCycle && !(this.s.dutyCycle.windowMin > 0)) return false;
       if (this.s.stepJump && !(this.s.stepJump.windowMin > 0)) return false;
       if (this.s.flatline && !(this.s.flatline.windowMin > 0)) return false;
-      // staleness: sólo requiere la variable + el valor (minutos) — ya cubierto por el chequeo genérico.
+      if (this.s.variance && !(this.s.variance.windowMin > 0)) return false;
+      // staleness / mPreset: sólo requieren la variable + el valor — ya cubierto por el chequeo genérico.
       return true;
     },
   },
   methods: {
     touch() { this.tick++; },
     // Limpia todos los modificadores (S/C/M) y activa uno solo (garantiza exclusión).
-    clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = this.s.dutyCycle = this.s.cumulative = this.s.stepJump = this.s.flatline = this.s.staleness = null; },
+    clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = this.s.dutyCycle = this.s.cumulative = this.s.stepJump = this.s.flatline = this.s.staleness = this.s.variance = null; this.s.mPreset = false; },
     addCondition() {
       this.s.conditions.push(emptyCondition((this.pack && this.pack.deviceType) || ''));
       this.clearMods(); this.touch();
@@ -363,6 +384,8 @@ export default {
     toggleStepJump() { const on = !this.s.stepJump; this.clearMods(); if (on) { this.s.stepJump = { windowMin: 10 }; if (this.s.conditions[0]) this.s.conditions[0].op = 'gte'; } this.touch(); },
     toggleFlatline() { const on = !this.s.flatline; this.clearMods(); if (on) { this.s.flatline = { windowMin: 5 }; if (this.s.conditions[0]) this.s.conditions[0].op = 'lte'; } this.touch(); },
     toggleStaleness() { const on = !this.s.staleness; this.clearMods(); if (on) { this.s.staleness = true; if (this.s.conditions[0]) this.s.conditions[0].op = 'gte'; } this.touch(); },
+    // M5 · variabilidad (variance). baseline se edita como preset (mPreset), no tiene toggle propio.
+    toggleVariance() { const on = !this.s.variance; this.clearMods(); if (on) { this.s.variance = { windowMin: 10 }; if (this.s.conditions[0]) this.s.conditions[0].op = 'gt'; } this.touch(); },
     // Convierte las condiciones planas en un árbol crossExpr y pasa a avanzado.
     toGrouped() {
       const dt = (this.pack && this.pack.deviceType) || '';
