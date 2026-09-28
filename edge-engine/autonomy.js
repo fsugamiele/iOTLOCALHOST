@@ -41,6 +41,10 @@ const mongoose = require('mongoose');
 
 const AUTONOMY_VARIABLE = 'autonomy_hours';
 const AUTONOMY_SOURCE_VARIABLE = 'autonomy_source';
+// #88 — variables derivadas para el widget enriquecido (Franco): consumo usado
+// (nominal u observado) y litros restantes. Que el usuario entienda el número.
+const AUTONOMY_LPH_VARIABLE = 'autonomy_lph';
+const AUTONOMY_LITERS_VARIABLE = 'autonomy_liters';
 
 // Ventana empírica: 6 h de historial de fuel. Corta para reaccionar a
 // cambios de régimen, larga para absorber ruido de lectura. Con ≤2 muestras
@@ -172,6 +176,7 @@ function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }
   //    descartar el historial previo: la pendiente pre-repostaje no sirve.
   let hours = null;
   let source = 'estimated';
+  let lph = cfg.consumptionLph;                        // consumo usado (default nominal)
   const prev = rt.samples.length > 1 ? rt.samples[rt.samples.length - 2].value : null;
   const refueled = prev !== null && fuel - prev > 1;
 
@@ -186,6 +191,7 @@ function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }
         if (observedCons > 0) {
           hours = Math.round((fuel * cfg.tankCapacity / 100 / observedCons) * 10) / 10;
           source = 'measured';
+          lph = observedCons;                          // consumo OBSERVADO
         }
       }
     }
@@ -206,8 +212,11 @@ function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }
   rt.lastPublishTs = now;
   rt.lastSource = source;
 
+  const liters = Math.round(fuel * cfg.tankCapacity / 100 * 10) / 10;   // litros restantes
   publishVar(client, cfg.userId, dId, AUTONOMY_VARIABLE, hours);
   publishVar(client, cfg.userId, dId, AUTONOMY_SOURCE_VARIABLE, source);
+  publishVar(client, cfg.userId, dId, AUTONOMY_LPH_VARIABLE, Math.round(lph * 100) / 100);
+  publishVar(client, cfg.userId, dId, AUTONOMY_LITERS_VARIABLE, liters);
   return true;
 }
 
@@ -223,4 +232,6 @@ module.exports = {
   resetAutonomyRuntime,
   AUTONOMY_VARIABLE,
   AUTONOMY_SOURCE_VARIABLE,
+  AUTONOMY_LPH_VARIABLE,
+  AUTONOMY_LITERS_VARIABLE,
 };
