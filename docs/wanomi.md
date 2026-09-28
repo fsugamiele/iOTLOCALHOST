@@ -12636,3 +12636,58 @@ filtro userId) · `4855e50` biblioteca de campo (PDFs/fotos/marca) ahora version
 2. **Motor M — Olas M3-M5:** accumulator/dutyCycle/cumulativeSince (M3) · flatline/staleness(tick)/stepJump
    (M4) · baseline/variance (M5), cada una con escenario de simulador y UI.
 3. Deuda de numeración DEC-REF-114→116 en comentarios de `components/rules/*`.
+
+## Sesión #88 — 2026-09-28 · Área 2 · Motor M Ola M3 (persistencia) + autonomía enriquecida como widget de primera clase
+
+**DEC-REF-118 (Ola M3) — acumuladores persistentes.** Tercera ola del motor M: métricas que
+ACUMULAN entre mensajes (no series como M1, no instantáneas como M2). `dutyCycle` (% del tiempo en uso
+en una ventana), `cumulativeSince` (lo acumulado desde la última recarga — ej. detección de **sifoneo**
+de combustible) y `accumulator` (preset). **Decisión D2/D6 (Franco): opción B + persistencia Mongo** —
+"producto, no demo": el motor **infiere las convenciones de recarga** (no las pide al usuario) y el estado
+del acumulador **sobrevive el restart del edge**. Implementación: `evaluateDutyCycle`/`evaluateAccum` en
+`typeM.js` (marcan `_persist`/`dirty`); `edge-engine/msoftstate.js` NUEVO (modelo `MSoftState` + `loadMSoftState`
+hidrata al boot + `flushMSoftState` bulkWrite de los `dirty` cada 30 s); `index.js` con `mState` Map,
+hidratación en arranque y flush periódico; `validateM`: cumulativeSince/accumulator **SIN** `mWindow`,
+dutyCycle **CON**. **UI:** toggles "uso %"/"acumulado" en el editor-frase (`ruleSentence`/`SentenceEditor`,
+`summarize` legible "caída acumulada desde la última recarga …"). **Simulador REUTILIZA escenarios
+existentes** (`fuel_siphon`/`weekly_exercise`/`service_due` — Franco corrigió: el de sifoneo ya existía, no
+crear uno nuevo). **Verificaciones:** unit motor 6/6 + unit UI 6/6 + **E2E: `cumulativeSince` acc=45
+persistido y SOBREVIVE el restart del edge** (log "Acumuladores M3 hidratados desde Mongo: 1"). Commits:
+`5adafac` (motor) + `94a0233` (UI) + `6cfb8dc` (spec).
+
+**DEC-REF-119 — autonomía enriquecida como widget de PRIMERA CLASE (reversa parcial de DEC-REF-114).**
+Origen: Franco reportó "no se observan cambios en el widget de autonomía". Diagnóstico: la autonomía
+renderizaba por la familia numérica (`render='autonomy'`), camino que sólo transporta 1 valor (`value`),
+así que las nuevas variables enriquecidas nunca llegaban al presenter. **Franco propuso el camino correcto**
+("¿no es más fácil sumar el widget al select y dar de baja el antiguo?") y tenía razón: cuando la autonomía
+era 1 valor, vivir como representación numérica era correcto; al **crecer a 4 variables hermanas**
+(`autonomy_source`/`autonomy_lph`/`autonomy_liters` + `fuel_level`) el camino genérico ya no alcanza →
+vuelve a **widget propio**. **Edge (addenda DEC-REF-115):** `autonomy.js` publica `autonomy_lph` (consumo
+usado, observado o nominal) + `autonomy_liters` (litros restantes). **Front:** `ProjectedAutonomyLive` =
+Live **dedicado** que suscribe las 5 variables (patrón `LiveValue`: seed histórico + `$on/$off`) y alimenta
+al presenter; `ProjectedAutonomy` queda **presenter PURO** (se descartó un parche previo que metía MQTT
+dentro del presenter, por sucio); **baja** del render `autonomy` (`NumericValue`/`widgetRegistry`), **alta**
+de `projectedAutonomy` en el select (grupo Numérico). **Migración Mongo** (no versionada): 2 templates
+`numeric/render=autonomy` → `widget=projectedAutonomy` (WN-SITE-GEN v2, WN-GEN-Cummins), umbrales 2h/4h
+preservados; verificado 0 `render=autonomy` restantes y 0 copias sueltas en `sites`/`devices`. El widget
+muestra gauge + badge **medida/estimada** + **L/h** + **litros** + barra de combustible. Verificado por
+Franco ("quedó perfecto"). Commits: `3d8826c` (edge) + `98b67c0` (widget).
+
+**Reconciliación de numeración (carry-over #88 items 1 y 3).** (3) Comentarios `DEC-REF-114` en
+`components/rules/*` → **DEC-REF-116** (el editor-frase; 114 es autonomía/widgets) — reconciliado en los 4
+archivos (RuleCard/ruleSentence/SentenceEditor/ConditionRow), commit `chore`. (1) Mapa de los commits
+paralelos de Franco: **panel 100% personalizable** (`f2b6808`) = **DEC-REF-120** (Franco) · **autonomía
+calculada por la plataforma v2 híbrida** (`fca7c2c`/`54e0ec6`) = **addenda a DEC-REF-115** (medida/estimada,
+ya extendida acá con lph/liters) · fix devices (`f71f697`) = addenda -113 · biblioteca versionada (`4855e50`).
+Números asignados; el detalle fino de la lógica interna del panel de Franco queda como deuda menor de corpus.
+
+**Commits #88:** `5adafac` `94a0233` `6cfb8dc` (M3) · `3d8826c` `98b67c0` (autonomía widget) · `chore`
+(reconciliación de comentarios) · `docs` (este cierre). Migración de datos de los 2 templates ejecutada en
+Mongo (no versionable).
+
+### Carry-over para #89
+1. **Motor M — Olas M4-M5:** flatline/staleness(tick)/stepJump (M4) · baseline/variance (M5), cada una con
+   escenario de simulador y UI.
+2. **Corpus (deuda menor):** fila propia DEC-REF-120 para el panel personalizable de Franco (hoy sólo
+   mapeado por número, sin análisis de su lógica interna).
+3. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
