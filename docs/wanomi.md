@@ -12734,3 +12734,46 @@ prueba limpiadas de los packs (resolve-by-edit al reload).
 3. **Reglas M4 día-1 (opcional):** sembrar staleness/flatline reales con umbrales sensatos (la staleness de
    prueba a 1 min daba falsos positivos por la cadencia natural del bus DC — un umbral real = 3× latido).
 4. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
+
+## Sesión #90 — 2026-09-28 · Área 2 · Motor M Ola M5 (estadística: variance · baseline) — MOTOR M COMPLETO
+
+**DEC-REF-118 (Ola M5) — estadística, la última.** `variance` (desvío estándar σ del buffer → inestabilidad
+/ vibración anómala) y `baseline` (z-score = (valorActual − media) ÷ σ del buffer → cuánto se aparta el
+valor de su comportamiento reciente; "madura" hasta juntar minSamples, DEC-PRED-1; σ=0 → z=0, no anómalo).
+Ambas reusan el buffer univariante (mismo camino que slope/M1); helpers `mean`/`stddev` en `typeM.js`.
+
+**Exposición en UI (§14).** `variance` = **creación libre** (toggle "variabilidad": umbral de dispersión +
+ventana) — el spec no la listaba en §14A ni §14B, se decidió operator-facing por ser entendible ("lectura
+inestable"). `baseline` = **preset técnico** (§14B): solo umbral/severidad/recomendación editables, con nota
+"preset" en el editor. **Fix estructural en el camino:** el round-trip de presets estaba ROTO desde M3 —
+`inferType`/`sentenceToRule` no contemplaban `mPreset`, así que editar un preset (baseline/accumulator/
+acceleration) desde la card lo **degradaba a tipo D** perdiendo la métrica y los params técnicos. Ahora
+`inferType` reconoce `mPreset`, `ruleToSentence` muestra el umbral actual y `sentenceToRule` **preserva
+`metric`+`mWindow`+`mParams` del rule existente** y solo pisa `condition` (umbral). Deuda de M3/M4 saldada.
+
+**Simulador.** Escenario `vibracion_anomala`: oscila `dc_bus_voltage` con amplitud creciente por steps
+(cada set publica por superar el deadband) → el buffer del edge acumula lecturas muy dispersas → σ alta.
+
+**Verificaciones.** Unit motor 5/5 (variance σ=5 dispara / σ=0 no / baseline estable no / outlier sí) +
+round-trip frase↔engine y preset 7/7 (incluye editar el umbral de un baseline preservando sus params).
+**E2E path productivo (DEC-PROC-5):** reglas M5 sembradas → reload → `vibracion_anomala` por MQTT →
+notificaciones en Mongo: **variance** fire con σ=**3.23** (>3), **baseline** fire con z=**1.55** (>1.5),
+ambos anclados a `4lkbkJtW`. Reglas de prueba limpiadas (resolve-by-edit al reload).
+
+**★ MOTOR M COMPLETO — M1 a M5, 14 sub-familias.** Tendencia (slope/acceleration/projection) · multivariante
+instantáneo (ratio/divergence/spread con outlier) · acumuladores persistentes en Mongo (accumulator/dutyCycle/
+cumulativeSince) · consistencia/forense (stepJump/flatline/staleness-por-tick) · estadística (variance/baseline).
+Cada sub-familia con evaluador, validación, mapeo frase↔engine, exposición en UI (libre o preset) y
+verificación E2E por el path productivo. Queda como mejora futura: override manual de convenciones M3
+(opción A) y el seed de reglas preset día-1 (baseline/accumulator con umbrales calibrados).
+
+**Commits #90:** `1dfe0d4` (motor variance/baseline) · `656970a` (sim vibracion_anomala) · `385a7df` (UI M5
++ fix round-trip de presets) · `docs` (este cierre).
+
+### Carry-over para #91
+1. **Reglas preset día-1:** sembrar baseline/accumulator/acceleration con umbrales calibrados (hoy el motor y
+   la UI-preset están listos, falta el seed con valores reales por equipo).
+2. **Reglas M día-1 en general:** staleness/flatline/variance reales con umbrales sensatos (la staleness de
+   prueba a 1 min daba falsos positivos; umbral real ≈ 3× latido).
+3. **Corpus (deuda menor):** fila propia DEC-REF-120 para el panel personalizable de Franco.
+4. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
