@@ -1,7 +1,15 @@
 <template>
   <div class="projected-autonomy">
     <template v-if="hasData">
+      <span v-if="sourceLabel" class="pa-badge" :class="'pa-badge--' + sourceKind" :title="sourceTip">{{ sourceLabel }}</span>
       <div ref="chart" class="projected-autonomy__canvas"></div>
+      <div v-if="hasExtra" class="pa-info">
+        <div v-if="fuel != null" class="pa-bar" :title="'Combustible ' + fuelPct + '%'">
+          <span class="pa-bar__fill" :style="{ width: fuelPct + '%' }"></span>
+          <span class="pa-bar__txt">{{ litersFmt }}</span>
+        </div>
+        <div v-if="lph != null" class="pa-lph">{{ lphFmt }}</div>
+      </div>
     </template>
     <template v-else>
       <span v-if="context === 'editor'" class="projected-autonomy__na">—</span>
@@ -23,12 +31,37 @@ export default {
   mixins: [echartsBase],
   props: {
     value:   { default: null },
+    // #88 — variables hermanas que publica el edge (autonomy.js). Las alimenta
+    // el Live dedicado ProjectedAutonomyLive (widget de primera clase); el
+    // presenter queda PURO (solo props, sin MQTT).
+    source:  { default: null },   // 'measured' | 'estimated'
+    lph:     { default: null },   // consumo usado (L/h)
+    liters:  { default: null },   // litros restantes
+    fuel:    { default: null },   // % de combustible (barra)
     config:  { type: Object, default: () => ({}) },
     context: { type: String, default: 'live' },
   },
   computed: {
     hasData() {
       return this.value !== null && this.value !== undefined && Number.isFinite(Number(this.value));
+    },
+    sourceKind() { return this.source === 'measured' ? 'measured' : 'estimated'; },
+    sourceLabel() {
+      if (this.source === 'measured') return 'medida';
+      if (this.source === 'estimated') return 'estimada';
+      return '';
+    },
+    sourceTip() {
+      return this.sourceKind === 'measured'
+        ? 'Autonomía MEDIDA: consumo real observado con el grupo en marcha.'
+        : 'Autonomía ESTIMADA: consumo nominal de la ficha (aún sin medición en marcha).';
+    },
+    hasExtra() { return this.fuel != null || this.lph != null || this.liters != null; },
+    fuelPct() { const f = Number(this.fuel); return Number.isFinite(f) ? Math.max(0, Math.min(100, Math.round(f))) : 0; },
+    litersFmt() { return this.liters != null ? `${Math.round(Number(this.liters))} L` : `${this.fuelPct}%`; },
+    lphFmt() {
+      const n = Math.round(Number(this.lph) * 10) / 10;
+      return `${n} L/h ${this.sourceKind === 'measured' ? '(observado)' : '(nominal)'}`;
     },
     hours() { return Number(this.value); },
     formatted() {
@@ -102,16 +135,31 @@ export default {
 <style scoped>
 .projected-autonomy {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   width: 100%;
+  position: relative;
 }
 .projected-autonomy__canvas {
   /* DEC-REF-113 F3 (#84) — llenar la celda; min-height por si la cadena
      flex no resuelve alto (editor/preview). */
   width: 100%;
   height: 100%;
-  min-height: 140px;
+  min-height: 120px;
+  flex: 1 1 auto;
 }
 .projected-autonomy__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }
 .projected-autonomy__na     { color: #6b7280; opacity: 0.7; font-size: 1.4em; }
+
+/* #88 — badge de fuente (medida/estimada) + barra de combustible + consumo */
+.pa-badge { position: absolute; top: 2px; right: 4px; font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border-radius: 10px; padding: 2px 8px; z-index: 2; }
+.pa-badge--measured  { color: #00806c; background: rgba(0,191,154,.18); }
+.pa-badge--estimated { color: #7d879c; background: rgba(136,152,170,.18); }
+.pa-info { width: 100%; padding: 0 6px 2px; }
+.pa-bar { position: relative; height: 16px; border-radius: 8px; background: rgba(136,152,170,.18); overflow: hidden; margin-bottom: 3px; }
+.pa-bar__fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #00bf9a, #00d9b8); border-radius: 8px; transition: width .4s ease; }
+.pa-bar__txt { position: relative; display: block; text-align: center; font-size: 0.66rem; line-height: 16px; font-weight: 600; color: #32325d; }
+.pa-lph { text-align: center; font-size: 0.66rem; color: #8898aa; }
+body:not(.white-content) .pa-bar__txt { color: #fff; }
 </style>

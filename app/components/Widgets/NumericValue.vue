@@ -12,8 +12,9 @@ import TankLevel   from '@/components/Widgets/TankLevel.vue';
 import CounterPump from '@/components/Widgets/CounterPump.vue';
 import IconValue   from '@/components/Widgets/IconValue.vue';
 import Sparkline   from '@/components/Widgets/Sparkline.vue';
-// DEC-REF-114 (#85) — autonomía como representación de la familia numérica.
-import ProjectedAutonomy from '@/components/Widgets/ProjectedAutonomy.vue';
+// #88 (Franco) — la autonomía dejó de ser una representación numérica
+// (reversa de DEC-REF-114): al publicar 4 hermanas volvió a ser widget de
+// primera clase (projectedAutonomy → ProjectedAutonomyLive). Ya no vive acá.
 
 const RENDERERS = {
   valueStatus: ValueStatus,
@@ -22,7 +23,6 @@ const RENDERERS = {
   counter:     CounterPump,
   icon:        IconValue,
   sparkline:   Sparkline,
-  autonomy:    ProjectedAutonomy,
 };
 
 export default {

@@ -105,9 +105,9 @@ const RENDER_OPTIONS = [
   { value: 'counter',     label: 'Contador surtidor (litros, horas, kWh…)' },
   { value: 'sparkline',   label: 'Sparkline — mini tendencia (historial)' },
   { value: 'icon',        label: 'Ícono + valor (estilo clásico)' },
-  // DEC-REF-114 (#85) — la autonomía deja de ser un tipo legacy inalcanzable:
-  // es una representación más, con sus umbrales en horas configurables.
-  { value: 'autonomy',    label: 'Autonomía — horas restantes (la publica el equipo)' },
+  // #88 (Franco) — la autonomía SALE de la familia numérica (reversa de
+  // DEC-REF-114): al enriquecerse con 4 variables hermanas volvió a ser widget
+  // de primera clase (projectedAutonomy). Se elige en el grupo 'Numérico' del select.
 ];
 // Helper de visibilidad condicional por representación.
 const renderIn = (...vals) => (cfg) => vals.includes(cfg.render);
@@ -159,15 +159,13 @@ export const WIDGET_REGISTRY = {
       { kind: 'number',   model: 'chartTimeAgo', label: 'Ventana de historial (min)', showIf: renderIn('sparkline') },
       { kind: 'number',   model: 'tankCapacity', label: 'Capacidad del tanque (opcional)', showIf: renderIn('tank') },
       { kind: 'text',     model: 'tankUnit', label: 'Unidad de capacidad (ej: L)', showIf: renderIn('tank') },
-      { kind: 'number',   model: 'thresholds.criticalLow',  label: 'Umbral crítico bajo (color)',  showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon', 'autonomy') },
-      { kind: 'number',   model: 'thresholds.warningLow',   label: 'Umbral warning bajo (color)',   showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon', 'autonomy') },
+      { kind: 'number',   model: 'thresholds.criticalLow',  label: 'Umbral crítico bajo (color)',  showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon') },
+      { kind: 'number',   model: 'thresholds.warningLow',   label: 'Umbral warning bajo (color)',   showIf: renderIn('valueStatus', 'gauge', 'tank', 'icon') },
       { kind: 'number',   model: 'thresholds.warningHigh',  label: 'Umbral warning alto (color)',   showIf: renderIn('valueStatus', 'gauge', 'icon') },
       { kind: 'number',   model: 'thresholds.criticalHigh', label: 'Umbral crítico alto (color)',   showIf: renderIn('valueStatus', 'gauge', 'icon') },
       // DEC-REF-114 (#85) — factoryRange editable (antes solo se copiaba de
       // la ficha al crear; no había forma de ajustarlo desde la UI).
       { kind: 'text',     model: 'factoryRange', label: 'Rango normal de fábrica (min-max, ej: 10.5-14.5)', showIf: renderIn('valueStatus') },
-      // DEC-REF-114 (#85) — guía de la representación autonomía.
-      { kind: 'help', text: 'Autonomía: la calcula y publica el EQUIPO en horas (la ficha declara la variable); los umbrales son en horas y lo crítico es ABAJO (poco tiempo restante).', showIf: renderIn('autonomy') },
       { kind: 'help', text: 'La representación no cambia el dato: elegís cómo se dibuja el mismo sensor. Los umbrales pintan el color/zonas del gráfico.' },
       { kind: 'size',     model: 'column' },
     ],
@@ -514,7 +512,7 @@ export const WIDGET_REGISTRY = {
 
   projectedAutonomy: {
     type: 'projectedAutonomy',
-    label: 'Autonomía Proyectada — horas que publica el equipo (Wanomi 3.0)',
+    label: 'Autonomía del grupo — horas + combustible (medida/estimada)',
     icon: 'fa-battery-half',
     group: 'wanomi',
     isVariableWidget: true,
@@ -524,7 +522,7 @@ export const WIDGET_REGISTRY = {
       { kind: 'text',     model: 'variableFullName', label: 'Nombre de Variable' },
       { kind: 'number',   model: 'thresholds.warningLow',  label: 'Umbral warning bajo (horas — opcional)' },
       { kind: 'number',   model: 'thresholds.criticalLow', label: 'Umbral crítico bajo (horas — opcional)' },
-      { kind: 'help',     text: 'La autonomía la calcula y publica el equipo (la ficha la declara); la plataforma no estima consumo.' },
+      { kind: 'help',     text: 'La autonomía la CALCULA la plataforma (DEC-REF-115): medida (consumo real con el grupo en marcha) o estimada (nominal de la ficha). El widget muestra horas, la fuente (medida/estimada), L/h y litros restantes; los umbrales son en horas y lo crítico es ABAJO.' },
       { kind: 'icon',     model: 'icon' },
       { kind: 'size',     model: 'column' },
     ],
@@ -771,7 +769,7 @@ export function getDescriptor(type) {
 // projectedAutonomy) siguen resolviéndose para plantillas guardadas pero NO
 // se ofrecen para altas nuevas (criterio DEC-REF-107 Paso 2).
 export const WIDGET_SELECT_GROUPS = [
-  { label: 'Numérico',           types: ['numeric', 'counter'] },
+  { label: 'Numérico',           types: ['numeric', 'counter', 'projectedAutonomy'] },
   { label: 'Estado',             types: ['indicator', 'booleanDwell', 'multiState', 'dataFreshness'] },
   { label: 'Sitio',              types: ['activeRecommendation', 'equipmentAlarms', 'siteMap'] },
   { label: 'Multi-fuente',       types: ['powerCascade', 'dcPlant'] },
