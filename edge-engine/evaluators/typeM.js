@@ -3,6 +3,7 @@
 // compara contra `rule.condition` — reusa la primitiva de comparación de typeD
 // (fuente única de comparadores, igual que hace typeS con matchCondition).
 // Ola M1: slope · acceleration · projection (univariante, sobre ventana).
+// Ola M4: stepJump · flatline (buffer) · staleness (silencio, por tick §8-D3).
 // Devuelve { fired, metricValue, detail }.
 //   metricValue: el número derivado (para la notificación: "pendiente −0,7 V/min")
 //   detail: 'insufficient' | 'maturing' | 'unsupported' → no dispara ni resuelve
@@ -49,9 +50,39 @@ function computeMetric(rule, buf) {
       return { metricValue: minsToTarget / 60 };
     }
 
+    case 'stepJump': {
+      // |valor − valorPrevio| en el último paso (las dos muestras más recientes):
+      // salto abrupto (sifoneo) vs consumo suave.
+      const n = buf.length;
+      if (n < 2) return { metricValue: null, detail: 'insufficient' };
+      return { metricValue: Math.abs(buf[n - 1].value - buf[n - 2].value) };
+    }
+
+    case 'flatline': {
+      // Rango (máx−mín) del buffer: ≈0 durante toda la ventana = sensor clavado
+      // (muerto / lectura falsa, forense). Dispara con condition.value = epsilon.
+      let mn = buf[0].value, mx = buf[0].value;
+      for (const p of buf) { if (p.value < mn) mn = p.value; if (p.value > mx) mx = p.value; }
+      return { metricValue: mx - mn };
+    }
+
     default:
       return { metricValue: null, detail: 'unsupported' };
   }
+}
+
+// ── M4 · staleness (silencio de comunicación) ───────────────────────────
+// NO usa buffer: guarda el último ts de LLEGADA y mide (ahora − últimoTs) en min.
+// Se refresca en cada mensaje entrante (→ resolve al reconectar) y además se
+// evalúa por TICK periódico (§8-D3): sin mensaje no habría evaluación.
+function evaluateStaleness(rule, { mState, dId, eventTs, tick }) {
+  const key = `${rule.ruleId}:${dId}`;
+  const now = (eventTs != null) ? eventTs : Date.now();
+  const st = mState.get(key) || { lastTs: null };
+  if (!tick) { st.lastTs = now; mState.set(key, st); }   // mensaje entrante → refresca
+  if (st.lastTs == null) return { fired: false, metricValue: null, detail: 'insufficient' };
+  const minsSilent = (now - st.lastTs) / 60000;
+  return { fired: evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, minsSilent), metricValue: minsSilent };
 }
 
 // ── M2 · multivariante instantáneo (lee siteState, sin buffer) ──────────
@@ -174,6 +205,7 @@ function evaluateAccum(rule, value, { mState, dId }) {
 }
 
 function evaluateM(rule, value, ctx) {
+  if (rule.metric === 'staleness') return evaluateStaleness(rule, ctx);
   if (INSTANT_METRICS.includes(rule.metric)) return evaluateInstant(rule, ctx);
   if (rule.metric === 'dutyCycle') return evaluateDutyCycle(rule, value, ctx);
   if (ACCUM_METRICS.includes(rule.metric)) return evaluateAccum(rule, value, ctx);

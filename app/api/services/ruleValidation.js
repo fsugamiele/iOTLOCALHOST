@@ -165,8 +165,9 @@ const M_METRICS = [
 // Sub-familias que consumen una ventana temporal (buffer/serie).
 const M_TEMPORAL = [
   'slope', 'acceleration', 'projection', 'baseline', 'variance',
-  'flatline', 'stepJump', 'dutyCycle', 'staleness',
+  'flatline', 'stepJump', 'dutyCycle',
   // 'cumulativeSince'/'accumulator' NO llevan mWindow — son acumuladores persistentes (M3).
+  // 'staleness' NO lleva mWindow — se mide por TICK (§8-D3): umbral = minutos de silencio en condition.value (M4).
 ];
 function validateM(rule) {
   if (!rule.metric || !M_METRICS.includes(rule.metric)) {

@@ -249,6 +249,40 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
   }
 }
 
+// spec_motor_m.md §8-D3 (Ola M4) — tick periódico para `staleness`: el silencio
+// NO llega por mensaje entrante (si el equipo dejó de publicar, no hay evento que
+// dispare la evaluación). Un setInterval en index.js llama a esto: recorre las
+// reglas M `staleness` y, por cada device de su deviceType, mide (ahora − últimoTs)
+// en mState y entra al MISMO camino de emisión (fire/resolve/cooldown) que el resto.
+// El resolve al reconectar lo emite el camino de mensaje (processMessage · case M).
+function processStalenessTick({ packs, siteState, cooldownState, activeState, mState }) {
+  const now = Date.now();
+  for (const pack of packs) {
+    for (const rule of pack.rules) {
+      if (rule.type !== 'M' || rule.metric !== 'staleness') continue;
+      for (const [dId, devState] of siteState) {
+        if (!devState || devState._deviceType !== rule.deviceType) continue;
+        const res = evaluateM(rule, null, { mState, dId, eventTs: now, siteState, tick: true });
+        if (res.detail) continue;   // insufficient (device sin muestras aún) → sin señal
+        if (res.fired) {
+          fireAlarm({
+            rule, value: res.metricValue, deviceId: dId,
+            reason: 'stale', mode: 'M',
+            thresholdUsed: rule.condition ? rule.condition.value : null,
+            cooldownState, siteState, activeState,
+          });
+        } else if (activeState.has(rule.ruleId)) {
+          fireResolve({
+            rule, deviceId: dId,
+            reason: 'stale-cleared', mode: 'M',
+            cooldownState, siteState, activeState,
+          });
+        }
+      }
+    }
+  }
+}
+
 function fireAlarm({ rule, value, deviceId, reason, mode, thresholdUsed, cooldownState, siteState, activeState }) {
   const now       = Date.now();
   const lastFired = cooldownState.get(rule.ruleId) || 0;
@@ -332,4 +366,4 @@ function fireResolve({ rule, deviceId, reason, mode, recommendation, cooldownSta
   notify(alarm);
 }
 
-module.exports = { processMessage, fireResolve };
+module.exports = { processMessage, processStalenessTick, fireResolve };

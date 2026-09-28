@@ -8,13 +8,15 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') })
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState } = require('./siteState');
-const { processMessage, fireResolve } = require('./ruleEngine');
+const { processMessage, processStalenessTick, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
 const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime } = require('./autonomy');
 const { loadMSoftState, flushMSoftState } = require('./msoftstate');  // motor M Ola M3 (persistencia)
 
 const MSOFT_FLUSH_SEC = parseInt(process.env.MSOFT_FLUSH_SEC || '30', 10);
+// motor M Ola M4 — cadencia del tick de staleness (silencio de comunicación §8-D3).
+const EDGE_TICK_SEC = parseInt(process.env.EDGE_TICK_SEC || '30', 10);
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -92,6 +94,17 @@ async function start() {
   setInterval(() => {
     flushMSoftState(SITE_ID, mState).catch(e => console.error('[msoftstate] flush error:', e.message));
   }, MSOFT_FLUSH_SEC * 1000);
+
+  // motor M Ola M4 — tick de staleness (§8-D3): evalúa el silencio de comunicación
+  // que NO llega por mensaje. `packs` es `let` (lo pisa reloadPacks) → el arrow lee
+  // siempre la versión vigente.
+  setInterval(() => {
+    try {
+      processStalenessTick({ packs, siteState, cooldownState, activeState, mState });
+    } catch (e) {
+      console.error('[edge-engine] staleness tick error:', e.message);
+    }
+  }, EDGE_TICK_SEC * 1000);
 
   // reloadPacks — handler del canal de control SF-3 (DEC-REF-58 + DEC-REF-61).
   // Payload ignorado (DEC-REF-61.c "recargar todo"). Errores no dejan al motor
