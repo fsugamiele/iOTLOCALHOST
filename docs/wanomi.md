@@ -12777,3 +12777,48 @@ verificación E2E por el path productivo. Queda como mejora futura: override man
    prueba a 1 min daba falsos positivos; umbral real ≈ 3× latido).
 3. **Corpus (deuda menor):** fila propia DEC-REF-120 para el panel personalizable de Franco.
 4. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
+
+## Sesión #91 — 2026-09-28 · Área 2 · Reglas preset día-1 del motor M (baseline · acceleration · accumulator)
+
+**Decisión de alcance (Franco).** Ante dos hallazgos —(a) el `accumulator` de M3 estaba implementado como
+integral simple de incrementos, NO como la fórmula ponderada de la spec §6; (b) los umbrales de
+`acceleration` no están aterrizados en evidencia de campo— Franco eligió **"las 3, implementando weightFn
+antes"** (en vez de sembrar solo baseline).
+
+**weightFn del accumulator (spec §6).** `evaluateAccum` reescrito: el accumulator pasó de `Σ incrementos del
+valor` a **`Σ Δt(h) × factor(weightVar)`** (tiempo ponderado). `accumFactor`: `arrhenius` (la degradación se
+DUPLICA cada `weightStep`°C sobre `weightRef` — regla de pulgar de envejecimiento de aceite), `linear`
+(1 + slope·(w−ref)), o tiempo puro (sin weightFn → factor 1). `weightValue`: la propia variable de la regla
+(llega en `value`) o una segunda del equipo (se lee de `siteState`). **Tope de hueco `ACCUM_MAX_DT_H`=15 min:**
+un corte de comunicación NO "envejece" el equipo (y `lastTs` no se persiste → tras reinicio del edge el primer
+tramo salta el downtime). `cumulativeSince` quedó intacto (value-based). **Diagnóstico en el camino:** un
+`acc` inflado (~20 h-eq) resultó ser cruft del entorno de test (device con silencios/reinicios + cap viejo de
+1 h contando los gaps); el debug confirmó el math por-mensaje correcto (dtH en horas, factor arrhenius), se
+bajó el cap a 15 min y se reseteó el estado. Verificado E2E: **+0.012 h-eq/min a ~85°C** (= 0.0167h × factor
+2^((85−90)/10)=0.71). Unit 6/6.
+
+**Seed preset día-1.** `tools/seed_packs_preset/seed.js` (idempotente, dedup por ruleId, **gate con el validador
+REAL `validateM`** antes de escribir). **6 reglas** sembradas sobre las variables reales de las fichas:
+- **baseline** (z>3σ, AUTO-CALIBRANTE — aprende el "normal" del propio equipo; el 3σ es convención estadística,
+  no un umbral de equipo inventado): ELTEK `temperature` · cummins-pcc `coolant_temp` · GEN `exhaust_temp`.
+- **acceleration** (Δpendiente; umbral inicial CONSERVADOR marcado "editable en campo"): cummins-pcc
+  `coolant_temp` (calentamiento acelerándose) · ELTEK `dc_bus_voltage` (descarga acelerándose).
+- **accumulator** (vida de aceite ponderada por temp, arrhenius ref 90°C, umbral 250 h-eq ≈ intervalo de cambio):
+  cummins-pcc `coolant_temp`.
+El edge las tomó por SF-3 ("reglas nuevas: 6"). En la UI son **preset** (modo restringido: solo umbral/severidad/
+recomendación editables — fix del round-trip de #90).
+
+**Honestidad DEC-PRED-1.** baseline es lo más sólido (auto-calibrante, umbral estadístico). acceleration lleva
+umbral conservador editable (no hay calibración de campo). accumulator ahora sí calcula lo que su etiqueta dice.
+GEN no tiene `coolant_temp` → su accumulator de aceite queda pendiente de definir la variable de peso.
+
+**Commits #91:** `7382e3a` (motor weightFn) · `078deeb` (seed preset) · `docs` (este cierre).
+
+### Carry-over para #92
+1. **Reset del acumulador de aceite al service:** hoy es manual (borrar el doc de `msoftstate`); futuro =
+   comando de reset o evento de servicio que lo ponga en 0.
+2. **Calibrar en campo** los umbrales de acceleration (hoy conservadores) y el 250 h-eq del oil-life por modelo.
+3. **accumulator de aceite para GEN:** definir variable de peso (no tiene `coolant_temp`; ¿`exhaust_temp` con
+   otro `weightRef`?).
+4. **Corpus (deuda menor):** fila propia DEC-REF-120 para el panel personalizable de Franco.
+5. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
