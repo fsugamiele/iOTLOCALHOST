@@ -150,8 +150,18 @@ resolve cierra. Cada ola valida su sub-familia representativa antes de seguir.
 
 ## §11 · Decisiones cerradas (para preguntas_abiertas: 0)
 - **D1 · flapping/rate:** quedan en **S** (firma Franco). M no los implementa.
-- **D2 · Persistencia de acumuladores:** 1ª ola = en memoria (se reinicia con el edge, advertencia
-  visible). Hidratación desde Mongo = mejora posterior, no bloquea.
+- **D2 · Persistencia de acumuladores (REVISADO #88, firma Franco — "producto, no demo"):** los
+  acumuladores de M3 (`accumulator`/`dutyCycle`/`cumulativeSince`) **persisten en Mongo** (colección
+  `msoftstate`, clave `ruleId+dId+siteId`): el edge **hidrata** al arrancar y **upsertea** al evaluar
+  (throttle para no escribir en cada mensaje). Un reinicio del edge NO pierde el acumulado. (Reemplaza
+  el "en memoria" de la 1ª versión.)
+- **D6 · Semántica de M3 = el MOTOR infiere (opción B, definitiva #88):** el operador elige el soft
+  sensor; la plataforma aplica la convención natural, NO se la pide configurar:
+  · `cumulativeSince` → hito de reinicio = **salto brusco hacia arriba** de la variable (recarga
+  auto-detectada); acumula la caída neta desde ahí. · `dutyCycle` → "activo" inferido (bool=1 · estado
+  no-reposo tipo RUNNING · número >0). · `accumulator` → fórmula de ingeniería (**preset**, ej. vida de
+  aceite = horas ponderadas por temperatura), el operador solo edita el umbral. Override manual (opción
+  A) queda como mejora futura, no requerida por el core.
 - **D3 · staleness por tick:** un `setInterval` en index.js evalúa las reglas de staleness (no dependen
   de mensaje entrante). `TICK_SEC` configurable (default 30 s).
 - **D4 · baseline:** ventana móvil; "madurando" (DEC-PRED-1) hasta `minSamples`. No es ML.
