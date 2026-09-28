@@ -523,6 +523,21 @@ const SCENARIOS = {
     ],
   },
 
+  // spec_motor_m.md · Ola M4 — demo del motor M forense (flatline).
+  // Congela `dc_bus_voltage` en su nominal y lo re-publica IDÉNTICO cada tick
+  // (primitiva `hold` del sim): la serie plana (rango≈0) delata un sensor clavado
+  // pese al report-by-exception. Enviar a UN Eltek del site.
+  sensor_muerto: {
+    description: 'Sensor clavado — lectura de tensión DC congelada (demo motor M4 flatline)',
+    roles: ['ELTEK'],
+    duration_ms: 120000,
+    noCleanup: true,
+    holdVars: ['dc_bus_voltage'],
+    steps: [
+      { at: 0, set: { dc_bus_voltage: -48.0 } },
+    ],
+  },
+
   // spec_motor_m.md · Ola M2 — demo del motor M multivariante (spread).
   // Enviar a UN Eltek del site: SOLO ese rectificador sube su carga (per-device
   // `_divergeHigh`) mientras los otros siguen ~30 A → desbalance del conjunto.

@@ -326,6 +326,7 @@ class SimulatedDevice {
   _cancelActiveTimers() {
     for (const t of this._timers) clearTimeout(t);
     this._timers = [];
+    this._holdVars = null;   // M4 — corta un hold (sensor_muerto) en curso
   }
 
   _runScenario(name) {
@@ -350,13 +351,39 @@ class SimulatedDevice {
       console.warn(`${this.tag} scenario "${name}" aborted — variables not in device: ${missing.join(', ')}`);
       return;
     }
+    // M4 sensor_muerto — validar las variables a congelar (holdVars).
+    if (Array.isArray(scenario.holdVars)) {
+      const missingHold = scenario.holdVars.filter(v => this._state[v] === undefined);
+      if (missingHold.length > 0) {
+        console.warn(`${this.tag} scenario "${name}" aborted — holdVars not in device: ${missingHold.join(', ')}`);
+        return;
+      }
+    }
 
     // Cancelar timers activos (escenario previo o trigger pendiente)
     this._cancelActiveTimers();
 
+    // M4 sensor_muerto — hold: las variables quedan CONGELADAS (el step las fija y
+    // nada las evoluciona, porque _cancelActiveTimers apagó los _tick) y un interval
+    // propio las re-publica IDÉNTICAS durante el escenario. Genera la serie plana
+    // (rango≈0) que flatline detecta pese al report-by-exception. Activar DESPUÉS de
+    // _cancelActiveTimers (que limpia _holdVars).
+    this._holdVars = (Array.isArray(scenario.holdVars) && scenario.holdVars.length)
+      ? new Set(scenario.holdVars) : null;
+    if (this._holdVars) {
+      const holdTimer = setInterval(() => {
+        if (!this._connected || !this._holdVars) return;   // no-op tras el fin del escenario
+        for (const v of this._holdVars) {
+          if (this._state[v] !== undefined) this._publish(v);
+        }
+      }, 3000);
+      this._timers.push(holdTimer);
+    }
+
     const flags = [];
     if (scenario.noCleanup) flags.push('noCleanup');
     if (scenario.isMaintenanceEvent) flags.push('MAINTENANCE');
+    if (this._holdVars) flags.push('HOLD:' + scenario.holdVars.join(','));
     const flagsStr = flags.length ? ` [${flags.join(', ')}]` : '';
 
     console.log(`${this.tag} running scenario "${name}" (${scenario.steps.length} steps, ${scenario.duration_ms}ms)${flagsStr}`);
@@ -392,12 +419,14 @@ class SimulatedDevice {
             this._set(varName, initial[varName]);
           }
         }
+        this._holdVars = null;   // M4 — fin del hold (sensor_muerto)
         console.log(`${this.tag} scenario "${name}" complete — state restored`);
         this.startPublishing();
       }, scenario.duration_ms);
       this._timers.push(cleanup);
     } else {
       const endLog = setTimeout(() => {
+        this._holdVars = null;   // M4 — fin del hold (sensor_muerto)
         console.log(`${this.tag} scenario "${name}" complete — state preserved (noCleanup)`);
         this.startPublishing();
       }, scenario.duration_ms);
