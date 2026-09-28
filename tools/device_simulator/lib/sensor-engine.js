@@ -538,6 +538,27 @@ const SCENARIOS = {
     ],
   },
 
+  // spec_motor_m.md · Ola M5 — demo del motor M estadístico (variance/baseline).
+  // Hace oscilar `dc_bus_voltage` con amplitud creciente (cada step publica por
+  // superar el deadband): el buffer acumula lecturas muy dispersas → σ alta
+  // (variance) y el último valor se aleja de la media (baseline z-score).
+  vibracion_anomala: {
+    description: 'Lectura inestable — dispersión creciente (demo motor M5 variance/baseline)',
+    roles: ['ELTEK'],
+    duration_ms: 90000,
+    noCleanup: true,
+    steps: [
+      { at: 0,     set: { dc_bus_voltage: -48 } },
+      { at: 3000,  set: { dc_bus_voltage: -52 } },
+      { at: 6000,  set: { dc_bus_voltage: -44 } },
+      { at: 9000,  set: { dc_bus_voltage: -54 } },
+      { at: 12000, set: { dc_bus_voltage: -42 } },
+      { at: 15000, set: { dc_bus_voltage: -56 } },
+      { at: 18000, set: { dc_bus_voltage: -41 } },
+      { at: 21000, set: { dc_bus_voltage: -57 } },
+    ],
+  },
+
   // spec_motor_m.md · Ola M2 — demo del motor M multivariante (spread).
   // Enviar a UN Eltek del site: SOLO ese rectificador sube su carga (per-device
   // `_divergeHigh`) mientras los otros siguen ~30 A → desbalance del conjunto.
