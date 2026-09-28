@@ -12691,3 +12691,46 @@ Mongo (no versionable).
 2. **Corpus (deuda menor):** fila propia DEC-REF-120 para el panel personalizable de Franco (hoy sólo
    mapeado por número, sin análisis de su lógica interna).
 3. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
+
+## Sesión #89 — 2026-09-28 · Área 2 · Motor M Ola M4 (consistencia/forense: stepJump · flatline · staleness)
+
+**DEC-REF-118 (Ola M4) — consistencia/forense.** Cuarta ola del motor M: detecta problemas de FORMA de
+la señal, no de valor. `stepJump` (|valor−valorPrevio| en un solo paso → salto abrupto: sifoneo vs consumo
+suave), `flatline` (rango máx−mín del buffer ≈0 → sensor clavado/muerto, forense) — ambas sobre el buffer
+univariante (mismo camino que slope/M1). Y `staleness` (pérdida de comunicación), que es la novedad
+arquitectónica: **no llega por mensaje entrante** (si el equipo dejó de publicar, no hay evento que dispare
+la evaluación) → se resuelve con un **TICK periódico** (§8-D3): `setInterval` en `index.js` (EDGE_TICK_SEC
+30s) → `processStalenessTick` en `ruleEngine.js` recorre las reglas staleness × devices de su deviceType,
+mide (ahora−últimoTs) en `mState` y entra al MISMO camino fire/resolve. El `lastTs` se refresca en cada
+mensaje entrante, así que **el resolve al reconectar sale gratis por el camino de mensaje**. `validateM`:
+`staleness` SALE de `M_TEMPORAL` (no usa buffer; el umbral son minutos de silencio en `condition.value`).
+
+**Simulador.** Primitiva `hold` (sensor_muerto → flatline): un interval propio re-publica la variable
+CONGELADA cada 3s durante el escenario. Descubrimiento en el camino: `_runScenario` llama
+`_cancelActiveTimers()` que apaga los `_tick` y el latido → durante un escenario `_tick` NO corre, así que
+el primer intento (freeze vía `_tick`) no publicaba nada; el fix fue el interval dedicado. `staleness`
+reusa el comando existente `stop_publishing`/`resume_publishing` (E2E de frescura SF-6, DEC-REF-65) y
+`stepJump` reusa `fuel_siphon` — cero escenarios nuevos para esas dos.
+
+**UI.** 3 toggles en el editor-frase ("salto abrupto"/"sensor clavado"/"deja de reportar"), mutuamente
+excluyentes con los demás modificadores (`activeMod`/`clearMods`), usando la fila de condición de arriba
+para el umbral (tamaño del salto / tolerancia del rango / minutos de silencio) — consistente con las demás M.
+
+**Verificaciones.** Unit del evaluador 10/10 (stepJump insufficient/chico/grande · flatline clavado/con
+variación · staleness insufficient/mensaje/tick/no-pisa-lastTs/reconexión). validateM 5/5 (staleness sin
+mWindow). Round-trip frase↔engine 15/15. **E2E por path productivo (DEC-PROC-5):** reglas M4 sembradas en
+packs → reload → escenarios reales por MQTT → notificaciones en Mongo: **stepJump** vía `fuel_siphon`
+(metricValue=5 = el salto de combustible), **staleness** por tick (fire con value en minutos + resolve),
+**flatline** vía `sensor_muerto` (dc_bus_voltage congelado en -48, rango=0, anclado a `4lkbkJtW`). Reglas de
+prueba limpiadas de los packs (resolve-by-edit al reload).
+
+**Commits #89:** `fc8e465` (motor: typeM stepJump/flatline/staleness + ruleEngine tick + index + validateM) ·
+`8f75297` (sim: primitiva hold + escenario sensor_muerto) · `70ef26a` (UI M4) · `docs` (este cierre).
+
+### Carry-over para #90
+1. **Motor M — Ola M5 (última):** baseline (z-score, "madurando" hasta minSamples) + variance (dispersión),
+   con escenario `vibracion-anomala` (dispersión creciente) y modo preset (umbral editable) en la UI.
+2. **Corpus (deuda menor):** fila propia DEC-REF-120 para el panel personalizable de Franco.
+3. **Reglas M4 día-1 (opcional):** sembrar staleness/flatline reales con umbrales sensatos (la staleness de
+   prueba a 1 min daba falsos positivos por la cadencia natural del bus DC — un umbral real = 3× latido).
+4. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
