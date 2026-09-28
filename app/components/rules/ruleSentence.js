@@ -80,6 +80,16 @@ export function summarize(r, opts = {}) {
       const join = r.metric === 'ratio' ? '÷' : '− (diferencia)';
       return `${l0} ${join} ${l1} ${OPERATOR_LABELS[c.op] || c.op} ${c.value}`;
     }
+    if (r.metric === 'dutyCycle') {
+      const c = r.condition || {};
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `${vlabel} en uso ${OPERATOR_LABELS[c.op] || c.op} ${c.value}% del tiempo`;
+    }
+    if (r.metric === 'cumulativeSince') {
+      const c = r.condition || {};
+      const vlabel = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets);
+      return `caída acumulada de ${vlabel} desde la última recarga ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${u}`;
+    }
     return `${varName} · soft sensor (${r.metric})`;
   }
   return varName;
@@ -224,7 +234,8 @@ export function emptySentence(deviceType) {
     conditions: [emptyCondition(deviceType)],
     join: 'AND', temporal: null, setpoint: null,
     // M (soft sensors): M1 trend=slope · projection=projection · M2 spread · compare=ratio/divergence.
-    trend: null, projection: null, spread: null, compare: null, mPreset: false,
+    trend: null, projection: null, spread: null, compare: null,
+    dutyCycle: null, cumulative: null, mPreset: false,
     severity: 'warning', recommendation: '', label: '', nested: false,
   };
 }
@@ -232,7 +243,7 @@ export function emptySentence(deviceType) {
 // Tipo inferido de la frase (nunca lo elige el usuario).
 export function inferType(s) {
   if ((s.conditions || []).length >= 2) return 'cross';
-  if (s.trend || s.projection || s.spread || s.compare) return 'M';
+  if (s.trend || s.projection || s.spread || s.compare || s.dutyCycle || s.cumulative) return 'M';
   if (s.setpoint) return 'C';
   if (s.temporal) return 'S';
   return 'D';
@@ -295,6 +306,15 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       rule.metric = 'spread';
       rule.condition = { op: c0.op, value: coerceValue(c0.value, c0.variableType) };
       // deviceType + variable (c0) ya están en rule; el motor compara entre los equipos del site.
+    } else if (s.dutyCycle) {                         // M3 · % de uso en ventana
+      rule.metric = 'dutyCycle';
+      rule.condition = { op: c0.op, value: coerceValue(c0.value, 'float') };  // umbral %
+      rule.mWindow = { durationSec: Math.round((Number(s.dutyCycle.windowMin) || 0) * 60), minSamples: 2 };
+      rule.unit = '%';
+    } else if (s.cumulative) {                        // M3 · acumulado desde reinicio (sifoneo)
+      rule.metric = 'cumulativeSince';
+      rule.condition = { op: c0.op, value: coerceValue(c0.value, 'float') };  // umbral acumulado
+      // sin mWindow (acumulador persistente); deviceType+variable de c0.
     } else {                                         // M2 · relación/diferencia entre dos datos
       rule.metric = s.compare.kind;                  // 'ratio' | 'divergence'
       rule.inputs = [
@@ -318,7 +338,8 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
 export function ruleToSentence(rule) {
   const base = {
     conditions: [], join: 'AND', temporal: null, setpoint: null,
-    trend: null, projection: null, spread: null, compare: null, mPreset: false,
+    trend: null, projection: null, spread: null, compare: null,
+    dutyCycle: null, cumulative: null, mPreset: false,
     severity: rule.severity || 'warning', recommendation: rule.recommendation || '',
     label: rule.label || '', nested: false,
   };
@@ -358,8 +379,16 @@ export function ruleToSentence(rule) {
       const inp = rule.inputs || [];
       base.conditions = [leaf((inp[0] && inp[0].variable) || rule.variable, 'lt', '')];
       base.compare = { kind: rule.metric, variable2: (inp[1] && inp[1].variable) || '', op: (rule.condition || {}).op || 'lt', value: (rule.condition || {}).value };
+    } else if (rule.metric === 'dutyCycle') {
+      const c = rule.condition || {};
+      base.dutyCycle = { windowMin: wMin || 60 };
+      base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
+    } else if (rule.metric === 'cumulativeSince') {
+      const c = rule.condition || {};
+      base.cumulative = true;
+      base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
     } else {
-      base.mPreset = true;   // acceleration/otras técnicas → preset (umbral editable)
+      base.mPreset = true;   // accumulator/acceleration/otras técnicas → preset (umbral editable)
     }
   } else { // D
     base.conditions = [leaf(rule.variable, (rule.condition || {}).op, (rule.condition || {}).value)];

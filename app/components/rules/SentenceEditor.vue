@@ -38,6 +38,8 @@
               <base-button size="sm" :type="activeMod==='projection'?'primary':'default'" :disabled="activeMod && activeMod!=='projection'" @click="toggleProjection"><i class="fa fa-bullseye"></i> proyección</base-button>
               <base-button size="sm" :type="activeMod==='spread'?'primary':'default'" :disabled="activeMod && activeMod!=='spread'" @click="toggleSpread"><i class="fa fa-balance-scale"></i> desbalance</base-button>
               <base-button size="sm" :type="activeMod==='compare'?'primary':'default'" :disabled="activeMod && activeMod!=='compare'" @click="toggleCompare"><i class="fa fa-divide"></i> relación</base-button>
+              <base-button size="sm" :type="activeMod==='dutyCycle'?'primary':'default'" :disabled="activeMod && activeMod!=='dutyCycle'" @click="toggleDutyCycle"><i class="fa fa-percent"></i> uso %</base-button>
+              <base-button size="sm" :type="activeMod==='cumulative'?'primary':'default'" :disabled="activeMod && activeMod!=='cumulative'" @click="toggleCumulative"><i class="fa fa-gas-pump"></i> acumulado</base-button>
             </template>
             <base-button v-if="s.conditions.length > 1" size="sm" type="default" @click="toGrouped" title="Combinar en grupos anidados (Y/O dentro de Y/O)"><i class="fa fa-sitemap"></i> agrupar condiciones</base-button>
           </div>
@@ -101,6 +103,18 @@
               <el-option v-for="op in operators" :key="op" :value="op" :label="opLabels[op]" />
             </el-select>
             <el-input v-model.number="s.compare.value" size="small" type="number" class="se-mini" />.
+          </div>
+
+          <!-- M3 · % de uso en ventana (dutyCycle) -->
+          <div v-if="s.dutyCycle" class="se-extra">
+            … medido como <b>% del tiempo en uso</b> (el valor de arriba es el umbral %), en los últimos
+            <el-input v-model.number="s.dutyCycle.windowMin" size="small" type="number" class="se-mini" /> min.
+          </div>
+
+          <!-- M3 · acumulado desde reinicio (cumulativeSince) -->
+          <div v-if="s.cumulative" class="se-extra">
+            … medido como lo <b>acumulado desde la última recarga</b> (el motor detecta la recarga solo);
+            el valor de arriba es el umbral. Persiste aunque se reinicie el equipo.
           </div>
         </template>
 
@@ -251,6 +265,8 @@ export default {
       if (this.s.projection) return 'projection';
       if (this.s.spread) return 'spread';
       if (this.s.compare) return 'compare';
+      if (this.s.dutyCycle) return 'dutyCycle';
+      if (this.s.cumulative) return 'cumulative';
       return null;
     },
     typeHint() {
@@ -260,6 +276,8 @@ export default {
       if (this.s.projection) return 'proyección';
       if (this.s.spread) return 'desbalance';
       if (this.s.compare) return this.s.compare.kind === 'ratio' ? 'relación' : 'diferencia';
+      if (this.s.dutyCycle) return 'uso %';
+      if (this.s.cumulative) return 'acumulado';
       return TYPE_HINT[inferType(this.s)] || '';
     },
     // Respaldo en lenguaje natural, unificado: cualquier cross (simple 2+ o
@@ -285,13 +303,14 @@ export default {
       if (this.s.trend && (!(this.s.trend.rate > 0) || !(this.s.trend.windowMin > 0))) return false;
       if (this.s.projection && (this.s.projection.target === '' || this.s.projection.target == null || !(this.s.projection.hoursThreshold > 0) || !(this.s.projection.windowMin > 0))) return false;
       if (this.s.compare && (!this.s.compare.variable2 || this.s.compare.value === '' || this.s.compare.value === null || this.s.compare.value === undefined)) return false;
+      if (this.s.dutyCycle && !(this.s.dutyCycle.windowMin > 0)) return false;
       return true;
     },
   },
   methods: {
     touch() { this.tick++; },
     // Limpia todos los modificadores (S/C/M) y activa uno solo (garantiza exclusión).
-    clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = null; },
+    clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = this.s.dutyCycle = this.s.cumulative = null; },
     addCondition() {
       this.s.conditions.push(emptyCondition((this.pack && this.pack.deviceType) || ''));
       this.clearMods(); this.touch();
@@ -305,6 +324,9 @@ export default {
     // M2 · desbalance entre equipos (spread) y relación/diferencia (ratio/divergence).
     toggleSpread() { const on = !this.s.spread; this.clearMods(); if (on) { this.s.spread = true; if (this.s.conditions[0]) this.s.conditions[0].op = 'gt'; } this.touch(); },
     toggleCompare() { const on = !this.s.compare; this.clearMods(); if (on) this.s.compare = { kind: 'ratio', variable2: '', op: 'lt', value: '' }; this.touch(); },
+    // M3 · % de uso (dutyCycle) y acumulado desde recarga (cumulativeSince).
+    toggleDutyCycle() { const on = !this.s.dutyCycle; this.clearMods(); if (on) { this.s.dutyCycle = { windowMin: 60 }; if (this.s.conditions[0]) this.s.conditions[0].op = 'gt'; } this.touch(); },
+    toggleCumulative() { const on = !this.s.cumulative; this.clearMods(); if (on) { this.s.cumulative = true; if (this.s.conditions[0]) this.s.conditions[0].op = 'gt'; } this.touch(); },
     // Convierte las condiciones planas en un árbol crossExpr y pasa a avanzado.
     toGrouped() {
       const dt = (this.pack && this.pack.deviceType) || '';
