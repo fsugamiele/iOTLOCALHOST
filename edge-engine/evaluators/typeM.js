@@ -25,6 +25,15 @@ function slopePerMin(buf) {
   return (n * sxy - sx * sy) / denom;
 }
 
+// Media y desvío estándar (poblacional) de un array de números — base de M5.
+function mean(a) { let s = 0; for (const x of a) s += x; return a.length ? s / a.length : 0; }
+function stddev(a) {
+  if (a.length < 2) return 0;
+  const m = mean(a);
+  let s = 0; for (const x of a) s += (x - m) * (x - m);
+  return Math.sqrt(s / a.length);
+}
+
 function computeMetric(rule, buf) {
   switch (rule.metric) {
     case 'slope':
@@ -64,6 +73,21 @@ function computeMetric(rule, buf) {
       let mn = buf[0].value, mx = buf[0].value;
       for (const p of buf) { if (p.value < mn) mn = p.value; if (p.value > mx) mx = p.value; }
       return { metricValue: mx - mn };
+    }
+
+    // ── M5 · estadística (buffer univariante) ──────────────────────────
+    case 'variance': {
+      // Dispersión (σ) del buffer: vibración/inestabilidad anómala. Dispara si σ op value.
+      return { metricValue: stddev(buf.map(p => p.value)) };
+    }
+
+    case 'baseline': {
+      // z-score = (valorActual − media) ÷ σ del buffer. "Madura" (DEC-PRED-1) hasta
+      // juntar minSamples; sin dispersión (σ=0) el z es indefinido → 0 (no anómalo).
+      const vals = buf.map(p => p.value);
+      const sd = stddev(vals);
+      if (sd === 0) return { metricValue: 0 };
+      return { metricValue: (vals[vals.length - 1] - mean(vals)) / sd };
     }
 
     default:
