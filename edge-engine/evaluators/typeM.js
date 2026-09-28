@@ -117,8 +117,66 @@ function evaluateInstant(rule, { siteState, dId, siteCode }) {
   return { fired, metricValue };
 }
 
+// ── M3 · acumuladores en el tiempo ──────────────────────────────────────
+const ACCUM_METRICS = ['accumulator', 'cumulativeSince']; // persisten en Mongo
+
+// "activo" inferido por el motor (opción B, DEC D6): bool→true · número>0 ·
+// string no-reposo (RUNNING/ON/…) vs STOPPED/OFF/IDLE/AUTO.
+function isActive(v) {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v > 0;
+  if (typeof v === 'string') return !['STOPPED', 'OFF', 'IDLE', 'STOP', '0', 'FALSE', 'NO', 'AUTO', ''].includes(v.trim().toUpperCase());
+  return false;
+}
+
+// dutyCycle — % del tiempo "activo" en la ventana (buffer, NO persiste: es corto).
+function evaluateDutyCycle(rule, value, { mState, dId, eventTs }) {
+  const w = rule.mWindow || {};
+  if (!w.durationSec) return { fired: false, metricValue: null, detail: 'insufficient' };
+  const key = `${rule.ruleId}:${dId}`;
+  const now = (eventTs != null) ? eventTs : Date.now();
+  const cutoff = now - w.durationSec * 1000;
+  const st = mState.get(key) || { buf: [] };
+  st.buf = (st.buf || []).filter(p => p.ts >= cutoff);
+  st.buf.push({ ts: now, active: isActive(value) });
+  mState.set(key, st);
+  if (st.buf.length < 2) return { fired: false, metricValue: null, detail: 'insufficient' };
+  let activeMs = 0, totalMs = 0;
+  for (let i = 1; i < st.buf.length; i++) {
+    const dt = st.buf[i].ts - st.buf[i - 1].ts;
+    totalMs += dt;
+    if (st.buf[i - 1].active) activeMs += dt;
+  }
+  const metricValue = totalMs > 0 ? (activeMs / totalMs) * 100 : 0;
+  return { fired: evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, metricValue), metricValue };
+}
+
+// accumulator / cumulativeSince — acumuladores PERSISTENTES (Mongo, DEC D2).
+// El estado (`{acc,lastValue,_persist,dirty}`) vive en mState; el edge lo hidrata
+// al arrancar y flushea los `dirty`. cumulativeSince: acumula la caída desde el
+// último salto hacia arriba (recarga auto-detectada, opción B — DEC D6).
+function evaluateAccum(rule, value, { mState, dId }) {
+  const key = `${rule.ruleId}:${dId}`;
+  const st = mState.get(key) || { acc: 0, lastValue: null };
+  st._persist = true;
+  if (st.lastValue == null) {
+    st.lastValue = value; st.dirty = true; mState.set(key, st);
+    return { fired: false, metricValue: 0, detail: 'insufficient' };
+  }
+  if (rule.metric === 'cumulativeSince') {
+    if (value > st.lastValue + 1) st.acc = 0;              // recarga → reinicia
+    else if (value < st.lastValue) st.acc += (st.lastValue - value); // caída → acumula
+  } else {                                                  // accumulator: integral de incrementos
+    if (value > st.lastValue) st.acc += (value - st.lastValue);
+  }
+  st.lastValue = value; st.dirty = true; mState.set(key, st);
+  return { fired: evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, st.acc), metricValue: st.acc };
+}
+
 function evaluateM(rule, value, ctx) {
   if (INSTANT_METRICS.includes(rule.metric)) return evaluateInstant(rule, ctx);
+  if (rule.metric === 'dutyCycle') return evaluateDutyCycle(rule, value, ctx);
+  if (ACCUM_METRICS.includes(rule.metric)) return evaluateAccum(rule, value, ctx);
   const { mState, dId, eventTs } = ctx;
   const w = rule.mWindow || {};
   if (!w.durationSec || value === null || value === undefined) {

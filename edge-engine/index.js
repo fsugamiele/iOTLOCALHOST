@@ -12,6 +12,9 @@ const { processMessage, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
 const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime } = require('./autonomy');
+const { loadMSoftState, flushMSoftState } = require('./msoftstate');  // motor M Ola M3 (persistencia)
+
+const MSOFT_FLUSH_SEC = parseInt(process.env.MSOFT_FLUSH_SEC || '30', 10);
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -78,9 +81,17 @@ async function start() {
   await hydrateSiteState(SITE_ID, siteState);
   // DEC-REF-115 (#85) — config de autonomía (ficha + override por equipo).
   let autonomyConfigs = await loadAutonomyConfigs(SITE_ID);
+  // motor M Ola M3 — hidrata los acumuladores persistentes (accumulator/cumulativeSince).
+  const nMsoft = await loadMSoftState(SITE_ID, mState);
   console.log(`[edge-engine] Packs cargados: ${packs.map(p => p.packId).join(', ') || '(ninguno)'}`);
   console.log(`[edge-engine] Dispositivos en estado: ${siteState.size}`);
   console.log(`[edge-engine] Autonomía configurada en ${autonomyConfigs.size} equipo(s): ${[...autonomyConfigs.keys()].join(', ') || '(ninguno)'}`);
+  console.log(`[edge-engine] Acumuladores M3 hidratados desde Mongo: ${nMsoft}`);
+
+  // Flush periódico de los acumuladores M3 dirty (throttle — no en cada mensaje).
+  setInterval(() => {
+    flushMSoftState(SITE_ID, mState).catch(e => console.error('[msoftstate] flush error:', e.message));
+  }, MSOFT_FLUSH_SEC * 1000);
 
   // reloadPacks — handler del canal de control SF-3 (DEC-REF-58 + DEC-REF-61).
   // Payload ignorado (DEC-REF-61.c "recargar todo"). Errores no dejan al motor

@@ -165,7 +165,8 @@ const M_METRICS = [
 // Sub-familias que consumen una ventana temporal (buffer/serie).
 const M_TEMPORAL = [
   'slope', 'acceleration', 'projection', 'baseline', 'variance',
-  'flatline', 'stepJump', 'dutyCycle', 'cumulativeSince', 'staleness',
+  'flatline', 'stepJump', 'dutyCycle', 'staleness',
+  // 'cumulativeSince'/'accumulator' NO llevan mWindow — son acumuladores persistentes (M3).
 ];
 function validateM(rule) {
   if (!rule.metric || !M_METRICS.includes(rule.metric)) {
