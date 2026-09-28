@@ -1,5 +1,5 @@
 <template>
-  <!-- DEC-REF-114 (#83, B2) — una condición de la frase: [equipo?] [variable] [op] [valor].
+  <!-- DEC-REF-116 (#83, B2) — una condición de la frase: [equipo?] [variable] [op] [valor].
        El equipo es opcional (solo en cross, para condiciones sobre otro device del sitio). -->
   <div class="cond-row">
     <el-select

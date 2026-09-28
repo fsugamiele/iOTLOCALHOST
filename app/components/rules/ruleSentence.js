@@ -1,4 +1,4 @@
-// DEC-REF-114 (#83) — NÚCLEO del editor-frase de Reglas de Monitoreo.
+// DEC-REF-116 (#83) — NÚCLEO del editor-frase de Reglas de Monitoreo.
 //
 // Módulo PURO (sin Vue): traduce entre la "frase" que arma el usuario y el
 // payload `RuleDefinition` que consume el motor. El usuario nunca ve "D/C/S/cross":
@@ -95,7 +95,7 @@ export function summarize(r, opts = {}) {
   return varName;
 }
 
-// ── Descripción en LENGUAJE NATURAL de un cross (DEC-REF-114 · Franco #83) ──
+// ── Descripción en LENGUAJE NATURAL de un cross (DEC-REF-116 · Franco #83) ──
 // Respaldo en vivo para el usuario: lee el árbol entero (incl. anidado y suma),
 // resolviendo los LABELS de la ficha (no los nombres técnicos). Híbrido:
 //   profundidad ≤ 2 → frase corrida redactada.

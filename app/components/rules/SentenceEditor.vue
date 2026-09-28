@@ -1,5 +1,5 @@
 <template>
-  <!-- DEC-REF-114 (#83) — editor-frase. Rediseño estético (Franco #83): pasos
+  <!-- DEC-REF-116 (#83) — editor-frase. Rediseño estético (Franco #83): pasos
        numerados con aire + confirmación al pie (tarjeta de alarma real + "En
        palabras"). Color unificado: teal = acción que avanza · gris = secundario
        · rojo = solo quitar · los colores fuertes viven solo en la severidad. -->

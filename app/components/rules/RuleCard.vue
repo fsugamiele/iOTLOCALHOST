@@ -1,5 +1,5 @@
 <template>
-  <!-- DEC-REF-114 (#83, B1) — card de regla: resumen legible + severidad +
+  <!-- DEC-REF-116 (#83, B1) — card de regla: resumen legible + severidad +
        recomendación + acciones. El "Modo experto" abre el form completo
        (cross/C/S/tiempos). El toggle on/off se difiere (el modelo no tiene
        campo `enabled` aún — adenda B1, va con B4). -->
