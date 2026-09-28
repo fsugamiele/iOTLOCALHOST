@@ -206,25 +206,66 @@ function evaluateDutyCycle(rule, value, { mState, dId, eventTs }) {
   return { fired: evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, metricValue), metricValue };
 }
 
+// Tope de Δt por tramo del accumulator: no acumular huecos (device silenciado /
+// corte de comunicación / reinicio del edge → lastTs no se persiste, así el
+// downtime NO "envejece" el equipo). 15 min cubre con margen el publish normal
+// (incluido el latido ≤5 min); un gap mayor = outage → se descarta.
+const ACCUM_MAX_DT_H = 0.25;
+
+// Valor de la variable de ponderación del accumulator (spec §6 `weightVariable`).
+// Por defecto la propia variable de la regla (llega en `value`); si `weightVariable`
+// apunta a OTRA variable del equipo, se lee del siteState.
+function weightValue(rule, value, dId, siteState) {
+  const p = rule.mParams || {};
+  if (p.weightVariable && p.weightVariable !== rule.variable) {
+    const dev = siteState && siteState.get(dId);
+    return dev ? Number(dev[p.weightVariable]) : NaN;
+  }
+  return Number(value);
+}
+
+// factor(weightVar) del accumulator. `arrhenius` = regla de pulgar de envejecimiento
+// (la degradación se DUPLICA cada `weightStep`°C sobre `weightRef`, ej. vida de aceite);
+// `linear` = 1 + slope·(w−ref); ausente/`none` = tiempo puro (factor 1).
+function accumFactor(p, w) {
+  if (!Number.isFinite(w)) return 1;
+  if (p.weightFn === 'arrhenius') return Math.pow(2, (w - (Number(p.weightRef) || 0)) / (Number(p.weightStep) || 10));
+  if (p.weightFn === 'linear')    return Math.max(0, 1 + (Number(p.weightSlope) || 0) * (w - (Number(p.weightRef) || 0)));
+  return 1;
+}
+
 // accumulator / cumulativeSince — acumuladores PERSISTENTES (Mongo, DEC D2).
-// El estado (`{acc,lastValue,_persist,dirty}`) vive en mState; el edge lo hidrata
-// al arrancar y flushea los `dirty`. cumulativeSince: acumula la caída desde el
-// último salto hacia arriba (recarga auto-detectada, opción B — DEC D6).
-function evaluateAccum(rule, value, { mState, dId }) {
+// El estado (`{acc,lastValue,lastTs,_persist,dirty}`) vive en mState; el edge lo
+// hidrata al arrancar y flushea los `dirty`.
+//   · cumulativeSince: acumula la CAÍDA desde el último salto hacia arriba (recarga
+//     auto-detectada, opción B — DEC D6). Basado en el VALOR.
+//   · accumulator: Σ Δt(h) × factor(weightVar) (spec §6). Basado en el TIEMPO,
+//     ponderado (ej. vida de aceite = horas ponderadas por temperatura). `lastTs`
+//     NO se persiste → tras un reinicio el primer tramo no suma (salta el downtime).
+function evaluateAccum(rule, value, { mState, dId, eventTs, siteState }) {
   const key = `${rule.ruleId}:${dId}`;
-  const st = mState.get(key) || { acc: 0, lastValue: null };
+  const st = mState.get(key) || { acc: 0, lastValue: null, lastTs: null };
   st._persist = true;
-  if (st.lastValue == null) {
-    st.lastValue = value; st.dirty = true; mState.set(key, st);
-    return { fired: false, metricValue: 0, detail: 'insufficient' };
-  }
+  const now = (eventTs != null) ? eventTs : Date.now();
+
   if (rule.metric === 'cumulativeSince') {
-    if (value > st.lastValue + 1) st.acc = 0;              // recarga → reinicia
+    if (st.lastValue == null) {
+      st.lastValue = value; st.dirty = true; mState.set(key, st);
+      return { fired: false, metricValue: 0, detail: 'insufficient' };
+    }
+    if (value > st.lastValue + 1) st.acc = 0;                 // recarga → reinicia
     else if (value < st.lastValue) st.acc += (st.lastValue - value); // caída → acumula
-  } else {                                                  // accumulator: integral de incrementos
-    if (value > st.lastValue) st.acc += (value - st.lastValue);
+    st.lastValue = value;
+  } else {                                                     // accumulator: Σ Δt × factor
+    if (st.lastTs != null) {
+      const dtH = (now - st.lastTs) / 3600000;
+      if (dtH > 0 && dtH <= ACCUM_MAX_DT_H) {
+        st.acc += dtH * accumFactor(rule.mParams || {}, weightValue(rule, value, dId, siteState));
+      }
+    }
+    st.lastTs = now;
   }
-  st.lastValue = value; st.dirty = true; mState.set(key, st);
+  st.dirty = true; mState.set(key, st);
   return { fired: evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, st.acc), metricValue: st.acc };
 }
 
