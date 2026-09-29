@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wanomi — Catálogo de fallas por equipo</title>
+<style>
+  :root{
+    --teal:#00997e; --teal-soft:#e6f5f1; --ink:#2b3553; --muted:#6b7280;
+    --crit:#c0392b; --warn:#c47f1a; --prev:#2c6fbb; --line:#e2e6ec;
+  }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);margin:0;background:#fafbfc;line-height:1.45}
+  header{background:linear-gradient(135deg,#00997e,#00bfa0);color:#fff;padding:28px 32px}
+  header h1{margin:0 0 4px;font-size:1.55rem;letter-spacing:.2px}
+  header p{margin:0;opacity:.92;font-size:.95rem;max-width:70ch}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 32px 60px}
+  h2{color:var(--teal);border-bottom:2px solid var(--teal-soft);padding-bottom:6px;margin:38px 0 6px;font-size:1.25rem}
+  h2 .sub{color:var(--muted);font-weight:400;font-size:.85rem}
+  .intro{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
+  .legend{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px 22px;margin:10px 0 4px;font-size:.86rem}
+  .legend b{color:var(--teal)}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:10px 0 6px;font-size:.9rem}
+  th{background:#f3f6f8;text-align:left;padding:10px 12px;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);border-bottom:1px solid var(--line)}
+  td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#fbfdfc}
+  td.falla{font-weight:600;width:20%}
+  td.detecta{width:24%}
+  .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .r{background:var(--teal-soft);color:var(--teal);border:1px solid #bfe6dc}
+  .sev{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .s-crit{background:var(--crit)} .s-warn{background:var(--warn)} .s-prev{background:var(--prev)}
+  .sevkey{font-size:.84rem;color:var(--muted);margin-top:6px}
+  .note{font-size:.82rem;color:var(--muted);margin:4px 0 0}
+  footer{max-width:1180px;margin:0 auto;padding:20px 32px 50px;color:var(--muted);font-size:.82rem;border-top:1px solid var(--line)}
+  @media print{body{background:#fff}header{background:#00997e !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}tr:hover td{background:none}h2{page-break-after:avoid}table{page-break-inside:auto}tr{page-break-inside:avoid}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Wanomi · Catálogo de fallas por equipo</h1>
+  <p>Fallas posibles de cada equipo del sitio, la acción que debe hacer el operador, y con qué regla las anticipa Wanomi. La información sale de los manuales oficiales de cada equipo (biblioteca de campo). Escrito en lenguaje claro, sin códigos técnicos.</p>
+</header>
+
+<div class="wrap">
+
+  <div class="intro">
+    <b>Cómo leer la columna “Cómo lo detecta Wanomi”.</b> Wanomi arma una regla por cada falla. Las reglas, en criollo:
+    <div class="legend">
+      <div><b>Umbral</b> — el valor pasa de un límite fijo (ej. combustible &lt; 10 %).</div>
+      <div><b>Contra el valor del equipo</b> — compara con lo que el propio equipo considera normal (se adapta al sitio).</div>
+      <div><b>En el tiempo</b> — algo se repite dentro de una ventana (ej. varios arranques fallidos seguidos).</div>
+      <div><b>Combinada</b> — varias condiciones a la vez (ej. hay red pero el grupo sigue corriendo).</div>
+      <div><b>Tendencia</b> — el valor se mueve hacia el límite antes de cruzarlo.</div>
+      <div><b>Proyección</b> — cuánto falta para llegar al límite (ej. horas hasta tanque vacío).</div>
+      <div><b>Empeora cada vez más rápido</b> — la caída o subida se acelera.</div>
+      <div><b>Desbalance entre equipos</b> — un equipo se despega del resto de su grupo.</div>
+      <div><b>Salto abrupto</b> — un cambio brusco de golpe (ej. sifoneo de combustible).</div>
+      <div><b>Fuera de lo normal</b> — el valor se aparta de lo habitual de ese equipo.</div>
+      <div><b>Lecturas inestables</b> — la medición salta/oscila más de lo habitual.</div>
+      <div><b>Desgaste acumulado</b> — horas de uso acumuladas (ej. vida del aceite).</div>
+      <div><b>Deja de reportar</b> — el equipo se quedó mudo (pérdida de comunicación).</div>
+      <div><b>Sensor clavado</b> — la lectura no cambia nunca (sensor muerto).</div>
+      <div><b>Código de falla del equipo</b> — el equipo informa un código; Wanomi lo traduce y muestra qué hacer.</div>
+    </div>
+    <div class="sevkey"><span class="sev s-crit"></span>Crítico (acción inmediata) &nbsp; <span class="sev s-warn"></span>Atención (revisar pronto) &nbsp; <span class="sev s-prev"></span>Preventivo / anticipación</div>
+  </div>
+
+  <!-- ============ GRUPO ELECTRÓGENO ============ -->
+  <h2>1 · Grupo electrógeno (motor diésel) <span class="sub">— manuales FG Wilson, Monte Ralo/John Deere, Cummins, controladores ComAp</span></h2>
+  <p class="note">El motor y su controlador ya avisan “moderado” antes de “extremo” (pre-aviso). Wanomi capta ese pre-aviso para anticipar la parada.</p>
+
+  <table>
+    <thead><tr><th>Falla posible</th><th>Qué le pasa al equipo</th><th>Qué debe hacer el operador</th><th>Cómo lo detecta Wanomi</th></tr></thead>
+    <tbody>
+
+    <tr><td class="falla"><span class="sev s-crit"></span>El motor no arranca</td>
+      <td>Ante el pedido de arranque el motor no toma marcha (batería, combustible o arranque).</td>
+      <td>Verificar que la parada de emergencia no esté activada y que no haya una parada pendiente; reiniciar la falla tras corregirla. Si persiste, técnico de motor.</td>
+      <td><span class="pill r">En el tiempo</span> (arranques fallidos seguidos) + <span class="pill r">Código de falla del equipo</span></td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Inyector en falla</td>
+      <td>Uno o más inyectores no responden (o su electroválvula/limitador quedó cerrado): el motor pierde potencia, tironea o hace humo.</td>
+      <td>Reportar a service de motor: se revisa o cambia el inyector afectado (trabajo de taller).</td>
+      <td><span class="pill r">Código de falla del equipo</span> (indica el inyector) + <span class="pill r">Lecturas inestables</span> de RPM/potencia</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Corriente de inyectores baja</td>
+      <td>Todos los inyectores reciben poca corriente: casi siempre es la batería o el cableado de alimentación.</td>
+      <td>Comprobar la tensión de la batería de arranque y el cableado.</td>
+      <td><span class="pill r">Código de falla del equipo</span> + <span class="pill r">Umbral</span> de batería baja</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Bomba inyectora no da presión</td>
+      <td>La bomba de alta presión no alcanza la presión de trabajo: suele ser filtro o líneas de combustible obstruidas.</td>
+      <td>Comprobar y cambiar el filtro y las líneas de combustible.</td>
+      <td><span class="pill r">Código de falla del equipo</span></td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Agua en el combustible</td>
+      <td>Se detecta agua en el gasoil: daña la inyección si sigue funcionando.</td>
+      <td>Parar el motor y vaciar el separador de agua.</td>
+      <td><span class="pill r">Código de falla del equipo</span></td></tr>
+
+    <tr><td class="falla"><span class="sev s-prev"></span>Filtro de aire obstruido</td>
+      <td>El filtro de aire se tapa: el motor “respira” mal, sube la temperatura de admisión y cae el rendimiento (mala combustión).</td>
+      <td>Revisar y cambiar el filtro de aire; verificar el postenfriador y la temperatura ambiente.</td>
+      <td><span class="pill r">Código de falla del equipo</span> + <span class="pill r">Tendencia</span> de temperatura de admisión</td></tr>
+
+    <tr><td class="falla"><span class="sev s-crit"></span>Sobretemperatura del motor</td>
+      <td>El refrigerante se calienta de más y el motor se para para protegerse (radiador, refrigerante bajo, o carga excesiva).</td>
+      <td>Revisar el nivel de refrigerante del radiador (seguir la advertencia de seguridad antes de destapar), limpiar el radiador, verificar el termostato y reducir la carga.</td>
+      <td><span class="pill r">Umbral</span> (aviso 95° / crítico 105°) + <span class="pill r">Tendencia</span> + <span class="pill r">Combinada</span> (sube con poca carga)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Nivel bajo de refrigerante</td>
+      <td>Falta refrigerante: si no se corrige lleva a la sobretemperatura de arriba.</td>
+      <td>Verificar y completar el refrigerante según el manual del equipo.</td>
+      <td><span class="pill r">Código de falla del equipo</span> + <span class="pill r">Umbral</span></td></tr>
+
+    <tr><td class="falla"><span class="sev s-prev"></span>Ventilación / refrigeración deficiente</td>
+      <td>Radiador sucio, ventilador flojo o sala mal ventilada: la temperatura sube más rápido de lo normal.</td>
+      <td>Limpiar el radiador, verificar el ventilador y la ventilación de la sala.</td>
+      <td><span class="pill r">Empeora cada vez más rápido</span> + <span class="pill r">Fuera de lo normal</span></td></tr>
+
+    <tr><td class="falla"><span class="sev s-crit"></span>Baja presión de aceite</td>
+      <td>La presión de aceite cae y el motor se para para no dañarse (nivel bajo, fuga, bomba o filtro).</td>
+      <td>Comprobar el nivel de aceite y buscar fugas; no operar bajo carga hasta corregir.</td>
+      <td><span class="pill r">Umbral</span> (aviso 2,0 bar / crítico 1,0 bar) + <span class="pill r">Tendencia</span> a la baja</td></tr>
+
+    <tr><td class="falla"><span class="sev s-crit"></span>Sobrevelocidad</td>
+      <td>El motor gira por encima de su régimen seguro y se para de emergencia.</td>
+      <td>Comprobar la velocidad real del motor; llamar a service de motor.</td>
+      <td><span class="pill r">Umbral</span> + <span class="pill r">Código de falla del equipo</span> (pre-aviso moderado)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Marcha inestable / pérdida de régimen</td>
+      <td>El motor reduce o varía su régimen (combustible, carga o falla interna).</td>
+      <td>Verificar los códigos de falla del motor; si persiste, service.</td>
+      <td><span class="pill r">Lecturas inestables</span> de RPM + <span class="pill r">Código de falla del equipo</span></td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Grupo corriendo sin tomar carga</td>
+      <td>El grupo arranca y genera tensión, pero no entrega potencia: el interruptor de carga no cerró.</td>
+      <td>Verificar el interruptor de salida y el controlador; llamar a service si no cierra.</td>
+      <td><span class="pill r">Combinada</span> (hay tensión pero potencia ≈ 0)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Sobrecarga / sobrecorriente</td>
+      <td>El grupo entrega más de lo que puede: riesgo de parada por protección.</td>
+      <td>Reducir carga en el sitio; revisar el dimensionamiento.</td>
+      <td><span class="pill r">Contra el valor del equipo</span> (vs su potencia nominal)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Sub/sobretensión del grupo</td>
+      <td>La tensión que genera el grupo se sale de rango (regulación).</td>
+      <td>Consultar a service del grupo.</td>
+      <td><span class="pill r">Contra el valor del equipo</span> (vs su tensión nominal)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-crit"></span>Batería de arranque degradada</td>
+      <td>La batería de arranque pierde capacidad: el día del corte el grupo puede no levantar, aunque en reposo parezca sana.</td>
+      <td>Reemplazar la batería de arranque antes del próximo corte.</td>
+      <td><span class="pill r">Contra el valor del equipo</span> + <span class="pill r">Fuera de lo normal</span> + caída en el arranque (<span class="pill r">En el tiempo</span>)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>Cargador de batería en falla</td>
+      <td>El cargador de la batería de arranque dejó de cargar: la batería se descarga lento.</td>
+      <td>Revisar el cargador de batería del grupo.</td>
+      <td><span class="pill r">Código de falla del equipo</span> + <span class="pill r">Tendencia</span> de la batería</td></tr>
+
+    <tr><td class="falla"><span class="sev s-crit"></span>Combustible bajo</td>
+      <td>El tanque baja de nivel: riesgo de sitio caído por tanque vacío.</td>
+      <td>Coordinar recarga (aviso a 25 %); despachar recarga urgente (crítico a 10 %).</td>
+      <td><span class="pill r">Umbral</span> (25 % / 10 %)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-prev"></span>Autonomía por agotarse</td>
+      <td>A este consumo, el combustible que queda alcanza para pocas horas.</td>
+      <td>Despachar recarga ya: el sistema estima a qué hora se agota el tanque.</td>
+      <td><span class="pill r">Proyección</span> (horas hasta tanque vacío)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-crit"></span>Robo de combustible (sifoneo)</td>
+      <td>El nivel cae de golpe sin que el motor lo esté consumiendo.</td>
+      <td>Inspección física del sitio: posible sifoneo o fuga.</td>
+      <td><span class="pill r">Salto abrupto</span> + caída no explicada por consumo</td></tr>
+
+    <tr><td class="falla"><span class="sev s-prev"></span>Mantenimiento vencido</td>
+      <td>Se acumularon las horas de uso del intervalo de cambio de aceite o de filtros.</td>
+      <td>Programar el cambio de aceite / filtros.</td>
+      <td><span class="pill r">Desgaste acumulado</span> (horas ponderadas por temperatura)</td></tr>
+
+    <tr><td class="falla"><span class="sev s-warn"></span>El grupo deja de reportar</td>
+      <td>El controlador del grupo se quedó mudo (enlace o energía).</td>
+      <td>Revisar el enlace de comunicación y la alimentación del controlador.</td>
+      <td><span class="pill r">Deja de reportar</span></td></tr>
+
+    <tr><td class="falla"><span class="sev s-prev"></span>Sensor con lectura congelada</td>
+      <td>Un sensor entrega siempre el mismo valor: probablemente está muerto y el dato no es confiable.</td>
+      <td>Revisar / reemplazar el sensor.</td>
+      <td><span class="pill r">Sensor clavado</span></td></tr>
+
+    </tbody>
+  </table>
+
+  <!-- ============ ATS ============ -->
+  <h2>2 · Tablero de transferencia (ATS) <span class="sub">— ComAp InteliATS, cascada de energía</span></h2>
+  <table>
+    <thead><tr><th>Falla posible</th><th>Qué le pasa al equipo</th><th>Qué debe hacer el operador</th><th>Cómo lo detecta Wanomi</th></tr></thead>
+    <tbody>
+    <tr><td class="falla"><span class="sev s-crit"></span>Falla de transferencia</td>
+      <td>Se cortó la red y el grupo está corriendo, pero el tablero no transfiere la carga al grupo: el sitio queda en riesgo aunque haya energía disponible.</td>
+      <td>Despacho urgente al tablero de transferencia.</td>
+      <td><span class="pill r">Combinada</span> + <span class="pill r">En el tiempo</span> (no transfiere dentro del tiempo esperado)</td></tr>
+    <tr><td class="falla"><span class="sev s-warn"></span>Retorno fallido a la red</td>
+      <td>Volvió la red pero el sitio sigue tomando del grupo (consumo de combustible innecesario).</td>
+      <td>Revisar el tablero de transferencia.</td>
+      <td><span class="pill r">Combinada</span> (hay red + sigue en grupo)</td></tr>
+    <tr><td class="falla"><span class="sev s-warn"></span>Red inestable (flapping)</td>
+      <td>La red entra y sale muchas veces en poco tiempo: desgasta el arranque del grupo.</td>
+      <td>Reportar calidad de red al distribuidor eléctrico.</td>
+      <td><span class="pill r">En el tiempo</span> (muchas transferencias en una ventana)</td></tr>
+    <tr><td class="falla"><span class="sev s-warn"></span>Estado inconsistente</td>
+      <td>El tablero dice una cosa y las mediciones dicen otra (ej. dice “en grupo” pero el grupo no genera).</td>
+      <td>Revisar el tablero y el grupo.</td>
+      <td><span class="pill r">Combinada</span> (contradicción entre estado y medición)</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============ PLANTA DC ============ -->
+  <h2>3 · Planta de corriente continua / rectificadores <span class="sub">— Eltek Smartpack, Vertiv, ZTE</span></h2>
+  <table>
+    <thead><tr><th>Falla posible</th><th>Qué le pasa al equipo</th><th>Qué debe hacer el operador</th><th>Cómo lo detecta Wanomi</th></tr></thead>
+    <tbody>
+    <tr><td class="falla"><span class="sev s-crit"></span>Planta yendo a corte por batería baja</td>
+      <td>La tensión del sistema baja hacia el punto en que se desconecta la carga: los rectificadores no están reponiendo (falta de energía de entrada o rectificadores en falla).</td>
+      <td>Verificar la energía de entrada y el estado de los rectificadores antes de que corte.</td>
+      <td><span class="pill r">Contra el valor del equipo</span> + <span class="pill r">Proyección</span> (tiempo hasta la desconexión)</td></tr>
+    <tr><td class="falla"><span class="sev s-warn"></span>Rectificador en falla o limitando por temperatura</td>
+      <td>Un rectificador falla o baja su entrega por calor: se compromete la redundancia (respaldo N+1).</td>
+      <td>Revisar carga y ventilación; verificar que quede redundancia.</td>
+      <td><span class="pill r">Código de falla del equipo</span> / <span class="pill r">Umbral</span></td></tr>
+    <tr><td class="falla"><span class="sev s-warn"></span>Rectificador desbalanceado</td>
+      <td>Un rectificador se lleva mucha más (o menos) carga que sus pares: señal de que ese módulo se está degradando.</td>
+      <td>Revisar el módulo que se despega del resto.</td>
+      <td><span class="pill r">Desbalance entre equipos</span> (señala cuál intervenir)</td></tr>
+    <tr><td class="falla"><span class="sev s-prev"></span>Rectificador deja de reportar</td>
+      <td>Un rectificador se quedó mudo.</td>
+      <td>Revisar el enlace del rectificador.</td>
+      <td><span class="pill r">Deja de reportar</span></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============ BATERÍAS DC ============ -->
+  <h2>4 · Banco de baterías (litio / respaldo DC) <span class="sub">— BMS ZX/ZTE</span></h2>
+  <table>
+    <thead><tr><th>Falla posible</th><th>Qué le pasa al equipo</th><th>Qué debe hacer el operador</th><th>Cómo lo detecta Wanomi</th></tr></thead>
+    <tbody>
+    <tr><td class="falla"><span class="sev s-warn"></span>Estado de carga bajo</td>
+      <td>El banco tiene poca carga guardada: menos respaldo ante un corte.</td>
+      <td>Verificar la energía de entrada y la carga del banco.</td>
+      <td><span class="pill r">Umbral</span> (aviso 30 % / crítico 15 %)</td></tr>
+    <tr><td class="falla"><span class="sev s-crit"></span>Tensión de pack hacia el mínimo</td>
+      <td>La tensión del banco baja hacia el punto de desconexión.</td>
+      <td>Verificar rectificadores y energía de entrada.</td>
+      <td><span class="pill r">Contra el valor del equipo</span></td></tr>
+    <tr><td class="falla"><span class="sev s-prev"></span>Celda desbalanceada</td>
+      <td>Una celda se aparta del resto (tensión o temperatura): anticipa la degradación del módulo.</td>
+      <td>Programar el reemplazo del módulo antes de perder autonomía.</td>
+      <td><span class="pill r">Desbalance entre equipos</span> / <span class="pill r">Fuera de lo normal</span></td></tr>
+    <tr><td class="falla"><span class="sev s-crit"></span>Robo de baterías</td>
+      <td>Se están sacando módulos del banco.</td>
+      <td>Inspección física inmediata del sitio.</td>
+      <td><span class="pill r">Umbral</span> (alarma del equipo) + faltante de módulos</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============ CLIMA ============ -->
+  <h2>5 · Climatización (aire acondicionado) <span class="sub">— Westric SW-302</span></h2>
+  <table>
+    <thead><tr><th>Falla posible</th><th>Qué le pasa al equipo</th><th>Qué debe hacer el operador</th><th>Cómo lo detecta Wanomi</th></tr></thead>
+    <tbody>
+    <tr><td class="falla"><span class="sev s-warn"></span>Falla del aire de punta</td>
+      <td>El equipo de aire principal cae y el de reserva toma la carga: si no se atiende, la sala se va a calentar.</td>
+      <td>Despachar service de clima antes del alza térmica.</td>
+      <td><span class="pill r">Umbral</span> (aviso de falla de equipo)</td></tr>
+    <tr><td class="falla"><span class="sev s-crit"></span>Alta temperatura de sala</td>
+      <td>La temperatura del shelter sube por encima de lo seguro para los equipos.</td>
+      <td>Verificar clima y ventilación con prioridad.</td>
+      <td><span class="pill r">Umbral</span> con demora + <span class="pill r">Fuera de lo normal</span></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============ SEGURIDAD ============ -->
+  <h2>6 · Seguridad del sitio <span class="sub">— sensores propios (Sense)</span></h2>
+  <table>
+    <thead><tr><th>Falla / evento</th><th>Qué pasa en el sitio</th><th>Qué debe hacer el operador</th><th>Cómo lo detecta Wanomi</th></tr></thead>
+    <tbody>
+    <tr><td class="falla"><span class="sev s-crit"></span>Intrusión</td>
+      <td>Apertura de puerta o movimiento interior fuera de una visita programada.</td>
+      <td>Verificar el sitio y despachar según protocolo.</td>
+      <td><span class="pill r">Umbral</span> (puerta / movimiento)</td></tr>
+    <tr><td class="falla"><span class="sev s-warn"></span>Vibración de cerco</td>
+      <td>Golpe o corte en el perímetro.</td>
+      <td>Verificar el perímetro del sitio.</td>
+      <td><span class="pill r">Umbral</span></td></tr>
+    <tr><td class="falla"><span class="sev s-crit"></span>Robo de cobre</td>
+      <td>Movimiento de cobre o pérdida de continuidad de tierra en el perímetro.</td>
+      <td>Inspección física inmediata.</td>
+      <td><span class="pill r">Umbral</span> / <span class="pill r">Combinada</span></td></tr>
+    </tbody>
+  </table>
+
+</div>
+
+<footer>
+  <b>Fuentes (biblioteca de campo):</b> manuales FG Wilson (guía de averías del controlador), Monte Ralo / John Deere (códigos de falla del motor: inyección, combustible, aire, refrigeración), Cummins PowerCommand, controladores ComAp (InteliGen / InteliLite / InteliATS), rectificadores Eltek Smartpack y Vertiv, banco de baterías litio ZX/ZTE, secuenciador de clima Westric SW-302.<br><br>
+  <b>Nota de honestidad.</b> Los valores concretos (temperaturas, niveles, tiempos) son los que traen los manuales o propuestas conservadoras editables; se ajustan por sitio y equipo real. La detección es capacidad de día 1; las reglas de tendencia/proyección/fuera-de-lo-normal maduran con el historial de cada equipo. Documento de trabajo para la documentación del sistema Wanomi.
+</footer>
+
+</body>
+</html>
