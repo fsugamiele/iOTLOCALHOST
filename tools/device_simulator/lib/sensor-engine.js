@@ -123,6 +123,31 @@ function initialEltekState() {
   };
 }
 
+// Banco de baterías litio (BMS ZX/ZTE) — catalogo_fallas_equipos.html §4.
+function initialLitioState() {
+  return {
+    deviceType:          'LITIO',   // metadata interna — no publicada
+    soc:                 92.0,      // % estado de carga
+    pack_voltage:        53.5,      // V del banco (48 V nominal, LVD ~42 V)
+    cell_voltage_spread: 0.02,      // V máx−mín entre celdas (desbalance)
+    cell_temp_max:       28.0,      // °C celda más caliente
+    charge_current:      5.0,       // A
+    battery_theft_alarm: 0,         // 0/1 robo de módulos (lo setea el escenario)
+  };
+}
+
+// Aire acondicionado (secuenciador Westric SW-302) — §5. Dos equipos (punta + reserva).
+function initialAaState() {
+  return {
+    deviceType:   'AA',
+    room_temp:    24.0,   // °C temperatura de sala
+    unit1_status: 1,      // aire 1 en marcha (0/1)
+    unit1_fault:  0,      // falla aire 1 (0/1)
+    unit2_status: 0,      // aire 2 (reserva) en marcha
+    unit2_fault:  0,      // falla aire 2
+  };
+}
+
 function jitter(magnitude) {
   return (Math.random() - 0.5) * 2 * magnitude;
 }
@@ -300,6 +325,24 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       }
       return clamp(currentValue + jitter(1), target - 3, target + 3);
     }
+
+    // ── Banco de baterías litio ──────────────────────────────────────
+    // Drift lento hacia su normal; los escenarios fijan valores con `set` (como
+    // fuel_siphon), así el evento se ve durante el escenario y luego recupera.
+    case 'soc':
+      return clamp(currentValue + Math.sign(92 - currentValue) * 0.5 + jitter(0.2), 5, 100);
+    case 'pack_voltage':
+      return clamp(currentValue + Math.sign(53.5 - currentValue) * 0.2 + jitter(0.05), 40, 54.5);
+    case 'cell_voltage_spread':
+      return clamp(currentValue + Math.sign(0.02 - currentValue) * 0.005 + jitter(0.002), 0, 0.25);
+    case 'cell_temp_max':
+      return clamp(currentValue + Math.sign(28 - currentValue) * 1 + jitter(0.4), 18, 60);
+    case 'charge_current':
+      return clamp(currentValue + jitter(0.5), 1, 10);
+
+    // ── Aire acondicionado ───────────────────────────────────────────
+    case 'room_temp':
+      return clamp(currentValue + Math.sign(24 - currentValue) * 1 + jitter(0.3), 16, 60);
 
     default:
       return currentValue;
@@ -732,6 +775,85 @@ const SCENARIOS = {
     ],
   },
 
+  // ── Banco de baterías litio (Ola B — catalogo_fallas_equipos.html §4) ──
+  litio_descarga: {
+    description: 'Banco DC descargándose — carga y tensión cruzan los mínimos',
+    roles: ['LITIO'],
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0,     set: { soc: 35, pack_voltage: 44.0 } },
+      { at: 8000,  set: { soc: 22, pack_voltage: 42.5 } },
+      { at: 16000, set: { soc: 12, pack_voltage: 41.5 } },
+    ],
+  },
+  litio_celda_desbalance: {
+    description: 'Celda desbalanceada — spread de celda y temperatura crecen',
+    roles: ['LITIO'],
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0,     set: { cell_voltage_spread: 0.04, cell_temp_max: 38 } },
+      { at: 8000,  set: { cell_voltage_spread: 0.08, cell_temp_max: 47 } },
+    ],
+  },
+  litio_robo: {
+    description: 'Robo de baterías — alarma del BMS',
+    roles: ['LITIO'],
+    duration_ms: 40000,
+    noCleanup: true,
+    steps: [
+      { at: 0, set: { battery_theft_alarm: 1 } },
+    ],
+  },
+  litio_recupera: {
+    description: 'Banco DC recupera — valores vuelven a normal',
+    roles: ['LITIO'],
+    duration_ms: 30000,
+    steps: [
+      { at: 0, set: { soc: 90, pack_voltage: 53.4, cell_voltage_spread: 0.02, cell_temp_max: 28, battery_theft_alarm: 0 } },
+    ],
+  },
+
+  // ── Aire acondicionado (Ola B — §5) ──────────────────────────────────
+  aa_falla_punta: {
+    description: 'Falla del aire de punta — la reserva toma la carga',
+    roles: ['AA'],
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0, set: { unit1_fault: 1, unit1_status: 0, unit2_status: 1 } },
+    ],
+  },
+  aa_alta_temp: {
+    description: 'Sala calentándose por falla de clima — cruza 40° y 45°',
+    roles: ['AA'],
+    duration_ms: 90000,
+    noCleanup: true,
+    steps: [
+      { at: 0,     set: { room_temp: 35 } },
+      { at: 10000, set: { room_temp: 42 } },
+      { at: 20000, set: { room_temp: 47 } },
+    ],
+  },
+  aa_doble_falla: {
+    description: 'Ambos equipos de aire en falla — riesgo térmico inminente',
+    roles: ['AA'],
+    duration_ms: 60000,
+    noCleanup: true,
+    steps: [
+      { at: 0, set: { unit1_fault: 1, unit2_fault: 1, unit1_status: 0, unit2_status: 0 } },
+    ],
+  },
+  aa_restore: {
+    description: 'Clima recuperado — aire de punta vuelve, sala se normaliza',
+    roles: ['AA'],
+    duration_ms: 30000,
+    steps: [
+      { at: 0, set: { unit1_fault: 0, unit1_status: 1, unit2_fault: 0, unit2_status: 0, room_temp: 24 } },
+    ],
+  },
+
 };
 
 module.exports = {
@@ -740,6 +862,8 @@ module.exports = {
   initialAtsState,
   initialCumminsState,
   initialEltekState,   // SF-6 · DEC-REF-65.c
+  initialLitioState,   // Ola B — batería litio
+  initialAaState,      // Ola B — aire acondicionado
   evolve,
   SCENARIOS,
 };

@@ -21,7 +21,7 @@ if (!ROSTER_TOKEN) {
 
 // deviceType de la ficha (DEC-REF-108) → rol que el sensor-engine sabe simular.
 // Un deviceType fuera de este mapa no es simulable (la física está por rol).
-const ROLE_BY_DEVICETYPE = { SEC: 'SEC', GEN: 'GEN', ATS: 'ATS', 'cummins-pcc': 'CUMMINS', ELTEK: 'ELTEK' };
+const ROLE_BY_DEVICETYPE = { SEC: 'SEC', GEN: 'GEN', ATS: 'ATS', 'cummins-pcc': 'CUMMINS', ELTEK: 'ELTEK', LITIO: 'LITIO', AA: 'AA' };
 
 const devices = new Map();   // dId -> SimulatedDevice (activos)
 const siteShared = {};       // siteCode -> estado compartido (misma ref por site, BUG-SIM-1)

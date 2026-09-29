@@ -69,6 +69,8 @@ class SimulatedDevice {
     // (ej. run_hours=2969.1 del Cummins de CR00061, relevamiento #15).
     if (role === 'CUMMINS')                return engine.initialCumminsState(this._siteCode);
     if (role === 'ELTEK' || role.startsWith('ELTEK-')) return engine.initialEltekState();  // SF-6 · DEC-REF-65.c
+    if (role === 'LITIO')                  return engine.initialLitioState();  // Ola B — batería litio
+    if (role === 'AA')                     return engine.initialAaState();     // Ola B — aire acondicionado
     return engine.initialGenState();  // GEN y legacy
   }
 
