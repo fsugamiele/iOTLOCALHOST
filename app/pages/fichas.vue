@@ -132,6 +132,7 @@
             <option value="">— Sin clasificar (tab General) —</option>
             <option value="energia">Energía y red</option>
             <option value="grupo">Grupo y combustible</option>
+            <option value="clima">Climatización</option>
             <option value="seguridad">Seguridad física</option>
             <option value="infraestructura">Infraestructura</option>
           </select>
@@ -456,6 +457,7 @@ export default {
       const LABELS = {
         energia: 'Energía y red',
         grupo: 'Grupo y combustible',
+        clima: 'Climatización',
         seguridad: 'Seguridad física',
         infraestructura: 'Infraestructura',
       };

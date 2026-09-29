@@ -344,7 +344,7 @@ export default {
     // operación (energía primero, grupo después...). Fuente: ficha.domain de
     // cada equipo (viaja en /full); sin ficha/dominio ⇒ 'general'.
     domains() {
-      const ORDER = ['energia', 'grupo', 'seguridad', 'infraestructura', 'general'];
+      const ORDER = ['energia', 'grupo', 'clima', 'seguridad', 'infraestructura', 'general'];
       const present = new Set((this.devices || []).map(d => d.domain || 'general'));
       return ORDER.filter(k => present.has(k)).map(k => ({ key: k, label: this.domainLabel(k) }));
     },
@@ -646,6 +646,7 @@ export default {
       const LABELS = {
         energia: 'Energía y red',
         grupo: 'Grupo y combustible',
+        clima: 'Climatización',
         seguridad: 'Seguridad física',
         infraestructura: 'Infraestructura',
         general: 'General',
