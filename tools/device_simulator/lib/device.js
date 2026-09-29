@@ -40,7 +40,9 @@ class SimulatedDevice {
     // parámetros de la ficha/override. Si el sim la publicara también,
     // dos fuentes escribirían la misma variable con valores distintos
     // (flip-flop). El sim modela el caso real: la controladora NO la da.
-    this._variables = variables.filter(v => v.variable !== 'autonomy_hours');
+    // Filtra variables sin nombre (widgets de sitio como siteMap/cascada que no
+    // tienen `variable` → antes generaban "skipping publish of undefined" en loop).
+    this._variables = variables.filter(v => v.variable && v.variable !== 'autonomy_hours');
     this._sharedState = sharedState || {};
     this._state = this._initialState(role);
     this._client = null;
