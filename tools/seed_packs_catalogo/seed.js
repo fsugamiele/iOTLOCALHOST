@@ -54,7 +54,7 @@ const SEC_RULES = [
 const SEC_PACK = {
   packId: 'sec-seguridad-v1', deviceType: 'SEC', version: 1, canary: false,
   description: 'Seguridad del sitio (intrusión, cerco, cobre, tierra, temperatura de sala) — catálogo de fallas',
-  rules: SEC_RULES,
+  rules: SEC_RULES, createdAt: new Date(), updatedAt: new Date(),
 };
 
 // ── Agregados a packs existentes ─────────────────────────────────────────

@@ -23,6 +23,7 @@ const CROSS = (dt, ruleId, label, inf, sev, children, reco) =>
 
 const LITIO_PACK = {
   packId: 'litio-bateria-v1', deviceType: 'LITIO', version: 1, canary: false,
+  createdAt: new Date(), updatedAt: new Date(),
   description: 'Banco de baterías litio (carga, tensión, celdas, robo) — catálogo de fallas',
   rules: [
     D('LITIO', 'litio-soc-warn', 'Carga del banco baja', 'Estado de carga', '%', 'LITIO_SOC1', 'warning', 'soc', 'lt', 30,
@@ -42,6 +43,7 @@ const LITIO_PACK = {
 
 const AA_PACK = {
   packId: 'aa-clima-v1', deviceType: 'AA', version: 1, canary: false,
+  createdAt: new Date(), updatedAt: new Date(),
   description: 'Climatización (falla de equipo, temperatura de sala) — catálogo de fallas',
   rules: [
     D('AA', 'aa-falla-punta', 'Falla del aire de punta', 'Falla aire 1', '', 'AA_FAULT1', 'warning', 'unit1_fault', 'gte', 1,
