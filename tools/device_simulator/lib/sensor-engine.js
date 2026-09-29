@@ -172,14 +172,21 @@ function evolve(variable, currentValue, deviceState, sharedState) {
   // Floats con drift contextual
   switch (variable) {
     // ── InteliATS PWR ────────────────────────────────────────────
-    case 'mains_voltage':
-      if (deviceState && deviceState.deviceType === 'ATS') {
-        if (currentValue < 100) return currentValue;
-        return clamp(currentValue + jitter(3), 210, 230);
-      }
-      // legacy GEN
-      if (currentValue < 100) return currentValue;
-      return clamp(currentValue + jitter(2), 215, 225);
+    case 'mains_voltage': {
+      // Cascada de energía: la falta de red es un flag COMPARTIDO del site →
+      // TODOS los equipos con mains_voltage la ven (ATS + grupo), y al reponerse
+      // recuperan solos (antes la lógica "sticky <100" dejaba un 0 clavado = pico).
+      if (sharedState.mains_failure) return 0;
+      const isAts = deviceState && deviceState.deviceType === 'ATS';
+      const lo = isAts ? 210 : 215, hi = isAts ? 230 : 225;
+      if (currentValue < 100) return (lo + hi) / 2;   // retorno de red
+      return clamp(currentValue + jitter(isAts ? 3 : 2), lo, hi);
+    }
+
+    case 'genset_running':
+      // El grupo GEN arranca/para con el flag compartido de la cascada (igual que
+      // el CUMMINS con rpm/oil). Antes solo lo movía un `set` directo al device.
+      return sharedState.gen_running ? 1 : 0;
 
     case 'mains_freq':
       return clamp(currentValue + jitter(0.2), 49.5, 50.5);
@@ -496,36 +503,40 @@ const SCENARIOS = {
   },
 
   mains_failure_ats_transfer: {
-    description: 'Corte de red — ATS transfiere a generador',
+    description: 'Corte de red — CASCADA: cae la red (todo el site), arranca el grupo y el ATS transfiere',
     roles: ['ATS'],
     duration_ms: 60000,
     noCleanup: true,
     steps: [
-      { at: 0,     set: { mains_voltage: 0 } },
+      // sharedSet = flag del SITE: mains_failure baja mains_voltage de TODOS los
+      // equipos; gen_running arranca el grupo (CUMMINS rpm/oil + GEN genset/escape/alternador).
+      { at: 0,     sharedSet: { mains_failure: true }, set: { mains_voltage: 0 } },
       { at: 2000,  set: { gen_status: 'STARTING' } },
-      { at: 8000,  set: { gen_status: 'RUNNING', gen_voltage: 220.0, gen_freq: 50.0 } },
+      { at: 8000,  sharedSet: { gen_running: true }, set: { gen_status: 'RUNNING', gen_voltage: 220.0, gen_freq: 50.0 } },
       { at: 10000, set: { transfer_state: 'AUTO' } },
     ],
   },
 
   mains_failure_gen_no_start: {
-    description: 'Corte de red — generador NO arranca (cascada)',
+    description: 'Corte de red — el grupo NO arranca (cascada crítica: sitio en riesgo)',
     roles: ['ATS'],
     duration_ms: 60000,
     noCleanup: true,
     steps: [
-      { at: 0,     set: { mains_voltage: 0 } },
+      // mains_failure sin gen_running: cae la red pero el grupo no levanta →
+      // dispara la regla de cascada "corte sostenido sin arranque".
+      { at: 0, sharedSet: { mains_failure: true, gen_running: false }, set: { mains_voltage: 0, gen_status: 'STARTING' } },
     ],
   },
 
   mains_restore: {
-    description: 'Restauración de red — ATS vuelve a red, generador se apaga',
+    description: 'Retorno de red — CASCADA inversa: vuelve la red, el ATS retransfiere y el grupo para',
     roles: ['ATS'],
     duration_ms: 30000,
     noCleanup: true,
     steps: [
-      { at: 0,    set: { mains_voltage: 220.0, mains_freq: 50.0 } },
-      { at: 5000, set: { gen_status: 'STOPPED', gen_voltage: 0, gen_freq: 0 } },
+      { at: 0,    sharedSet: { mains_failure: false }, set: { mains_voltage: 220.0, mains_freq: 50.0, transfer_state: 'MAINS' } },
+      { at: 5000, sharedSet: { gen_running: false }, set: { gen_status: 'STOPPED', gen_voltage: 0, gen_freq: 0 } },
     ],
   },
 
