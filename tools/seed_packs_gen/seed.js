@@ -5,7 +5,7 @@
 // deviceType GEN (ficha Wanomi WN-SITE-GEN / Sense). Reglas D de día-1 sobre
 // variables reales de la ficha: fuel_level, autonomy_hours, battery_voltage.
 // Umbrales: registros_consolidado_gef.md §4 (combustible <25/<10; batería
-// <22/<20). Autonomía <6/<3 h = propuesta operativa del diseño (F5).
+// <11,8/<11 — batería 12V de grupo electrógeno). Autonomía <6/<3 h = propuesta operativa del diseño (F5).
 //
 // Uso (contenedor node):
 //   docker exec node sh -c 'cd /home/node/app && node -r dotenv/config _seed_gen/seed.js dotenv_config_path=/home/node/app/.env [--dry-run]'
@@ -53,11 +53,11 @@ const GEN_GRUPO_V1 = {
       'Autonomía crítica (<3 h). El sitio corre riesgo de quedarse sin energía. Recarga urgente.',
       'autonomy_hours', { op: 'lt', value: 3 }),
     base('gen-batt-warn', 'Batería de arranque baja', 'Tensión de batería', 'V', 'GB1', 'warning',
-      'Batería de arranque baja (<22 V). Verificar cargador y estado de batería; el grupo puede no arrancar en el próximo corte.',
-      'battery_voltage', { op: 'lt', value: 22 }),
+      'Batería de arranque baja (<11,8 V, sistema 12V). Verificar cargador y estado de batería; el grupo puede no arrancar en el próximo corte.',
+      'battery_voltage', { op: 'lt', value: 11.8 }),
     base('gen-batt-crit', 'Batería de arranque crítica', 'Tensión de batería', 'V', 'GB2', 'critical',
-      'Batería de arranque crítica (<20 V). Reemplazar batería; alto riesgo de fallo de arranque.',
-      'battery_voltage', { op: 'lt', value: 20 }),
+      'Batería de arranque crítica (<11 V, sistema 12V). Reemplazar batería; alto riesgo de fallo de arranque.',
+      'battery_voltage', { op: 'lt', value: 11 }),
   ],
 };
 

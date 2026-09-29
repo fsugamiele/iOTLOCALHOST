@@ -46,6 +46,9 @@ class SimulatedDevice {
     this._client = null;
     this._timers = [];
     this._connected = false;
+    // Variables FIJADAS a mano (set_sensor desde la UI): retienen su valor (pico
+    // inyectado para probar alarmas) y no evolucionan hasta reset. Ver _tick.
+    this._pinned = new Set();
     // P2 (#79) — report-by-exception. deadband por variable (numéricas);
     // _lastPublished guarda el último valor EFECTIVAMENTE publicado.
     this._deadbandByVar = new Map();
@@ -195,12 +198,19 @@ class SimulatedDevice {
 
   _tick(varName) {
     if (!this._connected) return;
-    this._syncGenTransition();
     if (this._state[varName] === undefined) return;
-    // Evolucionar el valor (booleanos no cambian, floats hacen drift)
+    // Variable PINEADA (pico inyectado a mano desde la UI del panel): retiene el
+    // valor y lo republica cada tick — persiste hasta que se cambie o se resetee.
+    if (this._pinned && this._pinned.has(varName)) { this._publish(varName); return; }
+    // Default: evolución REALISTA (ruido de sensor de campo) + comportamiento
+    // contextual (grupo en marcha, rectificador con carga, etc.) — vía evolve.
+    this._syncGenTransition();
     this._state[varName] = engine.evolve(varName, this._state[varName], this._state, this._sharedState);
     if (varName === 'gen_status') this._syncSharedState();
-    if (this._shouldPublish(varName)) this._publish(varName);
+    // Publica SIEMPRE a la cadencia del sensor (variableSendFreq): así la variación
+    // realista se VE en el stream (no queda "quieta" por el report-by-exception) y
+    // el widget/motor de reglas reciben datos frescos de forma continua.
+    this._publish(varName);
   }
 
   // DEC-REF-104 D-4 (#78) — transición de marcha ACOPLADA. Física real: la
@@ -276,6 +286,9 @@ class SimulatedDevice {
       // ej. gen_status='RUNNING'), preservar el string; Number() lo haría NaN.
       const next = typeof this._state[sensor] === 'string' ? String(value) : Number(value);
       this._set(sensor, next);
+      // PIN: el valor cargado a mano se retiene (no evoluciona) hasta reset —
+      // es el pico que el operador inyecta para probar una alarma.
+      this._pinned.add(sensor);
     } else if (command === 'scenario') {
       // Ejecuta un escenario pre-grabado (cmd.value es el nombre)
       this._runScenario(value);
@@ -293,6 +306,7 @@ class SimulatedDevice {
       // por eso se llama startPublishing() al final para reanudarlos.
       this._cancelActiveTimers();
       this._state = this._initialState(this._role);
+      this._pinned.clear();   // reset suelta los valores fijados → vuelven a evolucionar
       for (const v of this._variables) {
         this._publish(v.variable);
       }
@@ -409,29 +423,15 @@ class SimulatedDevice {
       this._timers.push(t);
     }
 
-    // Cleanup automático al final, salvo flag noCleanup
-    if (!scenario.noCleanup) {
-      const cleanup = setTimeout(() => {
-        const initial = this._initialState(this._role);
-        for (const v of this._variables) {
-          const varName = v.variable;
-          if (this._state[varName] !== initial[varName]) {
-            this._set(varName, initial[varName]);
-          }
-        }
-        this._holdVars = null;   // M4 — fin del hold (sensor_muerto)
-        console.log(`${this.tag} scenario "${name}" complete — state restored`);
-        this.startPublishing();
-      }, scenario.duration_ms);
-      this._timers.push(cleanup);
-    } else {
-      const endLog = setTimeout(() => {
-        this._holdVars = null;   // M4 — fin del hold (sensor_muerto)
-        console.log(`${this.tag} scenario "${name}" complete — state preserved (noCleanup)`);
-        this.startPublishing();
-      }, scenario.duration_ms);
-      this._timers.push(endLog);
-    }
+    // Banco de pruebas manual (Franco): TODO escenario PERSISTE hasta un `reset`
+    // explícito — nunca se restaura solo. Al terminar los steps se reanuda la
+    // publicación periódica del estado retenido (los valores que dejó el escenario).
+    const endLog = setTimeout(() => {
+      this._holdVars = null;   // M4 — fin del hold (sensor_muerto)
+      console.log(`${this.tag} scenario "${name}" complete — estado PRESERVADO (persiste hasta reset)`);
+      this.startPublishing();
+    }, scenario.duration_ms);
+    this._timers.push(endLog);
   }
 
   // Snapshot para que el panel Vue (Sim-3) pueda leer el estado actual

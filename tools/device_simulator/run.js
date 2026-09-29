@@ -107,7 +107,10 @@ async function main() {
   // ACTUALES en cada tick (así toma los que entren por poll). Guarda de
   // cadencia >= duración + margen 1 min (si no, un disparo cancela el apagado
   // del anterior y el motor no para — DEC-REF-79 iii).
-  if (process.env.SIMULATOR_MODE === 'true') {
+  // Banco de pruebas manual (Franco): los escenarios se accionan A MANO. El
+  // scheduler automático queda DESACTIVADO por default (antes arrancaba/paraba el
+  // grupo solo cada 30 min → parecía flapping). Re-activable con WEEKLY_EXERCISE_ENABLED=true.
+  if (process.env.SIMULATOR_MODE === 'true' && process.env.WEEKLY_EXERCISE_ENABLED === 'true') {
     const intervalMin = Number(process.env.WEEKLY_EXERCISE_INTERVAL_MIN) || 30;
     const intervalMs = intervalMin * 60 * 1000;
     const exerciseDurationMs = engine.SCENARIOS.weekly_exercise.duration_ms;

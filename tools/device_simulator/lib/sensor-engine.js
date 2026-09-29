@@ -133,6 +133,10 @@ function clamp(v, min, max) {
 
 // evolve recibe el estado completo del device y el sharedState del site
 function evolve(variable, currentValue, deviceState, sharedState) {
+  // MODELO HÍBRIDO (Franco): por default cada variable VARÍA realista (ruido de
+  // sensor de campo) y conserva su comportamiento contextual (grupo encendido,
+  // rectificador con carga, etc. — vía sharedState/deviceState). Lo que el operador
+  // FIJA a mano se PINEA en device.js (_pinned) y no pasa por acá (retiene el valor).
   sharedState = sharedState || {};
 
   // Bool, int (counts), categorical strings: no drift en idle
@@ -255,9 +259,11 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       // Drift lento hacia el target (mismo patrón de dc_load_current):
       // saltar 12,6→14,1 en un solo tick de 60s sería feo; con step 1,0
       // V/tick llega a régimen en 2-3 min (dentro del ejercicio de 5 min).
+      // Sistema 24V (regla de alarma <22/<20): reposo/float ~26,4 V; con el grupo
+      // en marcha el alternador carga → ~27,6 V. El reposo NO dispara la alarma.
       const target = sharedState.gen_running ? 14.1 : 12.6;
       const step   = Math.sign(target - currentValue) * Math.min(Math.abs(target - currentValue), 1.0);
-      return clamp(currentValue + step + jitter(0.1), 12.0, 14.4);
+      return clamp(currentValue + step + jitter(0.1), 11.8, 14.6);
     }
 
     case 'crank_current':
