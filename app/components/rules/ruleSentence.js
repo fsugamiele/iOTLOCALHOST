@@ -268,7 +268,8 @@ export function emptySentence(deviceType) {
     // M (soft sensors): M1 trend=slope · projection=projection · M2 spread · compare=ratio/divergence
     // · M3 dutyCycle/cumulative · M4 stepJump/flatline/staleness · M5 variance (baseline=preset).
     trend: null, projection: null, spread: null, compare: null,
-    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, variance: null, mPreset: false,
+    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, variance: null,
+    acceleration: null, accumulator: null, baseline: null, mPreset: false,
     severity: 'warning', recommendation: '', label: '', nested: false,
   };
 }
@@ -277,7 +278,8 @@ export function emptySentence(deviceType) {
 export function inferType(s) {
   if ((s.conditions || []).length >= 2) return 'cross';
   if (s.trend || s.projection || s.spread || s.compare || s.dutyCycle || s.cumulative
-      || s.stepJump || s.flatline || s.staleness || s.variance || s.mPreset) return 'M';
+      || s.stepJump || s.flatline || s.staleness || s.variance
+      || s.acceleration || s.accumulator || s.baseline || s.mPreset) return 'M';
   if (s.setpoint) return 'C';
   if (s.temporal) return 'S';
   return 'D';
@@ -369,10 +371,27 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       rule.condition = { op: c0.op || 'gt', value: coerceValue(c0.value, 'float') };  // umbral de dispersión
       rule.mWindow = { durationSec: Math.round((Number(s.variance.windowMin) || 0) * 60), minSamples: 3 };
       if (c0.unit) rule.unit = c0.unit;
-    } else if (s.mPreset) {                           // M5/técnica · preset (baseline/accumulator/acceleration): SOLO umbral editable
+    } else if (s.acceleration) {                      // M1 · empeora cada vez más rápido (Δpendiente)
+      rule.metric = 'acceleration';
+      rule.condition = { op: c0.op || 'gt', value: coerceValue(c0.value, 'float') };
+      rule.mWindow = { durationSec: Math.round((Number(s.acceleration.windowMin) || 0) * 60), minSamples: 6 };
+      rule.unit = `${c0.unit || ''}/min`.replace(/^\//, '');
+    } else if (s.baseline) {                          // M5 · fuera de lo normal (z-score, auto-calibrante)
+      rule.metric = 'baseline';
+      rule.condition = { op: 'gt', value: coerceValue(c0.value, 'float') };  // sensibilidad (desvíos)
+      rule.mWindow = { durationSec: 3600, minSamples: 10 };
+      rule.mParams = { baselineWindowSec: 3600 };
+    } else if (s.accumulator) {                       // M3 · desgaste acumulado
+      rule.metric = 'accumulator';
+      rule.condition = { op: c0.op || 'gte', value: coerceValue(c0.value, 'float') };  // umbral acumulado
+      // preserva los params técnicos (weightVariable/weightFn) si es un preset sembrado;
+      // creado desde cero = tiempo puro (factor 1).
+      rule.mParams = (existing && existing.mParams) || {};
+      if (c0.unit) rule.unit = c0.unit;
+    } else if (s.mPreset) {                           // compat: preset técnico sin toggle propio
       rule.metric = (existing && existing.metric) || 'baseline';
       rule.condition = { op: c0.op, value: coerceValue(c0.value, 'float') };
-      if (existing && existing.mWindow) rule.mWindow = existing.mWindow;   // params técnicos preservados
+      if (existing && existing.mWindow) rule.mWindow = existing.mWindow;
       if (existing && existing.mParams) rule.mParams = existing.mParams;
       if (existing && existing.unit)    rule.unit = existing.unit;
     } else {                                         // M2 · relación/diferencia entre dos datos
@@ -399,7 +418,8 @@ export function ruleToSentence(rule) {
   const base = {
     conditions: [], join: 'AND', temporal: null, setpoint: null,
     trend: null, projection: null, spread: null, compare: null,
-    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, variance: null, mPreset: false,
+    dutyCycle: null, cumulative: null, stepJump: null, flatline: null, staleness: null, variance: null,
+    acceleration: null, accumulator: null, baseline: null, mPreset: false,
     severity: rule.severity || 'warning', recommendation: rule.recommendation || '',
     label: rule.label || '', nested: false,
   };
@@ -463,10 +483,20 @@ export function ruleToSentence(rule) {
       const c = rule.condition || {};
       base.variance = { windowMin: wMin || 10 };
       base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
+    } else if (rule.metric === 'acceleration') {
+      const c = rule.condition || {};
+      base.acceleration = { windowMin: wMin || 10 };
+      base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];
+    } else if (rule.metric === 'baseline') {
+      const c = rule.condition || {};
+      base.baseline = true;
+      base.conditions = [leaf(rule.variable, 'gt', c.value)];
+    } else if (rule.metric === 'accumulator') {
+      const c = rule.condition || {};
+      base.accumulator = true;
+      base.conditions = [leaf(rule.variable, c.op || 'gte', c.value)];
     } else {
-      // baseline/accumulator/acceleration → preset (umbral editable): mostramos el
-      // umbral actual (condition) para que el operador lo edite; los params técnicos
-      // (mWindow/mParams) los preserva sentenceToRule desde `existing`.
+      // otras técnicas sin toggle propio → preset (umbral editable), preserva params.
       const c = rule.condition || {};
       base.mPreset = true;
       base.conditions = [leaf(rule.variable, c.op || 'gt', c.value)];

@@ -44,6 +44,9 @@
               <base-button size="sm" :type="activeMod==='flatline'?'primary':'default'" :disabled="activeMod && activeMod!=='flatline'" @click="toggleFlatline"><i class="fa fa-minus"></i> sensor clavado</base-button>
               <base-button size="sm" :type="activeMod==='staleness'?'primary':'default'" :disabled="activeMod && activeMod!=='staleness'" @click="toggleStaleness"><i class="fa fa-plug"></i> deja de reportar</base-button>
               <base-button size="sm" :type="activeMod==='variance'?'primary':'default'" :disabled="activeMod && activeMod!=='variance'" @click="toggleVariance"><i class="fa fa-wave-square"></i> lecturas inestables</base-button>
+              <base-button size="sm" :type="activeMod==='acceleration'?'primary':'default'" :disabled="activeMod && activeMod!=='acceleration'" @click="toggleAcceleration"><i class="fa fa-angle-double-up"></i> empeora más rápido</base-button>
+              <base-button size="sm" :type="activeMod==='baseline'?'primary':'default'" :disabled="activeMod && activeMod!=='baseline'" @click="toggleBaseline"><i class="fa fa-chart-area"></i> fuera de lo normal</base-button>
+              <base-button size="sm" :type="activeMod==='accumulator'?'primary':'default'" :disabled="activeMod && activeMod!=='accumulator'" @click="toggleAccumulator"><i class="fa fa-hourglass-end"></i> desgaste acumulado</base-button>
             </template>
             <base-button v-if="s.conditions.length > 1" size="sm" type="default" @click="toGrouped" title="Combinar en grupos anidados (Y/O dentro de Y/O)"><i class="fa fa-sitemap"></i> agrupar condiciones</base-button>
           </div>
@@ -149,7 +152,26 @@
             Sirve para detectar inestabilidad o vibración anómala.
           </div>
 
-          <!-- M5/técnica · preset con umbral editable (baseline/accumulator/acceleration) -->
+          <!-- M1 · empeora cada vez más rápido (acceleration) -->
+          <div v-if="s.acceleration" class="se-extra">
+            … avisa cuando el cambio se <b>acelera</b> (empeora cada vez más rápido; el valor de arriba es
+            cuánto), mirando los últimos
+            <el-input v-model.number="s.acceleration.windowMin" size="small" type="number" class="se-mini" /> min.
+          </div>
+
+          <!-- M5 · fuera de lo normal (baseline, auto-calibrante) -->
+          <div v-if="s.baseline" class="se-extra">
+            … avisa cuando el valor se <b>aparta de lo habitual de ESTE equipo</b> más de lo indicado arriba
+            (sensibilidad; 3 es un buen punto de partida). Se <b>calibra solo</b> con el historial del equipo.
+          </div>
+
+          <!-- M3 · desgaste acumulado (accumulator) -->
+          <div v-if="s.accumulator" class="se-extra">
+            … medido como el <b>uso/desgaste acumulado</b> en el tiempo (el valor de arriba es el límite).
+            Persiste aunque se reinicie el equipo.
+          </div>
+
+          <!-- técnica sin toggle propio · preset con umbral editable -->
           <div v-if="s.mPreset" class="se-extra">
             <i class="fa fa-lock"></i> Regla <b>preconfigurada</b>: sólo se edita el
             <b>umbral</b> (valor de arriba), la <b>severidad</b> y la <b>recomendación</b>. El cálculo y sus
@@ -310,6 +332,9 @@ export default {
       if (this.s.flatline) return 'flatline';
       if (this.s.staleness) return 'staleness';
       if (this.s.variance) return 'variance';
+      if (this.s.acceleration) return 'acceleration';
+      if (this.s.baseline) return 'baseline';
+      if (this.s.accumulator) return 'accumulator';
       if (this.s.mPreset) return 'mPreset';
       return null;
     },
@@ -326,6 +351,9 @@ export default {
       if (this.s.flatline) return 'sensor clavado';
       if (this.s.staleness) return 'deja de reportar';
       if (this.s.variance) return 'variabilidad';
+      if (this.s.acceleration) return 'empeora más rápido';
+      if (this.s.baseline) return 'fuera de lo normal';
+      if (this.s.accumulator) return 'desgaste acumulado';
       if (this.s.mPreset) return 'preset';
       return TYPE_HINT[inferType(this.s)] || '';
     },
@@ -356,14 +384,15 @@ export default {
       if (this.s.stepJump && !(this.s.stepJump.windowMin > 0)) return false;
       if (this.s.flatline && !(this.s.flatline.windowMin > 0)) return false;
       if (this.s.variance && !(this.s.variance.windowMin > 0)) return false;
-      // staleness / mPreset: sólo requieren la variable + el valor — ya cubierto por el chequeo genérico.
+      if (this.s.acceleration && !(this.s.acceleration.windowMin > 0)) return false;
+      // staleness / baseline / accumulator / mPreset: sólo requieren la variable + el valor (chequeo genérico).
       return true;
     },
   },
   methods: {
     touch() { this.tick++; },
     // Limpia todos los modificadores (S/C/M) y activa uno solo (garantiza exclusión).
-    clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = this.s.dutyCycle = this.s.cumulative = this.s.stepJump = this.s.flatline = this.s.staleness = this.s.variance = null; this.s.mPreset = false; },
+    clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = this.s.dutyCycle = this.s.cumulative = this.s.stepJump = this.s.flatline = this.s.staleness = this.s.variance = this.s.acceleration = this.s.baseline = this.s.accumulator = null; this.s.mPreset = false; },
     addCondition() {
       this.s.conditions.push(emptyCondition((this.pack && this.pack.deviceType) || ''));
       this.clearMods(); this.touch();
@@ -386,6 +415,10 @@ export default {
     toggleStaleness() { const on = !this.s.staleness; this.clearMods(); if (on) { this.s.staleness = true; if (this.s.conditions[0]) this.s.conditions[0].op = 'gte'; } this.touch(); },
     // M5 · variabilidad (variance). baseline se edita como preset (mPreset), no tiene toggle propio.
     toggleVariance() { const on = !this.s.variance; this.clearMods(); if (on) { this.s.variance = { windowMin: 10 }; if (this.s.conditions[0]) this.s.conditions[0].op = 'gt'; } this.touch(); },
+    // acceleration (empeora más rápido) · baseline (fuera de lo normal, auto-calibrante) · accumulator (desgaste).
+    toggleAcceleration() { const on = !this.s.acceleration; this.clearMods(); if (on) { this.s.acceleration = { windowMin: 10 }; if (this.s.conditions[0]) this.s.conditions[0].op = 'gt'; } this.touch(); },
+    toggleBaseline() { const on = !this.s.baseline; this.clearMods(); if (on) { this.s.baseline = true; if (this.s.conditions[0]) { this.s.conditions[0].op = 'gt'; if (this.s.conditions[0].value === '' || this.s.conditions[0].value == null) this.s.conditions[0].value = 3; } } this.touch(); },
+    toggleAccumulator() { const on = !this.s.accumulator; this.clearMods(); if (on) { this.s.accumulator = true; if (this.s.conditions[0]) this.s.conditions[0].op = 'gte'; } this.touch(); },
     // Convierte las condiciones planas en un árbol crossExpr y pasa a avanzado.
     toGrouped() {
       const dt = (this.pack && this.pack.deviceType) || '';
