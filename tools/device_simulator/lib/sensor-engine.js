@@ -355,6 +355,22 @@ const SCENARIOS = {
     ],
   },
 
+  // catalogo_fallas_equipos.html §6 — demo de temperatura de sala (falla de clima):
+  // la temperatura del shelter sube cruzando los umbrales de aviso (40°) y crítico (45°).
+  sala_caliente: {
+    description: 'Sala calentándose — falla de climatización (cruza 40° y 45°)',
+    roles: ['SEC'],
+    duration_ms: 120000,
+    noCleanup: true,
+    steps: [
+      { at: 0,     set: { shelter_temp: 28 } },
+      { at: 8000,  set: { shelter_temp: 35 } },
+      { at: 16000, set: { shelter_temp: 41 } },
+      { at: 24000, set: { shelter_temp: 44 } },
+      { at: 32000, set: { shelter_temp: 47 } },
+    ],
+  },
+
   fuel_siphon: {
     description: 'Sifoneo de combustible (motor apagado)',
     roles: ['GEN', 'CUMMINS'],
