@@ -249,6 +249,12 @@ class SimulatedDevice {
       console.warn(`${this.tag} skipping publish of ${varName}: null value (only allowed for setpoint_* vars)`);
       return;
     }
+    // Guarda anti-NaN: nunca publicar un número corrupto (ej. una categórica que
+    // quedó NaN por escenarios encadenados) — ensuciaría el widget y las reglas.
+    if (typeof value === 'number' && Number.isNaN(value)) {
+      console.warn(`${this.tag} skipping publish of ${varName}: NaN`);
+      return;
+    }
     const topic = `${this._userId}/${this._dId}/${varName}/sdata`;
     const payload = JSON.stringify({ value, save: 1 });
     this._client.publish(topic, payload, { qos: 0 });
