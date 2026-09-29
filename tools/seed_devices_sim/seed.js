@@ -50,8 +50,19 @@ const SITE = 'CR00061';
 const now = Date.now();
 
 const V = (name, label, type, unit, deadband) => ({ name, label, type, unit, deadband, limits: [], factoryRange: '' });
-const W = (variable, variableFullName, variableType, unit, deadband, widget) =>
-  ({ variable, variableFullName, variableType, variableSendFreq: 30, unit, widget: widget || 'numeric', deadband });
+// Forma de widget alineada con los templates que SÍ renderizan (SEC/ELTEK):
+// bool → booleanDwell · float → numeric+render, ambos con column + enumValues + bitmapDictionary.
+const W = (variable, variableFullName, variableType, unit, deadband, icon) => {
+  const isBool = variableType === 'bool';
+  const w = {
+    variable, variableFullName, variableType, variableSendFreq: 30, unit: unit || '',
+    enumValues: [], bitmapDictionary: [], column: 'col-3',
+    icon: icon || (isBool ? 'fa-bell' : 'fa-tachometer-alt'),
+  };
+  if (isBool) { w.widget = 'booleanDwell'; w.dwellWindowHours = 24; }
+  else { w.widget = 'numeric'; w.render = 'valueStatus'; w.deadband = deadband; w.decimalPlaces = null; w.factoryRange = ''; }
+  return w;
+};
 
 const EQUIPOS = [
   {
@@ -71,7 +82,7 @@ const EQUIPOS = [
       W('cell_voltage_spread', 'Desbalance de celdas', 'float', 'V', 0.005),
       W('cell_temp_max', 'Temperatura de celda', 'float', '°C', 0.5),
       W('charge_current', 'Corriente de carga', 'float', 'A', 0.5),
-      W('battery_theft_alarm', 'Robo de baterías', 'bool', '', undefined, 'indicator'),
+      W('battery_theft_alarm', 'Robo de baterías', 'bool', '', undefined),
     ],
   },
   {
@@ -86,10 +97,10 @@ const EQUIPOS = [
     ],
     widgets: [
       W('room_temp', 'Temperatura de sala', 'float', '°C', 0.3),
-      W('unit1_status', 'Aire 1 en marcha', 'bool', '', undefined, 'indicator'),
-      W('unit1_fault', 'Falla aire 1', 'bool', '', undefined, 'indicator'),
-      W('unit2_status', 'Aire 2 en marcha', 'bool', '', undefined, 'indicator'),
-      W('unit2_fault', 'Falla aire 2', 'bool', '', undefined, 'indicator'),
+      W('unit1_status', 'Aire 1 en marcha', 'bool', '', undefined),
+      W('unit1_fault', 'Falla aire 1', 'bool', '', undefined),
+      W('unit2_status', 'Aire 2 en marcha', 'bool', '', undefined),
+      W('unit2_fault', 'Falla aire 2', 'bool', '', undefined),
     ],
   },
 ];
@@ -107,13 +118,16 @@ const EQUIPOS = [
       { $setOnInsert: { version: 1, manual: '', deviceType: e.deviceType, manufacturer: e.manufacturer, model: e.model, origin: 'wanomi', domain: e.domain, variables: e.vars, createdTime: now } },
       { upsert: true });
 
-    // 2) template — upsert por name, con _id estable
+    // 2) template — upsert por name, con _id estable. Los widgets SIEMPRE se
+    //    re-escriben (forma correcta: booleanDwell/numeric + column) aunque exista.
     let tpl = await db.collection('templates').findOne({ name: e.templateName });
-    if (!tpl) {
-      const _id = new ObjectId();
-      await db.collection('templates').insertOne({ _id, name: e.templateName, description: `${e.manufacturer} ${e.model} (Wanomi sim)`, userId: ADMIN, widgets: e.widgets, heartbeatSec: 300, deviceType: e.deviceType, createdTime: now });
-      tpl = { _id };
-    }
+    const _id = tpl ? tpl._id : new ObjectId();
+    await db.collection('templates').updateOne(
+      { name: e.templateName },
+      { $set: { widgets: e.widgets, heartbeatSec: 300, deviceType: e.deviceType },
+        $setOnInsert: { _id, name: e.templateName, description: `${e.manufacturer} ${e.model} (Wanomi sim)`, userId: ADMIN, createdTime: now } },
+      { upsert: true });
+    tpl = { _id };
 
     // 3) device — crear si no existe
     const exists = await db.collection('devices').findOne({ dId: e.dId });
