@@ -10,10 +10,41 @@
 //        tools/seed_devices_sim/seed.js dotenv_config_path=/root/IotLocalhost/app/.env
 
 const path = require('path');
-const { MongoClient, ObjectId } = require(path.join('/root/IotLocalhost/app', 'node_modules/mongodb'));
+const APP = '/root/IotLocalhost/app';
+const { MongoClient, ObjectId } = require(path.join(APP, 'node_modules/mongodb'));
+const axios = require(path.join(APP, 'node_modules/axios'));
 
 const URI = process.env.MONGODB_URI;
 if (!URI) { console.error('ERROR: falta MONGODB_URI'); process.exit(1); }
+
+// EMQX REST (mismo patrón que devices.js) — para crear la SAVER-RULE del device
+// (persistencia): sin ella el interruptor de base de datos queda en OFF.
+const EMQX_HOST = process.env.EMQX_API_HOST || 'localhost';
+const EMQX_AUTH = { auth: { username: 'admin', password: process.env.EMQX_DEFAULT_APPLICATION_SECRET } };
+let _saverResource = null;
+async function saverResourceId() {
+  if (_saverResource) return _saverResource;
+  const r = await axios.get(`http://${EMQX_HOST}:8085/api/v4/rules`, EMQX_AUTH);
+  const s = (r.data.data || []).find((x) => /SAVER/i.test(x.description || '') && x.actions && x.actions[0] && x.actions[0].params && x.actions[0].params.$resource);
+  if (!s) throw new Error('no hay SAVER-RULE existente de la cual tomar el resource id');
+  _saverResource = s.actions[0].params.$resource;
+  return _saverResource;
+}
+async function ensureSaverRule(db, userId, dId) {
+  if (await db.collection('saverrules').findOne({ dId })) { console.log(`    · saver de ${dId} ya existía`); return; }
+  const resource = await saverResourceId();
+  const topic = `${userId}/${dId}/+/sdata`;
+  const newRule = {
+    rawsql: `SELECT topic, payload FROM "${topic}" WHERE payload.save = 1`,
+    actions: [{ name: 'data_to_webserver', params: { $resource: resource, payload_tmpl: `{"userId":"${userId}","payload":\${payload},"topic":"\${topic}"}` } }],
+    description: 'SAVER-RULE', enabled: true,
+  };
+  const res = await axios.post(`http://${EMQX_HOST}:8085/api/v4/rules`, newRule, EMQX_AUTH);
+  if (res.status === 200 && res.data.data) {
+    await db.collection('saverrules').insertOne({ userId, dId, emqxRuleId: res.data.data.id, status: true, __v: 0 });
+    console.log(`    + saver rule creada para ${dId} (${res.data.data.id})`);
+  } else throw new Error('EMQX no devolvió rule id');
+}
 const ADMIN = '6a32e105be5ca779169754af';
 const SITE = 'CR00061';
 const now = Date.now();
@@ -99,6 +130,9 @@ const EQUIPOS = [
 
     // 4) asignar al site
     await db.collection('sites').updateOne({ siteCode: SITE }, { $addToSet: { devices: e.dId } });
+
+    // 5) regla saver (persistencia en base de datos) — interruptor ON
+    await ensureSaverRule(db, ADMIN, e.dId);
   }
 
   const site = await db.collection('sites').findOne({ siteCode: SITE });
