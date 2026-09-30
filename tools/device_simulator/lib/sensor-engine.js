@@ -136,6 +136,19 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+// spec_autonomy_extendido — MODELO ÚNICO DE CONSUMO (coherencia fuel_rate ↔ fuel_level).
+// Una sola tasa instantánea (L/h) es la fuente de verdad: `fuel_rate` la REPORTA
+// (medidor) y `fuel_level` la INTEGRA (el tanque baja a esa tasa). Así el caudalímetro
+// y el tanque COINCIDEN. `sharedState.fuel_eff_factor` (default 1) multiplica la tasa
+// base y sube el consumo lento y COHERENTE en ambas variables → modela pérdida de
+// eficiencia / falla incipiente (≠ sifoneo, que es una fuga del tanque que NO pasa por
+// el medidor y por eso se inyecta a mano solo en fuel_level).
+function consumptionLphNow(sharedState) {
+  const eff = Number(sharedState && sharedState.fuel_eff_factor) > 0
+    ? Number(sharedState.fuel_eff_factor) : 1;
+  return FUEL_CONSUMPTION_L_PER_H * eff;
+}
+
 // evolve recibe el estado completo del device y el sharedState del site
 function evolve(variable, currentValue, deviceState, sharedState) {
   // MODELO HÍBRIDO (Franco): por default cada variable VARÍA realista (ruido de
@@ -216,36 +229,30 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       return sharedState.gen_running ? currentValue + (1 / 60) : currentValue;
 
     case 'fuel_level': {
-      if (deviceState && deviceState.deviceType === 'CUMMINS') {
-        const consuming = sharedState.gen_running || false;
-        // DEC-REF-79 (ii) — consumo REAL derivado del campo.
-        // Jitter reducido a 25% del consumo cuando consuming, para que el
-        // nivel baje monotónicamente (físicamente el consumo no es negativo).
-        // En reposo el jitter original (0.02) refleja ruido del sensor.
-        const decrement = consuming ? FUEL_CONSUMPTION_PCT_PER_TICK : 0;
-        const noise     = consuming ? jitter(FUEL_CONSUMPTION_PCT_PER_TICK * 0.25) : jitter(0.02);
-        return clamp(currentValue - decrement + noise, 0, 100);
-      }
-      // GEN — consume por su PROPIA genset_running. Alineado al ritmo REAL de
-      // campo (DEC-REF-79 ii, igual que CUMMINS) para que el nivel baje coherente
-      // con el caudalímetro (fuel_rate). Antes 0,05%/tick era un número inventado.
-      const consuming = deviceState && deviceState.genset_running;
-      const decrement = consuming ? FUEL_CONSUMPTION_PCT_PER_TICK : 0;
-      const noise     = consuming ? jitter(FUEL_CONSUMPTION_PCT_PER_TICK * 0.25) : jitter(0.02);
+      // Baja del tanque DERIVADA de la MISMA tasa que reporta el medidor (fuel_rate)
+      // → coherencia (spec_autonomy_extendido). GEN consume por su genset_running;
+      // CUMMINS por sharedState.gen_running (via ATS). 1 tick = 1 min (variableSendFreq
+      // 60s) → %/tick = Lph / tanque × 100 / 60. Jitter 25% del decremento para que
+      // baje monotónico (el consumo no es negativo); en reposo ruido de sensor 0.02.
+      const consuming = (deviceState && deviceState.deviceType === 'CUMMINS')
+        ? !!sharedState.gen_running
+        : !!(deviceState && deviceState.genset_running);
+      const lph       = consumptionLphNow(sharedState);
+      const decrement = consuming ? (lph / TANK_CAPACITY_L) * 100 / 60 : 0;
+      const noise     = consuming ? jitter(decrement * 0.25) : jitter(0.02);
       return clamp(currentValue - decrement + noise, 0, 100);
     }
 
     case 'fuel_rate': {
-      // Caudalímetro (spec_autonomy_extendido) — caudal instantáneo en L/h. Solo
-      // hay caudal con el grupo consumiendo; en reposo lee 0. Centrado en el ritmo
-      // REAL de campo (FUEL_CONSUMPTION_L_PER_H, DEC-REF-79 ii) ± ruido de sensor,
-      // así el dato 'metered' del edge es coherente con la baja del tanque. GEN
-      // mira su genset_running; CUMMINS el sharedState.gen_running (via ATS).
+      // Caudalímetro (spec_autonomy_extendido) — REPORTA la misma tasa que vacía el
+      // tanque, ± ruido de sensor. 0 en reposo. Como comparte consumptionLphNow con
+      // fuel_level, medidor y tanque coinciden; fuel_eff_factor los sube juntos.
       const flowing = (deviceState && deviceState.deviceType === 'CUMMINS')
         ? !!sharedState.gen_running
         : !!(deviceState && deviceState.genset_running);
       if (!flowing) return 0;
-      return clamp(FUEL_CONSUMPTION_L_PER_H + jitter(FUEL_CONSUMPTION_L_PER_H * 0.1), 0, 20);
+      const lph = consumptionLphNow(sharedState);
+      return clamp(lph + jitter(lph * 0.1), 0, 40);
     }
 
     case 'shelter_temp':
@@ -468,6 +475,31 @@ const SCENARIOS = {
     noCleanup: true,
     steps: [
       { at: 0, set: { genset_running: 0 } },
+    ],
+  },
+
+  // spec_autonomy_extendido — PÉRDIDA DE EFICIENCIA (≠ sifoneo). Sube fuel_eff_factor:
+  // el consumo trepa ~8% sobre lo normal, COHERENTE en medidor y tanque (no divergen).
+  // Sutil (dentro del ruido instantáneo), pero un baseline/slope del motor M sobre el
+  // consumo lo detecta con el tiempo. Correr con el grupo EN MARCHA para que se vea.
+  // fuel_eff_factor vive en sharedState (per-site) → persiste hasta consumo_normal.
+  consumo_ineficiente: {
+    description: 'Pérdida de eficiencia — el consumo sube ~8% sostenido (falla incipiente, no sifoneo)',
+    roles: ['GEN', 'CUMMINS'],
+    duration_ms: 5000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { fuel_eff_factor: 1.08 } },
+    ],
+  },
+
+  consumo_normal: {
+    description: 'Consumo vuelve a eficiencia normal',
+    roles: ['GEN', 'CUMMINS'],
+    duration_ms: 3000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { fuel_eff_factor: 1.0 } },
     ],
   },
 
