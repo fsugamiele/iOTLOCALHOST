@@ -27,6 +27,17 @@ function validateAutonomy(a) {
   if (!a.fuelVariable || !(Number(a.tankCapacity) > 0) || !(Number(a.consumptionLph) > 0)) {
     return 'autonomy incompleta: fuelVariable, tankCapacity>0 y consumptionLph>0 son requeridos (o enviá autonomy:null para limpiar)';
   }
+  // spec_autonomy_extendido — campos opcionales de la fuente 'metered' y de marcha por config.
+  if ('flowVariable' in a && a.flowVariable != null) {
+    if (typeof a.flowVariable !== 'string' || !a.flowVariable.trim()) return 'autonomy: flowVariable, si se envía, debe ser un nombre de variable no vacío';
+    if (a.flowVariable === a.fuelVariable) return 'autonomy: flowVariable no puede ser igual a fuelVariable (son sensores distintos)';
+  }
+  if ('flowScale' in a && a.flowScale != null && !(Number(a.flowScale) > 0)) {
+    return 'autonomy: flowScale, si se envía, debe ser > 0';
+  }
+  if ('runningVariable' in a && a.runningVariable != null) {
+    if (typeof a.runningVariable !== 'string' || !a.runningVariable.trim()) return 'autonomy: runningVariable, si se envía, debe ser un nombre de variable no vacío';
+  }
   return null;
 }
 
