@@ -31,10 +31,18 @@ const VariableSchema = new Schema({
 //   autonomy_hours = fuelLevel[%] × tankCapacity / 100 / consumptionLph
 // Opcional: sin este bloque NO hay cálculo para el equipo (la plataforma no
 // inventa autonomía sin parámetros — el widget muestra "sin dato", honesto).
+// spec_autonomy_extendido (2026-09-30) — jerarquía de 3 fuentes: metered
+// (caudalímetro) > measured (pendiente del tanque) > estimated (nominal). Los
+// 3 campos nuevos son OPCIONALES y ADITIVOS: sin ellos el cálculo es idéntico
+// a DEC-REF-115. Son NOMBRES de variable (del modelo/template) → viven en la
+// ficha, no en el override del device (que sigue siendo tanque+consumo).
 const AutonomySchema = new Schema({
-  fuelVariable:   { type: String },  // variable de nivel de combustible (0-100 %)
-  tankCapacity:   { type: Number },  // capacidad del tanque (unidad coherente con consumptionLph)
-  consumptionLph: { type: Number },  // consumo nominal (unidades/hora) — evidencia citada en doc/limits.source
+  fuelVariable:    { type: String },  // variable de nivel de combustible (0-100 %)
+  tankCapacity:    { type: Number },  // capacidad del tanque (unidad coherente con consumptionLph)
+  consumptionLph:  { type: Number },  // consumo nominal (unidades/hora) — evidencia citada en doc/limits.source
+  flowVariable:    { type: String },  // NUEVO opcional — variable de caudal instantáneo del caudalímetro (fuente 'metered')
+  flowScale:       { type: Number },  // NUEVO opcional (default 1) — multiplicador a unidad/hora (ej. L/min→60)
+  runningVariable: { type: String },  // NUEVO opcional — variable de marcha; ausente → fallback a RUNNING_ALIASES del edge
 }, { _id: false });
 
 const equipmentSheetSchema = new Schema({
