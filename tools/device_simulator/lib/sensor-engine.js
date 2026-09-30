@@ -45,6 +45,9 @@ function initialSecState() {
 function initialGenState() {
   return {
     fuel_level: 75.0,
+    // spec_autonomy_extendido — caudalímetro: caudal instantáneo (L/h). 0 en
+    // reposo; con el grupo en marcha evolve lo lleva al ritmo real de campo.
+    fuel_rate: 0.0,
     // DEC-REF-115 (#85) — autonomy_hours ya NO la publica el equipo: la
     // calcula la plataforma (edge-engine/autonomy.js) desde fuel_level.
     genset_running: 0,
@@ -80,6 +83,8 @@ function initialCumminsState(siteCode) {
     run_hours:       0.0,
     battery_voltage: 12.6,
     fuel_level:      75.0,
+    // spec_autonomy_extendido — caudalímetro (mismo modelo que GEN). 0 en reposo.
+    fuel_rate:       0.0,
     // DEC-REF-115 (#85) — autonomy_hours ya NO la publica el equipo: la
     // calcula la plataforma (edge-engine/autonomy.js) desde fuel_level.
     fault_code:      0,
@@ -221,9 +226,26 @@ function evolve(variable, currentValue, deviceState, sharedState) {
         const noise     = consuming ? jitter(FUEL_CONSUMPTION_PCT_PER_TICK * 0.25) : jitter(0.02);
         return clamp(currentValue - decrement + noise, 0, 100);
       }
-      // legacy GEN
-      const consumption = deviceState && deviceState.genset_running ? 0.05 : 0;
-      return clamp(currentValue - consumption + jitter(0.02), 0, 100);
+      // GEN — consume por su PROPIA genset_running. Alineado al ritmo REAL de
+      // campo (DEC-REF-79 ii, igual que CUMMINS) para que el nivel baje coherente
+      // con el caudalímetro (fuel_rate). Antes 0,05%/tick era un número inventado.
+      const consuming = deviceState && deviceState.genset_running;
+      const decrement = consuming ? FUEL_CONSUMPTION_PCT_PER_TICK : 0;
+      const noise     = consuming ? jitter(FUEL_CONSUMPTION_PCT_PER_TICK * 0.25) : jitter(0.02);
+      return clamp(currentValue - decrement + noise, 0, 100);
+    }
+
+    case 'fuel_rate': {
+      // Caudalímetro (spec_autonomy_extendido) — caudal instantáneo en L/h. Solo
+      // hay caudal con el grupo consumiendo; en reposo lee 0. Centrado en el ritmo
+      // REAL de campo (FUEL_CONSUMPTION_L_PER_H, DEC-REF-79 ii) ± ruido de sensor,
+      // así el dato 'metered' del edge es coherente con la baja del tanque. GEN
+      // mira su genset_running; CUMMINS el sharedState.gen_running (via ATS).
+      const flowing = (deviceState && deviceState.deviceType === 'CUMMINS')
+        ? !!sharedState.gen_running
+        : !!(deviceState && deviceState.genset_running);
+      if (!flowing) return 0;
+      return clamp(FUEL_CONSUMPTION_L_PER_H + jitter(FUEL_CONSUMPTION_L_PER_H * 0.1), 0, 20);
     }
 
     case 'shelter_temp':
@@ -421,6 +443,31 @@ const SCENARIOS = {
       { at: 4500,  set: { battery_voltage: 9.8 } },
       { at: 5000,  set: { crank_current: 0, crank_attempts_failed: 1 } },
       { at: 8000,  set: { battery_voltage: 11.5 } },
+    ],
+  },
+
+  // spec_autonomy_extendido — arranque del grupo para demostrar consumo + caudalímetro.
+  // Fija genset_running=1 y devuelve el control a evolve (duración corta): el motor
+  // queda EN MARCHA (noCleanup) y evolve consume fuel_level + publica fuel_rate al
+  // ritmo real de campo. Con la ficha GEN configurada (flowVariable/runningVariable),
+  // el edge calcula autonomía 'metered' (Medida). Persiste hasta reset o generador_parada.
+  generador_marcha: {
+    description: 'Generador en marcha — consumo de gasoil y caudalímetro en línea',
+    roles: ['GEN'],
+    duration_ms: 5000,     // corto: fija la marcha y evolve toma el consumo/caudal
+    noCleanup: true,
+    steps: [
+      { at: 0, set: { genset_running: 1 } },
+    ],
+  },
+
+  generador_parada: {
+    description: 'Generador se detiene — cesa el consumo y el caudalímetro vuelve a 0',
+    roles: ['GEN'],
+    duration_ms: 3000,
+    noCleanup: true,
+    steps: [
+      { at: 0, set: { genset_running: 0 } },
     ],
   },
 
