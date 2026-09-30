@@ -55,9 +55,14 @@ const EMPIRICAL_MIN_SAMPLES = 2;
 // (salvo cambio de fuente). La pendiente es una integral — recalcularla en
 // cada mensaje de fuel no aporta resolución.
 const PUBLISH_MIN_INTERVAL_MS = 60 * 1000;
-// Alias comunes de la variable de marcha (la ficha no la declara en el
-// bloque autonomy; cubre los packs del seed).
+// Alias comunes de la variable de marcha, FALLBACK cuando la ficha no declara
+// `runningVariable` (spec_autonomy_extendido). Si la ficha la declara, gana ella
+// y estos alias se ignoran.
 const RUNNING_ALIASES = ['genset_running', 'gen_running', 'engine_running', 'running', 'motor_running'];
+// Frescura del caudal para la fuente 'metered' (spec_autonomy_extendido): una
+// lectura de caudalímetro más vieja que esto NO se usa (cae a 'measured'). 2× el
+// latido normal (≤5 min) da margen sin arrastrar un dato muerto.
+const FLOW_FRESH_MS = 10 * 60 * 1000;
 
 // Estado en memoria por equipo: historial de fuel + flag de marcha + debounce.
 // Se limpia entero en cada reload (los configs pueden haber cambiado).
@@ -66,7 +71,7 @@ const deviceRuntime = new Map();
 function runtimeFor(dId) {
   let rt = deviceRuntime.get(dId);
   if (!rt) {
-    rt = { samples: [], running: null, lastPublishTs: 0, lastSource: null };
+    rt = { samples: [], running: null, lastPublishTs: 0, lastSource: null, lastFlow: null };
     deviceRuntime.set(dId, rt);
   }
   return rt;
@@ -113,6 +118,11 @@ async function loadAutonomyConfigs(siteId) {
       fuelVariable: sheetCfg.fuelVariable,
       tankCapacity,
       consumptionLph,
+      // spec_autonomy_extendido — fuente 'metered' + marcha por config (nombres
+      // de variable = del modelo, sin override por equipo). flowScale default 1.
+      flowVariable: sheetCfg.flowVariable || null,
+      flowScale: Number(sheetCfg.flowScale) > 0 ? Number(sheetCfg.flowScale) : 1,
+      runningVariable: sheetCfg.runningVariable || null,
       userId: d.userId,
     });
   }
@@ -145,68 +155,58 @@ function publishVar(client, userId, dId, variable, value) {
   );
 }
 
-// maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs })
-// Punto de entrada desde el handler de mensajes. Devuelve true si publicó.
-function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }) {
-  const cfg = configs.get(dId);
-  if (!cfg || !cfg.userId) return false;
-
-  const now = eventTs != null ? eventTs : Date.now();
-  const rt = runtimeFor(dId);
-
-  // 1. Trackear marcha del grupo (alias comunes) — no publica nada.
-  if (RUNNING_ALIASES.includes(variable)) {
-    const v = value === true || value === 'RUNNING' ? 1 : Number(value);
-    if (Number.isFinite(v)) rt.running = v ? 1 : 0;
-    return false;
-  }
-
-  if (variable !== cfg.fuelVariable) return false;
-  const fuel = Number(value);
-  if (!Number.isFinite(fuel)) return false;
-
-  // 2. Acumular historial de fuel (ventana deslizante de 6 h). Cada muestra
-  //    se etiqueta con el estado de marcha AL LLEGAR: la regresión solo usa
-  //    muestras con run===1 (un grupo apagado no consume; mezclar tramos en
-  //    reposo aplana la pendiente y la autonomía sale infinita).
-  rt.samples.push({ ts: now, value: fuel, run: rt.running });
-  rt.samples = rt.samples.filter(p => p.ts >= now - EMPIRICAL_WINDOW_MS);
-
-  // 3. Pendiente sobre tramos EN MARCHA. Salto positivo (repostaje) →
-  //    descartar el historial previo: la pendiente pre-repostaje no sirve.
+// computeAndPublish — decide la FUENTE (jerarquía de 3, spec_autonomy_extendido)
+// con el nivel de fuel actual, aplica debounce y publica. NO muta rt.samples (el
+// historial se maneja en el path de fuel). Devuelve true si publicó.
+//   1. metered   — caudalímetro directo: cfg.flowVariable con lectura fresca,
+//                  grupo en marcha y caudal > 0. observedCons = flow × flowScale.
+//   2. measured  — pendiente del tanque en marcha, sin repostaje (DEC-REF-115).
+//   3. estimated — nominal de la ficha (fallback).
+function computeAndPublish(client, cfg, rt, dId, fuel, now) {
   let hours = null;
   let source = 'estimated';
   let lph = cfg.consumptionLph;                        // consumo usado (default nominal)
-  const prev = rt.samples.length > 1 ? rt.samples[rt.samples.length - 2].value : null;
-  const refueled = prev !== null && fuel - prev > 1;
 
-  if (!refueled && rt.running === 1) {
-    const inMarcha = rt.samples.filter(s => s.run === 1);
-    if (inMarcha.length >= EMPIRICAL_MIN_SAMPLES) {
-      const slope = slopePerMs(inMarcha);   // %/ms, negativo al consumir
-      if (slope < 0) {
-        // consumoObservado [unidad_tanque/h] = −slope[%/h] × tank / 100
-        const slopePerHour = slope * 3600 * 1000;
-        const observedCons = (-slopePerHour) * cfg.tankCapacity / 100;
-        if (observedCons > 0) {
-          hours = Math.round((fuel * cfg.tankCapacity / 100 / observedCons) * 10) / 10;
-          source = 'measured';
-          lph = observedCons;                          // consumo OBSERVADO
+  // 1. metered — el dato exacto del sensor manda si está fresco y el grupo anda.
+  if (cfg.flowVariable && rt.lastFlow && rt.running === 1 &&
+      (now - rt.lastFlow.ts) <= FLOW_FRESH_MS) {
+    const observed = rt.lastFlow.value * (cfg.flowScale > 0 ? cfg.flowScale : 1);
+    if (observed > 0) {
+      hours = Math.round((fuel * cfg.tankCapacity / 100 / observed) * 10) / 10;
+      source = 'metered';
+      lph = observed;
+    }
+  }
+
+  // 2. measured — inferencia por pendiente sobre tramos EN MARCHA (si no hubo metered).
+  if (hours === null) {
+    const prev = rt.samples.length > 1 ? rt.samples[rt.samples.length - 2].value : null;
+    const refueled = prev !== null && fuel - prev > 1;
+    if (!refueled && rt.running === 1) {
+      const inMarcha = rt.samples.filter(s => s.run === 1);
+      if (inMarcha.length >= EMPIRICAL_MIN_SAMPLES) {
+        const slope = slopePerMs(inMarcha);   // %/ms, negativo al consumir
+        if (slope < 0) {
+          // consumoObservado [unidad_tanque/h] = −slope[%/h] × tank / 100
+          const slopePerHour = slope * 3600 * 1000;
+          const observedCons = (-slopePerHour) * cfg.tankCapacity / 100;
+          if (observedCons > 0) {
+            hours = Math.round((fuel * cfg.tankCapacity / 100 / observedCons) * 10) / 10;
+            source = 'measured';
+            lph = observedCons;                          // consumo OBSERVADO
+          }
         }
       }
     }
-  } else if (refueled) {
-    rt.samples = [{ ts: now, value: fuel, run: rt.running }];  // reiniciar historial post-repostaje
   }
 
-  // 4. Fallback nominal (declarado en ficha/dispositivo).
+  // 3. Fallback nominal (declarado en ficha/dispositivo).
   if (hours === null) {
     hours = Math.round((fuel * cfg.tankCapacity / 100 / cfg.consumptionLph) * 10) / 10;
     source = 'estimated';
   }
 
-  // 5. Debounce: 1 publicación/min por equipo; el cambio de fuente
-  //    (estimated↔measured) siempre publica.
+  // Debounce: 1 publicación/min por equipo; el cambio de fuente siempre publica.
   const sourceChanged = rt.lastSource !== null && rt.lastSource !== source;
   if (!sourceChanged && now - rt.lastPublishTs < PUBLISH_MIN_INTERVAL_MS) return false;
   rt.lastPublishTs = now;
@@ -218,6 +218,55 @@ function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }
   publishVar(client, cfg.userId, dId, AUTONOMY_LPH_VARIABLE, Math.round(lph * 100) / 100);
   publishVar(client, cfg.userId, dId, AUTONOMY_LITERS_VARIABLE, liters);
   return true;
+}
+
+// maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs })
+// Punto de entrada desde el handler de mensajes. Devuelve true si publicó.
+function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }) {
+  const cfg = configs.get(dId);
+  if (!cfg || !cfg.userId) return false;
+
+  const now = eventTs != null ? eventTs : Date.now();
+  const rt = runtimeFor(dId);
+
+  // 1. Marcha del grupo: por config (runningVariable) o, si la ficha no la declara,
+  //    por la lista de alias. Si runningVariable está seteada, los alias se ignoran
+  //    (spec §6 caso #7). No publica nada.
+  const isRunningSignal = cfg.runningVariable
+    ? variable === cfg.runningVariable
+    : RUNNING_ALIASES.includes(variable);
+  if (isRunningSignal) {
+    const v = value === true || value === 'RUNNING' ? 1 : Number(value);
+    if (Number.isFinite(v)) rt.running = v ? 1 : 0;
+    return false;
+  }
+
+  // 2. Caudalímetro (fuente 'metered'): guardar la última lectura y RE-DISPARAR el
+  //    cálculo con el último fuel conocido (spec §6 caso #11). Sin fuel previo,
+  //    solo guarda y espera el primer fuel (caso #12).
+  if (cfg.flowVariable && variable === cfg.flowVariable) {
+    const f = Number(value);
+    if (Number.isFinite(f)) rt.lastFlow = { value: f, ts: now };
+    if (rt.samples.length === 0) return false;
+    const lastFuel = rt.samples[rt.samples.length - 1].value;
+    return computeAndPublish(client, cfg, rt, dId, lastFuel, now);
+  }
+
+  if (variable !== cfg.fuelVariable) return false;
+  const fuel = Number(value);
+  if (!Number.isFinite(fuel)) return false;
+
+  // 3. Acumular historial de fuel (ventana deslizante de 6 h). Cada muestra se
+  //    etiqueta con el estado de marcha AL LLEGAR: la regresión solo usa muestras
+  //    con run===1 (un grupo apagado no consume; mezclar reposo aplana la pendiente).
+  //    Salto positivo (repostaje) → descartar el historial previo.
+  const prevFuel = rt.samples.length ? rt.samples[rt.samples.length - 1].value : null;
+  const refueled = prevFuel !== null && fuel - prevFuel > 1;
+  rt.samples.push({ ts: now, value: fuel, run: rt.running });
+  rt.samples = rt.samples.filter(p => p.ts >= now - EMPIRICAL_WINDOW_MS);
+  if (refueled) rt.samples = [{ ts: now, value: fuel, run: rt.running }];  // reiniciar historial post-repostaje
+
+  return computeAndPublish(client, cfg, rt, dId, fuel, now);
 }
 
 // resetAutonomyRuntime() — se invoca en el reload SF-3: las configs pueden
