@@ -34,7 +34,7 @@ export default {
     // #88 — variables hermanas que publica el edge (autonomy.js). Las alimenta
     // el Live dedicado ProjectedAutonomyLive (widget de primera clase); el
     // presenter queda PURO (solo props, sin MQTT).
-    source:  { default: null },   // 'measured' | 'estimated'
+    source:  { default: null },   // 'metered' | 'measured' | 'estimated' (spec_autonomy_extendido)
     lph:     { default: null },   // consumo usado (L/h)
     liters:  { default: null },   // litros restantes
     fuel:    { default: null },   // % de combustible (barra)
@@ -45,23 +45,33 @@ export default {
     hasData() {
       return this.value !== null && this.value !== undefined && Number.isFinite(Number(this.value));
     },
-    sourceKind() { return this.source === 'measured' ? 'measured' : 'estimated'; },
+    // spec_autonomy_extendido §5-bis — 3 fuentes: metered (caudalímetro) = "Medida",
+    // measured (pendiente del tanque) = "Calculada", estimated (nominal) = "Nominal".
+    sourceKind() {
+      if (this.source === 'metered') return 'metered';
+      if (this.source === 'measured') return 'measured';
+      return 'estimated';
+    },
     sourceLabel() {
-      if (this.source === 'measured') return 'medida';
-      if (this.source === 'estimated') return 'estimada';
+      if (this.source === 'metered') return 'Medida';
+      if (this.source === 'measured') return 'Calculada';
+      if (this.source === 'estimated') return 'Nominal';
       return '';
     },
     sourceTip() {
-      return this.sourceKind === 'measured'
-        ? 'Autonomía MEDIDA: consumo real observado con el grupo en marcha.'
-        : 'Autonomía ESTIMADA: consumo nominal de la ficha (aún sin medición en marcha).';
+      if (this.source === 'metered') return 'Autonomía MEDIDA: consumo medido por el sensor de caudal.';
+      if (this.source === 'measured') return 'Autonomía CALCULADA: deducida de cómo baja el tanque con el grupo en marcha.';
+      return 'Autonomía NOMINAL: consumo de fábrica del equipo (aún sin medición en marcha).';
     },
     hasExtra() { return this.fuel != null || this.lph != null || this.liters != null; },
     fuelPct() { const f = Number(this.fuel); return Number.isFinite(f) ? Math.max(0, Math.min(100, Math.round(f))) : 0; },
     litersFmt() { return this.liters != null ? `${Math.round(Number(this.liters))} L` : `${this.fuelPct}%`; },
     lphFmt() {
       const n = Math.round(Number(this.lph) * 10) / 10;
-      return `${n} L/h ${this.sourceKind === 'measured' ? '(observado)' : '(nominal)'}`;
+      const tag = this.sourceKind === 'metered' ? '(medido)'
+                : this.sourceKind === 'measured' ? '(calculado)'
+                : '(nominal)';
+      return `${n} L/h ${tag}`;
     },
     hours() { return Number(this.value); },
     formatted() {
@@ -152,8 +162,9 @@ export default {
 .projected-autonomy__nodata { color: #6b7280; font-style: italic; opacity: 0.7; }
 .projected-autonomy__na     { color: #6b7280; opacity: 0.7; font-size: 1.4em; }
 
-/* #88 — badge de fuente (medida/estimada) + barra de combustible + consumo */
+/* #88 / spec_autonomy_extendido — badge de fuente (Medida/Calculada/Nominal) + barra + consumo */
 .pa-badge { position: absolute; top: 2px; right: 4px; font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border-radius: 10px; padding: 2px 8px; z-index: 2; }
+.pa-badge--metered   { color: #00806c; background: rgba(0,191,154,.18); }
 .pa-badge--measured  { color: #00806c; background: rgba(0,191,154,.18); }
 .pa-badge--estimated { color: #7d879c; background: rgba(136,152,170,.18); }
 .pa-info { width: 100%; padding: 0 6px 2px; }
