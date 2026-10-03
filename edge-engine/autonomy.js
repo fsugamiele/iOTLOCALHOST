@@ -45,6 +45,11 @@ const AUTONOMY_SOURCE_VARIABLE = 'autonomy_source';
 // (nominal u observado) y litros restantes. Que el usuario entienda el número.
 const AUTONOMY_LPH_VARIABLE = 'autonomy_lph';
 const AUTONOMY_LITERS_VARIABLE = 'autonomy_liters';
+// spec_deteccion_sifoneo_eficiencia — consumo que IMPLICA la caída del tanque (L/h),
+// publicado SIEMPRE que sea computable (en marcha, ≥2 muestras, pendiente<0), gane la
+// fuente que gane. Es el segundo testigo para el cruce de divergencia contra fuel_rate
+// (medidor): tanque cae más rápido que el medidor = sifoneo / caudalímetro averiado.
+const CONSUMPTION_TANK_VARIABLE = 'consumption_tank';
 
 // Ventana empírica: 6 h de historial de fuel. Corta para reaccionar a
 // cambios de régimen, larga para absorber ruido de lectura. Con ≤2 muestras
@@ -163,6 +168,26 @@ function publishVar(client, userId, dId, variable, value) {
 //   2. measured  — pendiente del tanque en marcha, sin repostaje (DEC-REF-115).
 //   3. estimated — nominal de la ficha (fallback).
 function computeAndPublish(client, cfg, rt, dId, fuel, now) {
+  // Consumo por pendiente del tanque (L/h). Se calcula SIEMPRE que sea computable
+  // (spec_deteccion_sifoneo_eficiencia): lo usa (a) la fuente `measured` y (b) la
+  // publicación de `consumption_tank` para el cruce de divergencia, gane quien gane.
+  let tankCons = null;
+  {
+    const prev = rt.samples.length > 1 ? rt.samples[rt.samples.length - 2].value : null;
+    const refueled = prev !== null && fuel - prev > 1;
+    if (!refueled && rt.running === 1) {
+      const inMarcha = rt.samples.filter(s => s.run === 1);
+      if (inMarcha.length >= EMPIRICAL_MIN_SAMPLES) {
+        const slope = slopePerMs(inMarcha);   // %/ms, negativo al consumir
+        if (slope < 0) {
+          // consumoObservado [unidad_tanque/h] = −slope[%/h] × tank / 100
+          const observedCons = (-(slope * 3600 * 1000)) * cfg.tankCapacity / 100;
+          if (observedCons > 0) tankCons = observedCons;
+        }
+      }
+    }
+  }
+
   let hours = null;
   let source = 'estimated';
   let lph = cfg.consumptionLph;                        // consumo usado (default nominal)
@@ -179,25 +204,10 @@ function computeAndPublish(client, cfg, rt, dId, fuel, now) {
   }
 
   // 2. measured — inferencia por pendiente sobre tramos EN MARCHA (si no hubo metered).
-  if (hours === null) {
-    const prev = rt.samples.length > 1 ? rt.samples[rt.samples.length - 2].value : null;
-    const refueled = prev !== null && fuel - prev > 1;
-    if (!refueled && rt.running === 1) {
-      const inMarcha = rt.samples.filter(s => s.run === 1);
-      if (inMarcha.length >= EMPIRICAL_MIN_SAMPLES) {
-        const slope = slopePerMs(inMarcha);   // %/ms, negativo al consumir
-        if (slope < 0) {
-          // consumoObservado [unidad_tanque/h] = −slope[%/h] × tank / 100
-          const slopePerHour = slope * 3600 * 1000;
-          const observedCons = (-slopePerHour) * cfg.tankCapacity / 100;
-          if (observedCons > 0) {
-            hours = Math.round((fuel * cfg.tankCapacity / 100 / observedCons) * 10) / 10;
-            source = 'measured';
-            lph = observedCons;                          // consumo OBSERVADO
-          }
-        }
-      }
-    }
+  if (hours === null && tankCons !== null) {
+    hours = Math.round((fuel * cfg.tankCapacity / 100 / tankCons) * 10) / 10;
+    source = 'measured';
+    lph = tankCons;                                      // consumo OBSERVADO
   }
 
   // 3. Fallback nominal (declarado en ficha/dispositivo).
@@ -217,6 +227,10 @@ function computeAndPublish(client, cfg, rt, dId, fuel, now) {
   publishVar(client, cfg.userId, dId, AUTONOMY_SOURCE_VARIABLE, source);
   publishVar(client, cfg.userId, dId, AUTONOMY_LPH_VARIABLE, Math.round(lph * 100) / 100);
   publishVar(client, cfg.userId, dId, AUTONOMY_LITERS_VARIABLE, liters);
+  // consumption_tank — segundo testigo para divergencia. Solo si es computable.
+  if (tankCons !== null) {
+    publishVar(client, cfg.userId, dId, CONSUMPTION_TANK_VARIABLE, Math.round(tankCons * 100) / 100);
+  }
   return true;
 }
 
@@ -283,4 +297,5 @@ module.exports = {
   AUTONOMY_SOURCE_VARIABLE,
   AUTONOMY_LPH_VARIABLE,
   AUTONOMY_LITERS_VARIABLE,
+  CONSUMPTION_TANK_VARIABLE,
 };
