@@ -17,6 +17,10 @@ const { FIELD_DATA } = require('./field_data.js');
 const FUEL_CONSUMPTION_L_PER_H       = 3.46;   // DEC-REF-79 (ii)
 const TANK_CAPACITY_L                = 250;    // DEC-REF-79 (i)
 const FUEL_CONSUMPTION_PCT_PER_TICK  = (FUEL_CONSUMPTION_L_PER_H / TANK_CAPACITY_L) * 100 / 60;
+// spec_deteccion_sifoneo_eficiencia — carga eléctrica nominal del grupo en marcha (kW).
+// Habilita el consumo específico (L/h ÷ kW) para la regla de eficiencia/deficiencia.
+// En producción lo reporta la controladora del grupo; acá lo simula el sim.
+const GENSET_POWER_KW_NOMINAL        = 10.0;
 
 // ════════════════════════════════════════════════════════════════════
 // sensor-engine.js — v2 alineado con pitch de Claro
@@ -48,6 +52,8 @@ function initialGenState() {
     // spec_autonomy_extendido — caudalímetro: caudal instantáneo (L/h). 0 en
     // reposo; con el grupo en marcha evolve lo lleva al ritmo real de campo.
     fuel_rate: 0.0,
+    // spec_deteccion_sifoneo_eficiencia — carga eléctrica del grupo (kW). 0 en reposo.
+    genset_power_kw: 0.0,
     // DEC-REF-115 (#85) — autonomy_hours ya NO la publica el equipo: la
     // calcula la plataforma (edge-engine/autonomy.js) desde fuel_level.
     genset_running: 0,
@@ -85,6 +91,8 @@ function initialCumminsState(siteCode) {
     fuel_level:      75.0,
     // spec_autonomy_extendido — caudalímetro (mismo modelo que GEN). 0 en reposo.
     fuel_rate:       0.0,
+    // spec_deteccion_sifoneo_eficiencia — carga eléctrica del grupo (kW). 0 en reposo.
+    genset_power_kw: 0.0,
     // DEC-REF-115 (#85) — autonomy_hours ya NO la publica el equipo: la
     // calcula la plataforma (edge-engine/autonomy.js) desde fuel_level.
     fault_code:      0,
@@ -240,19 +248,36 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       const lph       = consumptionLphNow(sharedState);
       const decrement = consuming ? (lph / TANK_CAPACITY_L) * 100 / 60 : 0;
       const noise     = consuming ? jitter(decrement * 0.25) : jitter(0.02);
-      return clamp(currentValue - decrement + noise, 0, 100);
+      // spec_deteccion_sifoneo_eficiencia — SIFONEO: drenaje extra del tanque que NO
+      // pasa por el medidor (fuel_rate lo ignora) → tanque cae más rápido que el caudal
+      // reportado → divergence. Aplica haya o no consumo (se puede sifonear apagado).
+      const siphonLph = Number(sharedState.siphon_lph) > 0 ? Number(sharedState.siphon_lph) : 0;
+      const siphonDec = (siphonLph / TANK_CAPACITY_L) * 100 / 60;
+      return clamp(currentValue - decrement - siphonDec + noise, 0, 100);
     }
 
     case 'fuel_rate': {
       // Caudalímetro (spec_autonomy_extendido) — REPORTA la misma tasa que vacía el
-      // tanque, ± ruido de sensor. 0 en reposo. Como comparte consumptionLphNow con
-      // fuel_level, medidor y tanque coinciden; fuel_eff_factor los sube juntos.
+      // tanque POR CONSUMO, ± ruido de sensor. 0 en reposo. NO incluye el sifón (por eso
+      // diverge del tanque ante robo). Comparte consumptionLphNow con fuel_level → medidor
+      // y tanque coinciden en operación normal; fuel_eff_factor los sube juntos.
       const flowing = (deviceState && deviceState.deviceType === 'CUMMINS')
         ? !!sharedState.gen_running
         : !!(deviceState && deviceState.genset_running);
       if (!flowing) return 0;
       const lph = consumptionLphNow(sharedState);
       return clamp(lph + jitter(lph * 0.1), 0, 40);
+    }
+
+    case 'genset_power_kw': {
+      // spec_deteccion_sifoneo_eficiencia — carga eléctrica del grupo (kW). 0 en reposo;
+      // en marcha ~nominal ± ruido. Habilita el consumo específico (fuel_rate ÷ kW) de la
+      // regla de eficiencia. GEN mira su genset_running; CUMMINS el sharedState.gen_running.
+      const online = (deviceState && deviceState.deviceType === 'CUMMINS')
+        ? !!sharedState.gen_running
+        : !!(deviceState && deviceState.genset_running);
+      if (!online) return 0;
+      return clamp(GENSET_POWER_KW_NOMINAL + jitter(1), 5, 15);
     }
 
     case 'shelter_temp':
@@ -500,6 +525,30 @@ const SCENARIOS = {
     noCleanup: true,
     steps: [
       { at: 0, sharedSet: { fuel_eff_factor: 1.0 } },
+    ],
+  },
+
+  // spec_deteccion_sifoneo_eficiencia — SIFONEO EN MARCHA (≠ deficiencia). Drena el
+  // tanque ~20 L/h extra que NO pasa por el medidor → fuel_level cae mucho más rápido
+  // que fuel_rate → consumption_tank >> fuel_rate → dispara divergence. Correr con el
+  // grupo en marcha para que consumption_tank sea computable. Persiste hasta sifoneo_fin.
+  sifoneo_en_marcha: {
+    description: 'Sifoneo en marcha — el tanque se vacía sin pasar por el caudalímetro (divergencia)',
+    roles: ['GEN', 'CUMMINS'],
+    duration_ms: 5000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { siphon_lph: 20 } },
+    ],
+  },
+
+  sifoneo_fin: {
+    description: 'Fin del sifoneo — el tanque vuelve a caer solo por consumo',
+    roles: ['GEN', 'CUMMINS'],
+    duration_ms: 3000,
+    noCleanup: true,
+    steps: [
+      { at: 0, sharedSet: { siphon_lph: 0 } },
     ],
   },
 
