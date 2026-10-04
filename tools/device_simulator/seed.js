@@ -58,6 +58,8 @@ const GEN_TEMPLATE = {
   description: 'Monitoreo predictivo de grupo electrógeno. MODBUS solo-lectura + sensórica externa con FFT on-edge.',
   widgets: [
     { variable: 'fuel_level',             variableFullName: 'Nivel combustible (%)',          variableType: 'float',       variableSendFreq: 60 },
+    { variable: 'fuel_rate',              variableFullName: 'Caudal de combustible (L/h)',    variableType: 'float',       variableSendFreq: 30, unit: 'L/h', widget: 'gauge', deadband: 0.2 },
+    { variable: 'genset_power_kw',        variableFullName: 'Potencia del grupo (kW)',        variableType: 'float',       variableSendFreq: 30, unit: 'kW',  widget: 'gauge', deadband: 0.3 },
     { variable: 'genset_running',         variableFullName: 'Motor en marcha',                variableType: 'bool',        variableSendFreq: 30 },
     { variable: 'exhaust_temp',           variableFullName: 'Temperatura escape (°C)',        variableType: 'float',       variableSendFreq: 60 },
     { variable: 'vibration_signature',    variableFullName: 'Firma vibracional (FFT)',        variableType: 'categorical', variableSendFreq: 60 },
@@ -108,6 +110,8 @@ const CUMMINS_TEMPLATE = {
     { variable: 'run_hours',       variableFullName: 'Horas de marcha (h)',           variableType: 'float', variableSendFreq: 60 },
     { variable: 'battery_voltage', variableFullName: 'Tensión batería arranque (V)',  variableType: 'float', variableSendFreq: 60 },
     { variable: 'fuel_level',      variableFullName: 'Nivel combustible (%)',         variableType: 'float', variableSendFreq: 60 },
+    { variable: 'fuel_rate',       variableFullName: 'Caudal de combustible (L/h)',   variableType: 'float', variableSendFreq: 30, unit: 'L/h', widget: 'gauge', deadband: 0.2 },
+    { variable: 'genset_power_kw', variableFullName: 'Potencia del grupo (kW)',       variableType: 'float', variableSendFreq: 30, unit: 'kW',  widget: 'gauge', deadband: 0.3 },
     { variable: 'fault_code',      variableFullName: 'Código de falla',              variableType: 'int',   variableSendFreq: 30 },
     { variable: 'bitmap_42100',    variableFullName: 'Status word (42100)',           variableType: 'int',   variableSendFreq: 60 },
     { variable: 'bitmap_42101',    variableFullName: 'Alarm word 1 (42101)',          variableType: 'int',   variableSendFreq: 60 },

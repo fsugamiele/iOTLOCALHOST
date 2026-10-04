@@ -58,7 +58,10 @@ const FICHAS = [
     V('bitmap_42110', 'Event word (42110)', 'int', '', null),
     V('coolant_temp_setpoint', 'Setpoint temp. refrigerante', 'float', '°C', null),
     V('oil_pressure_setpoint', 'Setpoint presión aceite', 'float', 'psi', null),
-  ] },
+    // spec_autonomy_extendido / _deteccion_sifoneo_eficiencia — caudalímetro + carga.
+    V('fuel_rate', 'Caudal de combustible', 'float', 'L/h', 0.2),
+    V('genset_power_kw', 'Potencia del grupo', 'float', 'kW', 0.3),
+  ], autonomy: { fuelVariable: 'fuel_level', tankCapacity: 250, consumptionLph: 3.46, flowVariable: 'fuel_rate', flowScale: 1, runningVariable: 'rpm' } },
   { deviceType: 'ATS', manufacturer: 'ComAp', model: 'InteliATS²', origin: 'third_party', domain: 'energia', variables: [
     V('transfer_state', 'Estado de transferencia', 'categorical', '', null),
     V('mains_voltage', 'Tensión red', 'float', 'V', 2),
@@ -98,7 +101,10 @@ const FICHAS = [
     V('battery_voltage', 'Tensión arranque batería', 'float', 'V', 0.3),
     V('crank_attempts_failed', 'Arranques fallidos', 'int', '', null),
     V('mains_voltage', 'Tensión red eléctrica', 'float', 'V', 2),
-  ] },
+    // spec_autonomy_extendido / _deteccion_sifoneo_eficiencia — caudalímetro + carga.
+    V('fuel_rate', 'Caudal de combustible', 'float', 'L/h', 0.2),
+    V('genset_power_kw', 'Potencia del grupo', 'float', 'kW', 0.3),
+  ], autonomy: { fuelVariable: 'fuel_level', tankCapacity: 250, consumptionLph: 3.46, flowVariable: 'fuel_rate', flowScale: 1, runningVariable: 'genset_running' } },
 ];
 
 function call(method, p, body) {

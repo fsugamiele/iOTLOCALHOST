@@ -71,6 +71,33 @@ const oilLife = (deviceType, tempVar) => M({
   recommendation: 'El aceite ya acumuló las horas de uso de su intervalo de cambio (las horas cuentan más cuando el motor trabaja caliente). Programar el cambio de aceite.',
 });
 
+// ── divergence (dos testigos: caudalímetro vs tanque = sifoneo/medidor averiado) ──
+// spec_deteccion_sifoneo_eficiencia. |fuel_rate − consumption_tank|: el tanque cae más
+// rápido de lo que el medidor reporta = fuga que no pasa por el caudal. Umbral en L/h.
+const divergence = (deviceType, value) => M({
+  ruleId: `${deviceType.toLowerCase()}-sifoneo-divergencia`,
+  label: 'Sifoneo / caudalímetro averiado',
+  inferenceId: 'DIV_FUEL',
+  severity: 'critical', deviceType, variable: 'fuel_rate', unit: 'L/h', metric: 'divergence',
+  inputs: [{ deviceType, variable: 'fuel_rate' }, { deviceType, variable: 'consumption_tank' }],
+  condition: { op: 'gt', value },
+  variableLabel: 'caudal de combustible',
+  recommendation: 'El tanque cae más rápido de lo que el caudalímetro reporta: posible robo de combustible o medidor averiado. Despachar verificación al sitio.',
+});
+
+// ── ratio (consumo específico = deficiencia GRUESA; la sutil va por baseline) ──
+// fuel_rate ÷ genset_power_kw = L/kWh. Umbral fijo editable; aísla la carga.
+const ratio = (deviceType, value) => M({
+  ruleId: `${deviceType.toLowerCase()}-eficiencia-ratio`,
+  label: 'Deficiencia del grupo (consumo por kW alto)',
+  inferenceId: 'RATIO_FUEL_KW',
+  severity: 'warning', deviceType, variable: 'fuel_rate', unit: 'L/kWh', metric: 'ratio',
+  inputs: [{ deviceType, variable: 'fuel_rate' }, { deviceType, variable: 'genset_power_kw' }],
+  condition: { op: 'gt', value },
+  variableLabel: 'consumo específico',
+  recommendation: 'El grupo consume más gasoil por kW entregado que lo normal: posible pérdida de eficiencia (filtros/inyectores) o falla incipiente. Programar mantenimiento.',
+});
+
 // packId (por deviceType) → reglas preset a agregar.
 const SEED = {
   'eltek-smartpack-v1': [
@@ -83,9 +110,17 @@ const SEED = {
     acceleration('cummins-pcc', 'coolant_temp', 'temperatura de refrigerante', '°C', 'gt', 0.5,
       'El refrigerante se está calentando cada vez más rápido: posible falla de refrigeración en curso. Intervenir antes de que llegue a temperatura crítica.'),
     oilLife('cummins-pcc', 'coolant_temp'),
+    // spec_deteccion_sifoneo_eficiencia — sifoneo (divergencia) + deficiencia (ratio grueso + baseline sutil).
+    divergence('cummins-pcc', 8),
+    ratio('cummins-pcc', 0.5),
+    baseline('cummins-pcc', 'fuel_efficiency', 'eficiencia de combustible'),
   ],
   'gen-grupo-v1': [
     baseline('GEN', 'exhaust_temp', 'temperatura de escape'),
+    // spec_deteccion_sifoneo_eficiencia — sifoneo (divergencia) + deficiencia (ratio grueso + baseline sutil).
+    divergence('GEN', 8),
+    ratio('GEN', 0.5),
+    baseline('GEN', 'fuel_efficiency', 'eficiencia de combustible'),
   ],
 };
 
