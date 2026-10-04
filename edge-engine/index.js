@@ -12,6 +12,7 @@ const { processMessage, processStalenessTick, fireResolve } = require('./ruleEng
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
 const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime } = require('./autonomy');
+const { maybeComputeEfficiency, resetEfficiencyRuntime } = require('./efficiency');
 const { loadMSoftState, flushMSoftState } = require('./msoftstate');  // motor M Ola M3 (persistencia)
 
 const MSOFT_FLUSH_SEC = parseInt(process.env.MSOFT_FLUSH_SEC || '30', 10);
@@ -165,6 +166,7 @@ async function start() {
       // La config de autonomía pudo cambiar: historiales y debounce viejos
       // quedan obsoletos (v2 híbrida — DEC-REF-115).
       resetAutonomyRuntime();
+      resetEfficiencyRuntime();
 
       console.log(
         `[edge-engine] Reload OK — packs: ${nextPacks.map(p => p.packId).join(', ') || '(ninguno)'} · ` +
@@ -225,7 +227,8 @@ async function start() {
     const eventTs = Date.now();
     const parts = topic.split('/');
     if (parts.length < 4) return;
-    const dId      = parts[1];   // {userId}/{dId}/{variable}/sdata
+    const userId   = parts[0];   // {userId}/{dId}/{variable}/sdata
+    const dId      = parts[1];
     const variable = parts[2];
 
     if (!siteState.has(dId)) return;
@@ -255,6 +258,11 @@ async function start() {
     // de marcha) de un equipo con autonomía configurada, derivar y publicar
     // autonomy_hours (+ autonomy_source: 'measured'|'estimated').
     maybeComputeAutonomy({ client, configs: autonomyConfigs, dId, variable, value, eventTs });
+
+    // spec_deteccion_sifoneo_eficiencia — consumo específico (L/kWh) para el baseline
+    // de deficiencia. userId del cfg de autonomía si existe (gensets), si no el del topic.
+    const effUserId = (autonomyConfigs.get(dId) || {}).userId || userId;
+    maybeComputeEfficiency({ client, userId: effUserId, dId, variable, deviceState, eventTs });
 
     processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, mState, eventTs });
   });
