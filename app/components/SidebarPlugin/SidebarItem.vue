@@ -26,6 +26,7 @@
         :class="{ active: link.active }"
         :target="link.target"
         :href="link.path"
+        :title="link.name"
       >
         <template v-if="addLink">
           <span class="sidebar-normal">{{ link.name }}</span>

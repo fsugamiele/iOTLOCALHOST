@@ -49,161 +49,202 @@
         </div>
       </div>
 
-      <!-- Mapa + metadata del sitio -->
+      <!-- Tabs del sitio: "Datos de Sitio" PRIMERO (plano/mapa + ficha del
+           sitio, grilla personalizable igual que los widgets), después una
+           tab por dominio funcional. Cada tab persiste su propio layout por
+           usuario (site-<code>-<tab>; 'datos' incluido — el backend acepta
+           cualquier id de ítem en dashboards site-*). -->
       <div class="row">
-        <!-- DEC-REF-113 F7 (#84): mapa a la izquierda, grilla de datos del
-             sitio a la derecha (apilado en pantallas chicas). -->
-        <div class="col-12 col-xl-7">
-          <card>
-            <h4 class="card-title mb-1">
-              {{ site.nombre }}
-              <small class="text-muted ml-2">{{ site.tipo }}</small>
-            </h4>
-            <p class="text-muted mb-2" v-if="hasAddress">
-              <span v-if="site.direccion">{{ site.direccion }}</span>
-              <span v-if="site.localidad">, {{ site.localidad }}</span>
-              <span v-if="site.provincia"> ({{ site.provincia }})</span>
-            </p>
-
-            <!-- DEC-REF-113 F7 (#84): acciones del mapa — editar ubicación
-                 (pin arrastrable → PUT /site) y medir distancias (2 clics). -->
-            <div class="map-actions">
-              <base-button v-if="hasCoords && !editingLocation" size="sm" type="default" @click="toggleEditLocation">
-                <i class="fa fa-map-marker-alt" style="margin-right:4px"></i>Editar ubicación
-              </base-button>
-              <template v-if="editingLocation">
-                <base-button size="sm" type="success" @click="saveLocation">
-                  <i class="fa fa-check" style="margin-right:4px"></i>Guardar
-                </base-button>
-                <base-button size="sm" type="default" @click="cancelEditLocation">Cancelar</base-button>
-                <span class="map-actions__hint">Arrastrá el pin a la posición correcta</span>
-              </template>
-              <base-button v-if="hasCoords && !editingLocation" size="sm" :type="measuring ? 'primary' : 'default'" @click="toggleMeasure">
-                <i class="fa fa-ruler" style="margin-right:4px"></i>{{ measuring ? 'Midiendo — 2 clics en el mapa' : 'Medir distancia' }}
-              </base-button>
-              <base-button v-if="measurePoints.length && !editingLocation" size="sm" type="default" icon @click="clearMeasure" title="Limpiar medición">
-                <i class="fa fa-eraser"></i>
-              </base-button>
-            </div>
-
-            <div v-if="hasCoords" ref="mapEl" class="site-detail-map"></div>
-            <p v-else class="text-muted">Este sitio no tiene coordenadas cargadas.</p>
-
-            <div class="map-legend">
-              <span class="legend-item"><span class="dot dot-critical"></span> Urgencia</span>
-              <span class="legend-item"><span class="dot dot-warning"></span> Atención</span>
-              <span class="legend-item"><span class="dot dot-ok"></span> Normal</span>
-            </div>
-          </card>
-        </div>
-
-        <!-- DEC-REF-113 F7 (#84): grilla de datos relevantes del sitio —
-             ficha del sitio, equipos que lo conforman, operador/responsable
-             y sitios cercanos con distancia calculada (haversine). -->
-        <div class="col-12 col-xl-5">
-          <card>
-            <h5 class="card-category">Datos del sitio</h5>
-            <dl class="site-data-grid">
-              <div><dt>Código</dt><dd>{{ site.siteCode }}</dd></div>
-              <div><dt>Tipo</dt><dd>{{ site.tipo || '—' }}</dd></div>
-              <div><dt>Localidad</dt><dd>{{ [site.localidad, site.provincia].filter(Boolean).join(', ') || '—' }}</dd></div>
-              <div><dt>Coordenadas</dt><dd>{{ coordsLabel }}</dd></div>
-              <div><dt>Operador</dt><dd>{{ site.operatorCode || '—' }}</dd></div>
-              <div><dt>Zona</dt><dd>{{ site.zoneCode || '—' }}</dd></div>
-              <div v-if="site.cellOwner"><dt>Responsable</dt><dd>{{ site.cellOwner }}</dd></div>
-            </dl>
-
-            <h5 class="card-category site-data-section">Equipos ({{ devices.length }})</h5>
-            <div v-if="devices.length" class="site-data-devices">
-              <div v-for="d in devices" :key="d.dId" class="site-data-device">
-                <span class="site-data-device__name">{{ d.name }}</span>
-                <span class="site-data-device__meta">
-                  {{ d.deviceType || d.templateName || '—' }}<template v-if="d.domain"> · {{ domainLabel(d.domain) }}</template>
-                </span>
-              </div>
-            </div>
-            <p v-else class="text-muted mb-0" style="font-size:0.85em">Sin equipos asociados.</p>
-
-            <h5 class="card-category site-data-section">Sitios cercanos</h5>
-            <div v-if="nearestSites.length">
-              <div v-for="s in nearestSites" :key="s.siteCode" class="site-data-near">
-                <nuxt-link :to="'/sites/' + s.siteCode">{{ s.nombre || s.siteCode }}</nuxt-link>
-                <span class="site-data-near__km">{{ s.km }} km</span>
-              </div>
-            </div>
-            <p v-else class="text-muted mb-0" style="font-size:0.85em">Sin otros sitios con coordenadas cargadas.</p>
-          </card>
+        <div class="col-12">
+          <el-tabs v-model="activeTab" @tab-click="onTabChange">
+            <el-tab-pane label="Datos de Sitio" name="datos" />
+            <el-tab-pane
+              v-for="d in domains"
+              :key="d.key"
+              :label="d.label"
+              :name="d.key"
+            />
+          </el-tabs>
         </div>
       </div>
 
-      <!-- Panel de widgets del sitio (DEC-REF-107 Paso 4): grilla
-           arrastrable/redimensionable por widget; el layout se persiste por
-           usuario y por sitio (/panellayout?dashboard=site-<code>). Reusa el
-           andamiaje del Panel NOC (DEC-REF-101 D-7/D-8). Cada widget es un
-           ítem: el tamaño ahora es real (antes `column` no se respetaba).
-           DEC-REF-108 F2 (#80): los widgets se agrupan en TABS por dominio
-           funcional (ficha.domain del equipo); cada tab tiene su propia
-           grilla y su propio layout persistido (site-<code>-<dominio>). -->
-      <template v-if="devices.length > 0">
-        <div class="row" v-if="domains.length > 1">
-          <div class="col-12">
-            <el-tabs v-model="activeTab" @tab-click="onTabChange">
-              <el-tab-pane
-                v-for="d in domains"
-                :key="d.key"
-                :label="d.label"
-                :name="d.key"
-              />
-            </el-tabs>
+      <div class="row">
+        <div class="col-12 site-panel-toolbar">
+          <!-- DEC-REF-108 F3 (#80): vista Operador (solo widgets operativos)
+               vs Técnico (incluye los marcados "advanced" en la plantilla).
+               Solo aplica a tabs de dominio, no a Datos de Sitio. -->
+          <div class="viewmode-toggle" v-if="activeTab !== 'datos' && devices.length > 0">
+            <base-button
+              size="sm"
+              :type="viewMode === 'operador' ? 'primary' : 'default'"
+              @click="setViewMode('operador')"
+            >
+              <i class="fa fa-eye" style="margin-right:6px"></i>Operador
+            </base-button>
+            <base-button
+              size="sm"
+              :type="viewMode === 'tecnico' ? 'primary' : 'default'"
+              @click="setViewMode('tecnico')"
+            >
+              <i class="fa fa-user-cog" style="margin-right:6px"></i>Técnico
+            </base-button>
+          </div>
+          <span v-else></span>
+          <div>
+            <base-button
+              size="sm"
+              :type="customizing ? 'success' : 'default'"
+              @click="toggleCustomizing"
+            >
+              <i class="fa" :class="customizing ? 'fa-check' : 'fa-th-large'" style="margin-right:6px"></i>
+              {{ customizing ? 'Listo' : 'Personalizar' }}
+            </base-button>
+            <base-button v-if="customizing" size="sm" type="default" @click="resetLayout">
+              <i class="fa fa-undo" style="margin-right:6px"></i>Restablecer
+            </base-button>
           </div>
         </div>
-        <div class="row">
-          <div class="col-12 site-panel-toolbar">
-            <!-- DEC-REF-108 F3 (#80): vista Operador (solo widgets operativos)
-                 vs Técnico (incluye los marcados "advanced" en la plantilla).
-                 La preferencia se persiste POR USUARIO (site-prefs-viewmode). -->
-            <div class="viewmode-toggle">
-              <base-button
-                size="sm"
-                :type="viewMode === 'operador' ? 'primary' : 'default'"
-                @click="setViewMode('operador')"
-              >
-                <i class="fa fa-eye" style="margin-right:6px"></i>Operador
-              </base-button>
-              <base-button
-                size="sm"
-                :type="viewMode === 'tecnico' ? 'primary' : 'default'"
-                @click="setViewMode('tecnico')"
-              >
-                <i class="fa fa-user-cog" style="margin-right:6px"></i>Técnico
-              </base-button>
-            </div>
-            <div>
-              <base-button
-                size="sm"
-                :type="customizing ? 'success' : 'default'"
-                @click="toggleCustomizing"
-              >
-                <i class="fa" :class="customizing ? 'fa-check' : 'fa-th-large'" style="margin-right:6px"></i>
-                {{ customizing ? 'Listo' : 'Personalizar' }}
-              </base-button>
-              <base-button v-if="customizing" size="sm" type="default" @click="resetLayout">
-                <i class="fa fa-undo" style="margin-right:6px"></i>Restablecer
-              </base-button>
-            </div>
-          </div>
-        </div>
+      </div>
 
+      <!-- Tab "Datos de Sitio": mapa + ficha como cards de grilla
+           arrastrables/redimensionables (drag solo desde el caption, para no
+           pelear con el pan del mapa). v-show y no v-if: el mapa Leaflet no
+           sobrevive a ser desmontado. -->
+      <grid-layout
+        v-if="datosGridReady"
+        v-show="activeTab === 'datos'"
+        :layout.sync="datosLayout"
+        :responsive-layouts="datosResponsiveLayouts"
+        :col-num="12"
+        :cols="GRID_COLS"
+        :row-height="30"
+        :margin="[12, 12]"
+        :responsive="true"
+        :is-draggable="customizing"
+        :is-resizable="customizing"
+        :vertical-compact="true"
+        :use-css-transforms="true"
+        @breakpoint-changed="onDatosBreakpointChanged"
+        @layout-updated="onDatosLayoutUpdated"
+      >
+        <grid-item
+          v-for="item in datosLayout"
+          :key="item.i"
+          :i="item.i"
+          :x="item.x"
+          :y="item.y"
+          :w="item.w"
+          :h="item.h"
+          :min-w="3"
+          :min-h="6"
+          drag-allow-from=".site-datos-cell__cap"
+        >
+          <div class="site-grid-cell" :class="{ 'site-grid-cell--customizing': customizing }">
+            <!-- Card mapa / plano del sitio -->
+            <template v-if="item.i === 'site-map'">
+              <div class="site-grid-cell__cap site-datos-cell__cap">
+                {{ site.nombre }} · Ubicación
+              </div>
+              <div class="site-grid-cell__body">
+                <card>
+                  <p class="text-muted mb-2" v-if="hasAddress">
+                    <span v-if="site.direccion">{{ site.direccion }}</span>
+                    <span v-if="site.localidad">, {{ site.localidad }}</span>
+                    <span v-if="site.provincia"> ({{ site.provincia }})</span>
+                  </p>
+
+                  <!-- DEC-REF-113 F7 (#84): acciones del mapa — editar ubicación
+                       (pin arrastrable → PUT /site) y medir distancias (2 clics). -->
+                  <div class="map-actions">
+                    <base-button v-if="hasCoords && !editingLocation" size="sm" type="default" @click="toggleEditLocation">
+                      <i class="fa fa-map-marker-alt" style="margin-right:4px"></i>Editar ubicación
+                    </base-button>
+                    <template v-if="editingLocation">
+                      <base-button size="sm" type="success" @click="saveLocation">
+                        <i class="fa fa-check" style="margin-right:4px"></i>Guardar
+                      </base-button>
+                      <base-button size="sm" type="default" @click="cancelEditLocation">Cancelar</base-button>
+                      <span class="map-actions__hint">Arrastrá el pin a la posición correcta</span>
+                    </template>
+                    <base-button v-if="hasCoords && !editingLocation" size="sm" :type="measuring ? 'primary' : 'default'" @click="toggleMeasure">
+                      <i class="fa fa-ruler" style="margin-right:4px"></i>{{ measuring ? 'Midiendo — 2 clics en el mapa' : 'Medir distancia' }}
+                    </base-button>
+                    <base-button v-if="measurePoints.length && !editingLocation" size="sm" type="default" icon @click="clearMeasure" title="Limpiar medición">
+                      <i class="fa fa-eraser"></i>
+                    </base-button>
+                  </div>
+
+                  <div v-if="hasCoords" ref="mapEl" class="site-detail-map"></div>
+                  <p v-else class="text-muted">Este sitio no tiene coordenadas cargadas.</p>
+
+                  <div class="map-legend">
+                    <span class="legend-item"><span class="dot dot-critical"></span> Urgencia</span>
+                    <span class="legend-item"><span class="dot dot-warning"></span> Atención</span>
+                    <span class="legend-item"><span class="dot dot-ok"></span> Normal</span>
+                  </div>
+                </card>
+              </div>
+            </template>
+
+            <!-- Card datos del sitio -->
+            <template v-else-if="item.i === 'site-data'">
+              <div class="site-grid-cell__cap site-datos-cell__cap">Datos del sitio</div>
+              <div class="site-grid-cell__body site-grid-cell__body--scroll">
+                <card>
+                  <dl class="site-data-grid">
+                    <div><dt>Código</dt><dd>{{ site.siteCode }}</dd></div>
+                    <div><dt>Tipo</dt><dd>{{ site.tipo || '—' }}</dd></div>
+                    <div><dt>Localidad</dt><dd>{{ [site.localidad, site.provincia].filter(Boolean).join(', ') || '—' }}</dd></div>
+                    <div><dt>Coordenadas</dt><dd>{{ coordsLabel }}</dd></div>
+                    <div><dt>Operador</dt><dd>{{ site.operatorCode || '—' }}</dd></div>
+                    <div><dt>Zona</dt><dd>{{ site.zoneCode || '—' }}</dd></div>
+                    <div v-if="site.cellOwner"><dt>Responsable</dt><dd>{{ site.cellOwner }}</dd></div>
+                  </dl>
+
+                  <h5 class="card-category site-data-section">Equipos ({{ devices.length }})</h5>
+                  <div v-if="devices.length" class="site-data-devices">
+                    <div v-for="d in devices" :key="d.dId" class="site-data-device">
+                      <span class="site-data-device__name">{{ d.name }}</span>
+                      <span class="site-data-device__meta">
+                        {{ d.deviceType || d.templateName || '—' }}<template v-if="d.domain"> · {{ domainLabel(d.domain) }}</template>
+                      </span>
+                    </div>
+                  </div>
+                  <p v-else class="text-muted mb-0" style="font-size:0.85em">Sin equipos asociados.</p>
+
+                  <h5 class="card-category site-data-section">Sitios cercanos</h5>
+                  <div v-if="nearestSites.length">
+                    <div v-for="s in nearestSites" :key="s.siteCode" class="site-data-near">
+                      <nuxt-link :to="'/sites/' + s.siteCode">{{ s.nombre || s.siteCode }}</nuxt-link>
+                      <span class="site-data-near__km">{{ s.km }} km</span>
+                    </div>
+                  </div>
+                  <p v-else class="text-muted mb-0" style="font-size:0.85em">Sin otros sitios con coordenadas cargadas.</p>
+                </card>
+              </div>
+            </template>
+          </div>
+        </grid-item>
+      </grid-layout>
+
+      <!-- Panel de widgets del sitio (DEC-REF-107 Paso 4 + DEC-REF-108 F2):
+           una grilla por tab de dominio, persistida por usuario
+           (site-<code>-<dominio>). -->
+      <template v-if="activeTab !== 'datos' && devices.length > 0">
         <grid-layout
           v-if="gridReady"
           :layout.sync="layout"
+          :responsive-layouts="responsiveLayouts"
           :col-num="12"
+          :cols="GRID_COLS"
           :row-height="30"
           :margin="[12, 12]"
+          :responsive="true"
           :is-draggable="customizing"
           :is-resizable="customizing"
           :vertical-compact="true"
           :use-css-transforms="true"
+          @breakpoint-changed="onBreakpointChanged"
           @layout-updated="onLayoutUpdated"
         >
           <grid-item
@@ -240,7 +281,7 @@
         </grid-layout>
       </template>
 
-      <div v-else class="row">
+      <div v-else-if="activeTab !== 'datos'" class="row">
         <div class="col-12">
           <card>
             <p class="text-muted text-center mb-0">
@@ -272,6 +313,13 @@ const STATUS_COLOR = {
   ok:       '#639922',
 };
 
+// Columnas por breakpoint. Desktop (lg/md = cualquier monitor) siempre 12:
+// los layouts guardados se aplican verbatim, sin rearrange (comportamiento
+// histórico). Tablet/celular (sm/xs/xxs) SÍ refluye a menos columnas —
+// responsive real donde importa. Cada breakpoint persiste su propia
+// personalización (settings.responsiveLayouts en /panellayout).
+const GRID_COLS = { lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 };
+
 export default {
   name: 'SiteDetail',
   middleware: 'authenticated',
@@ -279,6 +327,7 @@ export default {
 
   data() {
     return {
+      GRID_COLS,
       loading: true,
       loadError: null,
       site: null,
@@ -297,10 +346,26 @@ export default {
       customizing: false,
       gridReady: false,
       layout: [],
+      // Responsive REAL + persistencia por tamaño de pantalla: la grilla
+      // cambia de columnas según el ancho (12→10→6→4→2, default de la lib)
+      // y el usuario guarda UN layout por breakpoint. Se persiste en
+      // settings.responsiveLayouts del doc /panellayout; `breakpoint` es el
+      // activo (lo reporta la grilla con breakpoint-changed).
+      responsiveLayouts: {},
+      breakpoint: 'lg',
       panelSettings: {},
       lastLayout: null,
-      // DEC-REF-108 F2 (#80): tab de dominio activo ('general' = sin ficha/dominio).
-      activeTab: 'general',
+      // Tab activo: 'datos' (Datos de Sitio, primera tab) o un dominio
+      // funcional (DEC-REF-108 F2; 'general' = sin ficha/dominio).
+      activeTab: 'datos',
+      // Grilla de la tab Datos de Sitio (mapa + ficha): layout propio,
+      // persistido como site-<code>-datos. Su grid queda montada con v-show
+      // para no destruir el mapa Leaflet al cambiar de tab.
+      datosLayout: [],
+      datosGridReady: false,
+      datosResponsiveLayouts: {},
+      datosBreakpoint: 'lg',
+      lastDatosLayout: null,
       // DEC-REF-108 F3 (#80): vista 'operador' (sin widgets advanced) o
       // 'tecnico' (todo). Se carga/persiste por usuario (site-prefs-viewmode).
       viewMode: 'operador',
@@ -354,6 +419,11 @@ export default {
     panelKey() {
       return 'site-' + this.siteCode + '-' + this.activeTab;
     },
+    // Clave fija de la grilla "Datos de Sitio" (independiente de la tab
+    // activa; coincide con panelKey cuando activeTab === 'datos').
+    datosPanelKey() {
+      return 'site-' + this.siteCode + '-datos';
+    },
     // Un ítem de grilla por (device, widget) DEL DOMINIO ACTIVO.
     // `i` estable: dId::índice.
     // DEC-REF-108 F3 (#80): en vista Operador se filtran los widgets
@@ -388,6 +458,7 @@ export default {
     await this.loadDetail();
     await this.loadViewMode();
     await this.setupGrid();
+    await this.setupDatosGrid();
     await this.loadAlarms();
     this.loadAllSites();  // DEC-REF-113 F7 (#84) — sitios cercanos (no bloquea)
 
@@ -421,6 +492,13 @@ export default {
     }
   },
 
+  // keep-alive (tabs de ventanas): al volver a esta página dormida, Leaflet
+  // necesita re-medir su contenedor (mientras estuvo fuera del DOM no recibe
+  // resize). ensureMap es idempotente: si el mapa ya existe solo invalida.
+  activated() {
+    this.ensureMap();
+  },
+
   methods: {
     async loadDetail() {
       this.loading = true;
@@ -444,12 +522,6 @@ export default {
         this.site = fullRes.data.data.site;
         this.devices = fullRes.data.data.devices || [];
 
-        // DEC-REF-108 F2 (#80): el tab inicial es el primer dominio presente
-        // (orden operativo fijo: energía → grupo → seguridad → …).
-        if (this.domains.length && !this.domains.some(d => d.key === this.activeTab)) {
-          this.activeTab = this.domains[0].key;
-        }
-
         // Status del site puntual. Si no aparece (sin notifs recientes), default 'ok'.
         const statusList = (statusRes.data && statusRes.data.data) || [];
         const me = statusList.find((s) => s.siteCode === this.siteCode);
@@ -468,12 +540,7 @@ export default {
         console.error('[SiteDetail] loadDetail error:', err);
       } finally {
         this.loading = false;
-        if (!this.loadError && this.site && this.hasCoords) {
-          this.$nextTick(() => {
-            this.initMap();
-            if (this.map) this.map.invalidateSize();
-          });
-        }
+        if (!this.loadError && this.site) this.ensureMap();
       }
     },
 
@@ -497,10 +564,27 @@ export default {
       }
     },
 
-    initMap() {
-      if (this.map) return;
+    // El mapa vive dentro de la grilla de "Datos de Sitio": solo se puede
+    // (re)inicializar cuando esa grilla está montada y el ref existe.
+    // OJO: el ref está dentro de un v-for (grid-item) → Vue lo expone como
+    // ARRAY; hay que desenvolverlo o L.map() recibe un array y falla.
+    mapElRef() {
+      const r = this.$refs.mapEl;
+      return Array.isArray(r) ? r[0] : r;
+    },
+    ensureMap() {
+      this.$nextTick(() => {
+        if (!this.hasCoords || !this.mapElRef()) return;
+        this.initMap();
+        if (this.map) this.map.invalidateSize();
+      });
+    },
 
-      this.map = L.map(this.$refs.mapEl).setView([this.site.lat, this.site.lng], 14);
+    initMap() {
+      const el = this.mapElRef();
+      if (this.map || !el) return;
+
+      this.map = L.map(el).setView([this.site.lat, this.site.lng], 14);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
         maxZoom: 18,
@@ -514,7 +598,7 @@ export default {
       // resize del contenedor (grilla, sidebar, tabs) → tiles grises/cortados.
       if (typeof ResizeObserver !== 'undefined') {
         this._mapRO = new ResizeObserver(() => { if (this.map) this.map.invalidateSize(); });
-        this._mapRO.observe(this.$refs.mapEl);
+        this._mapRO.observe(el);
       }
 
       // DEC-REF-113 F7 (#84) — clics del modo "Medir distancia".
@@ -653,10 +737,15 @@ export default {
       return LABELS[key] || key;
     },
 
-    // Cambio de tab: sale del modo personalizar y arma la grilla del nuevo
-    // dominio (su layout persistido viaja en la clave site-<code>-<dominio>).
+    // Cambio de tab: sale del modo personalizar. En tabs de dominio rearma la
+    // grilla del nuevo dominio (su layout viaja en site-<code>-<dominio>);
+    // en "Datos de Sitio" solo hay que re-inicializar/re-medir el mapa.
     async onTabChange() {
       this.customizing = false;
+      if (this.activeTab === 'datos') {
+        this.ensureMap();
+        return;
+      }
       this.gridReady = false;
       await this.setupGrid();
     },
@@ -713,23 +802,38 @@ export default {
       return out;
     },
     async setupGrid() {
-      if (this.loadError || !this.devices.length) { this.gridReady = false; return; }
+      // La tab "Datos de Sitio" tiene su propia grilla (setupDatosGrid).
+      if (this.loadError || this.activeTab === 'datos' || !this.devices.length) { this.gridReady = false; return; }
+      this._lastLayoutSig = null; // fuerza un resize al remontar (charts re-dibujan)
       const def = this.buildDefaultLayout();
       const headers = { headers: { token: this.$store.state.auth.token } };
       let saved = null;
+      let savedResponsive = null;
       try {
         const res = await this.$axios.get('/panellayout?dashboard=' + encodeURIComponent(this.panelKey), headers);
         const d = res.data && res.data.data;
         if (d && Array.isArray(d.layout)) saved = d.layout;
         this.panelSettings = (d && d.settings) || {};
+        savedResponsive = this.panelSettings.responsiveLayouts || null;
       } catch (err) {
         console.warn('[SiteDetail] loadLayout error:', err.message || err);
       }
-      if (saved && saved.length) {
-        // Merge: posición guardada para los ítems que aún existen; default para
-        // ítems nuevos (devices/widgets agregados desde el último guardado).
+      // Responsive + persistencia: prioridad al mapa por breakpoint guardado.
+      // Migración: docs viejos solo tienen `layout` plano → se toma como lg.
+      if (savedResponsive && Object.keys(savedResponsive).length) {
+        this.responsiveLayouts = savedResponsive;
+      } else if (saved && saved.length) {
+        this.responsiveLayouts = { lg: saved };
+      } else {
+        this.responsiveLayouts = {};
+      }
+      // Layout base (breakpoint lg): el guardado, o el default si no hay.
+      const base = this.responsiveLayouts.lg;
+      if (base && base.length) {
+        // Merge: posición guardada para los ítems que aún existen; default
+        // para ítems nuevos (devices/widgets agregados desde el guardado).
         const byId = {};
-        saved.forEach((s) => { byId[s.i] = s; });
+        base.forEach((s) => { byId[s.i] = s; });
         this.layout = def.map((it) => {
           const s = byId[it.i];
           return s ? { i: it.i, x: s.x, y: s.y, w: s.w, h: s.h } : it;
@@ -748,23 +852,129 @@ export default {
           await this.$axios.put('/panellayout', {
             dashboard: this.panelKey,
             layout: this.lastLayout || this.layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
-            settings: this.panelSettings,
+            settings: { ...this.panelSettings, responsiveLayouts: this.responsiveLayouts },
           }, headers);
         } catch (err) {
           console.warn('[SiteDetail] saveLayout error:', err.message || err);
         }
       }, 800);
     },
+    // ── Tab "Datos de Sitio": mapa + ficha como cards de grilla ─────────
+    // Misma mecánica que los widgets (vue-grid-layout + /panellayout), con
+    // estado propio (datosLayout/datosGridReady) porque su grid queda
+    // montada con v-show y comparte el flag `customizing` con los widgets.
+    datosDefaultLayout() {
+      return [
+        { i: 'site-map',  x: 0, y: 0, w: 7, h: 14 },
+        { i: 'site-data', x: 7, y: 0, w: 5, h: 14 },
+      ];
+    },
+    async setupDatosGrid() {
+      if (this.loadError) { this.datosGridReady = false; return; }
+      this._lastDatosSig = null;
+      const def = this.datosDefaultLayout();
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      let saved = null;
+      let savedResponsive = null;
+      try {
+        const res = await this.$axios.get('/panellayout?dashboard=' + encodeURIComponent(this.datosPanelKey), headers);
+        const d = res.data && res.data.data;
+        if (d && Array.isArray(d.layout)) saved = d.layout;
+        savedResponsive = (d && d.settings && d.settings.responsiveLayouts) || null;
+      } catch (err) {
+        console.warn('[SiteDetail] loadLayout datos error:', err.message || err);
+      }
+      if (savedResponsive && Object.keys(savedResponsive).length) {
+        this.datosResponsiveLayouts = savedResponsive;
+      } else if (saved && saved.length) {
+        this.datosResponsiveLayouts = { lg: saved };
+      } else {
+        this.datosResponsiveLayouts = {};
+      }
+      const base = this.datosResponsiveLayouts.lg;
+      if (base && base.length) {
+        const byId = {};
+        base.forEach((s) => { byId[s.i] = s; });
+        this.datosLayout = def.map((it) => {
+          const s = byId[it.i];
+          return s ? { i: it.i, x: s.x, y: s.y, w: s.w, h: s.h } : it;
+        });
+      } else {
+        this.datosLayout = def;
+      }
+      this.datosGridReady = true;
+      this.ensureMap();
+    },
+    onBreakpointChanged(bp) {
+      this.breakpoint = bp;
+    },
+    onDatosBreakpointChanged(bp) {
+      this.datosBreakpoint = bp;
+    },
+    onDatosLayoutUpdated(newLayout) {
+      // Misma lección que onLayoutUpdated: NO reasignar datosLayout (loop
+      // infinito de la lib) — solo copiar para persistir. Y misma guarda
+      // anti-loop: si las posiciones no cambiaron, no re-dispachar resize.
+      const sig = newLayout.map(({ i, x, y, w, h }) => `${i}:${x},${y},${w},${h}`).join('|');
+      if (sig === this._lastDatosSig) return;
+      this._lastDatosSig = sig;
+      this.lastDatosLayout = newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
+      // Solo persistir en modo Personalizar Y con la tab Datos activa: la
+      // grilla queda montada (v-show) cuando el usuario está en otra tab y
+      // con ancho 0 refluye a 2 columnas — ese reflow fantasma NO debe
+      // guardarse. Se persiste el layout DEL BREAKPOINT ACTIVO: cada tamaño
+      // de pantalla conserva su propia personalización.
+      if (this.customizing && this.activeTab === 'datos') {
+        this.$set(this.datosResponsiveLayouts, this.datosBreakpoint, this.lastDatosLayout);
+        if (this._datosSaveTimer) clearTimeout(this._datosSaveTimer);
+        this._datosSaveTimer = setTimeout(async () => {
+          this._datosSaveTimer = null;
+          const headers = { headers: { token: this.$store.state.auth.token } };
+          try {
+            await this.$axios.put('/panellayout', {
+              dashboard: this.datosPanelKey,
+              layout: this.lastDatosLayout || this.datosLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
+              settings: { responsiveLayouts: this.datosResponsiveLayouts },
+            }, headers);
+          } catch (err) {
+            console.warn('[SiteDetail] saveLayout datos error:', err.message || err);
+          }
+        }, 800);
+      }
+      // Leaflet no escucha resize del contenedor (el ResizeObserver de
+      // initMap cubre el mapa; el window resize ayuda al resto).
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
+    },
     async resetLayout() {
+      // Restablecer apunta a la grilla de la tab activa (todos los
+      // breakpoints: vuelve al default en cualquier tamaño de pantalla).
+      if (this.activeTab === 'datos') {
+        const headers = { headers: { token: this.$store.state.auth.token } };
+        try {
+          await this.$axios.delete('/panellayout?dashboard=' + encodeURIComponent(this.datosPanelKey), headers);
+        } catch (err) {
+          console.warn('[SiteDetail] resetLayout datos error:', err.message || err);
+        }
+        this.datosResponsiveLayouts = {};
+        this.datosLayout = this.datosDefaultLayout();
+        this.lastDatosLayout = null;
+        // Remount: la lib no reacciona a cambios de posición via prop.
+        this.datosGridReady = false;
+        this.$nextTick(() => { this.datosGridReady = true; this.ensureMap(); });
+        return;
+      }
       const headers = { headers: { token: this.$store.state.auth.token } };
       try {
         await this.$axios.delete('/panellayout?dashboard=' + encodeURIComponent(this.panelKey), headers);
       } catch (err) {
         console.warn('[SiteDetail] resetLayout error:', err.message || err);
       }
+      this.responsiveLayouts = {};
       this.layout = this.buildDefaultLayout();
       this.panelSettings = {};
       this.lastLayout = null;
+      this.gridReady = false;
+      this.$nextTick(() => { this.gridReady = true; });
     },
     toggleCustomizing() {
       this.customizing = !this.customizing;
@@ -773,8 +983,21 @@ export default {
       // NO reasignar this.layout acá (loop infinito: la lib muta in place y su
       // watcher re-emite layout-updated — lección DEC-REF-101/#76). Solo copiar
       // para persistir.
+      // Guarda anti-loop: con grilla responsive, el window-resize que
+      // disparamos abajo re-entra por resizeEvent→responsiveGridLayout→
+      // update:layout→layout-updated. Si las posiciones no cambiaron, cortar.
+      const sig = newLayout.map(({ i, x, y, w, h }) => `${i}:${x},${y},${w},${h}`).join('|');
+      if (sig === this._lastLayoutSig) return;
+      this._lastLayoutSig = sig;
       this.lastLayout = newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
-      this.saveLayout();
+      // Solo persistir cambios del usuario (modo Personalizar): con grilla
+      // responsive, un reflow por ancho de ventana NO debe pisar lo guardado.
+      // Se persiste el layout DEL BREAKPOINT ACTIVO (cada tamaño de pantalla
+      // conserva su propia personalización).
+      if (this.customizing) {
+        this.$set(this.responsiveLayouts, this.breakpoint, this.lastLayout);
+        this.saveLayout();
+      }
       // ECharts/Leaflet no escuchan resize del contenedor: disparo window resize
       // para que re-fluyan tras arrastrar/redimensionar.
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
@@ -864,10 +1087,19 @@ export default {
 }
 
 .site-detail-map {
-  height: 360px;
+  /* Dentro de la grilla de "Datos de Sitio": llena el alto de la card
+     (la cadena flex de .site-grid-cell__body ya pone .card-body en columna). */
+  flex: 1 1 auto;
+  min-height: 200px;
   width: 100%;
   border-radius: 8px;
 }
+
+/* Cards de "Datos de Sitio": el caption es el handle de drag
+   (drag-allow-from) — el mapa queda libre para pan/zoom. */
+.site-grid-cell--customizing .site-datos-cell__cap { cursor: grab; }
+/* La ficha del sitio puede exceder el alto de la celda: scroll interno. */
+.site-grid-cell__body--scroll ::v-deep .card .card-body { overflow-y: auto; }
 
 .map-legend {
   display: flex;

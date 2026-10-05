@@ -285,6 +285,15 @@ export default {
     }
   },
 
+  // keep-alive (tabs de ventanas): al volver a /sites dormida, Leaflet
+  // re-mide su contenedor (fuera del DOM no recibe resize y puede quedar
+  // con tiles grises o desplazados).
+  activated() {
+    this.$nextTick(() => {
+      if (this.map) this.map.invalidateSize();
+    });
+  },
+
   methods: {
     initMap() {
       // Centro aproximado NEA Argentina (Corrientes); zoom regional

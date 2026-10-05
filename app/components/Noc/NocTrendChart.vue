@@ -39,7 +39,7 @@
           <highchart :options="chartOptions" style="height: 100%" />
         </client-only>
       </div>
-      <div class="noc-trend-card-stat">
+      <div class="noc-trend-card-stat" v-if="lastData">
         <template v-if="lastData.aggregation === 'avg'">
           Actual: <strong>{{ fmt(lastData.cardStat.current) }}</strong>
           · Δ ventana: <strong :class="deltaClass">{{ fmtDelta(lastData.cardStat.delta) }}</strong>

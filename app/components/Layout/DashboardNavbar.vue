@@ -1,7 +1,7 @@
 <template>
   <base-nav
     v-model="showMenu"
-    class="navbar-absolute top-navbar"
+    class="top-navbar"
     type="white"
     :transparent="true"
   >
@@ -88,7 +88,7 @@
         menu-classes="dropdown-navbar"
       >
         <template slot="title">
-          <div class="photo"><img src="img/mike.jpg" /></div>
+          <div class="photo"><img src="/img/mike.jpg" /></div>
           <b class="caret d-none d-lg-block d-xl-block"></b>
           <p @click="logOut()" class="d-lg-none">Log out</p>
         </template>
@@ -209,7 +209,13 @@ export default {
       this.activeNotifications = false;
     },
     toggleSidebar() {
-      this.$sidebar.displaySidebar(!this.$sidebar.showSidebar);
+      // Desktop (≥992px): el hamburger colapsa el sidebar a modo mini (solo
+      // íconos). Mobile: mantiene el comportamiento original (overlay).
+      if (typeof window !== 'undefined' && window.innerWidth >= 992) {
+        this.$sidebar.toggleMini();
+      } else {
+        this.$sidebar.displaySidebar(!this.$sidebar.showSidebar);
+      }
     },
     toggleMenu() {
       this.showMenu = !this.showMenu;

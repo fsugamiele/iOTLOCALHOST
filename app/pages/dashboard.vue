@@ -305,46 +305,71 @@ export default {
     // nueva toca KPIs, sitios y alarmas). Doble refresh por la race
     // MQTT/Mongo (R8). El evento no respeta los intervalos por tarjeta a
     // propósito: es la señal de "algo cambió ahora".
-    this._notifHandler = () => {
-      if (this._notifFastTimer) clearTimeout(this._notifFastTimer);
-      if (this._notifSlowTimer) clearTimeout(this._notifSlowTimer);
-      this._notifFastTimer = setTimeout(() => {
-        this._notifFastTimer = null;
-        this.refreshAllSlices();
-      }, 1000);
-      this._notifSlowTimer = setTimeout(() => {
-        this._notifSlowTimer = null;
-        this.refreshAllSlices();
-      }, 4000);
-    };
-    this.$nuxt.$on('wanomi:notif', this._notifHandler);
-
     // P3 (#79) — actualización EVENT-DRIVEN de todas las tarjetas a la vez.
     // Con publicación por cambio (P2), cada sdata entrante es un cambio real
     // de alguna variable monitorizada: se refrescan TODAS las slices juntas
     // (mismo dato, mismo instante — fin del efecto "cada tarjeta a su hora").
     // Debounce 2 s para colapsar ráfagas (latido de varios devices a la vez).
-    this._sdataHandler = () => {
-      if (this._sdataTimer) clearTimeout(this._sdataTimer);
-      this._sdataTimer = setTimeout(() => {
-        this._sdataTimer = null;
-        this.refreshAllSlices();
-      }, 2000);
-    };
-    this.$nuxt.$on('wanomi:sdata', this._sdataHandler);
+    this.subscribeBus();
+  },
+  // keep-alive (tabs de ventanas): al dormir la página se pausan los timers
+  // y suscripciones (sin esto, cada página visitada seguía polleando la API
+  // en segundo plano para siempre); al despertar se reanuda todo y se
+  // recarga el layout — así aparecen las tarjetas pineadas desde Sitios
+  // mientras el Panel estaba dormido.
+  activated() {
+    if (!this.initialLoaded) return; // la primera activación ya la cubre mounted()
+    this.setupTimers();
+    this.subscribeBus();
+    this.loadLayout();
+    this.refreshAllSlices();
+  },
+  deactivated() {
+    this.clearTimers();
+    this.unsubscribeBus();
   },
   beforeDestroy() {
     this.clearTimers();
+    this.unsubscribeBus();
     if (this.themeObserver)  { this.themeObserver.disconnect(); this.themeObserver = null; }
-    if (this._notifFastTimer){ clearTimeout(this._notifFastTimer); this._notifFastTimer = null; }
-    if (this._notifSlowTimer){ clearTimeout(this._notifSlowTimer); this._notifSlowTimer = null; }
-    if (this._sdataTimer)    { clearTimeout(this._sdataTimer); this._sdataTimer = null; }
     if (this._saveTimer)     { clearTimeout(this._saveTimer); this._saveTimer = null; }
-    if (this._notifHandler)  { this.$nuxt.$off('wanomi:notif', this._notifHandler); this._notifHandler = null; }
-    if (this._sdataHandler)  { this.$nuxt.$off('wanomi:sdata', this._sdataHandler); this._sdataHandler = null; }
   },
   methods: {
     resolveWidget,
+    // ── Suscripción al bus MQTT del layout (pausada en keep-alive sleep) ──
+    subscribeBus() {
+      if (this._busOn) return;
+      this._busOn = true;
+      this._notifHandler = () => {
+        if (this._notifFastTimer) clearTimeout(this._notifFastTimer);
+        if (this._notifSlowTimer) clearTimeout(this._notifSlowTimer);
+        this._notifFastTimer = setTimeout(() => {
+          this._notifFastTimer = null;
+          this.refreshAllSlices();
+        }, 1000);
+        this._notifSlowTimer = setTimeout(() => {
+          this._notifSlowTimer = null;
+          this.refreshAllSlices();
+        }, 4000);
+      };
+      this.$nuxt.$on('wanomi:notif', this._notifHandler);
+      this._sdataHandler = () => {
+        if (this._sdataTimer) clearTimeout(this._sdataTimer);
+        this._sdataTimer = setTimeout(() => {
+          this._sdataTimer = null;
+          this.refreshAllSlices();
+        }, 2000);
+      };
+      this.$nuxt.$on('wanomi:sdata', this._sdataHandler);
+    },
+    unsubscribeBus() {
+      this._busOn = false;
+      if (this._notifHandler)  { this.$nuxt.$off('wanomi:notif', this._notifHandler); this._notifHandler = null; }
+      if (this._sdataHandler)  { this.$nuxt.$off('wanomi:sdata', this._sdataHandler); this._sdataHandler = null; }
+      if (this._notifFastTimer){ clearTimeout(this._notifFastTimer); this._notifFastTimer = null; }
+      if (this._notifSlowTimer){ clearTimeout(this._notifSlowTimer); this._notifSlowTimer = null; }
+      if (this._sdataTimer)    { clearTimeout(this._sdataTimer); this._sdataTimer = null; }
+    },
     // ── Widgets atómicos NOC ───────────────────────────────────────────
     // Varios widgets pueden colgar de la misma slice del payload /noc
     // (los 4 kpi-* de 'kpis'; map y sites-table de 'sites'; feed e hist de

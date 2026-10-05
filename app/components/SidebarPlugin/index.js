@@ -3,9 +3,18 @@ import SidebarItem from './SidebarItem.vue';
 
 const SidebarStore = {
   showSidebar: false,
+  // Modo mini (desktop): sidebar colapsado a íconos. Lo alterna el hamburger
+  // del navbar en pantallas ≥992px; se persiste en localStorage (default.vue).
+  mini: false,
   sidebarLinks: [],
   displaySidebar(value) {
     this.showSidebar = value;
+  },
+  displayMini(value) {
+    this.mini = value;
+  },
+  toggleMini() {
+    this.mini = !this.mini;
   },
 };
 

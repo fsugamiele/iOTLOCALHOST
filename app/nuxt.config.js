@@ -28,8 +28,10 @@ export default {
   },
   /*
   ** Customize the progress-bar color
+  ** Teal Wanomi (#00bf9a): visible tanto en tema claro como oscuro
+  ** (el #fff original era invisible sobre el fondo claro del topbar fijo).
   */
-  loading: { color: '#fff' },
+  loading: { color: '#00bf9a', height: '3px' },
   /*
    ** Global CSS
    */
@@ -95,9 +97,18 @@ export default {
     host: '0.0.0.0', // default: localhost
   },
 
-  serverMiddleware: {
-    '/api': '~/api'
-  },
+  serverMiddleware: [
+    // HTML sin caché: tras cada rebuild el browser revalida y nunca sirve un
+    // bundle viejo (los assets de /_nuxt van hasheados, esos sí cachean).
+    (req, res, next) => {
+      const url = req.url || '';
+      if (!url.startsWith('/_nuxt') && !url.startsWith('/api') && !/\.(js|css|png|jpe?g|svg|gif|woff2?|ttf|eot|ico|map)(\?|$)/.test(url)) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+      next();
+    },
+    { path: '/api', handler: '~/api' },
+  ],
 
   /*
   ** Build configuration

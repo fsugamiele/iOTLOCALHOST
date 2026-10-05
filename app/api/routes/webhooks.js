@@ -59,7 +59,14 @@ router.post("/getdevicecredentials", async (req, res) => {
     // The template is never modified — effective freq is calculated on the fly.
     const activeRules = await Rule.find({ userId, dId, status: true });
 
-    const variables = template.widgets.map(widget => {
+    const variables = template.widgets
+      // Widgets compuestos/plataforma (siteMap, powerCascade,
+      // activeRecommendation...) NO tienen variable publicable: el equipo no
+      // las reporta, las calcula la plataforma. Sin este filtro llegaban con
+      // variable=undefined al device/sim, que agendaba ticks y publishes
+      // vacíos ("skipping publish of undefined").
+      .filter(widget => typeof widget.variable === 'string' && widget.variable.length > 0)
+      .map(widget => {
       const { variable, variableFullName, variableType, variableSendFreq, deadband } = widget;
 
       // Among all active rules for this variable, use the minimum triggerTime.
