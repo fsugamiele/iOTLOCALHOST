@@ -7,16 +7,19 @@ const { evaluateD } = require('./typeD');
 //   windowActual: antigüedad (seg) del evento más viejo aún vivo en la ventana
 // TODO: reset_behavior:'manual' queda fuera de A2 (no hay ACK de regla aún).
 //       'auto' (default) ya se cumple naturalmente con la purga deslizante.
-function evaluateS(rule, value, windowState) {
+function evaluateS(rule, value, windowState, dId) {
   const w = rule.window;
   if (!w || !w.durationSec || !w.countThreshold || !w.matchCondition) {
     console.warn(`[typeS] Regla ${rule.ruleId} sin window válida — omitida`);
     return { fired: false, count: 0, windowActual: 0 };
   }
 
+  // DEC-REF-122 — ventana por INSTANCIA (ruleId:dId): con 2 equipos del mismo
+  // deviceType sus eventos NO se mezclan. Fallback a ruleId si no viene dId.
+  const key      = dId != null ? `${rule.ruleId}:${dId}` : rule.ruleId;
   const now      = Date.now();
   const cutoff   = now - w.durationSec * 1000;
-  const existing = windowState.get(rule.ruleId) || [];
+  const existing = windowState.get(key) || [];
 
   // Purga deslizante: descartar timestamps fuera de la ventana
   const purged = existing.filter(ts => ts >= cutoff);
@@ -27,14 +30,14 @@ function evaluateS(rule, value, windowState) {
 
   if (!matches) {
     // No matchea → no agrega timestamp, no dispara (el disparo lo decide el mensaje que matchea)
-    windowState.set(rule.ruleId, purged);
+    windowState.set(key, purged);
     const windowActual = purged.length ? (now - purged[0]) / 1000 : 0;
     return { fired: false, count: purged.length, windowActual };
   }
 
   // Matchea → registrar timestamp y reevaluar
   purged.push(now);
-  windowState.set(rule.ruleId, purged);
+  windowState.set(key, purged);
 
   const count        = purged.length;
   const windowActual = (now - purged[0]) / 1000;

@@ -88,31 +88,49 @@ function diffSnapshots(oldSnap, newSnap) {
 //
 // Nuevos formatos de key en el futuro deben agregarse acá o el reload los
 // dejaría zombies.
+// DEC-REF-122 — el estado se clava por INSTANCIA (`${ruleId}:${dId}` o
+// `${ruleId}:${siteCode}`), y las sub-keys cuelgan de ahí (`:no-setpoint*`,
+// `:resolveStart`). La limpieza es por PREFIJO `${ruleId}:` (más la key exacta
+// `ruleId` legacy), lo que cubre TODAS las instancias y sub-keys de una vez —
+// incluido el `:resolveStart` que antes quedaba zombie (A10). El `:` separador
+// evita colisión entre ruleIds donde uno es prefijo de otro (p.ej. `gen-fuel`
+// vs `gen-fuel-crit`): `gen-fuel-crit:dev` NO empieza con `gen-fuel:`.
+// crossState usa prefijo propio `${siteCode}:${ruleId}:` → se limpia aparte.
+// activeState NO se borra acá (lo hace el fireResolve del caller); se CAPTURAN
+// las instancias activas para el resolve-by-edit (una por equipo/sitio).
 function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState, activeState, mState, siteCode }) {
   let deletedCount = 0;
-  const resolvedRuleIds = [];
-  for (const ruleId of ruleIds) {
-    if (cooldownState.delete(ruleId)) deletedCount++;
-    if (cooldownState.delete(`${ruleId}:no-setpoint`)) deletedCount++;
-    if (cooldownState.delete(`${ruleId}:no-setpoint:start`)) deletedCount++;
-    if (cooldownState.delete(`${ruleId}:no-setpoint:escalated`)) deletedCount++;
-    if (windowState.delete(ruleId)) deletedCount++;
-    // spec_motor_m.md — mState usa claves `${ruleId}:${dId}` (buffer por device):
-    // se limpian por prefijo para no dejar series huérfanas de una regla M editada/eliminada.
-    if (mState) {
-      const prefix = `${ruleId}:`;
-      for (const k of mState.keys()) {
-        if (k === ruleId || k.startsWith(prefix)) { mState.delete(k); deletedCount++; }
+  const ruleIdSet = new Set(ruleIds);
+  const matchRuleId = (k) => {
+    for (const ruleId of ruleIdSet) {
+      if (k === ruleId || k.startsWith(`${ruleId}:`)) return ruleId;
+    }
+    return null;
+  };
+  const purge = (map) => {
+    if (!map) return;
+    for (const k of [...map.keys()]) {
+      if (matchRuleId(k)) { map.delete(k); deletedCount++; }
+    }
+  };
+  purge(cooldownState);   // cooldown + :resolveStart + :no-setpoint*
+  purge(windowState);     // typeS (por dId)
+  purge(mState);          // typeM (ya era por dId)
+  if (crossState && siteCode) {
+    for (const ruleId of ruleIdSet) {
+      for (const sfx of ['start', 'fired', 'resolveStart']) {
+        if (crossState.delete(`${siteCode}:${ruleId}:${sfx}`)) deletedCount++;
       }
     }
-    if (siteCode) {
-      if (crossState.delete(`${siteCode}:${ruleId}:start`)) deletedCount++;
-      if (crossState.delete(`${siteCode}:${ruleId}:fired`)) deletedCount++;
-    }
-    // SF-4 · DEC-REF-64.a — señaliza al caller. NO borra el flag: el
-    // fireResolve del caller lo hará como efecto del emit.
-    if (activeState && activeState.has(ruleId)) {
-      resolvedRuleIds.push(ruleId);
+  }
+  // Capturar instancias ACTIVAS (sin borrar — el fireResolve del caller borra el flag).
+  const resolvedRuleIds = [];
+  if (activeState) {
+    for (const k of activeState.keys()) {
+      const ruleId = matchRuleId(k);
+      if (ruleId) {
+        resolvedRuleIds.push({ ruleId, stateKey: k, suffix: k === ruleId ? null : k.slice(ruleId.length + 1) });
+      }
     }
   }
   return { deletedCount, resolvedRuleIds };

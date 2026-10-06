@@ -131,7 +131,10 @@ async function start() {
       if (toClean.length > 0) {
         for (const pack of packs) {
           for (const rule of (pack.rules || [])) {
-            if (toClean.includes(rule.ruleId) && activeState.has(rule.ruleId)) {
+            // DEC-REF-122 — def por ruleId (igual para todas las instancias). El
+            // gate de "activa" ya no es por ruleId (activeState es por instancia);
+            // lo resuelve resolvedRuleIds abajo.
+            if (toClean.includes(rule.ruleId)) {
               oldRuleDefs.set(rule.ruleId, rule);
             }
           }
@@ -142,17 +145,23 @@ async function start() {
         cooldownState, windowState, crossState, activeState, mState, siteCode: SITE_ID,
       });
 
-      // SF-4 · DEC-REF-64.a — emitir resolve-by-edit por cada regla que
-      // estaba ACTIVA cuando el reload la editó o eliminó.
-      // "Ninguna alarma abierta muere en silencio" (principio del punto a).
-      // Emitir SI/O antes del swap: activeState y `packs` vigentes.
-      for (const ruleId of resolvedRuleIds) {
+      // SF-4 · DEC-REF-64.a + DEC-REF-122 — resolve-by-edit POR INSTANCIA: una
+      // regla activa en varios equipos emite UN resolve por equipo (antes uno
+      // solo, con el dId del primero). `resolvedRuleIds` = {ruleId, stateKey,
+      // suffix}; fireResolve borra el flag por stateKey. "Ninguna alarma abierta
+      // muere en silencio". Emitir antes del swap: activeState y `packs` vigentes.
+      for (const { ruleId, stateKey, suffix } of resolvedRuleIds) {
         const oldRule = oldRuleDefs.get(ruleId);
         if (!oldRule) continue;
-        const deviceId = findDeviceIdByType(siteState, oldRule.deviceType, SITE_ID) || '';
+        // D/S/M: suffix ES el dId (equipo concreto). cross: suffix = siteCode →
+        // anclar la notificación a un device representativo del tipo.
+        const deviceId = (oldRule.type === 'cross' || !suffix)
+          ? (findDeviceIdByType(siteState, oldRule.deviceType, SITE_ID) || '')
+          : suffix;
         fireResolve({
           rule: oldRule,
           deviceId,
+          stateKey,
           reason: 'rule-edited-or-removed',
           mode: 'resolve-by-edit',
           cooldownState, siteState, activeState,
