@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wanomi · Supervisor de Calidad — Diseño y UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root{
+ --paper:#F6FAF9;--card:#FFFFFF;--ink:#12302C;--muted:#55706B;--rule:#D3E1DD;
+ --teal:#00866F;--brand:#00F2C3;--crit:#B4232C;--warn:#A86A00;--info:#2B64A6;
+ --ok:#1F8A5B;--codebg:#E9F3F0;--chip:#EEF6F4;--shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.05);
+}
+:root[data-theme="dark"]{--paper:#0D1917;--card:#13221F;--ink:#E2EEEA;--muted:#93AAA4;--rule:#26403A;--teal:#3FD9B8;--brand:#00F2C3;--crit:#F0727A;--warn:#E7AE4A;--info:#7FB0EC;--ok:#56C98D;--codebg:#1B302B;--chip:#102420;--shadow:0 1px 3px rgba(0,0,0,.4)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,h3,.sc{font-family:"Barlow Semi Condensed","Barlow",sans-serif}
+code{font:0.85em/1.3 "JetBrains Mono",ui-monospace,monospace;background:var(--codebg);padding:.05em .35em;border-radius:4px}
+.wrap{max-width:1280px;margin:0 auto;padding:0 20px}
+header.top{background:var(--card);border-bottom:5px solid var(--brand)}
+header.top .wrap{padding:26px 20px;display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
+header.top h1{font-weight:700;font-size:clamp(26px,3.6vw,40px);margin:0 0 6px;letter-spacing:-.01em}
+header.top p{margin:0;color:var(--muted);max-width:70ch}
+.tbtn{font:inherit;font-size:13px;border:1px solid var(--rule);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer}
+section{padding:36px 0}
+section h2{font-size:26px;font-weight:700;margin:0 0 4px}
+section .lead{color:var(--muted);margin:0 0 22px;max-width:80ch}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.step{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:18px 18px 20px;box-shadow:var(--shadow)}
+.step .k{font:700 12px/1 "Barlow Semi Condensed";letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
+.step h3{font-size:19px;margin:8px 0 6px}
+.step p{margin:0;color:var(--muted);font-size:14px}
+.step .ex{margin-top:12px;font-size:13px;background:var(--chip);border-radius:8px;padding:9px 11px;color:var(--ink)}
+
+/* ---- Mockup app chrome ---- */
+.app{border:1px solid var(--rule);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);background:var(--card);display:grid;grid-template-columns:200px 1fr}
+.side{background:var(--chip);border-right:1px solid var(--rule);padding:16px 12px}
+.side .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;margin-bottom:18px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 30%,transparent)}
+.nav a{display:block;padding:8px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:14px;margin-bottom:2px}
+.nav a.active{background:var(--card);color:var(--ink);font-weight:600;border:1px solid var(--rule)}
+.nav .admin{margin-top:16px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 10px 6px}
+.main{padding:20px 22px 26px;min-width:0}
+.crumbs{font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.h-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.h-row h3{font-size:22px;margin:0}
+.pill{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font-weight:600}
+.pill.red{color:var(--crit)}.pill.amber{color:var(--warn)}.pill.green{color:var(--ok)}
+
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.tile{border:1px solid var(--rule);border-radius:12px;padding:14px 15px;background:var(--card)}
+.tile .lab{font-size:12.5px;color:var(--muted)}
+.tile .val{font:700 30px/1 "Barlow Semi Condensed";margin:6px 0 2px}
+.tile .tgt{font-size:12px;color:var(--muted)}
+.tile.bad{border-color:color-mix(in srgb,var(--crit) 45%,var(--rule))}
+.tile.bad .val{color:var(--crit)}
+.tile.warn .val{color:var(--warn)}
+.tile.ok .val{color:var(--ok)}
+.spark{height:22px;margin-top:8px}
+
+.panel{border:1px solid var(--rule);border-radius:12px;background:var(--card);margin-bottom:18px;overflow:hidden}
+.panel .ph{display:flex;justify-content:space-between;align-items:center;padding:12px 15px;border-bottom:1px solid var(--rule);background:color-mix(in srgb,var(--chip) 60%,var(--card))}
+.panel .ph b{font-size:15px}
+.panel .ph .meta{font-size:12.5px;color:var(--muted)}
+
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font:600 12px/1.2 "Barlow Semi Condensed";text-transform:uppercase;letter-spacing:.04em;text-align:left;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--rule)}
+td{padding:10px 12px;border-bottom:1px solid var(--rule);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr.pack td{background:var(--chip);font-weight:600}
+tr.off td:not(.sw){opacity:.45}
+.num{font-variant-numeric:tabular-nums;text-align:right;font-family:"JetBrains Mono",monospace;font-size:12.5px}
+.rl{font-weight:600}
+.rl small{display:block;font-weight:400;color:var(--muted);font-family:"JetBrains Mono",monospace;font-size:11px}
+
+.badge{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.b-ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.b-dead{background:color-mix(in srgb,var(--crit) 15%,transparent);color:var(--crit)}
+.b-perm{background:color-mix(in srgb,#7a3ea8 16%,transparent);color:#8b46c0}
+.b-flap{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.b-inert{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
+:root[data-theme="dark"] .b-perm{color:#c79cf0}
+
+/* switch */
+.sw{width:64px}
+.switch{position:relative;display:inline-block;width:46px;height:26px}
+.switch input{opacity:0;width:0;height:0}
+.sl{position:absolute;inset:0;background:var(--rule);border-radius:999px;transition:.2s;cursor:pointer}
+.sl:before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.switch input:checked + .sl{background:var(--teal)}
+.switch input:checked + .sl:before{transform:translateX(20px)}
+
+.finding{display:grid;grid-template-columns:1.1fr .9fr;gap:0}
+.finding .fl{padding:16px 18px;border-right:1px solid var(--rule)}
+.finding .fr{padding:16px 18px;background:color-mix(in srgb,var(--chip) 50%,var(--card))}
+.finding h4{margin:0 0 6px;font-size:16px}
+.finding .why{color:var(--muted);font-size:13.5px;margin:0 0 12px}
+.kv{font-size:13px;margin:4px 0;display:flex;gap:8px}
+.kv b{min-width:120px;color:var(--muted);font-weight:500}
+.act{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-size:13px;font-weight:600;border-radius:8px;padding:8px 13px;cursor:pointer;border:1px solid var(--rule);background:var(--card);color:var(--ink)}
+.btn.danger{background:var(--crit);border-color:var(--crit);color:#fff}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.chart-cap{font-size:12px;color:var(--muted);margin:2px 0 8px}
+
+.backtest{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:16px 18px}
+.backtest .verdict{font:700 15px/1.3 "Barlow Semi Condensed";padding:10px 14px;border-radius:10px;background:color-mix(in srgb,var(--crit) 12%,transparent);color:var(--crit);border:1px solid color-mix(in srgb,var(--crit) 35%,var(--rule))}
+
+.digest li{margin-bottom:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.note{background:var(--chip);border-left:4px solid var(--teal);border-radius:0 10px 10px 0;padding:14px 16px;font-size:14px;margin:18px 0}
+.plain{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow)}
+.plain h3{margin:0 0 8px;font-size:18px}
+.plain p{margin:0 0 10px;color:var(--ink)}
+.parallel{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pc{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:15px 16px}
+.pc b{display:block;margin-bottom:5px}
+.pc span{color:var(--muted);font-size:13.5px}
+footer{border-top:1px solid var(--rule);color:var(--muted);font-size:13px;padding:22px 0 50px;text-align:center}
+@media(max-width:900px){.steps,.tiles,.parallel{grid-template-columns:1fr 1fr}.app{grid-template-columns:1fr}.side{display:none}.finding,.two{grid-template-columns:1fr}.finding .fl{border-right:0;border-bottom:1px solid var(--rule)}}
+@media(max-width:620px){.steps,.tiles,.parallel{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+ <div>
+  <h1>Supervisor de Calidad</h1>
+  <p>El control de calidad de Wanomi: revisa que las alarmas no mientan. No fabrica alarmas — vigila que las que existen sean ciertas, no griten de más ni se queden mudas. Documento de diseño · solo administrador.</p>
+ </div>
+ <button class="tbtn" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'':'dark'">◐ Tema</button>
+</div></header>
+
+<!-- ¿QUÉ ES? -->
+<section><div class="wrap">
+ <h2>¿Quién vigila a Wanomi?</h2>
+ <p class="lead">Wanomi vigila los sitios. Pero una alarma puede estar mal calibrada, repetirse 2.700 veces, no encenderse nunca o cerrarse con el equipo equivocado — y hoy nadie se entera hasta que alguien revisa a mano. El supervisor automatiza esa revisión. Es <b>independiente</b>: no usa las mismas cuentas del motor (si las usara, repetiría los mismos errores y los daría por buenos).</p>
+ <div class="steps">
+  <div class="step"><div class="k">Momento 1 · Antes</div><h3>Antes de encender una alarma</h3><p>La prueba contra lo que realmente pasó en los últimos 30 días y predice cómo se va a comportar.</p><div class="ex">“Si la encendés, habría sonado <b>2.755 veces</b>” · o “<b>nunca</b> puede dispararse”.</div></div>
+  <div class="step"><div class="k">Momento 2 · Siempre</div><h3>Vigila en vivo</h3><p>Chequea que las alarmas se porten bien: que no griten en loop, que no se cierren con el equipo equivocado y que el número que muestran sea el real.</p><div class="ex">Detecta: repeticiones, cierres cruzados, parpadeo, valores viejos.</div></div>
+  <div class="step"><div class="k">Momento 3 · Cada noche</div><h3>Rehace las cuentas</h3><p>Recalcula por su cuenta autonomía, consumo y eficiencia, y los compara con lo que publicó el motor. Marca reglas muertas y cálculos desviados.</p><div class="ex">“La eficiencia que publicó el edge difiere de la real en 8%”.</div></div>
+ </div>
+ <div class="note"><b>Clave:</b> lo ve <b>solo el administrador</b>, en una pantalla aparte. El operador del NOC <b>no lo ve</b> — si viera que “la plataforma duda de sus alarmas”, perdería confianza en las que sí debe atender.</div>
+</div></section>
+
+<!-- UI MOCKUP -->
+<section style="background:color-mix(in srgb,var(--chip) 45%,var(--paper))"><div class="wrap">
+ <h2>La pantalla del administrador</h2>
+ <p class="lead">Principio de diseño: <b>mostrar el dato, no solo el veredicto</b>. Cada juicio del supervisor viene con su gráfico y su número, para que el admin entienda <i>por qué</i> y decida con confianza. Cada problema trae su acción a un clic.</p>
+
+ <div class="app">
+  <aside class="side">
+   <div class="brand"><span class="dot"></span> Wanomi</div>
+   <nav class="nav">
+    <div class="admin">Administración</div>
+    <a href="#" class="active">● Calidad del motor</a>
+    <a href="#">Reglas y packs</a>
+    <a href="#">Salud de ingesta</a>
+    <a href="#">Historial de ediciones</a>
+    <a href="#">Usuarios y permisos</a>
+   </nav>
+  </aside>
+  <div class="main">
+   <div class="crumbs">Administración › Calidad del motor</div>
+   <div class="h-row"><h3>Salud del motor de reglas</h3><span class="pill red">● Atención: 4 problemas críticos</span></div>
+
+   <!-- SEMAFORO -->
+   <div class="tiles">
+    <div class="tile bad"><div class="lab">Alarmas cerradas con el equipo equivocado</div><div class="val">87%</div><div class="tgt">objetivo: 0%</div>
+     <svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--crit)" stroke-width="2" points="0,6 20,7 40,5 60,6 80,8 100,7 120,6"/></svg></div>
+    <div class="tile bad"><div class="lab">Alarmas por día (3 reglas ruidosas)</div><div class="val">829</div><div class="tgt">objetivo: &lt; 5</div>
+     <svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--crit)" stroke-width="2" points="0,14 20,10 40,12 60,6 80,9 100,5 120,7"/></svg></div>
+    <div class="tile warn"><div class="lab">Alarmas que parpadean (&lt;90 s)</div><div class="val">94%</div><div class="tgt">objetivo: &lt; 5%</div>
+     <svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--warn)" stroke-width="2" points="0,8 15,16 30,6 45,16 60,7 75,15 90,6 105,15 120,7"/></svg></div>
+    <div class="tile bad"><div class="lab">Reglas que nunca pueden dispararse</div><div class="val">4</div><div class="tgt">objetivo: 0</div>
+     <svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--crit)" stroke-width="2" points="0,16 30,14 60,12 90,10 120,8"/></svg></div>
+   </div>
+
+   <!-- INVENTARIO -->
+   <div class="panel">
+    <div class="ph"><b>Inventario de reglas</b><span class="meta">68 reglas · 5 packs · últimos 30 días</span></div>
+    <table>
+     <thead><tr><th>Regla</th><th>Estado</th><th style="text-align:right">Disparos</th><th style="text-align:right">% en alarma</th><th>Último</th><th>En circulación</th></tr></thead>
+     <tbody>
+      <tr class="pack"><td colspan="5">📦 Planta DC — Eltek Smartpack <small style="font-weight:400;color:var(--muted)">(pack completo)</small></td><td class="sw"><label class="switch"><input type="checkbox" checked><span class="sl"></span></label></td></tr>
+      <tr><td class="rl">Tensión de planta crítica<small>cat-eltek-A2</small></td><td><span class="badge b-perm">🟣 Permanente</span></td><td class="num">2.755</td><td class="num">87%</td><td>hace 2 min</td><td class="sw"><label class="switch"><input type="checkbox" checked><span class="sl"></span></label></td></tr>
+      <tr><td class="rl">Descarga que se acelera<small>eltek-accel-dc-bus-voltage</small></td><td><span class="badge b-flap">🔁 Parpadea</span></td><td class="num">346</td><td class="num">—</td><td>hace 1 min</td><td class="sw"><label class="switch"><input type="checkbox" checked><span class="sl"></span></label></td></tr>
+      <tr class="off"><td class="rl">Tensión de planta alta<small>cat-DC-05</small></td><td><span class="badge b-dead">🔴 Nunca dispara</span></td><td class="num">0</td><td class="num">0%</td><td>—</td><td class="sw"><label class="switch"><input type="checkbox"><span class="sl"></span></label></td></tr>
+      <tr class="pack"><td colspan="5">📦 Grupo electrógeno — Cummins PowerCommand</td><td class="sw"><label class="switch"><input type="checkbox" checked><span class="sl"></span></label></td></tr>
+      <tr class="off"><td class="rl">Sobrevelocidad<small>cat-GE-07</small></td><td><span class="badge b-dead">🔴 Inalcanzable</span></td><td class="num">0</td><td class="num">0%</td><td>—</td><td class="sw"><label class="switch"><input type="checkbox"><span class="sl"></span></label></td></tr>
+      <tr><td class="rl">Sitio en riesgo de caída<small>cat-TR-09</small></td><td><span class="badge b-inert">🟡 Condición inerte</span></td><td class="num">12</td><td class="num">—</td><td>ayer</td><td class="sw"><label class="switch"><input type="checkbox" checked><span class="sl"></span></label></td></tr>
+      <tr><td class="rl">Cambio de aceite pendiente<small>cummins-pcc-oil-life</small></td><td><span class="badge b-ok">🟢 Sana</span></td><td class="num">1</td><td class="num">—</td><td>hace 3 d</td><td class="sw"><label class="switch"><input type="checkbox" checked><span class="sl"></span></label></td></tr>
+      <tr><td class="rl">Combustible crítico<small>gen-fuel-crit</small></td><td><span class="badge b-ok">🟢 Sana</span></td><td class="num">4</td><td class="num">8%</td><td>hace 5 h</td><td class="sw"><label class="switch"><input type="checkbox" checked><span class="sl"></span></label></td></tr>
+     </tbody>
+    </table>
+   </div>
+
+   <!-- FICHA DE HALLAZGO -->
+   <div class="panel">
+    <div class="ph"><b>Hallazgo · Tensión de planta crítica</b> <span class="meta">severidad alta · detectado hace 11 días</span></div>
+    <div class="finding">
+     <div class="fl">
+      <h4>🟣 Esta alarma está encendida casi todo el tiempo</h4>
+      <p class="why">El bus de la planta trabaja normalmente en <b>−48 V</b>, y la regla pide “menor que −47 V”. O sea: la condición es cierta el 87% del tiempo → la alarma suena y se repite sin parar. No distingue un problema real de la operación normal.</p>
+      <div class="kv"><b>Disparos (30 d)</b> 2.755 (≈ 1 cada 5 min)</div>
+      <div class="kv"><b>Tiempo en alarma</b> 87% de las lecturas</div>
+      <div class="kv"><b>Cierres cruzados</b> 89% cierran el equipo equivocado</div>
+      <div class="kv"><b>Causa probable</b> umbral con el signo del voltaje mal planteado</div>
+      <div class="act">
+       <button class="btn danger">Sacar de circulación</button>
+       <button class="btn primary">Abrir editor con los datos</button>
+       <button class="btn">Silenciar hallazgo</button>
+      </div>
+     </div>
+     <div class="fr">
+      <div class="chart-cap">Distribución de la tensión del bus (30 d) · la zona roja es “en alarma”</div>
+      <svg viewBox="0 0 300 120" width="100%" height="120">
+       <rect x="0" y="0" width="205" height="100" fill="color-mix(in srgb,var(--crit) 10%,transparent)"/>
+       <g fill="var(--teal)">
+        <rect x="8" y="78" width="16" height="22"/><rect x="30" y="58" width="16" height="42"/><rect x="52" y="34" width="16" height="66"/><rect x="74" y="20" width="16" height="80"/><rect x="96" y="30" width="16" height="70"/><rect x="118" y="46" width="16" height="54"/><rect x="140" y="64" width="16" height="36"/><rect x="162" y="80" width="16" height="20"/><rect x="184" y="88" width="16" height="12"/>
+       </g>
+       <g fill="var(--muted)"><rect x="210" y="86" width="16" height="14"/><rect x="232" y="90" width="16" height="10"/><rect x="254" y="93" width="16" height="7"/><rect x="276" y="96" width="14" height="4"/></g>
+       <line x1="205" y1="4" x2="205" y2="100" stroke="var(--crit)" stroke-width="2" stroke-dasharray="4 3"/>
+       <text x="203" y="14" text-anchor="end" font-size="10" fill="var(--crit)" font-family="JetBrains Mono">umbral −47</text>
+       <text x="8" y="115" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">−49.5 V</text>
+       <text x="290" y="115" text-anchor="end" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">−46.5 V</text>
+      </svg>
+      <div class="chart-cap" style="margin-top:10px">Línea de tiempo de alarmas (24 h) · se <i>ve</i> la repetición</div>
+      <svg viewBox="0 0 300 24" width="100%" height="24">
+       <line x1="0" y1="12" x2="300" y2="12" stroke="var(--rule)" stroke-width="1"/>
+       <g fill="var(--crit)">
+        <rect x="6" y="5" width="2" height="14"/><rect x="24" y="5" width="2" height="14"/><rect x="42" y="5" width="2" height="14"/><rect x="60" y="5" width="2" height="14"/><rect x="78" y="5" width="2" height="14"/><rect x="96" y="5" width="2" height="14"/><rect x="114" y="5" width="2" height="14"/><rect x="132" y="5" width="2" height="14"/><rect x="150" y="5" width="2" height="14"/><rect x="168" y="5" width="2" height="14"/><rect x="186" y="5" width="2" height="14"/><rect x="204" y="5" width="2" height="14"/><rect x="222" y="5" width="2" height="14"/><rect x="240" y="5" width="2" height="14"/><rect x="258" y="5" width="2" height="14"/><rect x="276" y="5" width="2" height="14"/><rect x="294" y="5" width="2" height="14"/>
+       </g>
+      </svg>
+     </div>
+    </div>
+   </div>
+
+   <!-- BACKTEST INLINE -->
+   <div class="panel">
+    <div class="ph"><b>Probar antes de activar</b> <span class="meta">dentro del editor de reglas · obligatorio para umbrales nuevos</span></div>
+    <div class="backtest">
+     <div style="flex:1;min-width:220px">
+      <div style="font-size:13.5px;margin-bottom:6px">Regla: <b>Tensión de planta alta</b> · si <code>Tensión DC bus &gt; 57 V</code></div>
+      <div style="font-size:13px;color:var(--muted)">Al tocar <b>“Probar contra historial”</b>, el supervisor la corre contra 30 días reales antes de dejarte guardar.</div>
+     </div>
+     <div class="verdict">⚠ Habría disparado <b>0 veces</b><br><span style="font-weight:400;font-size:13px">la tensión nunca supera −46.5 V → esta regla <b>no puede dispararse</b></span></div>
+    </div>
+   </div>
+
+   <!-- DIGEST -->
+   <div class="panel">
+    <div class="ph"><b>Resumen semanal</b> <span class="meta">se envía al equipo Wanomi, no al operador</span></div>
+    <ul class="digest" style="margin:14px 20px">
+     <li>🔴 <b>4 reglas muertas</b> (nunca pueden dispararse): Sobretemperatura, Sobrevelocidad, Tensión alta, Subtensión de red.</li>
+     <li>🟣 <b>1 regla permanente</b>: Tensión de planta crítica — 2.755 alarmas, el 87% del tiempo encendida.</li>
+     <li>🔁 <b>1 regla parpadea</b>: Descarga que se acelera — se prende y apaga cada 33 s.</li>
+     <li>📈 <b>1 cálculo desviado</b>: la eficiencia publicada difiere 8% del recálculo independiente.</li>
+     <li>✏️ <b>1 regla cambió</b> respecto de su definición original (se editó por UI el 05/10 a las 18:45).</li>
+    </ul>
+   </div>
+  </div>
+ </div>
+</div></section>
+
+<!-- EL INTERRUPTOR -->
+<section><div class="wrap">
+ <h2>El interruptor on/off</h2>
+ <p class="lead">La mano del inspector. El supervisor detecta algo roto; el administrador lo saca de circulación con un clic — sin borrar nada y sin riesgo.</p>
+ <div class="two">
+  <div class="plain">
+   <h3>Cómo funciona</h3>
+   <p>Cada <b>regla</b> y cada <b>pack</b> tienen un interruptor. Apagar una regla la saca del motor pero <b>no la borra</b>: queda guardada con su historial y se puede volver a encender. Si la regla estaba sonando, al apagarla se <b>cierra prolijamente</b> (no queda una alarma colgada).</p>
+   <p>Queda registrado <b>quién</b> la apagó, <b>cuándo</b> y <b>por qué</b> — para que un parámetro fuera de circulación tenga explicación.</p>
+  </div>
+  <div class="plain">
+   <h3>Por qué es seguro (el detalle que importa)</h3>
+   <p>Apagar es un gesto <b>quirúrgico</b>: toca un solo dato (encendido sí/no) y <b>no pasa por el editor</b>. Hoy el editor, al guardar, reescribe la regla entera y a veces la corrompe; si apagar pasara por ahí, apagar una regla la rompería.</p>
+   <p>Por eso el on/off es una vía aparte, directa y a prueba de errores. El botón “Sacar de circulación” de cada hallazgo usa exactamente esta vía.</p>
+  </div>
+ </div>
+</div></section>
+
+<!-- DISEÑOS PARALELOS -->
+<section style="background:color-mix(in srgb,var(--chip) 45%,var(--paper))"><div class="wrap">
+ <h2>Qué más hay que construir alrededor</h2>
+ <p class="lead">El supervisor no vive solo: necesita compañeros para que su trabajo sea completo y confiable.</p>
+ <div class="parallel">
+  <div class="pc"><b>🔌 Interruptor on/off</b><span>Por regla y por pack — la pata de acción. Lo primero a construir.</span></div>
+  <div class="pc"><b>📸 Copia original de cada regla</b><span>Guardar la versión “de fábrica” para detectar cambios y poder <b>volver a la original</b> de un clic.</span></div>
+  <div class="pc"><b>📝 Historial de ediciones</b><span>Quién cambió qué umbral y cuándo — para atar una falla a la edición que la causó.</span></div>
+  <div class="pc"><b>📡 Salud de ingesta</b><span>Qué equipo/variable dejó de reportar — para no confundir “condición falsa” con “dato que no llega”.</span></div>
+  <div class="pc"><b>🏷️ Nombre de regla inmutable</b><span>Que renombrar una regla no borre su historial (del que viven los chequeos).</span></div>
+  <div class="pc"><b>🪗 Banda de tolerancia (histéresis)</b><span>Para que una alarma no parpadee por ruido: el supervisor lo detecta, esto lo previene.</span></div>
+ </div>
+ <div class="note" style="margin-top:22px"><b>Orden sugerido:</b> primero el <b>interruptor</b> (desbloquea la acción), luego el <b>MVP del supervisor</b> (semáforo + inventario + chequeos básicos + probar-antes-de-activar). Se construye <b>en paralelo</b> a los arreglos del motor: sus mediciones son, justamente, la prueba de que cada arreglo funcionó.</div>
+</div></section>
+
+<footer>Wanomi 3.0 · Diseño del Supervisor de Calidad · documento de trabajo · octubre 2026</footer>
+</body>
+</html>

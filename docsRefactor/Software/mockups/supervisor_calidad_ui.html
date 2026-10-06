@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wanomi · Supervisor de Calidad — Mockup UI (solo administradores)</title>
+<style>
+  :root{
+    --bg:#141a26; --card:#1e2635; --card2:#242f42; --line:#2e3a50;
+    --txt:#e8ecf3; --muted:#8b96a9; --accent:#f0a500;
+    --green:#2ecc71; --yellow:#f1c40f; --red:#e74c3c; --purple:#9b59b6;
+    --blue:#3498db; --grey:#7f8c9b;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--txt); font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; font-size:14px;}
+  a{color:var(--blue); text-decoration:none;}
+
+  /* ===== layout ===== */
+  .wrap{display:flex; min-height:100vh;}
+  nav{width:220px; background:var(--card); border-right:1px solid var(--line); padding:20px 14px; position:sticky; top:0; height:100vh;}
+  nav .brand{font-size:17px; font-weight:700; margin-bottom:4px;}
+  nav .brand span{color:var(--accent);}
+  nav .tag{display:inline-block; font-size:11px; background:var(--red); color:#fff; padding:2px 8px; border-radius:10px; margin-bottom:18px;}
+  nav a{display:block; color:var(--muted); padding:8px 10px; border-radius:6px; margin-bottom:2px; font-size:13px;}
+  nav a:hover{background:var(--card2); color:var(--txt);}
+  nav .sep{border-top:1px solid var(--line); margin:14px 0;}
+  main{flex:1; padding:24px 32px; max-width:1200px;}
+  h1{font-size:22px; margin-bottom:6px;}
+  h2{font-size:17px; margin:34px 0 4px; padding-top:10px; border-top:1px solid var(--line);}
+  h2:first-of-type{border-top:none;}
+  .sub{color:var(--muted); font-size:13px; margin-bottom:16px;}
+  .plain{background:var(--card2); border-left:3px solid var(--accent); padding:12px 16px; border-radius:0 8px 8px 0; color:var(--txt); font-size:13.5px; line-height:1.55; margin:12px 0 20px;}
+  .plain b{color:var(--accent);}
+
+  /* ===== cards ===== */
+  .grid{display:grid; gap:14px;}
+  .g3{grid-template-columns:repeat(3,1fr);}
+  .g4{grid-template-columns:repeat(4,1fr);}
+  .g6{grid-template-columns:repeat(6,1fr);}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px;}
+  .card h3{font-size:13px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px;}
+  .big{font-size:30px; font-weight:700;}
+  .trend{font-size:12px; margin-top:4px;}
+  .up-bad{color:var(--red);} .down-good{color:var(--green);} .flat{color:var(--muted);}
+
+  /* ===== badges & chips ===== */
+  .badge{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:11px; white-space:nowrap;}
+  .b-green{background:rgba(46,204,113,.15); color:var(--green); border:1px solid rgba(46,204,113,.4);}
+  .b-yellow{background:rgba(241,196,15,.13); color:var(--yellow); border:1px solid rgba(241,196,15,.4);}
+  .b-red{background:rgba(231,76,60,.13); color:var(--red); border:1px solid rgba(231,76,60,.4);}
+  .b-purple{background:rgba(155,89,182,.15); color:#c98be0; border:1px solid rgba(155,89,182,.45);}
+  .b-grey{background:rgba(127,140,155,.15); color:var(--grey); border:1px solid rgba(127,140,155,.4);}
+  .b-blue{background:rgba(52,152,219,.15); color:#6fb6ea; border:1px solid rgba(52,152,219,.45);}
+
+  /* ===== semáforo ===== */
+  .score{display:flex; align-items:center; gap:22px;}
+  .dial{width:110px; height:110px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+        background:conic-gradient(var(--yellow) 0 58%, var(--card2) 58% 100%); position:relative; flex-shrink:0;}
+  .dial::before{content:""; position:absolute; width:82px; height:82px; border-radius:50%; background:var(--card);}
+  .dial div{position:relative; text-align:center;}
+  .dial .n{font-size:26px; font-weight:700;}
+  .dial .l{font-size:10px; color:var(--muted);}
+
+  /* ===== tabla inventario ===== */
+  table{width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; font-size:13px;}
+  th{background:var(--card2); color:var(--muted); text-align:left; padding:10px 12px; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px;}
+  td{padding:11px 12px; border-top:1px solid var(--line); vertical-align:middle;}
+  tr.off td{opacity:.45;}
+  tr.off td:first-child{border-left:3px solid var(--grey);}
+  td .rid{font-family:Consolas,monospace; font-size:12px; color:var(--accent);}
+  td .why{display:block; color:var(--muted); font-size:11.5px; margin-top:3px;}
+  tr:hover td{background:rgba(255,255,255,.02);}
+  .packrow td{background:var(--card2); font-weight:600;}
+
+  /* ===== switch ===== */
+  .sw{position:relative; width:40px; height:22px; display:inline-block; cursor:pointer;}
+  .sw input{display:none;}
+  .sw i{position:absolute; inset:0; background:var(--card2); border:1px solid var(--line); border-radius:22px; transition:.2s;}
+  .sw i::after{content:""; position:absolute; width:16px; height:16px; border-radius:50%; background:var(--grey); top:2px; left:2px; transition:.2s;}
+  .sw input:checked + i{background:rgba(46,204,113,.25); border-color:var(--green);}
+  .sw input:checked + i::after{left:20px; background:var(--green);}
+
+  /* ===== botones ===== */
+  .btn{display:inline-block; font-size:12.5px; font-weight:600; padding:7px 14px; border-radius:7px; border:1px solid var(--line); background:var(--card2); color:var(--txt); cursor:pointer; margin-right:8px;}
+  .btn:hover{filter:brightness(1.15);}
+  .btn.red{border-color:var(--red); color:var(--red);}
+  .btn.amber{border-color:var(--accent); color:var(--accent);}
+  .btn.ghost{color:var(--muted);}
+
+  /* ===== histograma (backtest) ===== */
+  .hist{display:flex; align-items:flex-end; gap:4px; height:120px; padding:10px 6px 0; position:relative;}
+  .hist .bar{flex:1; background:var(--blue); opacity:.75; border-radius:3px 3px 0 0; min-height:2px;}
+  .hist .thresh{position:absolute; top:0; bottom:22px; width:2px; background:var(--red);}
+  .hist .thresh span{position:absolute; top:-4px; left:6px; color:var(--red); font-size:11px; white-space:nowrap;}
+  .hist-x{display:flex; justify-content:space-between; color:var(--muted); font-size:11px; padding:4px 6px 0;}
+
+  /* ===== timeline SVG ===== */
+  .tl-wrap{background:var(--card2); border-radius:8px; padding:12px;}
+  .legend{display:flex; gap:16px; font-size:11.5px; color:var(--muted); margin-top:8px; flex-wrap:wrap;}
+  .legend b{font-weight:400; display:inline-flex; align-items:center; gap:5px;}
+  .dot{width:9px; height:9px; border-radius:50%; display:inline-block;}
+
+  /* ===== finding ===== */
+  .finding-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px;}
+  .finding-head h4{font-size:15px;}
+  .kv{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:14px 0;}
+  .kv div{background:var(--card2); border-radius:8px; padding:10px 12px;}
+  .kv .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px;}
+  .kv .v{font-size:16px; font-weight:700; margin-top:2px;}
+  .action-sug{background:rgba(240,165,0,.08); border:1px solid rgba(240,165,0,.35); border-radius:8px; padding:12px 14px; font-size:13px; margin:6px 0 14px;}
+
+  .footnote{color:var(--muted); font-size:11.5px; margin-top:36px; border-top:1px solid var(--line); padding-top:14px;}
+  @media (max-width:1000px){ .g3,.g4,.g6,.kv{grid-template-columns:1fr 1fr;} nav{display:none;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ NAV ============ -->
+  <nav>
+    <div class="brand">WANOMI <span>·</span> Calidad</div>
+    <div class="tag">SOLO ADMINISTRADORES</div>
+    <a href="#que-es">¿Qué es esto?</a>
+    <a href="#salud">Salud del motor</a>
+    <a href="#inventario">Inventario de reglas</a>
+    <a href="#hallazgo">Ficha de hallazgo</a>
+    <a href="#backtest">Probar antes de activar</a>
+    <a href="#timeline">Línea de tiempo</a>
+    <a href="#ingesta">Salud de los datos</a>
+    <a href="#digest">Resumen semanal</a>
+    <div class="sep"></div>
+    <a href="#" style="color:var(--grey)">← Volver al panel admin</a>
+  </nav>
+
+  <main>
+    <h1>Supervisor de Calidad del motor de alarmas</h1>
+    <div class="sub">Última revisión automática: hoy 14:32 · próxima en 4 min · auditoría profunda nocturna: 03:00 · Todo lo que ves aquí lo genera un proceso que <b>vigila al motor de alarmas</b>; el operador de turno nunca ve esta pantalla.</div>
+
+    <!-- ============ QUÉ ES ============ -->
+    <h2 id="que-es">¿Qué hace el supervisor?</h2>
+    <div class="plain">
+      <b>En una frase:</b> es un inspector que trabaja las 24 horas revisando que cada alarma que la plataforma
+      le manda al cliente sea <b>verdadera, necesaria y llegue a tiempo</b>. No toca el motor, no corrige nada solo:
+      <b>mide, encuentra problemas y te los muestra con la evidencia al lado</b>, para que vos decidas.
+    </div>
+    <div class="grid g3">
+      <div class="card">
+        <h3>1 · El probador previo</h3>
+        <p style="font-size:13px; line-height:1.55; color:var(--muted)">
+          Antes de que actives una regla nueva, la prueba contra los últimos 30 días de datos reales y te dice:
+          <em style="color:var(--txt)">“esta regla habría avisado 2.755 veces”</em> o
+          <em style="color:var(--txt)">“nunca habría avisado”</em>.
+          Así ninguna regla mal calibrada llega a producción.
+        </p>
+      </div>
+      <div class="card">
+        <h3>2 · El vigilante en vivo</h3>
+        <p style="font-size:13px; line-height:1.55; color:var(--muted)">
+          Cada 5 minutos revisa las alarmas recién emitidas y detecta comportamientos imposibles o sospechosos:
+          alarmas que se apagan en el equipo equivocado, alarmas que suenan dos veces sin haberse apagado,
+          alarmas que titilan sin parar.
+        </p>
+      </div>
+      <div class="card">
+        <h3>3 · El auditor nocturno</h3>
+        <p style="font-size:13px; line-height:1.55; color:var(--muted)">
+          De madrugada <b>vuelve a hacer las cuentas</b> (autonomía de combustible, consumo, eficiencia)
+          con su propio método, independiente del motor, y compara. Si el motor calculó mal, acá aparece.
+          También detecta reglas que alguien editó y quedaron distintas de como fueron diseñadas.
+        </p>
+      </div>
+    </div>
+
+    <!-- ============ SALUD ============ -->
+    <h2 id="salud">Salud del motor — un vistazo</h2>
+    <div class="sub">¿Qué estoy viendo? Un semáforo general y los seis indicadores que lo componen. Verde = sano, rojo = necesita tu decisión.</div>
+    <div class="card" style="margin-bottom:14px;">
+      <div class="score">
+        <div class="dial"><div><div class="n">58</div><div class="l">/ 100</div></div></div>
+        <div>
+          <div class="big" style="color:var(--yellow); font-size:20px;">Necesita atención</div>
+          <div style="color:var(--muted); font-size:13px; margin-top:6px; max-width:640px; line-height:1.5;">
+            Hay <b style="color:var(--red)">4 reglas que nunca pueden avisar</b> (sus límites están fuera de lo que el equipo
+            puede medir), <b style="color:#c98be0">1 alarma que suena y nunca se apaga</b> y
+            <b style="color:#6fb6ea">1 regla que titila</b> (se prende y apaga cientos de veces por día).
+            El resto del motor está sano. Detalle abajo, con el botón para actuar en cada caso.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="grid g6">
+      <div class="card"><h3>Avisos cerrados en el equipo correcto</h3><div class="big" style="color:var(--red)">9%</div><div class="trend up-bad">▲ empeorando · meta: 99%+</div></div>
+      <div class="card"><h3>Avisos por día (todas las reglas)</h3><div class="big">412</div><div class="trend up-bad">▲ 380 el mes pasado</div></div>
+      <div class="card"><h3>Reglas que titilan</h3><div class="big" style="color:var(--yellow)">1</div><div class="trend flat">se prende/apaga 118 veces/día</div></div>
+      <div class="card"><h3>Reglas mudas (nunca avisan)</h3><div class="big" style="color:var(--red)">4</div><div class="trend flat">límites imposibles o sin datos</div></div>
+      <div class="card"><h3>Alarmas que no se apagan</h3><div class="big" style="color:#c98be0">1</div><div class="trend flat">activa el 87% del tiempo</div></div>
+      <div class="card"><h3>Cuentas con diferencia</h3><div class="big" style="color:var(--yellow)">1</div><div class="trend flat">autonomía: auditoría difiere 6%</div></div>
+    </div>
+
+    <!-- ============ INVENTARIO ============ -->
+    <h2 id="inventario">Inventario de reglas — el corazón del panel</h2>
+    <div class="sub">Cada regla de todos los packs, con su estado de salud y su interruptor. Apagar una regla NO la borra: deja de avisar, conserva su historial, y se puede volver a encender cuando esté corregida.</div>
+    <div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      <span class="badge b-green">● sana</span>
+      <span class="badge b-yellow">● ruidosa</span>
+      <span class="badge b-blue">↻ titila</span>
+      <span class="badge b-purple">● permanente</span>
+      <span class="badge b-red">● muda / imposible</span>
+      <span class="badge b-grey">● sin datos</span>
+    </div>
+    <table>
+      <tr><th>Estado</th><th>Regla</th><th>Pack / Equipo</th><th>Avisos (30 d)</th><th>Tiempo en condición</th><th>Último aviso</th><th>Activa</th></tr>
+
+      <tr>
+        <td><span class="badge b-green">● sana</span></td>
+        <td><span class="rid">cummins-A1-oil-pressure-crit</span><span class="why">Presión de aceite crítica</span></td>
+        <td>cummins-pcc-v1 · CR00061</td><td>3</td><td>0,4%</td><td>hace 6 días</td>
+        <td><label class="sw"><input type="checkbox" checked><i></i></label></td>
+      </tr>
+
+      <tr>
+        <td><span class="badge b-blue">↻ titila</span></td>
+        <td><span class="rid">gen-batt-accel-high</span><span class="why">Se prende y se apaga sola: 1 de cada 4 mediciones dispara. Genera ruido y desgasta la confianza.</span></td>
+        <td>gen-site-v2 · CR99001</td><td>2.755</td><td>25%</td><td>hace 3 min</td>
+        <td><label class="sw"><input type="checkbox" checked><i></i></label></td>
+      </tr>
+
+      <tr>
+        <td><span class="badge b-purple">● permanente</span></td>
+        <td><span class="rid">cat-eltek-A2-temp-high</span><span class="why">La condición es cierta el 87% del tiempo: sonó una vez y nunca se apagó. El límite está dentro del ruido normal del equipo.</span></td>
+        <td>eltek-flatpack-v1 · CR00061</td><td>1</td><td>87%</td><td>hace 9 días (sigue activa)</td>
+        <td><label class="sw"><input type="checkbox" checked><i></i></label></td>
+      </tr>
+
+      <tr>
+        <td><span class="badge b-red">● imposible</span></td>
+        <td><span class="rid">dc-05-bus-voltage-high</span><span class="why">El límite (105) supera lo máximo que el equipo llegó a medir (58,2). Nunca va a avisar.</span></td>
+        <td>dc-plant-v1 · CR00061</td><td>0</td><td>0%</td><td>nunca</td>
+        <td><label class="sw"><input type="checkbox" checked><i></i></label></td>
+      </tr>
+
+      <tr>
+        <td><span class="badge b-red">● imposible</span></td>
+        <td><span class="rid">ge-04-fuel-consumption</span><span class="why">Idem: límite inalcanzable con el equipo real.</span></td>
+        <td>ge-sites-v1 · CR99001</td><td>0</td><td>0%</td><td>nunca</td>
+        <td><label class="sw"><input type="checkbox" checked><i></i></label></td>
+      </tr>
+
+      <tr>
+        <td><span class="badge b-grey">● sin datos</span></td>
+        <td><span class="rid">eltek-temp-baseline-auto</span><span class="why">El sensor reporta siempre el mismo valor: no hay con qué aprender el comportamiento normal.</span></td>
+        <td>eltek-flatpack-v1 · CR00061</td><td>0</td><td>—</td><td>nunca</td>
+        <td><label class="sw"><input type="checkbox" checked><i></i></label></td>
+      </tr>
+
+      <tr>
+        <td><span class="badge b-yellow">● ruidosa</span></td>
+        <td><span class="rid">gen-batt-warn</span><span class="why">197 avisos con solo ~120 mediciones posibles: los números no cierran. En investigación (caso C6).</span></td>
+        <td>gen-site-v2 · CR99001</td><td>197</td><td>12%</td><td>hace 1 h</td>
+        <td><label class="sw"><input type="checkbox" checked><i></i></label></td>
+      </tr>
+
+      <!-- pack con kill-switch -->
+      <tr class="packrow off">
+        <td colspan="7">▾ Pack <span class="rid">ge-sites-v1</span> — completo fuera de circulación
+          <span class="why">por f.sala · 05-oct 14:20 · motivo: “límites GE-04/GE-07 imposibles hasta recalibrar con el cliente”</span>
+        </td>
+      </tr>
+      <tr class="off">
+        <td><span class="badge b-grey">○ apagada</span></td>
+        <td><span class="rid">ge-07-coolant-temp</span><span class="why">Apagada junto con su pack.</span></td>
+        <td>ge-sites-v1 · CR99001</td><td>0</td><td>0%</td><td>nunca</td>
+        <td><label class="sw"><input type="checkbox"><i></i></label></td>
+      </tr>
+    </table>
+    <p style="color:var(--muted); font-size:12px; margin-top:10px;">
+      Apagar usa un botón dedicado que toca <b>solo el interruptor</b> — no reescribe la regla (editar y apagar son caminos
+      separados para que apagar nunca pueda romper la configuración). Las reglas apagadas quedan fuera del conteo de “mudas”:
+      están apagadas a propósito.
+    </p>
+
+    <!-- ============ HALLAZGO ============ -->
+    <h2 id="hallazgo">Ficha de hallazgo — qué encontró el supervisor y qué te propone</h2>
+    <div class="sub">Cada problema detectado abre una ficha con la evidencia visible. Nada de “confiá en mí”: el número y el gráfico están acá.</div>
+    <div class="card">
+      <div class="finding-head">
+        <span class="badge b-blue">↻ TITILA</span>
+        <h4>La regla <span class="rid">gen-batt-accel-high</span> se prende y se apaga constantemente</h4>
+        <span style="color:var(--muted); font-size:12px;">detectado por el vigilante en vivo · visto por primera vez hace 12 días · 2.755 ocurrencias</span>
+      </div>
+      <div class="kv">
+        <div><div class="k">Ciclos prende/apaga</div><div class="v">2.755 <span style="font-size:11px; color:var(--muted)">en 30 d</span></div></div>
+        <div><div class="k">Duración típica del aviso</div><div class="v">&lt; 90 s</div></div>
+        <div><div class="k">Avisos por día</div><div class="v">118</div></div>
+        <div><div class="k">Costo</div><div class="v" style="font-size:13px;">el operador deja de creerle</div></div>
+      </div>
+      <div class="tl-wrap">
+        <!-- Telemetría vs límite con marcas de prende/apaga -->
+        <svg viewBox="0 0 900 150" width="100%" height="150">
+          <line x1="0" y1="70" x2="900" y2="70" stroke="#e74c3c" stroke-dasharray="5,4" stroke-width="1.5"/>
+          <text x="905" y="73" fill="#e74c3c" font-size="11" text-anchor="start"></text>
+          <text x="6" y="62" fill="#e74c3c" font-size="11">límite de la regla</text>
+          <polyline fill="none" stroke="#6fb6ea" stroke-width="2"
+            points="0,95 40,80 80,66 120,74 160,60 200,78 240,64 280,82 320,58 360,76 400,62 440,84 480,66 520,80 560,60 600,74 640,64 680,82 720,62 760,78 800,66 840,80 880,68 900,72"/>
+          <!-- marcas fire (▲) y resolve (▼) densas = titileo visible -->
+          <g font-size="10" text-anchor="middle">
+            <text x="80" y="55" fill="#e74c3c">▲</text><text x="118" y="92" fill="#2ecc71">▼</text>
+            <text x="160" y="48" fill="#e74c3c">▲</text><text x="198" y="95" fill="#2ecc71">▼</text>
+            <text x="240" y="52" fill="#e74c3c">▲</text><text x="278" y="99" fill="#2ecc71">▼</text>
+            <text x="320" y="46" fill="#e74c3c">▲</text><text x="358" y="93" fill="#2ecc71">▼</text>
+            <text x="560" y="48" fill="#e74c3c">▲</text><text x="598" y="91" fill="#2ecc71">▼</text>
+            <text x="720" y="50" fill="#e74c3c">▲</text><text x="758" y="95" fill="#2ecc71">▼</text>
+          </g>
+        </svg>
+        <div class="legend">
+          <b><span class="dot" style="background:#6fb6ea"></span> medición real del equipo</b>
+          <b><span style="color:#e74c3c">- -</span> límite configurado</b>
+          <b><span style="color:#e74c3c">▲</span> se prendió la alarma</b>
+          <b><span style="color:#2ecc71">▼</span> se apagó</b>
+        </div>
+      </div>
+      <div class="action-sug">
+        <b>Qué te propone el supervisor:</b> la medición pega justo contra el límite, entonces cualquier ruido la cruza.
+        Agregar un <b>margen de apagado</b> (que se prenda en X y se apague recién en X−margen) o exigir que la condición
+        se sostenga unos minutos antes de avisar. Mientras tanto, podés sacarla de circulación.
+      </div>
+      <button class="btn red">⏻ Apagar esta regla ahora</button>
+      <button class="btn amber">✎ Abrir en el editor con la corrección sugerida</button>
+      <button class="btn ghost">Silenciar este hallazgo 30 días</button>
+    </div>
+
+    <!-- ============ BACKTEST ============ -->
+    <h2 id="backtest">Probar antes de activar — el probador previo, dentro del editor</h2>
+    <div class="sub">Al crear o editar una regla, el botón “Probar contra historial” la ensaya contra los últimos 30 días reales ANTES de que pueda avisarle al cliente.</div>
+    <div class="card">
+      <div style="display:flex; gap:24px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:300px;">
+          <h3>Regla en edición</h3>
+          <p style="font-size:13px; color:var(--muted); line-height:1.6;">
+            “Avisar cuando <b style="color:var(--txt)">voltaje del bus DC</b> supere
+            <span style="border:1px solid var(--red); border-radius:5px; padding:1px 8px; color:var(--red); font-weight:700;">105</span> V,
+            sostenido 2 min.”
+          </p>
+          <button class="btn amber" style="margin-top:10px;">▶ Probar contra historial (30 días)</button>
+          <div style="margin-top:14px; font-size:13px;">
+            <span class="badge b-red">VEREDICTO: IMPOSIBLE</span>
+            <p style="color:var(--muted); margin-top:8px; line-height:1.55;">
+              En 30 días habría avisado <b style="color:var(--txt)">0 veces</b>. El equipo nunca superó <b style="color:var(--txt)">58,2 V</b>.
+              Tu límite (105) queda a la derecha de todo lo medido — mirá el gráfico. <b>Con este valor, la regla es decorativa.</b>
+            </p>
+          </div>
+        </div>
+        <div style="flex:1.4; min-width:340px;">
+          <h3>Qué midió el equipo vs dónde pusiste el límite</h3>
+          <div class="hist">
+            <div class="bar" style="height:20%"></div><div class="bar" style="height:45%"></div>
+            <div class="bar" style="height:80%"></div><div class="bar" style="height:100%"></div>
+            <div class="bar" style="height:88%"></div><div class="bar" style="height:60%"></div>
+            <div class="bar" style="height:35%"></div><div class="bar" style="height:15%"></div>
+            <div class="bar" style="height:6%"></div><div class="bar" style="height:2%"></div>
+            <div class="bar" style="height:0%"></div><div class="bar" style="height:0%"></div>
+            <div class="thresh" style="right:6%;"><span>tu límite: 105 V</span></div>
+          </div>
+          <div class="hist-x"><span>48 V</span><span>53 V</span><span>máx. observado 58,2 V</span><span>…</span><span>105 V</span></div>
+          <p style="font-size:12px; color:var(--muted); margin-top:8px;">Sugerencia automática: un límite de <b style="color:var(--accent)">57,5 V</b> habría avisado 4 veces en 30 días (≈1 por semana). <a href="#">Usar 57,5</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TIMELINE ============ -->
+    <h2 id="timeline">Línea de tiempo de una regla — la alarma que nunca se apaga</h2>
+    <div class="sub">Regla <span class="rid">cat-eltek-A2-temp-high</span> · últimas 48 h. Se ve el problema sin saber leer gráficos: la medición vive por encima del límite.</div>
+    <div class="card">
+      <div class="tl-wrap">
+        <svg viewBox="0 0 900 160" width="100%" height="160">
+          <line x1="0" y1="110" x2="900" y2="110" stroke="#e74c3c" stroke-dasharray="5,4" stroke-width="1.5"/>
+          <text x="6" y="104" fill="#e74c3c" font-size="11">límite de la regla</text>
+          <!-- banda sombreada = alarma activa -->
+          <rect x="90" y="10" width="810" height="130" fill="rgba(231,76,60,.08)"/>
+          <polyline fill="none" stroke="#6fb6ea" stroke-width="2"
+            points="0,125 45,118 90,88 135,74 180,80 225,70 270,78 315,66 360,74 405,68 450,76 495,64 540,72 585,66 630,74 675,68 720,76 765,64 810,72 855,66 900,70"/>
+          <text x="90" y="150" fill="#e74c3c" font-size="11" text-anchor="middle">▲ sonó (hace 9 días)</text>
+          <text x="500" y="30" fill="#e74c3c" font-size="11" text-anchor="middle">…y sigue sonando: no se apagó nunca</text>
+        </svg>
+        <div class="legend">
+          <b><span class="dot" style="background:#6fb6ea"></span> temperatura medida</b>
+          <b><span style="color:#e74c3c">- -</span> límite configurado</b>
+          <b><span style="color:#e74c3c">▓</span> alarma activa</b>
+        </div>
+      </div>
+      <div class="action-sug" style="margin-top:12px;">
+        <b>Lectura para decidir:</b> la condición es cierta el <b>87% del tiempo</b>. O el límite está mal puesto (dentro del
+        funcionamiento normal del equipo) o el equipo tiene un problema real permanente que ya nadie mira.
+        El supervisor sugiere: recalibrar el límite con el fabricante o apagar la regla hasta hacerlo.
+      </div>
+    </div>
+
+    <!-- ============ INGESTA ============ -->
+    <h2 id="ingesta">Salud de los datos — ¿llegan las mediciones?</h2>
+    <div class="sub">Para no acusar a una regla de “muda” cuando en realidad el equipo está callado. Si el dato no llega, el problema es de comunicación, no de la regla.</div>
+    <table>
+      <tr><th>Equipo / variable</th><th>Última medición</th><th>Cada cuánto debería llegar</th><th>Estado</th></tr>
+      <tr><td>CR00061 · temperatura rectificador</td><td>hace 28 s</td><td>~30 s</td><td><span class="badge b-green">● al día</span></td></tr>
+      <tr><td>CR99001 · grupo en marcha</td><td>hace 61 s</td><td>~64 s</td><td><span class="badge b-green">● al día</span></td></tr>
+      <tr><td>CR00061 · temperatura refrigerante</td><td>hace 3 h 12 min</td><td>~30 s</td><td><span class="badge b-red">● callado — revisar equipo</span></td></tr>
+      <tr><td>CR99001 · código de falla</td><td>llega, pero vale siempre 0</td><td>~64 s</td><td><span class="badge b-grey">● llega sin información</span></td></tr>
+    </table>
+
+    <!-- ============ DIGEST ============ -->
+    <h2 id="digest">Resumen semanal para el equipo Wanomi</h2>
+    <div class="card" style="max-width:640px;">
+      <h3>Semana 41 · 29-sep → 05-oct</h3>
+      <ul style="margin:6px 0 10px 18px; line-height:1.9; font-size:13.5px;">
+        <li>🔴 <b>4 reglas mudas</b> por límites imposibles (GE-04, GE-07, DC-05, baseline Eltek) → propuesta: apagar hasta recalibrar.</li>
+        <li>🟣 <b>1 alarma permanente</b> (Eltek A2, 87% del tiempo activa).</li>
+        <li>🔁 <b>1 regla que titila</b> (118 avisos/día) → propuesta: margen de apagado.</li>
+        <li>🧮 <b>1 cuenta con diferencia</b>: la autonomía del edge difiere 6% de la auditoría independiente.</li>
+        <li>✏️ <b>1 regla editada</b> que quedó distinta de su diseño original (umbral redondeado por el editor).</li>
+        <li>📡 <b>1 variable callada</b> hace 3 h (refrigerante CR00061).</li>
+      </ul>
+      <span style="color:var(--muted); font-size:12px;">Este resumen va solo al equipo Wanomi. El cliente nunca recibe meta-información sobre la calidad de sus alarmas.</span>
+    </div>
+
+    <p class="footnote">
+      Mockup de diseño — Supervisor de Calidad Wanomi · 05-oct-2026 · Datos tomados de la auditoría real del motor de reglas
+      (<span class="rid">docsRefactor/Software/auditoria_motor_reglas_2026-10-05.md</span>) · Diseño completo en
+      <span class="rid">docsRefactor/Software/diseno_supervisor_calidad.md</span> · Acceso: solo rol superadmin
+      (mismo candado que la consola de administración existente).
+    </p>
+  </main>
+</div>
+</body>
+</html>
