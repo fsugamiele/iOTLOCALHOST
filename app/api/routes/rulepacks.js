@@ -22,10 +22,15 @@ const express = require("express");
 const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
-const { validateRule, collectCrossLeafRefs } = require("../services/ruleValidation.js");
+const { validateRule, collectRuleRefs } = require("../services/ruleValidation.js");
 
 const RulePack = require("../models/rule_pack.js");
 import EquipmentSheet from "../models/equipment_sheet.js";
+
+// DEC-REF-127 (B8) — variables DERIVADAS que publica el edge (no están en la ficha
+// del equipo pero son targets legítimos de reglas): no deben generar warning de
+// "variable no declarada". Fuente: edge-engine/autonomy.js + efficiency.js.
+const EDGE_DERIVED_VARS = new Set(['autonomy_hours', 'fuel_efficiency', 'consumption_tank']);
 
 // SF-3 (DEC-REF-58, DEC-REF-61.b, DEC-REF-61-A). Auto-publish al canal
 // de reload tras escritura exitosa. Broadcast: writer NO sabe qué sites
@@ -148,16 +153,18 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
     // productivo cummins-pcc-v1 (hojas ATS sin ficha — cascada DEC-REF-53
     // D4 transitoria). La variable solo se chequea cuando la ficha declara
     // variables (una ficha con variables:[] no tiene contra qué validar).
-    const refs = collectCrossLeafRefs(doc);
+    const refs = collectRuleRefs(doc);
     if (refs.length) {
       const sheets = await EquipmentSheet.find({}).lean();
       const byType = new Map(sheets.map(s => [s.deviceType, new Set((s.variables || []).map(vb => vb.name))]));
       for (const ref of refs) {
+        // DEC-REF-127 — las variables derivadas del edge no están en la ficha pero son legítimas.
+        if (EDGE_DERIVED_VARS.has(ref.variable)) continue;
         const vars = byType.get(ref.deviceType);
         if (!vars) {
-          v.warnings.push(`[${ref.ruleId}] hoja ${ref.deviceType}/${ref.variable}: deviceType sin ficha en equipmentsheets`);
+          v.warnings.push(`[${ref.ruleId}] ${ref.kind} ${ref.deviceType}/${ref.variable}: deviceType sin ficha en equipmentsheets`);
         } else if (vars.size > 0 && !vars.has(ref.variable)) {
-          v.warnings.push(`[${ref.ruleId}] hoja ${ref.deviceType}/${ref.variable}: variable no declarada en la ficha`);
+          v.warnings.push(`[${ref.ruleId}] ${ref.kind} ${ref.deviceType}/${ref.variable}: variable no declarada en la ficha — la regla no podrá disparar`);
         }
       }
     }

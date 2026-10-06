@@ -57,8 +57,17 @@ function validateCrossTree(node, depth = 0) {
     return { ok: true };
   }
   if (node.deviceType && node.variable) {
-    if (!node.condition || !node.condition.op) {
+    // DEC-REF-127 (B8) — hoja-equipo tan estricta como la hoja-suma: op ∈ enum y
+    // value numérico para ops aritméticos (eq/neq admiten string, ej. gen_status).
+    const c = node.condition;
+    if (!c || !c.op) {
       return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable} sin condition` };
+    }
+    if (!ALL_OPS.includes(c.op)) {
+      return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: op inválido '${c.op}'` };
+    }
+    if (ARITHMETIC_OPS.includes(c.op) && !isNumber(c.value)) {
+      return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: value debe ser numérico para op '${c.op}'` };
     }
     return { ok: true };
   }
@@ -256,6 +265,33 @@ function collectCrossLeafRefs(pack) {
   return refs;
 }
 
+// DEC-REF-127 (B8) — TODAS las refs {ruleId, deviceType, variable, kind} de una
+// regla: hojas cross/sum + top-level de D/C/S/M + inputs de M2. La ruta las
+// chequea contra las fichas (warning) para cazar typos (regla-fantasma que el
+// motor silencia para siempre: ruleEngine.js gate rule.variable !== variable).
+function collectRuleRefs(pack) {
+  const refs = [];
+  const rules = Array.isArray(pack?.rules) ? pack.rules : [];
+  const walk = (node, ruleId) => {
+    if (node == null || typeof node !== 'object') return;
+    if (node.op === 'AND' || node.op === 'OR') { for (const ch of node.children || []) walk(ch, ruleId); return; }
+    if (Array.isArray(node.sum)) {
+      for (const t of node.sum) if (t && t.deviceType && t.variable) refs.push({ ruleId, deviceType: t.deviceType, variable: t.variable, kind: 'hoja' });
+      return;
+    }
+    if (node.deviceType && node.variable) refs.push({ ruleId, deviceType: node.deviceType, variable: node.variable, kind: 'hoja' });
+  };
+  for (const r of rules) {
+    if (!r) continue;
+    if (r.type === 'cross') { walk(r.crossExpr, r.ruleId); continue; }
+    if (r.deviceType && r.variable) refs.push({ ruleId: r.ruleId, deviceType: r.deviceType, variable: r.variable, kind: 'variable' });
+    if (r.type === 'M' && Array.isArray(r.inputs)) {
+      for (const inp of r.inputs) if (inp && inp.variable) refs.push({ ruleId: r.ruleId, deviceType: inp.deviceType || r.deviceType, variable: inp.variable, kind: 'input' });
+    }
+  }
+  return refs;
+}
+
 module.exports = {
   validateCrossTree,
   validateD,
@@ -264,6 +300,7 @@ module.exports = {
   validateM,
   validateRule,
   collectCrossLeafRefs,
+  collectRuleRefs,
   ALL_OPS,
   ARITHMETIC_OPS,
 };
