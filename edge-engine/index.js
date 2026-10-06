@@ -10,10 +10,10 @@ const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState } = require('./siteState');
 const { processMessage, processStalenessTick, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
-const { buildSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
+const { buildSnapshot, buildStateSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
 const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime } = require('./autonomy');
 const { maybeComputeEfficiency, resetEfficiencyRuntime } = require('./efficiency');
-const { loadMSoftState, flushMSoftState } = require('./msoftstate');  // motor M Ola M3 (persistencia)
+const { loadMSoftState, flushMSoftState, deleteMSoftState } = require('./msoftstate');  // motor M Ola M3 (persistencia)
 
 const MSOFT_FLUSH_SEC = parseInt(process.env.MSOFT_FLUSH_SEC || '30', 10);
 // motor M Ola M4 — cadencia del tick de staleness (silencio de comunicación §8-D3).
@@ -81,6 +81,7 @@ async function start() {
 
   let packs = await loadPacks(SITE_ID);
   let ruleSnapshot = buildSnapshot(packs);
+  let stateSnapshot = buildStateSnapshot(packs);   // DEC-REF-128 — huella de estado por regla
   await hydrateSiteState(SITE_ID, siteState);
   // DEC-REF-115 (#85) — config de autonomía (ficha + override por equipo).
   let autonomyConfigs = await loadAutonomyConfigs(SITE_ID);
@@ -117,11 +118,16 @@ async function start() {
     try {
       const nextPacks = await loadPacks(SITE_ID);
       const nextSnap  = buildSnapshot(nextPacks);
+      const nextStateSnap = buildStateSnapshot(nextPacks);
       // DEC-REF-115 (#85) — el mismo canal SF-3 recarga la config de
       // autonomía (PUT /equipmentsheet y PUT /device/autonomy publican acá).
       const nextAutonomy = await loadAutonomyConfigs(SITE_ID);
       const diff      = diffSnapshots(ruleSnapshot, nextSnap);
-      const toClean   = [...diff.removed, ...diff.changed];
+      // DEC-REF-128 (A9) — limpiar estado (buffers/acumuladores) SOLO de reglas
+      // removidas o cuya HUELLA DE ESTADO cambió. Editar umbral/severidad/texto NO
+      // invalida el acc (la vida de aceite acumulada sobrevive la edición).
+      const stateChanged = diff.changed.filter(id => stateSnapshot.get(id) !== nextStateSnap.get(id));
+      const toClean   = [...diff.removed, ...stateChanged];
 
       // SF-4 · DEC-REF-64.a — capturar defs VIEJAS de reglas que van a ser
       // limpiadas Y que están ACTIVAS. Las necesitamos para construir
@@ -168,9 +174,17 @@ async function start() {
         });
       }
 
+      // DEC-REF-128 (A9.2) — borrar la persistencia de acumuladores de reglas
+      // ELIMINADAS (no editadas): una regla recreada con el mismo ruleId no debe
+      // rehidratar un acc obsoleto. Fire-and-forget (no introduce await antes del swap).
+      if (diff.removed.length) {
+        deleteMSoftState(SITE_ID, diff.removed).catch(e => console.error('[msoftstate] delete error:', e.message));
+      }
+
       // Swap sincrónico post-await — no hay await entre estas líneas.
       packs = nextPacks;
       ruleSnapshot = nextSnap;
+      stateSnapshot = nextStateSnap;
       autonomyConfigs = nextAutonomy;
       // La config de autonomía pudo cambiar: historiales y debounce viejos
       // quedan obsoletos (v2 híbrida — DEC-REF-115).
@@ -282,6 +296,10 @@ async function start() {
 
   process.on('SIGTERM', async () => {
     console.log('[edge-engine] SIGTERM — cerrando...');
+    // DEC-REF-128 (A16) — flush final de acumuladores dirty antes de desconectar
+    // (sin esto se perdía hasta MSOFT_FLUSH_SEC de acumulado por reinicio).
+    try { const n = await flushMSoftState(SITE_ID, mState); if (n) console.log(`[edge-engine] flush final: ${n} acumulador(es)`); }
+    catch (e) { console.error('[msoftstate] flush final error:', e.message); }
     client.end();
     await mongoose.disconnect();
     process.exit(0);

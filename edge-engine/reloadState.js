@@ -34,6 +34,26 @@ function buildSnapshot(packs) {
   return snap;
 }
 
+// DEC-REF-128 (A9) — huella de ESTADO: SOLO los campos que definen CÓMO se computa
+// el buffer/acumulador. Si cambian, el estado viejo no aplica → se limpia el mState.
+// Un cambio de condition(umbral)/severity/textos/cooldown/grace NO toca esta huella
+// → el `acc` acumulado (vida de aceite, consumo desde recarga) sobrevive la edición.
+const STATE_FIELDS = ['type', 'deviceType', 'variable', 'metric', 'mWindow', 'mParams', 'inputs', 'crossExpr', 'window', 'setpointSource'];
+function stateFingerprint(rule) {
+  const o = {};
+  for (const f of STATE_FIELDS) o[f] = rule[f] === undefined ? null : rule[f];
+  return crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex');
+}
+function buildStateSnapshot(packs) {
+  const snap = new Map();
+  for (const pack of packs) {
+    for (const rule of (pack.rules || [])) {
+      snap.set(rule.ruleId, stateFingerprint(rule));
+    }
+  }
+  return snap;
+}
+
 // diffSnapshots(oldSnap, newSnap) — categoriza ruleIds según D3 (DEC-REF-58):
 //   removed  → estaba en viejo, ausente en nuevo   → limpiar keys
 //   changed  → mismo ruleId, hash distinto         → limpiar keys
@@ -136,4 +156,4 @@ function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState,
   return { deletedCount, resolvedRuleIds };
 }
 
-module.exports = { hashRule, buildSnapshot, diffSnapshots, cleanupStateForRules };
+module.exports = { hashRule, buildSnapshot, stateFingerprint, buildStateSnapshot, diffSnapshots, cleanupStateForRules };

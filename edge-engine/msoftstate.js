@@ -53,4 +53,13 @@ async function flushMSoftState(siteId, mState) {
   return ops.length;
 }
 
-module.exports = { MSoftState, loadMSoftState, flushMSoftState };
+// DEC-REF-128 (A9.2) — borra la persistencia de acumuladores de reglas ELIMINADAS
+// (no editadas): evita que una regla recreada con el mismo ruleId rehidrate un acc
+// obsoleto. Se llama desde el reload solo con los ruleIds removidos del pack.
+async function deleteMSoftState(siteId, ruleIds) {
+  if (!ruleIds || !ruleIds.length) return 0;
+  const r = await MSoftState.deleteMany({ siteId, ruleId: { $in: ruleIds } });
+  return (r && (r.deletedCount != null ? r.deletedCount : r.n)) || 0;
+}
+
+module.exports = { MSoftState, loadMSoftState, flushMSoftState, deleteMSoftState };
