@@ -95,17 +95,19 @@ function computeMetric(rule, buf) {
   }
 }
 
-// ── M4 · staleness (silencio de comunicación) ───────────────────────────
-// NO usa buffer: guarda el último ts de LLEGADA y mide (ahora − últimoTs) en min.
-// Se refresca en cada mensaje entrante (→ resolve al reconectar) y además se
-// evalúa por TICK periódico (§8-D3): sin mensaje no habría evaluación.
-function evaluateStaleness(rule, { mState, dId, eventTs, tick }) {
-  const key = `${rule.ruleId}:${dId}`;
+// ── M4 · staleness (silencio de comunicación) — DEC-REF-129 (A7): por EQUIPO ──
+// Mide el silencio del EQUIPO: now − deviceState._lastSeen (cualquier variable que
+// publique lo refresca, index.js), NO el de una sola variable. Override por-variable
+// con mParams.watchVariable. Se evalúa en el mensaje y por TICK periódico (§8-D3).
+// Sin _lastSeen aún (equipo no visto en esta sesión) → insufficient (no falso stale).
+function evaluateStaleness(rule, { siteState, dId, eventTs }) {
   const now = (eventTs != null) ? eventTs : Date.now();
-  const st = mState.get(key) || { lastTs: null };
-  if (!tick) { st.lastTs = now; mState.set(key, st); }   // mensaje entrante → refresca
-  if (st.lastTs == null) return { fired: false, metricValue: null, detail: 'insufficient' };
-  const minsSilent = (now - st.lastTs) / 60000;
+  const dev = siteState && siteState.get(dId);
+  if (!dev) return { fired: false, metricValue: null, detail: 'insufficient' };
+  const watch = rule.mParams && rule.mParams.watchVariable;
+  const lastSeen = watch ? (dev._lastUpdate && dev._lastUpdate[watch]) : dev._lastSeen;
+  if (lastSeen == null) return { fired: false, metricValue: null, detail: 'insufficient' };
+  const minsSilent = (now - lastSeen) / 60000;
   return { fired: evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, minsSilent), metricValue: minsSilent };
 }
 

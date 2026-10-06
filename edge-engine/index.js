@@ -276,6 +276,9 @@ async function start() {
     // sumar. Ventana calculada en typeCross.js:evaluateSum.
     if (!deviceState._lastUpdate) deviceState._lastUpdate = {};
     deviceState._lastUpdate[variable] = eventTs;
+    // DEC-REF-129 (A7) — último mensaje del EQUIPO (cualquier variable): staleness
+    // mide el silencio a nivel equipo, no por variable (typeM.evaluateStaleness).
+    deviceState._lastSeen = eventTs;
 
     // DEC-REF-115 (#85) — si el mensaje es la variable de combustible (o la
     // de marcha) de un equipo con autonomía configurada, derivar y publicar
