@@ -76,6 +76,18 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
               reason: res.mode === 'fallback' ? 'threshold-fallback' : 'threshold-calibrated',
               mode: res.mode, thresholdUsed: res.thresholdUsed,
               cooldownState, siteState,
+              // A4 (DEC-REF-124) — SOLO el camino CALIBRADO entra a activeState → resuelve
+              // por condición (espejo de D). fallback/no-ref NO: su cierre es
+              // setpoint-recovered (DEC-REF-64.c + EDGE-2, abajo).
+              activeState: res.mode === 'calibrated' ? activeState : undefined,
+            });
+          } else if (res.mode === 'calibrated' && activeState.has(key)) {
+            // A4 (DEC-REF-124) — el calibrado dejó de cumplirse → resolve-by-condición.
+            // Antes la alarma C calibrada NUNCA cerraba (quedaba abierta para siempre).
+            fireResolve({
+              rule, deviceId: dId, stateKey: key,
+              reason: 'threshold-cleared', mode: 'resolve-by-condition',
+              cooldownState, siteState, activeState,
             });
           }
           // Sub-paso 2b: INFO de configuración cuando setpoint no disponible (DEC-REF-24)
@@ -193,7 +205,20 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
           // M2 multivariante (spread) puede devolver `outlierDId` = el equipo
           // puntual a intervenir (A+B): la alarma se ancla a ESE device.
           const res = evaluateM(rule, value, { mState, dId, eventTs, siteState, siteCode });
-          if (res.detail) continue;   // insufficient/maturing/unsupported → sin señal
+          if (res.detail) {
+            // A5 (DEC-REF-124) — la métrica dejó de ser evaluable (insufficient/maturing/
+            // unsupported): si había alarma M activa de esta regla en ESTE equipo, cerrarla.
+            // Antes el `continue` saltaba también el resolve → alarma M zombie en activeState.
+            const dkey = `${rule.ruleId}:${dId}`;
+            if (activeState.has(dkey)) {
+              fireResolve({
+                rule, deviceId: dId, stateKey: dkey,
+                reason: 'soft-sensor-insufficient', mode: 'M',
+                cooldownState, siteState, activeState,
+              });
+            }
+            continue;   // insufficient/maturing/unsupported → sin señal de fire
+          }
           const targetDId = res.outlierDId || dId;
           // DEC-REF-122 — la instancia M se ancla al equipo objetivo (spread → outlier).
           const mkey = `${rule.ruleId}:${targetDId}`;
