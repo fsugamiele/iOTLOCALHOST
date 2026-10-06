@@ -702,16 +702,14 @@ export default {
         // limpiar campos irrelevantes según type.
         const finalRule = JSON.parse(JSON.stringify(this.ruleDraft));
         if (finalRule.type === 'D') {
-          finalRule.crossExpr = null;
-          delete finalRule.graceSec;
+          finalRule.crossExpr = null;   // D no usa crossExpr
         } else if (finalRule.type === 'cross') {
           finalRule.crossExpr = stripEditorKeys(finalRule.crossExpr);
-          finalRule.condition = null;
-        } else {
-          // DEC-REF-102 D-2 — resolveGraceSec no aplica a C/S (C resuelve por
-          // setpoint recuperado; S es temporal por su propia ventana).
-          delete finalRule.resolveGraceSec;
+          finalRule.condition = null;   // cross evalúa por crossExpr, no por condition
         }
+        // DEC-REF-126 — NO se borran graceSec/resolveGraceSec: son inocuos para esos
+        // tipos (el motor no los consume) pero borrarlos mutaba la regla al guardar
+        // y rompía la idempotencia del round-trip del editor.
 
         // Construir el pack nuevo (immutable): bump de version + rules
         // con la modificada.

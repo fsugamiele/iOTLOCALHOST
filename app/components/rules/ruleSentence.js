@@ -298,7 +298,7 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
     recommendation: s.recommendation || '',
     deviceType,
     variable: c0.variable,
-    cooldownSec: existing && existing.cooldownSec ? existing.cooldownSec : 300,
+    cooldownSec: existing && existing.cooldownSec != null ? existing.cooldownSec : 300,
     condition: null, crossExpr: null,
   };
   const unit = c0.unit || (existing && existing.unit);
@@ -315,8 +315,14 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
     };
   } else if (type === 'C') {
     rule.condition = { op: c0.op, value: coerceValue(c0.value, c0.variableType) };
-    rule.setpointSource = { variable: s.setpoint.variable, scale: 1 };
-    rule.fallbackToD = true;
+    // DEC-REF-126 — preservar scale/register del setpoint y fallbackToD de `existing`
+    // (antes fallbackToD se forzaba a true → se perdía un false legítimo).
+    rule.setpointSource = {
+      variable: s.setpoint.variable,
+      scale: (existing && existing.setpointSource && existing.setpointSource.scale != null) ? existing.setpointSource.scale : 1,
+    };
+    if (existing && existing.setpointSource && existing.setpointSource.register != null) rule.setpointSource.register = existing.setpointSource.register;
+    rule.fallbackToD = (existing && existing.fallbackToD != null) ? existing.fallbackToD : true;
   } else if (type === 'S') {
     rule.window = {
       durationSec: Math.round((Number(s.temporal.durationMin) || 0) * 60),
@@ -329,7 +335,7 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       rule.metric = 'slope';
       rule.condition = { op: s.trend.direction === 'up' ? 'gt' : 'lt', value: s.trend.direction === 'up' ? rate : -rate };
       rule.mWindow = { durationSec: Math.round((Number(s.trend.windowMin) || 0) * 60), minSamples: 3 };
-      rule.unit = `${c0.unit || ''}/min`.replace(/^\//, '');
+      rule.unit = (existing && existing.unit) ? existing.unit : `${c0.unit || ''}/min`.replace(/^\//, '');
     } else if (s.projection) {                       // M1 · proyección
       rule.metric = 'projection';
       rule.mParams = { target: Number(s.projection.target) };
@@ -387,9 +393,31 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
   } else { // D
     rule.condition = { op: c0.op, value: coerceValue(c0.value, c0.variableType) };
   }
+  // DEC-REF-126 — OVERLAY DE PRESERVACIÓN: la frase no representa estos campos; se
+  // copian de `existing` para que guardar sin tocarlos NO mute la regla (idempotencia).
   if (existing) {
+    for (const f of ['correlationParent', 'escalateAfterMinutes', 'on_missing_ref', 'source_filter', 'reset_behavior']) {
+      if (existing[f] !== undefined) rule[f] = existing[f];
+    }
     if (existing.graceSec != null) rule.graceSec = existing.graceSec;
     if (existing.resolveGraceSec != null) rule.resolveGraceSec = existing.resolveGraceSec;
+    // cross: `variable` es etiqueta del primario → preservar el guardado (no el 1er leaf).
+    if (type === 'cross' && existing.variable != null) rule.variable = existing.variable;
+    // unit: preservar el de existing (incluso '') si la frase no derivó uno.
+    if (rule.unit === undefined && existing.unit !== undefined) rule.unit = existing.unit;
+    // ventanas: minSamples de existing + durationSec EXACTO si redondea al mismo minuto
+    // (sin esto, 50 s → 60 s y minSamples 10 → 3 al guardar sin cambio).
+    if (rule.mWindow && existing.mWindow) {
+      if (existing.mWindow.minSamples != null) rule.mWindow.minSamples = existing.mWindow.minSamples;
+      if (existing.mWindow.durationSec != null &&
+          Math.round(existing.mWindow.durationSec / 60) === Math.round((rule.mWindow.durationSec || 0) / 60)) {
+        rule.mWindow.durationSec = existing.mWindow.durationSec;
+      }
+    }
+    if (rule.window && existing.window && existing.window.durationSec != null &&
+        Math.round(existing.window.durationSec / 60) === Math.round((rule.window.durationSec || 0) / 60)) {
+      rule.window.durationSec = existing.window.durationSec;
+    }
   }
   return rule;
 }
