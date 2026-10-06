@@ -8,6 +8,12 @@ const RulePackSchema = new Schema({
   version:     { type: Number, required: true, default: 1 },
   description: { type: String, default: '' },
   canary:      { type: Boolean, default: false },
+  // DEC-REF-121 (spec_interruptor_enabled) — kill-switch del pack completo. enabled:false
+  // excluye el pack entero en loadPacks (siteState.js). Default true = sin migración.
+  enabled:        { type: Boolean, default: true },
+  disabledBy:     { type: String, default: null },
+  disabledAt:     { type: Date,   default: null },
+  disabledReason: { type: String, default: null },
   rules:       { type: [RuleDefinitionSchema], default: [] },
 }, {
   timestamps: true,

@@ -69,9 +69,17 @@
               <div class="rules-list">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
-                  <base-button v-if="!editorOpen" type="primary" size="sm" @click="openSentenceNew">
-                    <i class="tim-icons icon-simple-add"></i> Nueva regla
-                  </base-button>
+                  <div class="d-flex align-items-center" style="gap:14px">
+                    <!-- DEC-REF-121 — kill-switch del pack completo (PATCH quirúrgico). -->
+                    <label class="pack-switch" :title="packEnabled ? 'Pack en circulación — clic para sacar de circulación TODO el pack' : 'Pack fuera de circulación — clic para reactivar'">
+                      <input type="checkbox" :checked="packEnabled" @change="onTogglePack($event.target.checked)">
+                      <span class="pack-sl"></span>
+                      <span class="pack-switch__lbl">{{ packEnabled ? 'pack activo' : 'pack fuera de circulación' }}</span>
+                    </label>
+                    <base-button v-if="!editorOpen" type="primary" size="sm" @click="openSentenceNew">
+                      <i class="tim-icons icon-simple-add"></i> Nueva regla
+                    </base-button>
+                  </div>
                 </div>
 
                 <rule-card
@@ -82,6 +90,7 @@
                   :sheets="sheets"
                   @edit="onCardEdit"
                   @delete="openDeleteRule"
+                  @toggle="onToggleRule"
                 />
 
                 <p v-if="!(pack.rules || []).length" class="text-muted">
@@ -243,6 +252,10 @@ export default {
   computed: {
     packId() {
       return this.$route.params.packId;
+    },
+    // DEC-REF-121 — enabled !== false (pack histórico sin el campo = en circulación).
+    packEnabled() {
+      return !this.pack || this.pack.enabled !== false;
     },
     ruleModalTitle() {
       // DEC-REF-100 D-7 (F7): el formulario clásico es el modo avanzado.
@@ -743,6 +756,43 @@ export default {
         this.saving = false;
       }
     },
+    // DEC-REF-121 (spec_interruptor_enabled) — interruptor on/off QUIRÚRGICO: PATCH de
+    // un solo booleano, NO pasa por savePack/editor (que reescribe la regla entera y la
+    // corrompería). El motor edge recarga (SF-3) y cierra limpio la alarma si estaba activa.
+    async onToggleRule({ index, enabled }) {
+      const rule = this.pack && this.pack.rules[index];
+      if (!rule) return;
+      try {
+        await this.$axios.patch(
+          `/rulepacks/${encodeURIComponent(this.packId)}/rules/${encodeURIComponent(rule.ruleId)}/enabled`,
+          { enabled },
+          { headers: { token: this.$store.state.auth.token } }
+        );
+        this.$notify({
+          type: 'success', icon: 'tim-icons icon-check-2',
+          message: `Regla ${enabled ? 'puesta en circulación' : 'sacada de circulación'}. El motor edge recargó (SF-3).`
+        });
+        await this.loadPack();
+      } catch (e) {
+        this.$notify({ type: 'danger', icon: 'tim-icons icon-alert-circle-exc', message: 'No se pudo cambiar el estado de la regla.' });
+      }
+    },
+    async onTogglePack(enabled) {
+      try {
+        await this.$axios.patch(
+          `/rulepacks/${encodeURIComponent(this.packId)}/enabled`,
+          { enabled },
+          { headers: { token: this.$store.state.auth.token } }
+        );
+        this.$notify({
+          type: 'success', icon: 'tim-icons icon-check-2',
+          message: `Pack ${enabled ? 'puesto en circulación' : 'sacado de circulación'}. El motor edge recargó (SF-3).`
+        });
+        await this.loadPack();
+      } catch (e) {
+        this.$notify({ type: 'danger', icon: 'tim-icons icon-alert-circle-exc', message: 'No se pudo cambiar el estado del pack.' });
+      }
+    },
     async savePack(nextRules, actionLabel) {
       // Version auto-incrementada: cada save de reglas bumpea el
       // contador. Coherente con "el pack cambió → version sube".
@@ -916,4 +966,13 @@ export default {
 }
 body:not(.white-content) .rules-editor__empty { border-color: rgba(255, 255, 255, 0.12); }
 @media (max-width: 991px) { .rules-layout { flex-direction: column; } .rules-list, .rules-editor { flex-basis: auto; width: 100%; } }
+
+/* DEC-REF-121 — kill-switch del pack */
+.pack-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; }
+.pack-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pack-switch .pack-sl { position: relative; display: inline-block; width: 40px; height: 22px; background: #c3ccd6; border-radius: 999px; transition: .2s; flex: 0 0 auto; }
+.pack-switch .pack-sl::before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.pack-switch input:checked + .pack-sl { background: #00997e; }
+.pack-switch input:checked + .pack-sl::before { transform: translateX(18px); }
+.pack-switch__lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
 </style>

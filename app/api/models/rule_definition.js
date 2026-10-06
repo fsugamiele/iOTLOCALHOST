@@ -83,6 +83,15 @@ const RuleDefinitionSchema = new Schema({
   on_missing_ref: { type: String, enum: ['ignore', 'alarm'], default: 'ignore' },
   reset_behavior: { type: String, enum: ['auto', 'manual'], default: 'auto' },
 
+  // DEC-REF-121 (spec_interruptor_enabled) — interruptor on/off por regla. enabled:false
+  // la saca de circulación SIN borrarla: loadPacks (siteState.js) la excluye → el diff de
+  // reload la cierra limpio. El toggle es un PATCH quirúrgico (rulepacks.js), no pasa por el
+  // editor-frase → no corrompe el resto de la definición. Default true = sin migración.
+  enabled:        { type: Boolean, default: true },
+  disabledBy:     { type: String, default: null },
+  disabledAt:     { type: Date,   default: null },
+  disabledReason: { type: String, default: null },
+
 }, { _id: false });
 
 module.exports = RuleDefinitionSchema;

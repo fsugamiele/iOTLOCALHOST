@@ -205,4 +205,74 @@ router.delete("/rulepacks/:packId", checkAuth, async (req, res) => {
   }
 });
 
+// ── PATCH enabled (DEC-REF-121, spec_interruptor_enabled) ──────────────────
+// Interruptor on/off QUIRÚRGICO: $set de un booleano + meta de procedencia +
+// bump de version + publishReload. NO re-serializa ni re-valida la regla (apagar
+// debe ser seguro aunque la regla esté mal; la validación ya ocurrió al crear/
+// editar — por eso NO pasa por el camino del editor-frase que corrompía campos).
+// El motor excluye lo enabled:false en loadPacks → el diff de reload cierra limpio
+// la alarma activa (la ve como `removed`).
+function whoDisabled(req) {
+  return (req.userData && (req.userData.email || req.userData._id)) || 'unknown';
+}
+// mongoose 5 devuelve {n}, mongoose 6 {matchedCount} — soportar ambos.
+function matchedCount(r) {
+  return (r && (r.matchedCount != null ? r.matchedCount : r.n)) || 0;
+}
+
+// PATCH /rulepacks/:packId/enabled — kill-switch del pack completo.
+router.patch("/rulepacks/:packId/enabled", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadmin(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin required" });
+    }
+    const { enabled, reason } = req.body || {};
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ status: "error", error: "'enabled' (boolean) requerido" });
+    }
+    const $set = enabled
+      ? { enabled: true, disabledBy: null, disabledAt: null, disabledReason: null }
+      : { enabled: false, disabledBy: whoDisabled(req), disabledAt: new Date(), disabledReason: reason || null };
+    const r = await RulePack.updateOne({ packId: req.params.packId }, { $set, $inc: { version: 1 } });
+    if (matchedCount(r) === 0) {
+      return res.status(404).json({ status: "error", error: "rulepack not found" });
+    }
+    publishReload(`PATCH ${req.params.packId} enabled=${enabled}`);
+    return res.json({ status: "success", packId: req.params.packId, enabled });
+  } catch (error) {
+    console.log("ERROR PATCH RULEPACK ENABLED");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+// PATCH /rulepacks/:packId/rules/:ruleId/enabled — una regla puntual.
+router.patch("/rulepacks/:packId/rules/:ruleId/enabled", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadmin(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin required" });
+    }
+    const { enabled, reason } = req.body || {};
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ status: "error", error: "'enabled' (boolean) requerido" });
+    }
+    const $set = enabled
+      ? { 'rules.$.enabled': true, 'rules.$.disabledBy': null, 'rules.$.disabledAt': null, 'rules.$.disabledReason': null }
+      : { 'rules.$.enabled': false, 'rules.$.disabledBy': whoDisabled(req), 'rules.$.disabledAt': new Date(), 'rules.$.disabledReason': reason || null };
+    const r = await RulePack.updateOne(
+      { packId: req.params.packId, 'rules.ruleId': req.params.ruleId },
+      { $set, $inc: { version: 1 } }
+    );
+    if (matchedCount(r) === 0) {
+      return res.status(404).json({ status: "error", error: "rulepack o regla no encontrada" });
+    }
+    publishReload(`PATCH ${req.params.packId}/${req.params.ruleId} enabled=${enabled}`);
+    return res.json({ status: "success", packId: req.params.packId, ruleId: req.params.ruleId, enabled });
+  } catch (error) {
+    console.log("ERROR PATCH RULE ENABLED");
+    console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
 module.exports = router;

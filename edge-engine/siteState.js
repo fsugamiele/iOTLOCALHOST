@@ -19,12 +19,16 @@ const DataRO   = mongoose.models.DataRO   || mongoose.model('DataRO',
 // hallazgo R4/B3.8. El siteId queda como parámetro por si un Hub futuro
 // atiende varios sites y carga packs por site; hoy solo se usa para logs.
 async function loadPacks(siteId) {
-  const packs = await RulePack.find({ canary: false }).lean();
+  const packs = await RulePack.find({ canary: false, enabled: { $ne: false } }).lean();
   if (packs.length === 0) {
     console.warn('[siteState] No hay RulePacks en producción — motor sin reglas.');
   }
 
   for (const pack of packs) {
+    // DEC-REF-121 (spec_interruptor_enabled) — reglas fuera de circulación: excluidas
+    // antes del filtro cross. El reload (reloadState.js) las ve como `removed` → cierre
+    // limpio de la alarma activa. Un pack enabled:false ya no entró (query de arriba).
+    pack.rules = pack.rules.filter(r => r.enabled !== false);
     const before = pack.rules.length;
     pack.rules = pack.rules.filter(r => {
       if (r.type !== 'cross') return true;
