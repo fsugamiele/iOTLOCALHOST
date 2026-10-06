@@ -129,7 +129,7 @@ function initialCumminsState(siteCode) {
 function initialEltekState() {
   return {
     deviceType:      'ELTEK',        // metadata interna — no publicada
-    dc_bus_voltage:  -48.0,          // -48 VDC nominal telco
+    dc_bus_voltage:  -54.0,          // flote ~-54 V (planta -48 VDC telco, NEGATIVO) · DEC-REF-123 · PROVISORIO
     dc_load_current: 30.0,           // A — carga TOTAL del banco del controlador
     temperature:     28.0,           // °C ambiente shelter
     _divergeHigh:    false,          // flag per-device (no publicado) — escenario rect_divergencia (motor M2 spread)
@@ -325,14 +325,14 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 
     // ── Eltek Smartpack S (SF-6 · DEC-REF-65.c) ──────────────────────
     case 'dc_bus_voltage':
-      // -48 VDC nominal con jitter menor.
-      // scenario eltek_dc_descarga (spec_motor_m.md · M1): rampa de descarga —
-      // la tensión SUBE (menos negativa, cae la magnitud) hacia el LVD (~-43),
-      // para disparar los soft sensors slope/projection del motor M.
+      // DEC-REF-123 — planta -48 VDC telco, NEGATIVA. Flote (sano) ~-54 V; en
+      // descarga la MAGNITUD cae → el valor SUBE (menos negativo) hacia el LVD
+      // (~-43,2 V). Valores PROVISORIOS (estándar -48 telco), a confirmar contra
+      // el registro Eltek 350020.073 / lab. Dispara slope/projection del motor M.
       if (sharedState.eltek_discharge) {
-        return clamp(currentValue + 0.4 + jitter(0.05), -49.5, -42.0);
+        return clamp(currentValue + 0.4 + jitter(0.05), -54.5, -43.0);
       }
-      return clamp(currentValue + jitter(0.15), -49.5, -46.5);
+      return clamp(currentValue + jitter(0.15), -54.5, -53.5);
 
     // ── Setpoints Cummins PCC (DEC-REF-66.d + EDGE-2) ────────────
     // Retornan null cuando el sharedState lo indica → device.js:_publish
@@ -668,7 +668,7 @@ const SCENARIOS = {
     noCleanup: true,
     holdVars: ['dc_bus_voltage'],
     steps: [
-      { at: 0, set: { dc_bus_voltage: -48.0 } },
+      { at: 0, set: { dc_bus_voltage: -54.0 } },   // DEC-REF-123 — flote negativo
     ],
   },
 
@@ -682,14 +682,14 @@ const SCENARIOS = {
     duration_ms: 90000,
     noCleanup: true,
     steps: [
-      { at: 0,     set: { dc_bus_voltage: -48 } },
+      { at: 0,     set: { dc_bus_voltage: -54 } },   // DEC-REF-123 — oscila alrededor del flote negativo
       { at: 3000,  set: { dc_bus_voltage: -52 } },
-      { at: 6000,  set: { dc_bus_voltage: -44 } },
-      { at: 9000,  set: { dc_bus_voltage: -54 } },
-      { at: 12000, set: { dc_bus_voltage: -42 } },
-      { at: 15000, set: { dc_bus_voltage: -56 } },
-      { at: 18000, set: { dc_bus_voltage: -41 } },
-      { at: 21000, set: { dc_bus_voltage: -57 } },
+      { at: 6000,  set: { dc_bus_voltage: -56 } },
+      { at: 9000,  set: { dc_bus_voltage: -50 } },
+      { at: 12000, set: { dc_bus_voltage: -58 } },
+      { at: 15000, set: { dc_bus_voltage: -49 } },
+      { at: 18000, set: { dc_bus_voltage: -59 } },
+      { at: 21000, set: { dc_bus_voltage: -48 } },
     ],
   },
 
