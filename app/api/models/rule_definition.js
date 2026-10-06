@@ -79,9 +79,13 @@ const RuleDefinitionSchema = new Schema({
   inputs:  { type: Array, default: undefined },
   mParams: { type: Schema.Types.Mixed, default: null },
 
+  // DEC-REF-130 (A14) — RESERVADOS: declarados pero NO consumidos por el motor hoy
+  // (el editor no los expone; los evaluadores no ramifican sobre ellos). Se conservan
+  // como intención de diseño — source_filter: filtrar reglas por origen del dato
+  // (physical/inferred/connect); reset_behavior 'manual': reset por ACK (TODO en typeS).
   source_filter:  { type: String, enum: ['physical', 'inferred', 'connect', null], default: null },
-  on_missing_ref: { type: String, enum: ['ignore', 'alarm'], default: 'ignore' },
-  reset_behavior: { type: String, enum: ['auto', 'manual'], default: 'auto' },
+  on_missing_ref: { type: String, enum: ['ignore', 'alarm'], default: 'ignore' },   // SÍ consumido (typeC)
+  reset_behavior: { type: String, enum: ['auto', 'manual'], default: 'auto' },       // RESERVADO (manual = TODO)
 
   // DEC-REF-121 (spec_interruptor_enabled) — interruptor on/off por regla. enabled:false
   // la saca de circulación SIN borrarla: loadPacks (siteState.js) la excluye → el diff de

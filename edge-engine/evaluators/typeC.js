@@ -14,14 +14,19 @@ function evaluateC(rule, value, deviceState) {
 
   // 1) Camino auto-calibrado: comparar contra el setpoint real del equipo
   if (hasSetpoint) {
+    // DEC-REF-130 (A14) — aplicar setpointSource.scale (antes era config muerta: se
+    // comparaba contra el setpoint CRUDO). Umbral = setpoint × scale (ej. SG-05 =
+    // P_nom × 0,9). scale default 1 → sin cambio para las reglas actuales.
+    const sc = (rule.setpointSource && rule.setpointSource.scale != null) ? rule.setpointSource.scale : 1;
+    const threshold = setpoint * sc;
     const synthetic = {
       ruleId:    rule.ruleId,
-      condition: { op: rule.condition.op, value: setpoint },
+      condition: { op: rule.condition.op, value: threshold },
     };
     return {
       fired:         evaluateD(synthetic, value),
       mode:          'calibrated',
-      thresholdUsed: setpoint,
+      thresholdUsed: threshold,
     };
   }
 

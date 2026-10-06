@@ -5,6 +5,11 @@ const { evaluateCross } = require('./evaluators/typeCross');
 const { evaluateM } = require('./evaluators/typeM');
 const { notify }    = require('./notificationRouter');
 
+// DEC-REF-130 (A13) — cadencia del INFO "setpoint no disponible" (aviso de config de
+// baja prioridad): constante EXPLÍCITA. Antes se leía `rule.cooldownMinutes`, un campo
+// inexistente en el schema → quedaba fija en 60 min sin que nadie lo decidiera.
+const NO_SETPOINT_INFO_COOLDOWN_MS = 60 * 60 * 1000;
+
 // DEC-REF-122 — IDENTIDAD DE LA INSTANCIA DE ALARMA. El estado del motor
 // (cooldownState, activeState, windowState) se clava por instancia, no por
 // ruleId a secas: cross es por SITIO (`ruleId:siteCode`), el resto por EQUIPO
@@ -103,7 +108,7 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
 
             // INFO de configuración (cooldown propio, intacto)
             const lastNoSetpoint = cooldownState.get(noSetpointKey) || 0;
-            const cooldownMs = (rule.cooldownMinutes || 60) * 60 * 1000;
+            const cooldownMs = NO_SETPOINT_INFO_COOLDOWN_MS;
             if (Date.now() - lastNoSetpoint > cooldownMs) {
               cooldownState.set(noSetpointKey, Date.now());
               notify({
