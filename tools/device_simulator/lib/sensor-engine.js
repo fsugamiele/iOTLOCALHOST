@@ -850,6 +850,62 @@ const SCENARIOS = {
     ],
   },
 
+  // ── DEC-REF-133 — inyección de fallas para EJERCITAR los traps que el sim no
+  // alcanza en operación normal (coolant tope 95, rpm tope 1500, fault_code 0).
+  // Pinean la falla (holdVars) y recuperan con un step de reset → el trap dispara
+  // Y resuelve (ciclo completo), sin dejar la falla pegada. Disparar sobre un
+  // device cummins: {command:'scenario', value:'<nombre>'} en simulator/<dId>/control.
+  falla_sobretemperatura: {
+    description: 'Sobretemperatura de motor (ejercita GE-04: coolant_temp > 105)',
+    roles: ['CUMMINS'],
+    duration_ms: 90000,
+    holdVars: ['coolant_temp'],
+    steps: [
+      { at: 0,     set: { coolant_temp: 110 } },
+      { at: 75000, set: { coolant_temp: 88 } },   // recupera → GE-04 resuelve
+    ],
+  },
+  falla_sobrevelocidad: {
+    description: 'Sobrevelocidad del motor (ejercita GE-07: rpm > 1725)',
+    roles: ['CUMMINS'],
+    duration_ms: 60000,
+    holdVars: ['rpm'],
+    steps: [
+      { at: 0,     set: { rpm: 1800 } },
+      { at: 45000, set: { rpm: 1500 } },           // recupera → GE-07 resuelve
+    ],
+  },
+  falla_codigo_filtro_aire: {
+    description: 'Código de falla 488 — filtro de aire (ejercita GE-12 eq 488 + GE-17 neq 0)',
+    roles: ['CUMMINS'],
+    duration_ms: 90000,
+    holdVars: ['fault_code'],
+    steps: [
+      { at: 0,     set: { fault_code: 488 } },
+      { at: 75000, set: { fault_code: 0 } },        // limpia → GE-12/17 resuelven
+    ],
+  },
+  falla_enlace_ecu: {
+    description: 'Código de falla 781 — enlace motor↔ECU (ejercita GE-16 eq 781 + GE-17)',
+    roles: ['CUMMINS'],
+    duration_ms: 90000,
+    holdVars: ['fault_code'],
+    steps: [
+      { at: 0,     set: { fault_code: 781 } },
+      { at: 75000, set: { fault_code: 0 } },
+    ],
+  },
+  falla_no_arranca: {
+    description: 'Código de falla 1438 — no gira al arranque (ejercita AR-02 eq 1438 + GE-17)',
+    roles: ['CUMMINS'],
+    duration_ms: 90000,
+    holdVars: ['fault_code'],
+    steps: [
+      { at: 0,     set: { fault_code: 1438 } },
+      { at: 75000, set: { fault_code: 0 } },
+    ],
+  },
+
 };
 
 module.exports = {
