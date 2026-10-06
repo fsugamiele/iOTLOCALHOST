@@ -38,6 +38,11 @@ echo "healthcheck exit=$?"
 docker ps --filter name=wanomi-sim --filter status=running -q 2>/dev/null | grep -q . \
   && echo "sim: VIVO (contenedor wanomi-sim)" \
   || echo "sim: CAÍDO — levantar con el comando de abajo"
+# DEC-REF-134 — Supervisor de Calidad (5ta pata). READ-ONLY sobre el motor; su caída
+# no afecta telemetría/alarmas, pero deja de auditar la calidad de las reglas.
+docker ps --filter name=wanomi-qa --filter status=running -q 2>/dev/null | grep -q . \
+  && echo "qa : VIVO (contenedor wanomi-qa)" \
+  || echo "qa : CAÍDO — docker compose -f docker_compose_production.yml up -d wanomi-qa"
 echo
 echo "=========================================="
 echo " PEGAR ESTO EN LA SALA (Claude web)"

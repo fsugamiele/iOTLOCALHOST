@@ -225,3 +225,45 @@ services:
     # logs wanomi-sim`.
     command: bash tools/device_simulator/supervisor.sh
 
+  # DEC-REF-134 — Supervisor de Calidad (5ta pata viva). Worker OUT-OF-BAND que
+  # observa db.data/notifications/rulepacks READ-ONLY y escribe SOLO sus propias
+  # colecciones (quality_findings/qa_runs). No le escribe al motor. Calca el patrón
+  # del edge: node:14 + NODE_PATH a app/node_modules + mount de ./app (modelos) y
+  # ./edge-engine (evaluadores reales, que la Capa A/backtest reusa). SIN emqx:
+  # el QA no habla MQTT, solo Mongo. SIN ports: su http es interno (solo red docker).
+  wanomi-qa:
+    container_name: wanomi-qa
+    image: "node:14"
+    restart: always
+
+    env_file:
+      - ./qa/.env.qa
+
+    environment:
+      # Igual que el edge: las libs (mongoose) viven en app/node_modules; el worker
+      # corre desde ./qa pero resuelve módulos hacia app/.
+      NODE_PATH: /home/qa/app/node_modules
+
+    working_dir: /home/qa/qa
+
+    volumes:
+      # ./app = modelos COMPARTIDOS (quality_finding/qa_run, fuente única) + node_modules.
+      # ./edge-engine = evaluadores reales para el backtest (Capa A, bloque 136).
+      # ./qa = código del supervisor.
+      - ./app/:/home/qa/app
+      - ./edge-engine/:/home/qa/edge-engine
+      - ./qa/:/home/qa/qa
+      - ./logs/:/home/qa/logs
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+    # pipefail (bash) propaga el exit del node por el pipe → restart:always dispara
+    # ante cualquier muerte del worker, no ante fallo aislado de tee. Log per-site
+    # también visible por `docker logs wanomi-qa`.
+    command: >
+      bash -c "set -o pipefail;
+      node /home/qa/qa/index.js 2>&1
+      | tee -a /home/qa/logs/qa-$${SITE_ID}.log"
+
