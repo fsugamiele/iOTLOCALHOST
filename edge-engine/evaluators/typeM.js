@@ -112,6 +112,23 @@ function evaluateStaleness(rule, { mState, dId, eventTs, tick }) {
 // ── M2 · multivariante instantáneo (lee siteState, sin buffer) ──────────
 const INSTANT_METRICS = ['ratio', 'divergence', 'spread'];
 
+// DEC-REF-125 (A6) — FRESCURA obligatoria. M2 lee el último valor de siteState;
+// sin control de antigüedad, una entrada congelada (p. ej. consumption_tank con
+// el grupo apagado) dispara falso (sifoneo con grupo off). Default 180 s (≈3×
+// cadencia ~60 s; el edge publica consumption_tank ~1/min), overridable por
+// `mParams.freshnessSec`. Espeja la hoja suma de typeCross (SUM_STALENESS_MS).
+const INSTANT_STALENESS_MS = 180 * 1000;
+function freshnessMs(rule) {
+  const s = rule.mParams && Number(rule.mParams.freshnessSec);
+  return s > 0 ? s * 1000 : INSTANT_STALENESS_MS;
+}
+function isFresh(st, variable, eventTs, staleMs) {
+  if (eventTs == null) return true;   // sin reloj de evento → no filtrar (defensivo)
+  const lu = st && st._lastUpdate && st._lastUpdate[variable];
+  if (!lu) return false;              // sin timestamp de llegada → no confiable
+  return (eventTs - lu) <= staleMs;
+}
+
 function median(vals) {
   const s = vals.slice().sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
@@ -119,19 +136,20 @@ function median(vals) {
 }
 // Valor actual de una {deviceType, variable} en el site: prioriza el device que
 // disparó (mismo equipo, caso ratio/divergence), si no el primero de su tipo.
-function readOne(siteState, siteCode, dId, input, fallbackDt) {
+function readOne(siteState, siteCode, dId, input, fallbackDt, eventTs, staleMs) {
   const dt = (input && input.deviceType) || fallbackDt;
   const variable = input && input.variable;
   const self = siteState.get(dId);
-  if (self && Number.isFinite(Number(self[variable]))) return Number(self[variable]);
+  if (self && Number.isFinite(Number(self[variable])) && isFresh(self, variable, eventTs, staleMs)) return Number(self[variable]);
   for (const [, st] of siteState) {
-    if (st && st._siteCode === siteCode && st._deviceType === dt && Number.isFinite(Number(st[variable]))) return Number(st[variable]);
+    if (st && st._siteCode === siteCode && st._deviceType === dt && Number.isFinite(Number(st[variable])) && isFresh(st, variable, eventTs, staleMs)) return Number(st[variable]);
   }
   return null;
 }
 
-function evaluateInstant(rule, { siteState, dId, siteCode }) {
+function evaluateInstant(rule, { siteState, dId, siteCode, eventTs }) {
   if (!siteState) return { fired: false, metricValue: null, detail: 'insufficient' };
+  const staleMs = freshnessMs(rule);   // DEC-REF-125 — ventana de frescura
   const inputs = (rule.inputs && rule.inputs.length) ? rule.inputs : [{ deviceType: rule.deviceType, variable: rule.variable }];
 
   if (rule.metric === 'spread') {
@@ -142,7 +160,7 @@ function evaluateInstant(rule, { siteState, dId, siteCode }) {
     for (const [id, st] of siteState) {
       if (st && st._siteCode === siteCode && st._deviceType === dt) {
         const n = Number(st[variable]);
-        if (Number.isFinite(n)) members.push({ dId: id, v: n });
+        if (Number.isFinite(n) && isFresh(st, variable, eventTs, staleMs)) members.push({ dId: id, v: n });
       }
     }
     if (members.length < 2) return { fired: false, metricValue: null, detail: 'insufficient' };
@@ -158,8 +176,8 @@ function evaluateInstant(rule, { siteState, dId, siteCode }) {
   }
 
   // ratio / divergence: dos entradas (típicamente dos variables del mismo equipo)
-  const a = readOne(siteState, siteCode, dId, inputs[0], rule.deviceType);
-  const b = readOne(siteState, siteCode, dId, inputs[1] || inputs[0], rule.deviceType);
+  const a = readOne(siteState, siteCode, dId, inputs[0], rule.deviceType, eventTs, staleMs);
+  const b = readOne(siteState, siteCode, dId, inputs[1] || inputs[0], rule.deviceType, eventTs, staleMs);
   if (a == null || b == null) return { fired: false, metricValue: null, detail: 'insufficient' };
   let metricValue;
   if (rule.metric === 'ratio') {
