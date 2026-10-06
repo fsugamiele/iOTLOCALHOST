@@ -19,6 +19,10 @@ const QualityFindingSchema = new Schema({
   ruleId:   { type: String, default: null },
   packId:   { type: String, default: null },
   dId:      { type: String, default: null },
+  // DEC-REF-139 — `variable` entra a la CLAVE de idempotencia: un finding por fuente
+  // (dId, variable) no colapsa con otro del mismo device (data-health). Para findings
+  // por-regla `ruleId` ya desambigua (una regla = una variable) → variable=null ahí.
+  variable: { type: String, default: null },
   siteCode: { type: String, default: null },
 
   // Números/serie inspeccionables que alimentan la ficha de hallazgo (histograma,
@@ -39,7 +43,7 @@ const QualityFindingSchema = new Schema({
 });
 
 // Clave de idempotencia + camino de lectura del inventario/ficha.
-QualityFindingSchema.index({ type: 1, ruleId: 1, dId: 1 });
+QualityFindingSchema.index({ type: 1, ruleId: 1, dId: 1, variable: 1 });
 QualityFindingSchema.index({ status: 1, lastSeen: -1 });
 
 module.exports = mongoose.model('QualityFinding', QualityFindingSchema);

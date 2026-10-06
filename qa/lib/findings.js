@@ -10,7 +10,7 @@ const QualityFinding = require('../../app/api/models/quality_finding');
 
 async function upsertFinding(f) {
   if (!f || !f.type || !f.severity || !f.layer) throw new Error('upsertFinding: faltan type/severity/layer');
-  const key = { type: f.type, ruleId: f.ruleId || null, dId: f.dId || null };
+  const key = { type: f.type, ruleId: f.ruleId || null, dId: f.dId || null, variable: f.variable || null };
   const now = f.lastSeen || new Date();
   return QualityFinding.findOneAndUpdate(key, {
     $set: {
