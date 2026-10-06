@@ -22,6 +22,10 @@ const OPERATOR_LABELS = {
 const ConditionSchema = new Schema({
   op:    { type: String, enum: OPERATORS, required: true },
   value: { type: Schema.Types.Mixed, required: true },
+  // DEC-REF-132 — histéresis/deadband (solo type D hoy): dispara en `value`, pero
+  // RESUELVE recién cuando cruza `value ± deadband` (zona pegajosa = anti-flap).
+  // Opcional; ausente = resuelve apenas la condición deja de cumplirse (como hoy).
+  deadband: { type: Number },
 }, { _id: false });
 
 const RuleDefinitionSchema = new Schema({

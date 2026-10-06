@@ -1,4 +1,4 @@
-const { evaluateD } = require('./evaluators/typeD');
+const { evaluateD, resolveClears } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
 const { evaluateS } = require('./evaluators/typeS');
 const { evaluateCross } = require('./evaluators/typeCross');
@@ -259,30 +259,36 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
         // Restricción a type 'D': para type 'C' la semántica no-ref/fallback
         // no equivale a "condición resuelta" — queda como pendiente (ver
         // DEC-REF-64.c: la ventana temporal cubre C hasta que se aclare).
-        // DEC-REF-102 D-2 — persistencia del resolve: con resolveGraceSec > 0
-        // la condición debe permanecer NO cumplida durante esa ventana antes
-        // de emitir el resolve; un valor que vuelve a cruzar el umbral dentro
-        // de la ventana cancela el cierre (rama triggered, arriba).
-        const resolveGraceMs = (rule.resolveGraceSec || 0) * 1000;
-        if (resolveGraceMs === 0) {
-          fireResolve({
-            rule, deviceId: dId, stateKey: key,
-            reason: 'threshold-cleared',
-            mode: 'resolve-by-condition',
-            cooldownState, siteState, activeState,
-          });
+        // DEC-REF-132 — histéresis/deadband: resolver SOLO si el valor cruzó el
+        // umbral de RESOLUCIÓN. En la zona pegajosa queda ACTIVA (anti-flap) y se
+        // cancela el grace pendiente (el valor volvió hacia el umbral de disparo).
+        if (!resolveClears(rule, value)) {
+          cooldownState.delete(`${key}:resolveStart`);
         } else {
-          const rsKey = `${key}:resolveStart`;
-          if (!cooldownState.has(rsKey)) {
-            cooldownState.set(rsKey, Date.now());
-          } else if (Date.now() - cooldownState.get(rsKey) >= resolveGraceMs) {
-            cooldownState.delete(rsKey);
+          // DEC-REF-102 D-2 — persistencia del resolve: con resolveGraceSec > 0 la
+          // condición (ya cruzada la banda) debe permanecer así durante la ventana;
+          // un valor que vuelve a cruzar el umbral dentro de la ventana cancela el cierre.
+          const resolveGraceMs = (rule.resolveGraceSec || 0) * 1000;
+          if (resolveGraceMs === 0) {
             fireResolve({
               rule, deviceId: dId, stateKey: key,
               reason: 'threshold-cleared',
               mode: 'resolve-by-condition',
               cooldownState, siteState, activeState,
             });
+          } else {
+            const rsKey = `${key}:resolveStart`;
+            if (!cooldownState.has(rsKey)) {
+              cooldownState.set(rsKey, Date.now());
+            } else if (Date.now() - cooldownState.get(rsKey) >= resolveGraceMs) {
+              cooldownState.delete(rsKey);
+              fireResolve({
+                rule, deviceId: dId, stateKey: key,
+                reason: 'threshold-cleared',
+                mode: 'resolve-by-condition',
+                cooldownState, siteState, activeState,
+              });
+            }
           }
         }
       } else if (evaluated && !triggered && rule.type === 'D') {

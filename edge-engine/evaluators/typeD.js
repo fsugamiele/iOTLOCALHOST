@@ -25,4 +25,23 @@ function evaluateD(rule, value) {
   return fn(value, condition.value);
 }
 
-module.exports = { evaluateD };
+// DEC-REF-132 — histéresis/deadband (type D). Se llama en la rama de RESOLVE (cuando
+// evaluateD ya dio false): decide si el valor cruzó el umbral de RESOLUCIÓN (más
+// holgado que el de disparo) o sigue en la zona pegajosa. Sin deadband → resuelve
+// como hoy. gt/gte: dispara en >V, resuelve bajo V−d. lt/lte: dispara en <V, resuelve
+// sobre V+d. eq/neq: sin banda.
+function resolveClears(rule, value) {
+  const c = rule.condition;
+  const d = c && Number(c.deadband);
+  if (!(d > 0)) return true;                       // sin banda → comportamiento actual
+  if (value === null || value === undefined) return true;  // sin dato → no quedar pegada
+  switch (c.op) {
+    case 'gt':
+    case 'gte': return value <= c.value - d;
+    case 'lt':
+    case 'lte': return value >= c.value + d;
+    default:    return true;                        // eq/neq: sin histéresis
+  }
+}
+
+module.exports = { evaluateD, resolveClears };
