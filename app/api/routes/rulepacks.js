@@ -25,6 +25,8 @@ const { buildReadFilter } = require("../middlewares/scope.js");
 const { validateRule, collectRuleRefs } = require("../services/ruleValidation.js");
 
 const RulePack = require("../models/rule_pack.js");
+// DEC-REF-137 — snapshot canónico ("de fábrica") por ruleId. require sin babel (module.exports).
+const RuleSnapshot = require("../models/rule_snapshot.js");
 import EquipmentSheet from "../models/equipment_sheet.js";
 
 // DEC-REF-127 (B8) — variables DERIVADAS que publica el edge (no están en la ficha
@@ -174,6 +176,43 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
       doc,
       { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
     );
+
+    // DEC-REF-137 — captura del snapshot canónico tras el write exitoso.
+    // Por cada regla del pack SIN snapshot aún, se guarda uno (capturedFrom:'put').
+    // Idempotente: el snapshot es la PRIMERA versión vista ("de fábrica"), NO se
+    // re-captura ni se sobrescribe. Fire-and-forget respecto del PUT: un fallo de
+    // captura NO revierte el write del pack (el pack ya quedó en Mongo).
+    // Se usa el shape persistido (result.rules, con defaults del schema aplicados).
+    try {
+      const persistedRules = Array.isArray(result?.rules) ? result.rules : [];
+      const persistedIds = persistedRules.map(r => r.ruleId);
+
+      // ruleId inmutable (soft): si un ruleId que TENÍA snapshot desaparece del
+      // pack entrante (rename/borrado), se loguea advertencia. NO bloquea — borrar
+      // una regla es legítimo; el historial del QA es por ruleId y un rename lo
+      // huérfana. Enforcement duro = futuro.
+      const priorSnaps = await RuleSnapshot.find({ packId }).select('ruleId').lean();
+      const presentIds = new Set(persistedIds);
+      for (const s of priorSnaps) {
+        if (!presentIds.has(s.ruleId)) {
+          console.warn(`[rulepacks] ruleId '${s.ruleId}' con snapshot DESAPARECIÓ del pack ${packId} (rename/borrado) — snapshot queda huérfano`);
+        }
+      }
+
+      // Captura idempotente: solo las reglas sin snapshot. upsert con $setOnInsert
+      // garantiza que NO se sobrescribe un snapshot existente aunque haya carrera.
+      for (const rule of persistedRules) {
+        const def = typeof rule.toObject === 'function' ? rule.toObject() : rule;
+        await RuleSnapshot.updateOne(
+          { ruleId: rule.ruleId },
+          { $setOnInsert: { ruleId: rule.ruleId, packId, definition: def, capturedFrom: 'put', capturedAt: new Date() } },
+          { upsert: true }
+        );
+      }
+    } catch (snapErr) {
+      console.error(`[rulepacks] Captura de snapshot FALLÓ (PUT ${packId}): ${snapErr.message}`);
+    }
+
     publishReload(`PUT ${packId}`);
     return res.json({
       status: "success",
@@ -279,6 +318,47 @@ router.patch("/rulepacks/:packId/rules/:ruleId/enabled", checkAuth, async (req, 
     console.log("ERROR PATCH RULE ENABLED");
     console.log(error);
     return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+// POST /rulepacks/:packId/rules/:ruleId/revert — DEC-REF-137.
+// Reescribe la definición de la regla desde el snapshot canónico ("de fábrica")
+// por el MISMO camino productivo que el editor: findOneAndUpdate del subdoc por
+// rules.$, $inc version, publishReload → el edge recarga (SF-3).
+// 404 si no hay snapshot (nada que revertir) o si no existe el pack/regla.
+router.post("/rulepacks/:packId/rules/:ruleId/revert", checkAuth, async (req, res) => {
+  try {
+    if (!isSuperadmin(req)) {
+      return res.status(403).json({ status: "error", error: "forbidden: superadmin required" });
+    }
+    const { packId, ruleId } = req.params;
+
+    const snap = await RuleSnapshot.findOne({ ruleId }).lean();
+    if (!snap || !snap.definition) {
+      return res.status(404).json({ status: "error", error: "no hay snapshot para esta regla" });
+    }
+
+    // La definición canónica se reescribe tal cual se capturó, preservando el
+    // ruleId (identidad inmutable). findOneAndUpdate del subdoc posicional es el
+    // mismo camino que usa el PATCH quirúrgico (rules.$).
+    const definition = { ...snap.definition, ruleId };
+    const result = await RulePack.findOneAndUpdate(
+      { packId, 'rules.ruleId': ruleId },
+      { $set: { 'rules.$': definition }, $inc: { version: 1 } },
+      { new: true, runValidators: true }
+    );
+    if (!result) {
+      return res.status(404).json({ status: "error", error: "rulepack o regla no encontrada" });
+    }
+    publishReload(`REVERT ${packId}/${ruleId}`);
+
+    const reverted = (result.rules || []).find(r => r.ruleId === ruleId);
+    return res.json({ status: "success", packId, ruleId, rule: reverted });
+  } catch (error) {
+    console.log("ERROR REVERT RULE");
+    console.log(error);
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    return res.status(status).json({ status: "error", error: error.message || error });
   }
 });
 
