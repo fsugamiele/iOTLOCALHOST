@@ -91,6 +91,19 @@
         >
         </sidebar-item>
 
+        <!-- DEC-REF-141 — Supervisor de Calidad (solo superadmin). Mismo
+             patrón de visibilidad por rol; la página /admin/calidad hace
+             además el re-chequeo /me server-side (DEC-REF-62.a). -->
+        <sidebar-item
+          v-if="isSuperadmin"
+          :link="{
+            name: 'Calidad del motor',
+            icon: 'tim-icons icon-chart-bar-32',
+            path: '/admin/calidad'
+          }"
+        >
+        </sidebar-item>
+
         <!-- DEC-REF-70 (a) · #50 — Simulador solo-superadmin, mismo
              patrón que Reglas de monitoreo. BACKLOG-UI-10 registra el
              rediseño como consola de demo (diseño en sesión dedicada;
