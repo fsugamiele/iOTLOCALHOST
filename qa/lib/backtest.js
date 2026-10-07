@@ -82,9 +82,20 @@ function histogram(arr, st, bins = 20) {
 // Umbral para la línea del chart (141): el value de la condición según el tipo.
 function thresholdOf(rule) {
   if (rule == null) return null;
-  if (rule.value != null) return rule.value;
-  if (rule.params && rule.params.value != null) return rule.params.value;
-  if (rule.type === 'S' && rule.sParams && rule.sParams.value != null) return rule.sParams.value;
+  // El umbral vive en condition.value (schema RuleDefinition). Para S el matchCondition
+  // puede traerlo en window.matchCondition.value. Debe ser numérico para graficarlo.
+  const c = rule.condition;
+  if (c && typeof c.value === 'number') return c.value;
+  const mc = rule.window && rule.window.matchCondition;
+  if (mc && typeof mc.value === 'number') return mc.value;
+  return null;
+}
+// Operador de la condición (gt/gte/lt/lte/eq/neq) → el chart pinta la zona de alarma
+// del lado correcto. cross/M (sin condition simple) → null.
+function opOf(rule) {
+  if (rule && rule.condition && rule.condition.op) return rule.condition.op;
+  const mc = rule && rule.window && rule.window.matchCondition;
+  if (mc && mc.op) return mc.op;
   return null;
 }
 
@@ -109,7 +120,7 @@ async function backtest({ packId, days = 7, ruleId = null } = {}) {
   const rulesOut = [];
   for (const rule of (pack.rules || [])) {
     if (ONLY && rule.ruleId !== ONLY) continue;
-    const base = { ruleId: rule.ruleId, type: rule.type, threshold: thresholdOf(rule) };
+    const base = { ruleId: rule.ruleId, type: rule.type, threshold: thresholdOf(rule), op: opOf(rule) };
     const { vars, dts } = neededVars(rule);
     // Caso raro #2: regla sin variable / sin datos → entrada con 'sin evaluaciones'.
     if (!vars.length) {
