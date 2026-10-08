@@ -16,6 +16,26 @@
       </div>
     </div>
 
+    <!-- ¿Para qué sirve? Tarjeta de contexto en lenguaje de negocio (sin
+         tecnicismos). El supervisor es independiente del motor y lo ve solo
+         el equipo Wanomi, no el operador del NOC. -->
+    <div class="row">
+      <div class="col-12">
+        <card class="qa-intro">
+          <p class="mb-2">
+            El Supervisor de Calidad revisa que las alarmas <b>no mientan</b>: que no
+            se repitan de más, que no se queden mudas y que no se cierren con el
+            equipo equivocado.
+          </p>
+          <p class="mb-0 text-muted">
+            Trabaja <b>por su cuenta</b>, independiente del motor de reglas, para no
+            heredar sus errores. Es una herramienta interna del equipo Wanomi: el
+            operador del NOC no la ve.
+          </p>
+        </card>
+      </div>
+    </div>
+
     <!-- Estado de carga / sin-datos global -->
     <div class="row" v-if="!ready">
       <div class="col-12">
@@ -110,7 +130,7 @@
           <BacktestInline
             :pack-id="backtestPackId"
             :rule-id="backtestRuleId"
-            :initial-days="30"
+            :initial-days="7"
           />
         </div>
       </div>
@@ -295,8 +315,32 @@ export default {
       return (e.response && e.response.data && e.response.data.error) || fallback;
     },
 
+    // Etiqueta llana del tipo de hallazgo (nada de I1/MUERTA crudos a la vista).
+    findingTypeLabel(type) {
+      const map = {
+        I1: 'Se cierra el equipo equivocado',
+        I2: 'Alarma repetida (grita de más)',
+        I3: 'Alarma que parpadea',
+        I4: 'Cierre sin alarma abierta',
+        I5: 'Alarma colgada (zombie)',
+        I6: 'El valor no coincide con la medición',
+        I7: 'Cálculo desviado',
+        I8: 'Valor físicamente imposible',
+        I13: 'La regla cambió vs la original',
+        MUERTA: 'Nunca puede dispararse',
+        PERMANENTE: 'Encendida casi siempre',
+        RUIDOSA: 'Ruidosa (dispara de más)',
+        INGESTA: 'Un dato dejó de llegar',
+      };
+      return map[type] || type;
+    },
+    // Opción del selector en lenguaje llano: <etiqueta> · <nombre lindo> (<equipo>).
+    // El "nombre lindo" sale del inventario (label); si no está, el ruleId.
     findingOptionLabel(f) {
-      return `${f.type} · ${f.ruleId || f.packId || 's/regla'} (${f.dId || 'pack'})`;
+      const inv = this.inventory.find(r => r.ruleId === f.ruleId);
+      const nombre = (inv && inv.label) || f.ruleId || f.packId || 's/regla';
+      const equipo = f.dId || 'pack';
+      return `${this.findingTypeLabel(f.type)} · ${nombre} (${equipo})`;
     },
 
     // ── Acciones del inventario (interruptor, DEC-REF-121) ───────────────
@@ -423,6 +467,9 @@ export default {
 .qa-pill.green { color: #00bf9a; }
 
 .qa-finding-nav { margin-bottom: 10px; display: flex; align-items: center; }
+
+.qa-intro { border-left: 4px solid #00bf9a; }
+.qa-intro p { font-size: 14px; line-height: 1.55; }
 
 .qa-panel {
   border: 1px solid rgba(255, 255, 255, 0.1);

@@ -37,15 +37,14 @@
             </td>
             <td></td>
             <td class="qa-sw">
-              <label class="qa-switch" :title="packToggling[group.packId] ? 'Cambiando…' : 'Interruptor del pack completo'">
-                <input
-                  type="checkbox"
-                  :checked="group.enabled"
-                  :disabled="!!packToggling[group.packId]"
-                  @change="onTogglePack(group.packId, $event.target.checked)"
-                >
-                <span class="qa-sl"></span>
-              </label>
+              <base-switch
+                :value="group.enabled"
+                type="primary"
+                on-text="On"
+                off-text="Off"
+                :title="packToggling[group.packId] ? 'Cambiando…' : 'Interruptor del pack completo'"
+                @input="val => onTogglePack(group.packId, val)"
+              ></base-switch>
             </td>
           </tr>
           <!-- Filas de reglas del pack -->
@@ -66,15 +65,14 @@
             <td class="qa-num">{{ formatNumber(row.fires30d) }}</td>
             <td>{{ relativeTime(row.lastFire) }}</td>
             <td class="qa-sw">
-              <label class="qa-switch" :title="ruleKey(row) in ruleToggling ? 'Cambiando…' : 'Interruptor de la regla'">
-                <input
-                  type="checkbox"
-                  :checked="row.enabled"
-                  :disabled="ruleKey(row) in ruleToggling"
-                  @change="onToggleRule(row, $event.target.checked)"
-                >
-                <span class="qa-sl"></span>
-              </label>
+              <base-switch
+                :value="row.enabled"
+                type="primary"
+                on-text="On"
+                off-text="Off"
+                :title="ruleKey(row) in ruleToggling ? 'Cambiando…' : 'Interruptor de la regla'"
+                @input="val => onToggleRule(row, val)"
+              ></base-switch>
             </td>
           </tr>
         </template>
@@ -84,8 +82,11 @@
 </template>
 
 <script>
+import BaseSwitch from '@/components/BaseSwitch.vue';
+
 export default {
   name: 'QaInventarioReglas',
+  components: { BaseSwitch },
   props: {
     // inventory = data de GET /api/qa/inventory: [{ruleId,packId,label,
     // deviceType,enabled,fires30d,lastFire,badge:{key,emoji,label},findingIds}]
@@ -159,6 +160,7 @@ export default {
     // vuelve a reflejar el estado real (no queda inconsistente).
     onToggleRule(row, enabled) {
       const key = this.ruleKey(row);
+      if (key in this.ruleToggling) return;  // ya hay un PATCH en vuelo (anti doble-disparo)
       this.$set(this.ruleToggling, key, true);
       this.$emit('toggle-rule', {
         packId: row.packId,
@@ -168,6 +170,7 @@ export default {
       });
     },
     onTogglePack(packId, enabled) {
+      if (packId in this.packToggling) return;  // PATCH del pack ya en vuelo
       this.$set(this.packToggling, packId, true);
       this.$emit('toggle-pack', {
         packId,

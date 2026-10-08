@@ -55,36 +55,13 @@
           <!-- Histograma de la distribución (si la regla tiene variable numérica). -->
           <div v-if="r.distribution && r.distribution.histogram && r.distribution.histogram.length" class="qa-hist-wrap">
             <div class="qa-chart-cap">
-              Distribución de <code>{{ r.distribution.var }}</code> ({{ days }} d) · la zona roja es "en alarma"
+              <b>Distribución de {{ r.distribution.var }}.</b> Cada barra = cuántas lecturas cayeron en ese rango;
+              la zona roja es cuando la alarma suena.
             </div>
-            <svg viewBox="0 0 300 120" width="100%" height="120" class="qa-hist">
-              <!-- barras -->
-              <g>
-                <rect
-                  v-for="(b, i) in histBars(r)"
-                  :key="i"
-                  :x="b.x" :y="b.y" :width="b.w" :height="b.h"
-                  :fill="b.inAlarm ? 'rgba(236,37,13,0.65)' : '#00bf9a'"
-                />
-              </g>
-              <!-- línea de umbral -->
-              <template v-if="thresholdLine(r)">
-                <line
-                  :x1="thresholdLine(r).x" y1="4" :x2="thresholdLine(r).x" y2="100"
-                  stroke="#ec250d" stroke-width="2" stroke-dasharray="4 3"
-                />
-                <text :x="thresholdLine(r).x - 2" y="14" text-anchor="end" font-size="10" fill="#ec250d" font-family="JetBrains Mono">
-                  umbral {{ r.threshold }}
-                </text>
-              </template>
-              <!-- rótulos de eje -->
-              <text x="4" y="115" font-size="9" fill="#9a9a9a" font-family="JetBrains Mono">
-                {{ fmtAxis(r.distribution.min) }}
-              </text>
-              <text x="296" y="115" text-anchor="end" font-size="9" fill="#9a9a9a" font-family="JetBrains Mono">
-                {{ fmtAxis(r.distribution.max) }}
-              </text>
-            </svg>
+            <QaHistChart
+              :histogram="r.distribution.histogram" :min="r.distribution.min" :max="r.distribution.max"
+              :threshold="r.threshold" :op="r.op" :variable="r.distribution.var"
+            />
           </div>
           <div v-else class="qa-chart-cap qa-noserie">
             Sin serie numérica superponible para esta regla (cross/M o sin datos).
@@ -100,8 +77,11 @@
 </template>
 
 <script>
+import QaHistChart from './QaHistChart.vue';
+
 export default {
   name: 'QaBacktestInline',
+  components: { QaHistChart },
   props: {
     packId: { type: String, default: '' },
     ruleId: { type: String, default: null },  // null = backtest de todo el pack
@@ -164,6 +144,12 @@ export default {
       if (v == null) return '';
       return Number(v).toFixed(1);
     },
+    // Conteo máximo de un bin (referencia del eje Y del histograma).
+    maxCount(r) {
+      const bins = (r.distribution && r.distribution.histogram) || [];
+      if (!bins.length) return '0';
+      return Number(Math.max(...bins.map(b => b.count), 0)).toLocaleString('es-AR');
+    },
     // Barras del histograma escaladas al viewBox 300x100. inAlarm = el bin cae
     // del lado "en condición" respecto del umbral (se marca rojo como el mockup).
     histBars(r) {
@@ -173,6 +159,7 @@ export default {
       const W = 300, H = 100, gap = 2;
       const bw = W / bins.length;
       const th = r.threshold;
+      const op = r.op || null;
       return bins.map((b, i) => {
         const h = Math.round((b.count / maxCount) * H);
         return {
@@ -180,17 +167,29 @@ export default {
           y: +(H - h).toFixed(1),
           w: +(bw - gap).toFixed(1),
           h,
-          inAlarm: this.binInAlarm(b, th),
+          inAlarm: this.binInAlarm(b, th, op),
         };
       });
     },
-    // Heurística de "lado en alarma": sin saber el operador exacto, se marca el
-    // bin como en-alarma si cruza/supera el umbral. Es señalización visual del
-    // chart (como el mockup); el veredicto duro lo da el worker.
-    binInAlarm(bin, threshold) {
-      if (threshold == null) return false;
-      // Se considera en alarma el tramo >= umbral (lado derecho del dashed line).
-      return bin.to >= threshold;
+    // Lado "en alarma" según el OPERADOR real de la regla (lo devuelve el
+    // worker en r.op). Si el umbral cae fuera de [min,max], el lado que
+    // corresponde pinta TODO el rango (todas o ninguna barra), de modo que la
+    // zona roja nunca "desaparece" sin explicación. op null (cross/M) → sin zona.
+    binInAlarm(bin, threshold, op) {
+      if (threshold == null || op == null) return false;
+      switch (op) {
+        case 'gt':
+        case 'gte':
+          return bin.to > threshold;
+        case 'lt':
+        case 'lte':
+          return bin.from < threshold;
+        case 'eq':
+        case 'neq':
+          return bin.from <= threshold && bin.to >= threshold;
+        default:
+          return false;
+      }
     },
     // Posición X de la línea de umbral dentro del viewBox, interpolada entre
     // min y max de la distribución. Null si no hay umbral o rango nulo.

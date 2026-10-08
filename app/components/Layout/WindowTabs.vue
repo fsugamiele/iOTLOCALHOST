@@ -38,6 +38,7 @@ const ROUTE_TABS = [
   { match: /^\/fichas/,            icon: 'tim-icons icon-paper',         title: () => 'Fichas de equipo' },
   { match: /^\/rulepacks$/,        icon: 'tim-icons icon-book-bookmark', title: () => 'Reglas de monitoreo' },
   { match: /^\/rulepacks\/([^/]+)$/, icon: 'tim-icons icon-book-bookmark', title: (m) => 'Regla ' + m[1] },
+  { match: /^\/admin\/calidad/,    icon: 'tim-icons icon-chart-bar-32',  title: () => 'Calidad del motor' },
   { match: /^\/admin/,             icon: 'tim-icons icon-badge',         title: () => 'Administración' },
   { match: /^\/demo\/simulator/,   icon: 'tim-icons icon-settings',      title: () => 'Simulador' },
 ];
