@@ -126,7 +126,7 @@ async function run() {
         cadenciaMs: f.cadenciaMs, // mediana de inter-arribos en la ventana
         gapMs: f.gapMs,           // cuánto hace que no llega (now - lastSeen)
       },
-      suggestedAction: `La fuente ${f.dId}/${f.variable} dejó de reportar (gap ${Math.round(f.gapMs / 60000)} min, cadencia ~${Math.round(f.cadenciaMs / 1000)} s). Verificar conectividad del device o la publicación de la variable.`,
+      suggestedAction: `Este dato dejó de llegar hace ${Math.round(f.gapMs / 60000)} min (normalmente llega cada ~${Math.round(f.cadenciaMs / 1000)} s). Revisar la conexión del equipo o si dejó de publicar esa medición.`,
     });
     findingsWritten += 1;
   }

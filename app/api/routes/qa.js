@@ -368,10 +368,11 @@ router.get("/qa/rule/:ruleId/timeline", checkAuth, async (req, res) => {
       value: e.value,
     }));
 
-    // Telemetría: serie de la variable observada de la regla. Las reglas type 'cross'/'M'
-    // no tienen una única variable simple superponible → telemetry:[] (solo eventos).
+    // Telemetría: serie de la variable observada de la regla. También para cross/M si la
+    // regla declara una variable primaria (p.ej. una hoja del cross, como battery_voltage)
+    // → da una serie útil para superponer. Sin variable declarada → telemetry:[] (solo eventos).
     let telemetry = [];
-    const variable = (rule.type === 'cross' || rule.type === 'M') ? null : rule.variable;
+    const variable = rule.variable || null;
     if (variable) {
       const dataFilter = { variable, time: { $gte: desde } };
       if (dId) dataFilter.dId = dId;
