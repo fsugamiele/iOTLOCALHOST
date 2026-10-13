@@ -25,6 +25,7 @@
           <th class="qa-r">Disparos (30 d)</th>
           <th>Último</th>
           <th>En circulación</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -46,12 +47,17 @@
                 @input="val => onTogglePack(group.packId, val)"
               ></base-switch>
             </td>
+            <td></td>
           </tr>
-          <!-- Filas de reglas del pack -->
+          <!-- Filas de reglas del pack: toda la fila navega al detalle
+               (DEC-REF-144 §5); el interruptor NO dispara la navegación
+               (@click.stop en su celda). -->
           <tr
             v-for="row in group.rules"
             :key="group.packId + '-' + row.ruleId"
+            class="qa-row"
             :class="{ 'qa-off': !row.enabled }"
+            @click="goToDetail(row)"
           >
             <td class="qa-rl">
               {{ row.label }}
@@ -64,7 +70,7 @@
             </td>
             <td class="qa-num">{{ formatNumber(row.fires30d) }}</td>
             <td>{{ relativeTime(row.lastFire) }}</td>
-            <td class="qa-sw">
+            <td class="qa-sw" @click.stop>
               <base-switch
                 :value="row.enabled"
                 type="primary"
@@ -74,6 +80,7 @@
                 @input="val => onToggleRule(row, val)"
               ></base-switch>
             </td>
+            <td class="qa-go" title="Ver detalle">→</td>
           </tr>
         </template>
       </tbody>
@@ -178,6 +185,13 @@ export default {
         done: () => this.$delete(this.packToggling, packId),
       });
     },
+    // Navega al detalle de la regla (DEC-REF-144 §5). El clic en la celda del
+    // interruptor no llega acá (@click.stop en su <td>), así que togglear no
+    // dispara la navegación (caso raro §6.4).
+    goToDetail(row) {
+      if (!row || !row.ruleId) return;
+      this.$router.push(`/admin/calidad/${encodeURIComponent(row.ruleId)}`);
+    },
   },
 };
 </script>
@@ -228,6 +242,15 @@ export default {
   vertical-align: middle;
 }
 .qa-table tr:last-child td { border-bottom: 0; }
+/* DEC-REF-144 — fila de regla navegable al detalle */
+.qa-row { cursor: pointer; }
+.qa-row:hover td { background: rgba(0, 191, 154, 0.07); }
+.qa-go {
+  text-align: right;
+  color: #00bf9a;
+  font-weight: 700;
+  width: 28px;
+}
 .qa-pack td {
   background: rgba(0, 191, 154, 0.08);
   font-weight: 600;
@@ -288,4 +311,5 @@ export default {
 .white-content .qa-table th { border-color: rgba(0, 0, 0, 0.08); color: #55706b; opacity: 1; }
 .white-content .qa-table td { border-color: rgba(0, 0, 0, 0.06); }
 .white-content .qa-rl small { color: #55706b; opacity: 1; }
+.white-content .qa-row:hover td { background: rgba(0, 134, 111, 0.07); }
 </style>

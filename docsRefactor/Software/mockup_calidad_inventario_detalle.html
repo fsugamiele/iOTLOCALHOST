@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wanomi · Calidad del motor — inventario + detalle de regla</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+ --paper:#0D1917;--card:#13221F;--card2:#16302a;--ink:#E2EEEA;--muted:#93AAA4;--rule:#26403A;
+ --teal:#00bf9a;--brand:#00F2C3;--crit:#F0727A;--warn:#E7AE4A;--info:#7FB0EC;--ok:#56C98D;--purple:#c79cf0;
+ --chip:#102420;--shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.25);
+}
+:root[data-theme="light"]{--paper:#F6FAF9;--card:#fff;--card2:#F0F7F5;--ink:#12302C;--muted:#55706B;--rule:#D3E1DD;--teal:#00866F;--crit:#B4232C;--warn:#A86A00;--info:#2B64A6;--ok:#1F8A5B;--purple:#8b46c0;--chip:#EEF6F4;--shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.05)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Barlow",system-ui,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+code,.mono{font-family:"JetBrains Mono",monospace}
+header.top{background:var(--card);border-bottom:4px solid var(--brand)}
+header.top .wrap{padding:20px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+header.top h1{font-weight:700;font-size:clamp(20px,2.6vw,28px);margin:0}
+header.top .site{font:600 12.5px/1 "JetBrains Mono";color:var(--teal)}
+header.top p{margin:6px 0 0;color:var(--muted);max-width:66ch;font-size:13.5px}
+.tbtn{font:inherit;font-size:13px;border:1px solid var(--rule);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer}
+section{padding:24px 0}
+h2{font-size:20px;font-weight:700;margin:0 0 3px}
+.lead{color:var(--muted);margin:0 0 16px;font-size:13.5px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.mpill{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:8px 13px;font-size:12.5px;color:var(--muted)}
+.mpill b{color:var(--ink);font-size:16px;font-weight:700;display:block}
+
+/* ---- INVENTARIO (tabla, se mantiene) ---- */
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font:600 11px/1.2 "Barlow";text-transform:uppercase;letter-spacing:.04em;text-align:left;color:var(--muted);padding:10px 14px;border-bottom:1px solid var(--rule)}
+td{padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:middle}
+tr.pack td{background:var(--chip);font-weight:600;font-size:12.5px}
+tr.rule{cursor:pointer}
+tr.rule:hover td{background:color-mix(in srgb,var(--teal) 7%,transparent)}
+tr:last-child td{border-bottom:0}
+.rl{font-weight:600}
+.rl small{display:block;font-weight:400;color:var(--muted);font-family:"JetBrains Mono";font-size:10.5px}
+.num{font-variant-numeric:tabular-nums;text-align:right;font-family:"JetBrains Mono";font-size:12.5px}
+.badge{font:600 11px/1 "Barlow";padding:3px 9px;border-radius:999px;display:inline-flex;gap:5px;white-space:nowrap}
+.b-ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.b-noisy{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.b-real{background:color-mix(in srgb,var(--purple) 18%,transparent);color:var(--purple)}
+.b-dead{background:color-mix(in srgb,var(--crit) 15%,transparent);color:var(--crit)}
+.b-nodata{background:color-mix(in srgb,var(--info) 15%,transparent);color:var(--info)}
+.b-cross{background:color-mix(in srgb,var(--crit) 15%,transparent);color:var(--crit)}
+.go{color:var(--teal);font-weight:700;text-align:right}
+.sw{width:42px;height:22px;border-radius:999px;background:var(--teal);position:relative;display:inline-block}
+.sw::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:3px;right:3px}
+.sw.off{background:var(--rule)}.sw.off::after{left:3px;right:auto}
+
+/* ---- DETALLE DE REGLA ---- */
+.crumbs{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.crumbs a{color:var(--teal);text-decoration:none}
+.det-h{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:4px}
+.det-h h3{font-size:22px;margin:0}
+.det-sub{color:var(--muted);font-size:13px;font-family:"JetBrains Mono";margin-bottom:18px}
+.sec{background:var(--card);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.sec.real{border-left:4px solid var(--purple)}
+.sec__h{padding:12px 16px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sec__h b{font-size:15px}
+.sec__h .meta-small{font-size:11.5px;color:var(--muted);font-family:"JetBrains Mono"}
+.sec__b{padding:14px 16px}
+.oracion{font:600 17px/1.35 "Barlow";margin:0 0 12px}
+.oracion .num{color:var(--teal)}
+.block{background:var(--card2);border-radius:10px;padding:11px 13px;margin:8px 0;font-size:13.5px}
+.block .t{font:600 11px/1 "Barlow";text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px}
+.block.cons-bad{border:1px solid color-mix(in srgb,var(--crit) 35%,transparent)}.cons-bad .t{color:var(--crit)}
+.block.fore{border:1px solid color-mix(in srgb,var(--info) 30%,transparent)}.fore .t{color:var(--info)}
+.meta-small{font-size:11.5px;color:var(--muted);font-family:"JetBrains Mono"}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chart-cap{font-size:12px;color:var(--muted);margin:0 0 6px}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.btn{font:inherit;font-size:13px;font-weight:600;border-radius:8px;padding:8px 14px;cursor:pointer;border:1px solid var(--rule);background:transparent;color:var(--ink)}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#042019}
+.btn.ghost{color:var(--muted);border-color:transparent}
+.acts .spacer{flex:1}
+.derive{font-size:12px;color:var(--muted);text-decoration:underline dotted;cursor:help}
+.kv{display:flex;gap:10px;font-size:13px;margin:5px 0}.kv b{min-width:150px;color:var(--muted);font-weight:500}
+.fore-reco{margin-top:8px;font-size:13.5px}.fore-reco b{color:var(--info)}
+.divider{text-align:center;color:var(--muted);font-size:12px;margin:10px 0 18px;letter-spacing:.1em;text-transform:uppercase}
+footer{border-top:1px solid var(--rule);color:var(--muted);font-size:12.5px;padding:18px 0 46px;text-align:center}
+@media(max-width:720px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+ <div>
+  <span class="site">● Sitio NEA-042 · Shelter</span>
+  <h1>Calidad del motor</h1>
+  <p>Cada regla del sitio, con su estado de calidad. Entrá a una regla para ver su detalle completo: calidad, comportamiento y pronóstico. El motor recomienda; vos decidís.</p>
+ </div>
+ <button class="tbtn" onclick="var r=document.documentElement;r.dataset.theme=r.dataset.theme==='light'?'':'light'">◐ Tema</button>
+</div></header>
+
+<!-- ======================= PANTALLA 1 · INVENTARIO ======================= -->
+<section><div class="wrap">
+ <h2>Inventario de reglas</h2>
+ <p class="lead">La vista principal. Toda regla con su badge de calidad; clic en una fila para abrir su detalle.</p>
+
+ <div class="meta">
+  <div class="mpill">Confianza del motor <b>86%</b>aceptación de sus avisos</div>
+  <div class="mpill">Cobertura <b>94%</b>reglas auditadas</div>
+  <div class="mpill">Para revisar <b>4</b>ordenadas por impacto</div>
+  <div class="mpill">Sin datos <b>1</b>no inventa</div>
+ </div>
+
+ <div class="panel">
+  <table>
+   <thead><tr><th>Regla</th><th>Equipo / Dato</th><th>Estado de calidad</th><th style="text-align:right">Disparos 30 d</th><th>Último</th><th>En circulación</th><th></th></tr></thead>
+   <tbody>
+    <tr class="pack"><td colspan="7">📦 Grupo electrógeno — Cummins PowerCommand</td></tr>
+    <tr class="rule"><td class="rl">Autonomía baja<small>cat-CB-03</small></td><td>Grupo · autonomía</td><td><span class="badge b-real">🟣 problema real</span></td><td class="num">11</td><td>hace 2 h</td><td><span class="sw"></span></td><td class="go">→</td></tr>
+    <tr class="rule"><td class="rl">Sobretemperatura de motor<small>cat-GE-04</small></td><td>Grupo · coolant_temp</td><td><span class="badge b-ok">🟢 sana</span></td><td class="num">0</td><td>—</td><td><span class="sw"></span></td><td class="go">→</td></tr>
+    <tr class="rule"><td class="rl">No arranca<small>cat-AR-02</small></td><td>Grupo · fault_code</td><td><span class="badge b-nodata">◍ sin datos</span></td><td class="num">—</td><td>—</td><td><span class="sw"></span></td><td class="go">→</td></tr>
+    <tr class="pack"><td colspan="7">📦 Planta DC — Eltek Smartpack</td></tr>
+    <tr class="rule"><td class="rl">Tensión de rectificador baja<small>cat-eltek-A2</small></td><td>Rectificador · dc_bus</td><td><span class="badge b-noisy">🟡 suena de más</span></td><td class="num">14</td><td>hace 12 min</td><td><span class="sw"></span></td><td class="go">→</td></tr>
+    <tr class="rule"><td class="rl">Descarga que se acelera<small>eltek-accel</small></td><td>Rectificador · dc_bus</td><td><span class="badge b-ok">🟢 sana</span></td><td class="num">3</td><td>ayer</td><td><span class="sw"></span></td><td class="go">→</td></tr>
+    <tr class="rule"><td class="rl">Cierre cruzado detectado<small>cat-DC-05</small></td><td>Rectificador · dc_bus</td><td><span class="badge b-cross">🔴 cierra equipo equivocado</span></td><td class="num">8</td><td>hace 3 h</td><td><span class="sw off"></span></td><td class="go">→</td></tr>
+    <tr class="rule"><td class="rl">Tensión de planta alta<small>cat-DC-06</small></td><td>Rectificador · dc_bus</td><td><span class="badge b-dead">⚫ nunca dispara</span></td><td class="num">0</td><td>—</td><td><span class="sw"></span></td><td class="go">→</td></tr>
+   </tbody>
+  </table>
+ </div>
+</div></section>
+
+<div class="divider">— al hacer clic en “Autonomía baja” —</div>
+
+<!-- ======================= PANTALLA 2 · DETALLE DE REGLA ======================= -->
+<section style="padding-top:0"><div class="wrap">
+ <div class="crumbs"><a href="#">Inventario</a> › Autonomía baja</div>
+ <div class="det-h">
+  <h3>Autonomía baja</h3>
+  <span class="badge b-real">🟣 problema real, no ruido</span>
+  <span class="badge b-ok" style="background:transparent;border:1px solid var(--rule);color:var(--muted)">en circulación ✓</span>
+ </div>
+ <div class="det-sub">cat-CB-03 · Grupo electrógeno Cummins · Sitio NEA-042 · dato observado: autonomía (horas)</div>
+
+ <!-- 1 · ESTADO DE CALIDAD -->
+ <div class="sec real">
+  <div class="sec__h"><b>Estado de calidad</b><span class="meta-small">evaluado hace 10 min · confianza alta (n=11)</span></div>
+  <div class="sec__b">
+   <div class="oracion">Suena seguido (<span class="num">11 veces</span> en 7 días) — pero <b>no es ruido para calibrar</b>: cada vez que sonó, el sitio tuvo una consecuencia real.</div>
+
+   <div class="block cons-bad">
+    <div class="t">⚠ Consecuencia aguas abajo — SÍ, real</div>
+    <div>Cada vez que esta alarma sonó, la <b>carga de batería cayó de −54 a −49 V</b> en los minutos siguientes. No es un falso positivo: refleja un problema físico recurrente.</div>
+    <div class="meta-small" style="margin-top:6px">cadena declarada: grupo → rectificador → batería</div>
+   </div>
+   <div class="block">
+    <div class="t">Por eso el motor NO recomienda calibrar</div>
+    <div>Subir el umbral para que se calle cegaría la cadena de energía. Esto se resuelve en el equipo, no en el umbral.</div>
+   </div>
+
+   <div class="acts">
+    <button class="btn primary">Escalar a operaciones</button>
+    <button class="btn ghost">Marcar como conocido</button>
+    <span class="spacer"></span>
+    <span class="derive" title="Mostrar los 11 episodios + la caída de batería">ver cómo lo calculé</span>
+    <button class="btn ghost">Ignorar (con motivo)</button>
+   </div>
+  </div>
+ </div>
+
+ <!-- 2 · COMPORTAMIENTO (gráficos) -->
+ <div class="sec">
+  <div class="sec__h"><b>Comportamiento</b><span class="meta-small">últimos 7 días</span></div>
+  <div class="sec__b">
+   <div class="grid2">
+    <div>
+     <div class="chart-cap"><b>Distribución de la autonomía.</b> La zona roja es cuando la alarma suena (&lt; 2 h).</div>
+     <svg width="100%" height="140" viewBox="0 0 320 140">
+      <rect x="0" y="0" width="86" height="118" fill="color-mix(in srgb,var(--crit) 10%,transparent)"/>
+      <g fill="var(--teal)">
+       <rect x="8" y="70" width="18" height="48"/><rect x="30" y="52" width="18" height="66"/><rect x="52" y="40" width="18" height="78"/><rect x="74" y="58" width="18" height="60"/><rect x="96" y="44" width="18" height="74"/><rect x="118" y="30" width="18" height="88"/><rect x="140" y="38" width="18" height="80"/><rect x="162" y="56" width="18" height="62"/><rect x="184" y="72" width="18" height="46"/><rect x="206" y="84" width="18" height="34"/><rect x="228" y="92" width="18" height="26"/><rect x="250" y="100" width="18" height="18"/></g>
+      <g fill="var(--crit)"><rect x="8" y="70" width="18" height="48"/><rect x="30" y="52" width="18" height="66"/><rect x="52" y="40" width="18" height="78"/></g>
+      <line x1="86" y1="4" x2="86" y2="118" stroke="var(--crit)" stroke-width="2" stroke-dasharray="4 3"/>
+      <text x="84" y="14" text-anchor="end" font-size="10" fill="var(--crit)" font-family="JetBrains Mono">umbral 2 h</text>
+      <text x="6" y="134" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">0 h</text>
+      <text x="314" y="134" text-anchor="end" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">8 h</text>
+     </svg>
+    </div>
+    <div>
+     <div class="chart-cap"><b>Línea de tiempo.</b> Autonomía (curva) + cada vez que sonó la alarma (barras).</div>
+     <svg width="100%" height="140" viewBox="0 0 320 140">
+      <g fill="color-mix(in srgb,var(--crit) 20%,transparent)"><rect x="30" y="0" width="4" height="118"/><rect x="95" y="0" width="4" height="118"/><rect x="150" y="0" width="4" height="118"/><rect x="210" y="0" width="4" height="118"/><rect x="270" y="0" width="4" height="118"/></g>
+      <polyline fill="none" stroke="var(--teal)" stroke-width="2" points="0,30 30,70 60,50 95,80 120,60 150,88 180,64 210,92 240,70 270,96 300,74 320,80"/>
+      <text x="6" y="14" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">8 h</text>
+      <text x="6" y="116" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">0 h</text>
+      <text x="6" y="134" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">hace 7 d</text>
+      <text x="314" y="134" text-anchor="end" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">ahora</text>
+     </svg>
+    </div>
+   </div>
+  </div>
+ </div>
+
+ <!-- 3 · PRONÓSTICO -->
+ <div class="sec">
+  <div class="sec__h"><b>Pronóstico</b><span class="meta-small">proyección de tendencia · NO es certeza</span></div>
+  <div class="sec__b">
+   <div class="block fore">
+    <div class="t">▲ Proyección</div>
+    <div>La autonomía viene cayendo ~<b>0,4 h por hora</b>. A este ritmo, llega a <b>0 h en ~5 h</b> <span class="meta-small">(±1,5 h)</span>.</div>
+    <svg width="100%" height="110" viewBox="0 0 320 110" preserveAspectRatio="none" style="margin-top:8px">
+     <!-- banda de incertidumbre -->
+     <polygon fill="color-mix(in srgb,var(--info) 14%,transparent)" points="200,54 320,86 320,110 200,66"/>
+     <!-- histórico -->
+     <polyline fill="none" stroke="var(--teal)" stroke-width="2" points="0,20 60,34 120,46 200,60"/>
+     <!-- proyección -->
+     <polyline fill="none" stroke="var(--info)" stroke-width="2" stroke-dasharray="5 4" points="200,60 320,98"/>
+     <!-- umbral -->
+     <line x1="0" y1="86" x2="320" y2="86" stroke="var(--crit)" stroke-width="1" stroke-dasharray="3 3"/>
+     <text x="4" y="83" font-size="9" fill="var(--crit)" font-family="JetBrains Mono">umbral 2 h</text>
+     <line x1="200" y1="0" x2="200" y2="110" stroke="var(--rule)" stroke-width="1"/>
+     <text x="204" y="12" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">ahora</text>
+    </svg>
+    <div class="meta-small">línea llena = medido · punteada = proyección · zona celeste = margen</div>
+   </div>
+   <div class="fore-reco">Acción anticipada sugerida: <b>programar reabastecimiento / verificar arranque del grupo</b> antes de que la autonomía se agote. (El valor del producto: avisar <i>antes</i> de que el sitio caiga.)</div>
+   <div class="meta-small" style="margin-top:8px">Si la regla no admite proyección (p. ej. un código de falla), esta sección diría “sin pronóstico aplicable”.</div>
+  </div>
+ </div>
+
+ <!-- 4 · CONFIGURACIÓN / PROCEDENCIA -->
+ <div class="sec">
+  <div class="sec__h"><b>Configuración y procedencia</b></div>
+  <div class="sec__b">
+   <div class="kv"><b>Condición</b><span>Autonomía <code>&lt; 2 h</code> y grupo en marcha</span></div>
+   <div class="kv"><b>Umbral — fuente</b><span>ficha Cummins + override del sitio NEA-042</span></div>
+   <div class="kv"><b>vs nominal de ficha</b><span>ficha sugiere 3 h · este sitio usa 2 h (editado 05/10)</span></div>
+   <div class="kv"><b>Tipo</b><span>cruzada (motor en marcha Y autonomía baja)</span></div>
+   <div class="acts"><button class="btn">Abrir en el editor</button><button class="btn ghost">Revertir a la de fábrica</button></div>
+  </div>
+ </div>
+</div></section>
+
+<footer>Wanomi 3.0 · Calidad del motor — inventario + detalle con pronóstico · mockup de trabajo · no es la app</footer>
+</body>
+</html>
