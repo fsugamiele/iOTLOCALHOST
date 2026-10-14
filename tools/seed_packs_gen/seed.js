@@ -33,6 +33,18 @@ const base = (id, label, variableLabel, unit, inferenceId, severity, recommendat
   fallbackToD: true, on_missing_ref: 'ignore', reset_behavior: 'auto',
 });
 
+const autonomyCross = (id, label, inferenceId, severity, hours, recommendation) => ({
+  ruleId: id, label, variableLabel: 'Autonomía estimada', unit: 'h', inferenceId,
+  type: 'cross', severity, recommendation, correlationParent: null,
+  cooldownSec: 900, graceSec: 60, resolveGraceSec: 0,
+  deviceType: 'GEN', variable: 'autonomy_hours', condition: null,
+  crossExpr: { op: 'AND', children: [
+    { deviceType: 'GEN', variable: 'genset_running', condition: { op: 'eq', value: 1 } },
+    { deviceType: 'GEN', variable: 'autonomy_hours', condition: { op: 'lt', value: hours } },
+  ] },
+  fallbackToD: true, on_missing_ref: 'ignore', reset_behavior: 'auto',
+});
+
 const GEN_GRUPO_V1 = {
   packId: 'gen-grupo-v1',
   deviceType: 'GEN',
@@ -46,12 +58,14 @@ const GEN_GRUPO_V1 = {
     base('gen-fuel-crit', 'Combustible crítico', 'Nivel de combustible', '%', 'GF2', 'critical',
       'Combustible crítico (<15%). Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
       'fuel_level', { op: 'lt', value: 15, deadband: 2 }),   // 15 % — decisión Franco 2026-10-14
-    base('gen-autonomy-warn', 'Autonomía baja', 'Autonomía estimada', 'h', 'GA1', 'warning',
-      'Autonomía estimada por debajo de 48 h. Programar recarga de combustible.',
-      'autonomy_hours', { op: 'lt', value: 48, deadband: 2 }),   // 48/12 h — decisión Franco 2026-10-14
-    base('gen-autonomy-crit', 'Autonomía crítica', 'Autonomía estimada', 'h', 'GA2', 'critical',
-      'Autonomía crítica (<12 h). El sitio corre riesgo de quedarse sin energía. Recarga urgente.',
-      'autonomy_hours', { op: 'lt', value: 12, deadband: 1 }),
+    // Autonomía: 48/12 h (decisión Franco 2026-10-14) SOLO con el grupo EN MARCHA
+    // (cross AND genset_running) — diseño vigente en producción. Sin la condición de
+    // marcha, con 48 h de umbral y ~72 h de tanque lleno, avisaría con el grupo parado
+    // apenas el tanque baja del 66 %.
+    autonomyCross('gen-autonomy-warn', 'Autonomía baja', 'GA1', 'warning', 48,
+      'Autonomía estimada por debajo de 48 h con el grupo en marcha. Programar recarga de combustible.'),
+    autonomyCross('gen-autonomy-crit', 'Autonomía crítica', 'GA2', 'critical', 12,
+      'Acción: despachar recarga de combustible ya: autonomía menor a 12 h con el grupo en marcha.'),
     base('gen-batt-warn', 'Batería de arranque baja', 'Tensión de batería', 'V', 'GB1', 'warning',
       'Batería de arranque baja (<11,8 V, sistema 12V). Verificar cargador y estado de batería; el grupo puede no arrancar en el próximo corte.',
       'battery_voltage', { op: 'lt', value: 11.8, deadband: 0.4 }),

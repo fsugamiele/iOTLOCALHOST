@@ -20,8 +20,10 @@
 //                 deadband/factoryRange/limits; variables extra de la base se conservan;
 //                 autonomy: lo de la base gana — tanque/consumo pueden estar afinados —
 //                 y la canónica completa lo que falte) → PUT. Si no existe → POST.
-//   2. PACKS    — por ruleId: reemplaza la regla con la versión del seed; agrega las
-//                 que falten (GA1/GA2). Reglas de la base que no están en el seed
+//   2. PACKS    — por ruleId: en reglas existentes lleva SOLO los campos del umbral
+//                 (condition/crossExpr/unit/label/recommendation) y conserva tiempos,
+//                 severidad y enabled de la base; distinto tipo = conflicto, no se toca;
+//                 agrega las que falten (GA1/GA2). Reglas de la base que no están en el seed
 //                 (cat-GE-*, DC-0x, …) NO se tocan → PUT.
 //   3. TEMPLATES— para cada widget cuya variable está en la ficha del deviceType:
 //                 unit, factoryRange, deadband y thresholds derivados de limits
@@ -80,7 +82,7 @@ function call(method, p, body) {
 
 const j = (o) => JSON.stringify(o);
 const clean = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k === '_id' || k === '__v' ? undefined : v)));
-let changes = 0, failures = 0;
+let changes = 0, failures = 0, conflicts = 0;
 function report(scope, what, before, after) {
   if (j(before) === j(after)) return false;
   changes++;
@@ -142,8 +144,18 @@ async function syncPacks() {
       if (!want) { failures++; console.log(`  ! ${id}: no está en el seed de ${pack.packId}`); continue; }
       const i = rules.findIndex((x) => x.ruleId === id);
       if (i === -1) { rules.push(want); touched = true; changes++; console.log(`  + ${pack.packId} regla ${id} (nueva)`); continue; }
-      // Conservar `enabled` de la base (una regla pausada a propósito sigue pausada).
-      const next = { ...rules[i], ...want, enabled: rules[i].enabled !== undefined ? rules[i].enabled : want.enabled };
+      // Distinto tipo en la base y en el seed = rediseño deliberado en una de las dos
+      // puntas: NO se mezcla (saldría una regla híbrida). Se informa y no se toca.
+      if (rules[i].type !== want.type) {
+        conflicts++;
+        console.log(`  ⚠ ${pack.packId} regla ${id}: tipo '${rules[i].type}' en la base vs '${want.type}' en el seed — NO se toca (revisar a mano)`);
+        continue;
+      }
+      // Regla existente: SOLO se llevan los campos que cargan el umbral. Tiempos
+      // (graceSec, cooldownSec, resolveGraceSec), severidad, enabled y todo lo demás
+      // ajustado en la base se conservan.
+      const next = { ...rules[i] };
+      for (const k of THRESHOLD_FIELDS) if (k in want) next[k] = want[k];
       if (report(pack.packId, `regla ${id}`, sub(rules[i]), sub(next))) { rules[i] = next; touched = true; }
     }
     if (touched && APPLY) {
@@ -154,6 +166,7 @@ async function syncPacks() {
     }
   }
 }
+const THRESHOLD_FIELDS = ['label', 'variableLabel', 'unit', 'condition', 'crossExpr', 'recommendation'];
 const sub = (x) => ({ label: x.label, unit: x.unit, condition: x.condition, crossExpr: x.crossExpr, recommendation: x.recommendation });
 
 // ── 3. TEMPLATES ─────────────────────────────────────────────────────────
@@ -218,6 +231,6 @@ function log(w, what) {
   await syncFichas();
   await syncPacks();
   await syncTemplates();
-  console.log(`\n${changes} cambio(s) ${APPLY ? 'enviados' : 'detectados'} · ${failures} error(es)`);
+  console.log(`\n${changes} cambio(s) ${APPLY ? 'enviados' : 'detectados'} · ${failures} error(es) · ${conflicts} conflicto(s) de tipo`);
   process.exit(failures ? 2 : 0);
 })().catch((e) => { console.error('ERROR:', e.message || e); process.exit(1); });

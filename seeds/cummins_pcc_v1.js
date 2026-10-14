@@ -116,7 +116,8 @@ const pack = {
       reset_behavior: 'auto',
     },
     // Auditoría 2026-10-14 (F-08, decisión Franco) — el sitio MVP no tenía regla de
-    // autonomía. 48 h warning / 12 h crítica (logística de recarga NEA). autonomy_hours
+    // autonomía. 48 h warning / 12 h crítica (logística de recarga NEA), SOLO con el
+    // motor en marcha (rpm > 300, mismo criterio que A0/A1 y que gen-grupo-v1). autonomy_hours
     // la deriva y publica el edge (autonomy.js) desde la ficha cummins-pcc.
     {
       ruleId:      'cummins-GA1-autonomy-warn',
@@ -124,15 +125,23 @@ const pack = {
       variableLabel: 'Autonomía estimada',
       unit:          'h',
       inferenceId: 'GA1',
-      type:        'D',
+      type:        'cross',
       severity:    'warning',
-      recommendation: 'Autonomía estimada por debajo de 48 h. Programar recarga de combustible.',
+      recommendation: 'Autonomía estimada por debajo de 48 h con el grupo en marcha. Programar recarga de combustible.',
       correlationParent: null,
       cooldownSec: 900,
       resolveGraceSec: 0,
       deviceType:  'cummins-pcc',
       variable:    'autonomy_hours',
-      condition:   { op: 'lt', value: 48, deadband: 2 },
+      condition:   null,
+      graceSec:    60,
+      crossExpr: {
+        op: 'AND',
+        children: [
+          { deviceType: 'cummins-pcc', variable: 'rpm',            condition: { op: 'gt', value: 300 } },
+          { deviceType: 'cummins-pcc', variable: 'autonomy_hours', condition: { op: 'lt', value: 48 } },
+        ],
+      },
       fallbackToD:    true,
       on_missing_ref: 'ignore',
       reset_behavior: 'auto',
@@ -143,15 +152,23 @@ const pack = {
       variableLabel: 'Autonomía estimada',
       unit:          'h',
       inferenceId: 'GA2',
-      type:        'D',
+      type:        'cross',
       severity:    'critical',
-      recommendation: 'Autonomía crítica (<12 h). Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
+      recommendation: 'Autonomía crítica (<12 h) con el grupo en marcha. Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
       correlationParent: null,
       cooldownSec: 900,
       resolveGraceSec: 0,
       deviceType:  'cummins-pcc',
       variable:    'autonomy_hours',
-      condition:   { op: 'lt', value: 12, deadband: 1 },
+      condition:   null,
+      graceSec:    60,
+      crossExpr: {
+        op: 'AND',
+        children: [
+          { deviceType: 'cummins-pcc', variable: 'rpm',            condition: { op: 'gt', value: 300 } },
+          { deviceType: 'cummins-pcc', variable: 'autonomy_hours', condition: { op: 'lt', value: 12 } },
+        ],
+      },
       fallbackToD:    true,
       on_missing_ref: 'ignore',
       reset_behavior: 'auto',
