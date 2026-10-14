@@ -22,9 +22,9 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const ADMIN_ID   = process.env.ADMIN_ID || '6a32e105be5ca779169754af';
 const DRY_RUN    = process.argv.includes('--dry-run');
 
-if (!JWT_SECRET) { console.error('ERROR: falta JWT_SECRET (env).'); process.exit(1); }
-
-const TOKEN = jwt.sign({ userData: { _id: ADMIN_ID, email: 'admin@wanomi.com' } }, JWT_SECRET, { expiresIn: '10m' });
+// Auditoría 2026-10-14 — token y chequeo de env solo al ejecutar (el módulo se
+// importa desde tools/sync_auditoria_p0/sync.js como fuente única de las reglas).
+let TOKEN = null;
 
 const base = (id, label, variableLabel, unit, inferenceId, severity, recommendation, variable, condition) => ({
   ruleId: id, label, variableLabel, unit, inferenceId,
@@ -62,6 +62,7 @@ const GEN_GRUPO_V1 = {
 };
 
 function req(method, path, bodyObj) {
+  if (!TOKEN) TOKEN = jwt.sign({ userData: { _id: ADMIN_ID, email: 'admin@wanomi.com' } }, JWT_SECRET, { expiresIn: '10m' });
   return new Promise((resolve, reject) => {
     const body = bodyObj ? Buffer.from(JSON.stringify(bodyObj)) : null;
     const opts = { host: API_HOST, port: API_PORT, method, path,
@@ -77,7 +78,8 @@ function req(method, path, bodyObj) {
   });
 }
 
-(async () => {
+if (require.main === module) (async () => {
+  if (!JWT_SECRET && !DRY_RUN) { console.error('ERROR: falta JWT_SECRET (env).'); process.exit(1); }
   try {
     if (DRY_RUN) { console.log(JSON.stringify({ rulepack: GEN_GRUPO_V1 }, null, 2)); process.exit(0); }
     const r = await req('PUT', `/api/rulepacks/${GEN_GRUPO_V1.packId}`, { rulepack: GEN_GRUPO_V1 });
@@ -88,3 +90,5 @@ function req(method, path, bodyObj) {
     } else { console.error(`[fail] status=${r.status} body=${r.raw.slice(0, 300)}`); process.exit(2); }
   } catch (e) { console.error('ERROR:', e.message || e); process.exit(1); }
 })();
+
+module.exports = { GEN_GRUPO_V1 };

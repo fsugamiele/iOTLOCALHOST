@@ -32,7 +32,8 @@ import EquipmentSheet from "../models/equipment_sheet.js";
 // DEC-REF-127 (B8) — variables DERIVADAS que publica el edge (no están en la ficha
 // del equipo pero son targets legítimos de reglas): no deben generar warning de
 // "variable no declarada". Fuente: edge-engine/autonomy.js + efficiency.js.
-const EDGE_DERIVED_VARS = new Set(['autonomy_hours', 'fuel_efficiency', 'consumption_tank']);
+// Auditoría 2026-10-14 (F-20) — + autonomy_source/_lph/_liters (el edge también las publica).
+const EDGE_DERIVED_VARS = new Set(['autonomy_hours', 'autonomy_source', 'autonomy_lph', 'autonomy_liters', 'fuel_efficiency', 'consumption_tank']);
 
 // SF-3 (DEC-REF-58, DEC-REF-61.b, DEC-REF-61-A). Auto-publish al canal
 // de reload tras escritura exitosa. Broadcast: writer NO sabe qué sites

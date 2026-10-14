@@ -219,7 +219,12 @@ async function seed() {
   await mongoose.disconnect();
 }
 
-seed().catch(err => {
-  console.error('❌ Seed error:', err.message);
-  process.exit(1);
-});
+// Auditoría 2026-10-14 — exportable: tools/sync_auditoria_p0/sync.js toma las
+// reglas de acá (fuente única) sin ejecutar la siembra.
+if (require.main === module) {
+  seed().catch(err => {
+    console.error('❌ Seed error:', err.message);
+    process.exit(1);
+  });
+}
+module.exports = { pack };
