@@ -11,7 +11,8 @@ const { loadPacks, hydrateSiteState } = require('./siteState');
 const { processMessage, processStalenessTick, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, buildStateSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
-const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime } = require('./autonomy');
+const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime, changedAutonomyDIds } = require('./autonomy');
+const { normalizeValue, loadVariableTypes } = require('./valueNormalizer');  // auditoría 2026-10-14 (M-07/M-21)
 const { maybeComputeEfficiency, resetEfficiencyRuntime } = require('./efficiency');
 const { loadMSoftState, flushMSoftState, deleteMSoftState } = require('./msoftstate');  // motor M Ola M3 (persistencia)
 
@@ -85,6 +86,8 @@ async function start() {
   await hydrateSiteState(SITE_ID, siteState);
   // DEC-REF-115 (#85) — config de autonomía (ficha + override por equipo).
   let autonomyConfigs = await loadAutonomyConfigs(SITE_ID);
+  // Auditoría 2026-10-14 (M-07/M-21) — tipos de variable desde la FICHA.
+  let variableTypes = await loadVariableTypes(SITE_ID);
   // motor M Ola M3 — hidrata los acumuladores persistentes (accumulator/cumulativeSince).
   const nMsoft = await loadMSoftState(SITE_ID, mState);
   console.log(`[edge-engine] Packs cargados: ${packs.map(p => p.packId).join(', ') || '(ninguno)'}`);
@@ -122,6 +125,7 @@ async function start() {
       // DEC-REF-115 (#85) — el mismo canal SF-3 recarga la config de
       // autonomía (PUT /equipmentsheet y PUT /device/autonomy publican acá).
       const nextAutonomy = await loadAutonomyConfigs(SITE_ID);
+      const nextVarTypes = await loadVariableTypes(SITE_ID);
       const diff      = diffSnapshots(ruleSnapshot, nextSnap);
       // DEC-REF-128 (A9) — limpiar estado (buffers/acumuladores) SOLO de reglas
       // removidas o cuya HUELLA DE ESTADO cambió. Editar umbral/severidad/texto NO
@@ -185,10 +189,12 @@ async function start() {
       packs = nextPacks;
       ruleSnapshot = nextSnap;
       stateSnapshot = nextStateSnap;
+      // Auditoría 2026-10-14 (M-24) — resetear historial SOLO de los equipos cuya
+      // config de autonomía cambió (antes: todos, en cada reload de cualquier pack).
+      const autonomyChanged = changedAutonomyDIds(autonomyConfigs, nextAutonomy);
       autonomyConfigs = nextAutonomy;
-      // La config de autonomía pudo cambiar: historiales y debounce viejos
-      // quedan obsoletos (v2 híbrida — DEC-REF-115).
-      resetAutonomyRuntime();
+      variableTypes = nextVarTypes;
+      resetAutonomyRuntime(autonomyChanged);
       resetEfficiencyRuntime();
 
       console.log(
@@ -264,10 +270,22 @@ async function start() {
       return;
     }
 
-    const value = payload.value;
-    if (value === undefined) return;
+    const rawValue = payload.value;
+    if (rawValue === undefined) return;
 
     const deviceState = siteState.get(dId);
+    // Auditoría 2026-10-14 (M-07/M-21) — normalizar según el type de la FICHA.
+    // Calidad mala (null, "", "ERR", NaN, bool en variable numérica): el equipo
+    // cuenta como vivo (_lastSeen) pero el valor NO entra al estado ni al motor
+    // → no dispara NI resuelve nada.
+    const vtype = (variableTypes.get(deviceState._deviceType) || new Map()).get(variable) || null;
+    const norm = normalizeValue(rawValue, vtype);
+    if (!norm.ok) {
+      deviceState._lastSeen = eventTs;
+      console.warn(`[edge-engine] Valor descartado ${dId}/${variable}: ${norm.reason}`);
+      return;
+    }
+    const value = norm.value;
     deviceState[variable] = value;
     // SF-6 · DEC-REF-65.b — timestamp por variable, aditivo al shape actual.
     // Las hojas equipo existentes siguen leyendo `deviceState[variable]` como

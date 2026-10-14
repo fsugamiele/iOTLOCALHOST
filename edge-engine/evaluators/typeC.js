@@ -7,6 +7,11 @@ function evaluateC(rule, value, deviceState) {
   if (value === null || value === undefined) {
     return { fired: false, mode: 'no-ref', thresholdUsed: null };
   }
+  // Auditoría 2026-10-14 (M-03) — regla sin condition.op: no evaluable (antes TypeError).
+  if (!rule.condition || !rule.condition.op) {
+    console.warn(`[typeC] Regla ${rule.ruleId} sin condition.op — omitida`);
+    return { fired: false, mode: 'no-ref', thresholdUsed: null };
+  }
 
   const sp = rule.setpointSource || {};
   const setpoint = sp.variable ? deviceState[sp.variable] : undefined;

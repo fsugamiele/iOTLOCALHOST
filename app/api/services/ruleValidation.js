@@ -97,11 +97,14 @@ function validateC(rule) {
   const needsCondition = fallback || onMissing === 'alarm';
   const c = rule.condition;
 
-  // RECHAZO — condition requerida si se activaría fallback o alarma en no-ref
+  // RECHAZO — condition.op SIEMPRE requerida (auditoría 2026-10-14, M-03): el
+  // camino CALIBRADO también usa condition.op (compara contra setpoint × scale).
+  // Antes se aceptaba sin condition cuando fallbackToD:false + on_missing_ref:'ignore'
+  // y el edge moría con TypeError apenas llegaba el setpoint.
+  if (!c || !c.op) {
+    return { ok: false, reason: `typeC: condition.op requerida (el modo calibrado la usa para comparar contra el setpoint)` };
+  }
   if (needsCondition) {
-    if (!c || !c.op) {
-      return { ok: false, reason: `typeC: condition requerida (fallbackToD:${fallback}, on_missing_ref:'${onMissing}') pero ausente o sin op` };
-    }
     if (!ALL_OPS.includes(c.op)) {
       return { ok: false, reason: `typeC: condition.op inválido '${c.op}' (esperado uno de ${ALL_OPS.join('/')})` };
     }

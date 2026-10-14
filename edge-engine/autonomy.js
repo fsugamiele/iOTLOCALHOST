@@ -51,11 +51,29 @@ const AUTONOMY_LITERS_VARIABLE = 'autonomy_liters';
 // (medidor): tanque cae más rápido que el medidor = sifoneo / caudalímetro averiado.
 const CONSUMPTION_TANK_VARIABLE = 'consumption_tank';
 
-// Ventana empírica: 6 h de historial de fuel. Corta para reaccionar a
-// cambios de régimen, larga para absorber ruido de lectura. Con ≤2 muestras
-// en marcha no hay pendiente confiable → fallback nominal.
-const EMPIRICAL_WINDOW_MS = 6 * 3600 * 1000;
-const EMPIRICAL_MIN_SAMPLES = 2;
+// Auditoría 2026-10-14 (M-01/M-02, decisión Franco) — estimador 'measured' por
+// TRAMOS EN MARCHA. Antes: una sola regresión sobre las muestras run===1 de 6 h →
+// el tiempo con el grupo apagado entre dos marchas quedaba dentro del eje x
+// (autonomía ×4,7 sobreestimada) y 2 muestras bastaban (×20 subestimada, falso
+// "autonomía crítica" + falso sifoneo). Ahora: consumo = Σ caída / Σ tiempo, sumando
+// SOLO pares de muestras consecutivas de la MISMA marcha (runEpoch), con mínimos de
+// tiempo en marcha y de caída. Parámetros editables en la FICHA (autonomy.*):
+//   windowHours     — buffer: horas de MARCHA acumulada que se conservan (default 24)
+//   minRunMinutes   — marcha válida mínima para confiar en 'measured' (default 45)
+//   minDropPct      — caída mínima de nivel en esa marcha, en % (default 2 = 2× deadband 1 %)
+//   runningThreshold— valor numérico de la variable de marcha por encima del cual
+//                     el grupo "anda" (default 0; rpm → 300, DEC-REF-56)
+const DEFAULT_WINDOW_HOURS = 24;
+const DEFAULT_MIN_RUN_MINUTES = 45;
+const DEFAULT_MIN_DROP_PCT = 2;
+const SAMPLES_HARD_CAP = 5000;                    // tope de memoria por equipo
+const SAMPLES_MAX_AGE_MS = 7 * 24 * 3600 * 1000;  // tope de antigüedad (wall clock)
+// Plausibilidad para usar 'measured' como AUTONOMÍA: el consumo observado debe caer
+// en [nominal/4, nominal×3]. Fuera de eso cae a 'estimated' (el dato del tanque es
+// sospechoso). consumption_tank se publica IGUAL: un robo es justamente consumo
+// implausible y la regla de divergencia lo tiene que ver.
+const PLAUSIBLE_MAX_FACTOR = 3;
+const PLAUSIBLE_MIN_FACTOR = 0.25;
 // Debounce de publicación por equipo: como mucho 1 publicación cada 60 s
 // (salvo cambio de fuente). La pendiente es una integral — recalcularla en
 // cada mensaje de fuel no aporta resolución.
@@ -76,7 +94,7 @@ const deviceRuntime = new Map();
 function runtimeFor(dId) {
   let rt = deviceRuntime.get(dId);
   if (!rt) {
-    rt = { samples: [], running: null, lastPublishTs: 0, lastSource: null, lastFlow: null };
+    rt = { samples: [], running: null, runEpoch: 0, lastPublishTs: 0, lastSource: null, lastFlow: null };
     deviceRuntime.set(dId, rt);
   }
   return rt;
@@ -128,6 +146,10 @@ async function loadAutonomyConfigs(siteId) {
       flowVariable: sheetCfg.flowVariable || null,
       flowScale: Number(sheetCfg.flowScale) > 0 ? Number(sheetCfg.flowScale) : 1,
       runningVariable: sheetCfg.runningVariable || null,
+      runningThreshold: Number.isFinite(Number(sheetCfg.runningThreshold)) ? Number(sheetCfg.runningThreshold) : 0,
+      windowHours:   Number(sheetCfg.windowHours)   > 0 ? Number(sheetCfg.windowHours)   : DEFAULT_WINDOW_HOURS,
+      minRunMinutes: Number(sheetCfg.minRunMinutes) > 0 ? Number(sheetCfg.minRunMinutes) : DEFAULT_MIN_RUN_MINUTES,
+      minDropPct:    Number(sheetCfg.minDropPct)    > 0 ? Number(sheetCfg.minDropPct)    : DEFAULT_MIN_DROP_PCT,
       userId: d.userId,
     });
   }
@@ -136,19 +158,54 @@ async function loadAutonomyConfigs(siteId) {
 
 // Pendiente por regresión lineal simple, en %/ms. Misma primitiva que el
 // motor M (typeM.slopePerMin) pero sobre %/ms para no re-escalar.
-function slopePerMs(samples) {
-  const n = samples.length;
-  if (n < 2) return 0;
-  const t0 = samples[0].ts;
-  let sx = 0, sy = 0, sxx = 0, sxy = 0;
-  for (const p of samples) {
-    const x = p.ts - t0;
-    const y = p.value;
-    sx += x; sy += y; sxx += x * x; sxy += x * y;
+// runningConsumption(samples, cfg) → { ok, pctPerHour, runMs, dropPct }
+// Suma SOLO pares consecutivos de la misma marcha (mismo runEpoch, ambos run===1).
+// Usa la caída NETA (incluye subidas chicas de ruido) para no sesgar hacia arriba.
+function runningConsumption(samples, cfg) {
+  let runMs = 0, dropPct = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1], b = samples[i];
+    if (a.run !== 1 || b.run !== 1 || a.epoch !== b.epoch) continue;
+    const dt = b.ts - a.ts;
+    if (!(dt > 0)) continue;
+    runMs += dt;
+    dropPct += a.value - b.value;
   }
-  const denom = n * sxx - sx * sx;
-  if (denom === 0) return 0;
-  return (n * sxy - sx * sy) / denom;
+  const minRunMs = (cfg.minRunMinutes || DEFAULT_MIN_RUN_MINUTES) * 60 * 1000;
+  const minDrop  = cfg.minDropPct || DEFAULT_MIN_DROP_PCT;
+  if (runMs < minRunMs || dropPct < minDrop) return { ok: false, runMs, dropPct, pctPerHour: null };
+  return { ok: true, runMs, dropPct, pctPerHour: dropPct / (runMs / 3600000) };
+}
+
+// trimSamples — conserva hasta `windowHours` de MARCHA acumulada (pares válidos),
+// más los topes duros de antigüedad y cantidad.
+function trimSamples(samples, cfg, now) {
+  let out = samples.filter(p => p.ts >= now - SAMPLES_MAX_AGE_MS);
+  if (out.length > SAMPLES_HARD_CAP) out = out.slice(out.length - SAMPLES_HARD_CAP);
+  const budget = (cfg.windowHours || DEFAULT_WINDOW_HOURS) * 3600000;
+  let acc = 0, cut = 0;
+  for (let i = out.length - 1; i > 0; i--) {
+    const a = out[i - 1], b = out[i];
+    if (a.run === 1 && b.run === 1 && a.epoch === b.epoch) acc += b.ts - a.ts;
+    if (acc > budget) { cut = i; break; }
+  }
+  return cut > 0 ? out.slice(cut) : out;
+}
+
+// isRunningValue — criterio ÚNICO de marcha (M-18): bool, número > umbral, o string
+// de estado (mismo listado que typeM.isActive: STOPPED/OFF/IDLE/… = parado).
+function isRunningValue(value, threshold) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? (value > (threshold || 0) ? 1 : 0) : null;
+  if (typeof value === 'string') {
+    const s = value.trim().toUpperCase();
+    if (s === '') return null;
+    const n = Number(s);
+    if (Number.isFinite(n)) return n > (threshold || 0) ? 1 : 0;
+    return ['STOPPED', 'OFF', 'IDLE', 'STOP', 'FALSE', 'NO', 'AUTO'].includes(s) ? 0 : 1;
+  }
+  return null;
 }
 
 function publishVar(client, userId, dId, variable, value) {
@@ -176,17 +233,16 @@ function computeAndPublish(client, cfg, rt, dId, fuel, now) {
     const prev = rt.samples.length > 1 ? rt.samples[rt.samples.length - 2].value : null;
     const refueled = prev !== null && fuel - prev > 1;
     if (!refueled && rt.running === 1) {
-      const inMarcha = rt.samples.filter(s => s.run === 1);
-      if (inMarcha.length >= EMPIRICAL_MIN_SAMPLES) {
-        const slope = slopePerMs(inMarcha);   // %/ms, negativo al consumir
-        if (slope < 0) {
-          // consumoObservado [unidad_tanque/h] = −slope[%/h] × tank / 100
-          const observedCons = (-(slope * 3600 * 1000)) * cfg.tankCapacity / 100;
-          if (observedCons > 0) tankCons = observedCons;
-        }
+      const est = runningConsumption(rt.samples, cfg);
+      if (est && est.ok) {
+        // consumoObservado [unidad_tanque/h] = caída[%] / tiempo[h] × tank / 100
+        tankCons = est.pctPerHour * cfg.tankCapacity / 100;
       }
     }
   }
+  const tankPlausible = tankCons !== null &&
+    tankCons <= cfg.consumptionLph * PLAUSIBLE_MAX_FACTOR &&
+    tankCons >= cfg.consumptionLph * PLAUSIBLE_MIN_FACTOR;
 
   let hours = null;
   let source = 'estimated';
@@ -204,7 +260,7 @@ function computeAndPublish(client, cfg, rt, dId, fuel, now) {
   }
 
   // 2. measured — inferencia por pendiente sobre tramos EN MARCHA (si no hubo metered).
-  if (hours === null && tankCons !== null) {
+  if (hours === null && tankPlausible) {
     hours = Math.round((fuel * cfg.tankCapacity / 100 / tankCons) * 10) / 10;
     source = 'measured';
     lph = tankCons;                                      // consumo OBSERVADO
@@ -250,8 +306,11 @@ function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }
     ? variable === cfg.runningVariable
     : RUNNING_ALIASES.includes(variable);
   if (isRunningSignal) {
-    const v = value === true || value === 'RUNNING' ? 1 : Number(value);
-    if (Number.isFinite(v)) rt.running = v ? 1 : 0;
+    const v = isRunningValue(value, cfg.runningThreshold);
+    if (v !== null) {
+      if (v === 1 && rt.running !== 1) rt.runEpoch++;   // nueva marcha → nuevo tramo
+      rt.running = v;
+    }
     return false;
   }
 
@@ -276,23 +335,40 @@ function maybeComputeAutonomy({ client, configs, dId, variable, value, eventTs }
   //    Salto positivo (repostaje) → descartar el historial previo.
   const prevFuel = rt.samples.length ? rt.samples[rt.samples.length - 1].value : null;
   const refueled = prevFuel !== null && fuel - prevFuel > 1;
-  rt.samples.push({ ts: now, value: fuel, run: rt.running });
-  rt.samples = rt.samples.filter(p => p.ts >= now - EMPIRICAL_WINDOW_MS);
-  if (refueled) rt.samples = [{ ts: now, value: fuel, run: rt.running }];  // reiniciar historial post-repostaje
+  const sample = { ts: now, value: fuel, run: rt.running, epoch: rt.runEpoch };
+  rt.samples.push(sample);
+  rt.samples = trimSamples(rt.samples, cfg, now);
+  if (refueled) rt.samples = [sample];  // reiniciar historial post-repostaje
 
   return computeAndPublish(client, cfg, rt, dId, fuel, now);
 }
 
-// resetAutonomyRuntime() — se invoca en el reload SF-3: las configs pueden
-// haber cambiado y los historiales/debounce quedan obsoletos.
-function resetAutonomyRuntime() {
-  deviceRuntime.clear();
+// resetAutonomyRuntime(dIds?) — reload SF-3. Auditoría 2026-10-14 (M-24): con un
+// buffer de hasta 24 h de marcha, borrar TODO en cada reload (cualquier PUT de pack)
+// tiraba horas de aprendizaje. Ahora: sin argumento borra todo (compat); con lista,
+// solo esos equipos (los que cambiaron de config).
+function resetAutonomyRuntime(dIds) {
+  if (!dIds) { deviceRuntime.clear(); return; }
+  for (const d of dIds) deviceRuntime.delete(d);
+}
+
+// changedAutonomyDIds(prev, next) → dIds cuya config de autonomía cambió o desapareció.
+function changedAutonomyDIds(prev, next) {
+  const out = [];
+  const keys = new Set([...prev.keys(), ...next.keys()]);
+  for (const k of keys) {
+    if (JSON.stringify(prev.get(k) || null) !== JSON.stringify(next.get(k) || null)) out.push(k);
+  }
+  return out;
 }
 
 module.exports = {
   loadAutonomyConfigs,
   maybeComputeAutonomy,
   resetAutonomyRuntime,
+  changedAutonomyDIds,
+  runningConsumption,
+  isRunningValue,
   AUTONOMY_VARIABLE,
   AUTONOMY_SOURCE_VARIABLE,
   AUTONOMY_LPH_VARIABLE,
