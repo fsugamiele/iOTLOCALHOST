@@ -42,22 +42,22 @@ const GEN_GRUPO_V1 = {
   rules: [
     base('gen-fuel-warn', 'Combustible bajo', 'Nivel de combustible', '%', 'GF1', 'warning',
       'Nivel de combustible por debajo de 25%. Coordinar recarga con el proveedor antes de que baje la autonomía.',
-      'fuel_level', { op: 'lt', value: 25 }),
+      'fuel_level', { op: 'lt', value: 25, deadband: 2 }),
     base('gen-fuel-crit', 'Combustible crítico', 'Nivel de combustible', '%', 'GF2', 'critical',
-      'Combustible crítico (<10%). Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
-      'fuel_level', { op: 'lt', value: 10 }),
+      'Combustible crítico (<15%). Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
+      'fuel_level', { op: 'lt', value: 15, deadband: 2 }),   // 15 % — decisión Franco 2026-10-14
     base('gen-autonomy-warn', 'Autonomía baja', 'Autonomía estimada', 'h', 'GA1', 'warning',
-      'Autonomía estimada por debajo de 6 h. Despachar recarga de combustible antes del agotamiento.',
-      'autonomy_hours', { op: 'lt', value: 6 }),
+      'Autonomía estimada por debajo de 48 h. Programar recarga de combustible.',
+      'autonomy_hours', { op: 'lt', value: 48, deadband: 2 }),   // 48/12 h — decisión Franco 2026-10-14
     base('gen-autonomy-crit', 'Autonomía crítica', 'Autonomía estimada', 'h', 'GA2', 'critical',
-      'Autonomía crítica (<3 h). El sitio corre riesgo de quedarse sin energía. Recarga urgente.',
-      'autonomy_hours', { op: 'lt', value: 3 }),
+      'Autonomía crítica (<12 h). El sitio corre riesgo de quedarse sin energía. Recarga urgente.',
+      'autonomy_hours', { op: 'lt', value: 12, deadband: 1 }),
     base('gen-batt-warn', 'Batería de arranque baja', 'Tensión de batería', 'V', 'GB1', 'warning',
       'Batería de arranque baja (<11,8 V, sistema 12V). Verificar cargador y estado de batería; el grupo puede no arrancar en el próximo corte.',
-      'battery_voltage', { op: 'lt', value: 11.8 }),
+      'battery_voltage', { op: 'lt', value: 11.8, deadband: 0.4 }),
     base('gen-batt-crit', 'Batería de arranque crítica', 'Tensión de batería', 'V', 'GB2', 'critical',
       'Batería de arranque crítica (<11 V, sistema 12V). Reemplazar batería; alto riesgo de fallo de arranque.',
-      'battery_voltage', { op: 'lt', value: 11 }),
+      'battery_voltage', { op: 'lt', value: 11, deadband: 0.4 }),
   ],
 };
 

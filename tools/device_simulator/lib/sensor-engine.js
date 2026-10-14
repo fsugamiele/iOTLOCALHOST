@@ -105,7 +105,7 @@ function initialCumminsState(siteCode) {
     // LOP (Low Oil Pressure) alarm ~25 psi. typeC los consume para
     // camino calibrated; scenario cummins_setpoint_lost los suprime.
     coolant_temp_setpoint: 95.0,
-    oil_pressure_setpoint: 25.0,
+    oil_pressure_setpoint: 172.0,   // kPa (≈25 psi)
   };
   // DEC-REF-79 (vi) — overrides con evidencia de relevamiento por (siteCode,
   // role). El motor no inventa el dato; lo aporta field_data.js.
@@ -223,8 +223,10 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       // del escenario cummins_oil_failure la presión cae y SE SOSTIENE baja
       // (sin el flag, el clamp [35,55] hacía imposible demostrar A0/A1 con
       // valor real — solo disparaban por el transitorio de arranque).
-      if (sharedState.cummins_oil_failure) return clamp(currentValue + jitter(0.2), 0.4, 0.8);
-      return clamp(currentValue + jitter(1), 35, 55);
+      // Auditoría 2026-10-14 (F-03, decisión Franco) — unidad kPa (antes psi 35-55 /
+      // falla 0,4-0,8 "bar" en canal psi). Normal 240-380 kPa; falla 40-80 kPa (<1 bar).
+      if (sharedState.cummins_oil_failure) return clamp(currentValue + jitter(2), 40, 80);
+      return clamp(currentValue + jitter(7), 240, 380);
 
     case 'coolant_temp':
       if (sharedState.gen_running) {
@@ -346,7 +348,7 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 
     case 'oil_pressure_setpoint':
       if (sharedState.cummins_setpoint_suppressed) return null;
-      return clamp(currentValue + jitter(0.2), 24.5, 25.5);
+      return clamp(currentValue + jitter(1), 169, 176);   // LOP ≈ 25 psi = 172 kPa
 
     case 'dc_load_current': {
       // Estado compartido del site controla carga alta/normal
@@ -828,7 +830,7 @@ const SCENARIOS = {
   // DEC-REF-104 D-4 (#78) — falla de presión de aceite con motor en marcha.
   // Apuntar al CUMMINS con el motor CORRIENDO (gen_running=true, p.ej. tras
   // mains_failure_ats_transfer o weekly_exercise): el flag hace que evolve
-  // sostenga oil_pressure <1 Bar → las reglas A0/A1 (rpm>300 AND oil<2/1,
+  // sostenga oil_pressure <100 kPa → las reglas A0/A1 (rpm>300 AND oil<200/100 kPa,
   // graceSec 60) disparan de forma genuina, no por transitorio.
   cummins_oil_failure: {
     description: 'Pérdida de presión de aceite con motor en marcha (sostenida)',

@@ -2,6 +2,8 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 
 // DEC-REF-108 F4 (#80) — upgrade de widgets de la flota existente.
+// Auditoría 2026-10-14: valores alineados con tools/seed_fichas/fichas.js (fuente
+// única). Para una base YA migrada usar tools/sync_auditoria_p0/sync.js.
 // Idempotente por construcción (cada paso verifica antes de escribir).
 //
 //   1. FICHAS: siembra factoryRange (rango normal del fabricante) en las
@@ -27,14 +29,14 @@ const DRY = process.argv.includes('--dry-run');
 const FACTORY_RANGE = {
   mains_voltage: '200-240', gen_voltage: '200-240',
   mains_freq: '48-52', gen_freq: '48-52',
-  battery_voltage: '10.5-14.5', alternator_voltage: '12-15',
-  coolant_temp: '30-100', exhaust_temp: '0-600',
-  oil_pressure: '20-60',
+  battery_voltage: '10-16', alternator_voltage: '12-15',
+  coolant_temp: '30-110', exhaust_temp: '0-700',
+  oil_pressure: '0-700',   // kPa — auditoría 2026-10-14 (F-03)
   dc_bus_voltage: '-58--42', dc_load_current: '0-300',
-  temperature: '0-50', shelter_temp: '0-50',
+  temperature: '-20-60', shelter_temp: '0-50',
   fuel_level: '0-100', rpm: '0-1800', load_kw: '0-20',
   run_hours: '0-50000', crank_current: '0-600',
-  autonomy_hours: '0-10',
+  autonomy_hours: '0-80',   // 250 L / 3,46 L/h ≈ 72 h (F-08)
 };
 
 // Variables que pasan de valueStatus a numeric con render sparkline.
@@ -57,16 +59,16 @@ const AUTONOMY_WIDGET = {
   class: 'primary',
   column: 'col-4',
   decimalPlaces: 1,
-  factoryRange: '0-10',
-  thresholds: { criticalLow: 2, warningLow: 4 },
+  factoryRange: '0-80',
+  thresholds: { criticalLow: 12, warningLow: 48 },   // decisión Franco 2026-10-14
 };
 const AUTONOMY_TEMPLATES = ['WN-GEN-Cummins-PowerCommand', 'WN-SITE-GEN v2'];
 
 const AUTONOMY_FICHA_VAR = {
   name: 'autonomy_hours', label: 'Autonomía estimada', type: 'float',
-  unit: 'h', factoryRange: '0-10', cadence: '60s', deadband: 0.1, limits: [
-    { kind: 'warning', op: 'lt', value: 4, unit: 'h', source: 'wanomi' },
-    { kind: 'trip',    op: 'lt', value: 2, unit: 'h', source: 'wanomi' },
+  unit: 'h', factoryRange: '0-80', cadence: '60s', deadband: 0.1, limits: [
+    { kind: 'warning', op: 'lt', value: 48, unit: 'h', source: 'decisión Franco 2026-10-14' },
+    { kind: 'trip',    op: 'lt', value: 12, unit: 'h', source: 'decisión Franco 2026-10-14' },
   ],
 };
 const AUTONOMY_FICHAS = ['cummins-pcc', 'GEN'];

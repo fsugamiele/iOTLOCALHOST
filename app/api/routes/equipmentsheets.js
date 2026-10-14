@@ -5,6 +5,7 @@ import EquipmentSheet from "../models/equipment_sheet.js";
 import Template from "../models/template.js";
 const RulePack = require("../models/rule_pack.js");
 const { extractFromPdf } = require("../services/sheetExtractor.js");
+const { validateSheetContent } = require("../services/sheetValidation.js");  // auditoría 2026-10-14 (F-05)
 
 // DEC-REF-115 (#85) — el edge recarga su config de autonomía por el mismo
 // canal de control SF-3 que los packs (payload ignorado, DEC-REF-61.c).
@@ -37,6 +38,13 @@ function validateAutonomy(a) {
   }
   if ('runningVariable' in a && a.runningVariable != null) {
     if (typeof a.runningVariable !== 'string' || !a.runningVariable.trim()) return 'autonomy: runningVariable, si se envía, debe ser un nombre de variable no vacío';
+  }
+  // Auditoría 2026-10-14 (M-01/M-02/F-13) — parámetros del estimador 'measured'.
+  for (const k of ['windowHours', 'minRunMinutes', 'minDropPct']) {
+    if (k in a && a[k] != null && !(Number(a[k]) > 0)) return `autonomy: ${k}, si se envía, debe ser > 0`;
+  }
+  if ('runningThreshold' in a && a.runningThreshold != null && !Number.isFinite(Number(a.runningThreshold))) {
+    return 'autonomy: runningThreshold, si se envía, debe ser numérico';
   }
   return null;
 }
@@ -74,7 +82,11 @@ router.post("/equipmentsheet", checkAuth, async (req, res) => {
       if (err) return res.status(400).json({ status: "error", error: err });
       if (!newSheet.autonomy) delete newSheet.autonomy;
     }
+    const contentErr = validateSheetContent(newSheet);   // auditoría 2026-10-14 (F-05)
+    if (contentErr) return res.status(400).json({ status: "error", error: contentErr });
     const sheet = await EquipmentSheet.create(newSheet);
+    // Auditoría 2026-10-14 (F-21) — una ficha nueva con autonomía también recarga el edge.
+    if (sheet.autonomy && sheet.autonomy.fuelVariable) publishEdgeReload(`POST ${sheet.deviceType}`);
     return res.json({ status: "success", deviceType: sheet.deviceType });
   } catch (error) {
     console.log("ERROR CREATING EQUIPMENT SHEET"); console.log(error);
@@ -146,15 +158,29 @@ router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
     if ('domain' in upd) sheet.domain = upd.domain || '';   // DEC-REF-108 F2 (#80): dominio → tabs del sitio
     if (Array.isArray(upd.variables)) sheet.variables = upd.variables;
     // DEC-REF-115 (#85): parámetros del cálculo de autonomía de la plataforma.
+    // Auditoría 2026-10-14 (F-04): MERGE campo a campo — antes el bloque se
+    // reemplazaba entero y un form que solo conocía 3 campos borraba
+    // flowVariable/flowScale/runningVariable en silencio. `autonomy:null` sigue
+    // siendo la única forma de limpiar el bloque.
     if ('autonomy' in upd) {
-      const err = validateAutonomy(upd.autonomy);
+      const prev = sheet.autonomy ? (sheet.autonomy.toObject ? sheet.autonomy.toObject() : sheet.autonomy) : {};
+      const merged = upd.autonomy === null ? null : { ...prev, ...upd.autonomy };
+      const err = validateAutonomy(merged);
       if (err) return res.status(400).json({ status: "error", error: err });
-      sheet.autonomy = upd.autonomy || undefined;
+      sheet.autonomy = merged || undefined;
     }
+    const contentErr = validateSheetContent({
+      deviceType,
+      variables: sheet.variables.map(v => (v.toObject ? v.toObject() : v)),
+      autonomy: sheet.autonomy ? (sheet.autonomy.toObject ? sheet.autonomy.toObject() : sheet.autonomy) : null,
+    });
+    if (contentErr) return res.status(400).json({ status: "error", error: contentErr });
     sheet.version = (Number(sheet.version) || 1) + 1;
     await sheet.save();
     // DEC-REF-115 (#85): si cambió la config de autonomía, el edge recarga.
-    if ('autonomy' in upd) publishEdgeReload(`PUT autonomy ${deviceType}`);
+    // Auditoría 2026-10-14: el edge ahora también lee variables[].type de la ficha
+    // (normalización de entrada) → recargar también si cambiaron las variables.
+    if ('autonomy' in upd || Array.isArray(upd.variables)) publishEdgeReload(`PUT ${deviceType}`);
     return res.json({ status: "success", deviceType: sheet.deviceType, version: sheet.version });
   } catch (error) {
     console.log("ERROR UPDATING EQUIPMENT SHEET"); console.log(error);

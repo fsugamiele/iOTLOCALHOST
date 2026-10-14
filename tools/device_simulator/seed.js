@@ -37,6 +37,7 @@ if (!fs.existsSync(SITES_FILE)) {
 // SEC: 10 variables de seguridad
 const SEC_TEMPLATE = {
   name: 'WN-SITE-SEC v2',
+  deviceType: 'SEC',   // auditoría 2026-10-14 (F-15): sin esto el device nace sin tipo (devices.js lo toma del template)
   description: 'Anti-robo y anti-intrusión para sites de telco. 4 puntos de apertura, sensórica perimetral y BLE tracking de baterías.',
   widgets: [
     { variable: 'door_shelter',          variableFullName: 'Puerta shelter',                 variableType: 'bool',        variableSendFreq: 30 },
@@ -55,6 +56,7 @@ const SEC_TEMPLATE = {
 // GEN: 9 variables de generador/energía
 const GEN_TEMPLATE = {
   name: 'WN-SITE-GEN v2',
+  deviceType: 'GEN',   // auditoría 2026-10-14 (F-15): sin esto el device nace sin tipo (devices.js lo toma del template)
   description: 'Monitoreo predictivo de grupo electrógeno. MODBUS solo-lectura + sensórica externa con FFT on-edge.',
   widgets: [
     { variable: 'fuel_level',             variableFullName: 'Nivel combustible (%)',          variableType: 'float',       variableSendFreq: 60 },
@@ -74,6 +76,7 @@ const GEN_TEMPLATE = {
 // ATS: 7 variables ComAp InteliATS PWR (honra DEC-REF-16)
 const ATS_TEMPLATE = {
   name: 'WN-ATS-InteliATS-PWR',
+  deviceType: 'ATS',   // auditoría 2026-10-14 (F-15): sin esto el device nace sin tipo (devices.js lo toma del template)
   description: 'ComAp InteliATS PWR — estado de transferencia, tensiones y frecuencias de red y generador.',
   widgets: [
     // enumValues (DEC-REF-108, #80-F1): la semántica de la fuente de
@@ -102,9 +105,10 @@ const ATS_TEMPLATE = {
 // CUMMINS: 11 variables Cummins PowerCommand (honra DEC-REF-16)
 const CUMMINS_TEMPLATE = {
   name: 'WN-GEN-Cummins-PowerCommand',
+  deviceType: 'cummins-pcc',   // auditoría 2026-10-14 (F-15): sin esto el device nace sin tipo (devices.js lo toma del template)
   description: 'Cummins PowerCommand — monitoreo mecánico y eléctrico del grupo electrógeno.',
   widgets: [
-    { variable: 'oil_pressure',    variableFullName: 'Presión aceite (psi)',          variableType: 'float', variableSendFreq: 60 },
+    { variable: 'oil_pressure',    variableFullName: 'Presión aceite (kPa)',          variableType: 'float', variableSendFreq: 60 },
     { variable: 'coolant_temp',    variableFullName: 'Temperatura refrigerante (°C)', variableType: 'float', variableSendFreq: 60 },
     { variable: 'rpm',             variableFullName: 'RPM motor',                     variableType: 'int',   variableSendFreq: 30 },
     { variable: 'run_hours',       variableFullName: 'Horas de marcha (h)',           variableType: 'float', variableSendFreq: 60 },
@@ -123,7 +127,7 @@ const CUMMINS_TEMPLATE = {
     // `sharedSet:{cummins_setpoint_suppressed:true}` corta la publicación
     // (modela pérdida Modbus del driver) para probar fallback / no-ref / escalada.
     { variable: 'coolant_temp_setpoint', variableFullName: 'Setpoint temp. refrigerante (°C)', variableType: 'float', variableSendFreq: 60 },
-    { variable: 'oil_pressure_setpoint', variableFullName: 'Setpoint presión aceite (psi)',   variableType: 'float', variableSendFreq: 60 },
+    { variable: 'oil_pressure_setpoint', variableFullName: 'Setpoint presión aceite (kPa)',   variableType: 'float', variableSendFreq: 60 },
   ],
 };
 

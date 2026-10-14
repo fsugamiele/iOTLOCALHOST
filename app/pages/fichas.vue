@@ -166,6 +166,26 @@
           <label>Consumo (L/h)</label>
           <base-input v-model="newSheet.autonomy.consumptionLph" placeholder="ej. 3.46" type="number" />
         </div>
+        <!-- Auditoría 2026-10-14 (F-04/M-01) — parámetros de marcha y del consumo medido -->
+        <div class="col-md-3 form-group">
+          <label>Variable de marcha</label>
+          <select v-model="newSheet.autonomy.runningVariable" class="form-control">
+            <option value="">— Alias por defecto —</option>
+            <option v-for="v in newSheet.variables" :key="'run-' + v.name" :value="v.name">{{ v.label || v.name }}</option>
+          </select>
+        </div>
+        <div class="col-md-3 form-group">
+          <label>Umbral de marcha (ej. rpm &gt; 300)</label>
+          <base-input v-model="newSheet.autonomy.runningThreshold" placeholder="0" type="number" />
+        </div>
+        <div class="col-md-3 form-group">
+          <label>Buffer de consumo (h de marcha)</label>
+          <base-input v-model="newSheet.autonomy.windowHours" placeholder="24" type="number" />
+        </div>
+        <div class="col-md-3 form-group">
+          <label>Marcha mínima (min)</label>
+          <base-input v-model="newSheet.autonomy.minRunMinutes" placeholder="45" type="number" />
+        </div>
       </div>
 
       <hr />
@@ -421,6 +441,21 @@ export default {
     await this.loadSheets();
   },
   methods: {
+    // Auditoría 2026-10-14 (F-04) — arma el bloque autonomy conservando los campos
+    // que el form no edita (flowVariable/flowScale/minDropPct). Vacío → no se envía.
+    buildAutonomyPayload(a) {
+      const out = { ...a };
+      out.tankCapacity = Number(a.tankCapacity);
+      out.consumptionLph = Number(a.consumptionLph);
+      for (const k of ['runningThreshold', 'windowHours', 'minRunMinutes', 'minDropPct', 'flowScale']) {
+        // vacío → null: el PUT mergea campo a campo, null pisa (limpia) el valor previo
+        out[k] = (out[k] === '' || out[k] == null) ? null : Number(out[k]);
+      }
+      for (const k of ['runningVariable', 'flowVariable']) {
+        if (!out[k]) out[k] = null;
+      }
+      return out;
+    },
     headers() {
       return { headers: { token: this.$store.state.auth.token } };
     },
@@ -448,7 +483,7 @@ export default {
       return {
         deviceType: '', manufacturer: '', model: '', origin: 'own', domain: '', variables: [],
         // DEC-REF-115 (#85): parámetros del cálculo de autonomía (vacío = sin cálculo).
-        autonomy: { fuelVariable: '', tankCapacity: '', consumptionLph: '' },
+        autonomy: { fuelVariable: '', tankCapacity: '', consumptionLph: '', runningVariable: '', runningThreshold: '', windowHours: '', minRunMinutes: '' },
       };
     },
     // DEC-REF-108 F2 (#80): label legible del dominio (tab del sitio).
@@ -480,10 +515,17 @@ export default {
         origin: c.origin || 'own',
         domain: c.domain || '',
         // DEC-REF-115 (#85): config de autonomía (vacía si la ficha no tiene).
+        // Auditoría 2026-10-14 (F-04): se conservan TODOS los campos del bloque
+        // (flowVariable, flowScale, …) aunque el form no los muestre.
         autonomy: {
+          ...(c.autonomy || {}),
           fuelVariable: (c.autonomy && c.autonomy.fuelVariable) || '',
           tankCapacity: (c.autonomy && c.autonomy.tankCapacity) || '',
           consumptionLph: (c.autonomy && c.autonomy.consumptionLph) || '',
+          runningVariable: (c.autonomy && c.autonomy.runningVariable) || '',
+          runningThreshold: (c.autonomy && c.autonomy.runningThreshold != null) ? c.autonomy.runningThreshold : '',
+          windowHours: (c.autonomy && c.autonomy.windowHours) || '',
+          minRunMinutes: (c.autonomy && c.autonomy.minRunMinutes) || '',
         },
         variables: (c.variables || []).map(v => ({
           name: v.name || '',
@@ -602,11 +644,7 @@ export default {
           // DEC-REF-115 (#85): con variable de combustible → bloque completo;
           // sin ella → null (limpia; la plataforma no calcula a medias).
           autonomy: this.newSheet.autonomy.fuelVariable
-            ? {
-                fuelVariable: this.newSheet.autonomy.fuelVariable,
-                tankCapacity: Number(this.newSheet.autonomy.tankCapacity),
-                consumptionLph: Number(this.newSheet.autonomy.consumptionLph),
-              }
+            ? this.buildAutonomyPayload(this.newSheet.autonomy)
             : null,
           variables: this.newSheet.variables.map(v => ({
             name: v.name.trim(),

@@ -43,6 +43,12 @@ const AutonomySchema = new Schema({
   flowVariable:    { type: String },  // NUEVO opcional — variable de caudal instantáneo del caudalímetro (fuente 'metered')
   flowScale:       { type: Number },  // NUEVO opcional (default 1) — multiplicador a unidad/hora (ej. L/min→60)
   runningVariable: { type: String },  // NUEVO opcional — variable de marcha; ausente → fallback a RUNNING_ALIASES del edge
+  // Auditoría 2026-10-14 (M-01/M-02/F-13, decisión Franco) — estimador 'measured'
+  // editable desde la ficha. Ausentes → defaults del edge (24 h / 45 min / 2 % / 0).
+  runningThreshold: { type: Number },  // marcha si valor numérico > umbral (rpm → 300, DEC-REF-56)
+  windowHours:      { type: Number },  // buffer: horas de MARCHA acumulada que se conservan
+  minRunMinutes:    { type: Number },  // marcha mínima para confiar en el consumo medido
+  minDropPct:       { type: Number },  // caída mínima de nivel (%) para confiar en el consumo medido
 }, { _id: false });
 
 const equipmentSheetSchema = new Schema({
