@@ -8,7 +8,9 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') })
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
-const { processMessage, processStalenessTick, fireResolve } = require('./ruleEngine');
+const { processMessage, processStalenessTick, fireAlarm, fireResolve } = require('./ruleEngine');
+const { createRuleFsm } = require('./ruleFsm');      // spec_grafcet_g1 · G1a (DEC-REF-145)
+const { createFsmStore } = require('./fsmStore');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, buildStateSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
 const { loadAutonomyConfigs, maybeComputeAutonomy, resetAutonomyRuntime, changedAutonomyDIds } = require('./autonomy');
@@ -19,6 +21,8 @@ const { loadMSoftState, flushMSoftState, deleteMSoftState } = require('./msoftst
 const MSOFT_FLUSH_SEC = parseInt(process.env.MSOFT_FLUSH_SEC || '30', 10);
 // motor M Ola M4 — cadencia del tick de staleness (silencio de comunicación §8-D3).
 const EDGE_TICK_SEC = parseInt(process.env.EDGE_TICK_SEC || '30', 10);
+// G1a — tick del GRAFCET: vence esperas y cierres aunque el equipo publique por excepción.
+const FSM_TICK_SEC = parseInt(process.env.FSM_TICK_SEC || '5', 10);
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -51,6 +55,28 @@ const mState        = new Map();
 // transición activa→inactiva. Vive en el mismo closure que los otros Maps;
 // viaja como argumento a processMessage.
 const activeState  = new Map();
+
+// spec_grafcet_g1 · G1a (DEC-REF-145) — GRAFCET por instancia de regla. Las acciones de
+// sus transiciones son fireAlarm/fireResolve (mismo payload de notificación que antes).
+const fsmStore = createFsmStore(SITE_ID);
+const fsm = createRuleFsm({
+  onNotify: (inst, ctx, now, rule) => fireAlarm({
+    rule, value: ctx && ctx.value !== undefined ? ctx.value : null,
+    deviceId: (ctx && ctx.dId) || inst.dId, stateKey: inst.key,
+    reason: ctx && ctx.reason, mode: ctx && ctx.mode,
+    thresholdUsed: ctx && ctx.thresholdUsed !== undefined ? ctx.thresholdUsed : null,
+    cooldownState, siteState, activeState,
+  }),
+  onResolve: (inst, ctx, now, rule) => fireResolve({
+    rule, deviceId: (ctx && ctx.dId) || inst.dId, stateKey: inst.key,
+    reason: (ctx && ctx.resolveReason) || 'threshold-cleared',
+    mode: ctx && ctx.mode === 'M' ? 'M' : 'resolve-by-condition',
+    cooldownState, siteState, activeState,
+  }),
+  onTransition: (t) => fsmStore.trace(t),
+  onPersist: (inst) => fsmStore.save(inst),
+});
+const ruleIndex = (packs) => { const m = new Map(); for (const p of packs) for (const r of (p.rules || [])) m.set(r.ruleId, r); return m; };
 
 // DEC-REF-68 (c) — handlers globales de errores no manejados.
 // Sin esto, un rechazo async no capturado tumba el proceso EN SILENCIO
@@ -93,6 +119,29 @@ async function start() {
   let variableTypes = await loadVariableTypes(SITE_ID);
   // motor M Ola M3 — hidrata los acumuladores persistentes (accumulator/cumulativeSince).
   const nMsoft = await loadMSoftState(SITE_ID, mState);
+  // G1a — hidratar el GRAFCET (cierra M-05: sin re-notificar lo abierto, y lo despejado
+  // durante la caída se resuelve en la primera evaluación).
+  let ruleById = ruleIndex(packs);
+  const fsmRows = await fsmStore.load();
+  fsm.hydrate(fsmRows.filter(r => ruleById.has(r.ruleId)));
+  for (const r of fsmRows) {
+    if (ruleById.has(r.ruleId)) {
+      if (r.alarmOpen) { activeState.set(r.key, r.firedAt || Date.now()); cooldownState.set(r.key, r.firedAt || Date.now()); }
+      continue;
+    }
+    // Regla quitada mientras el edge estaba caído: cerrar lo abierto (no muere en silencio).
+    if (r.alarmOpen) {
+      activeState.set(r.key, r.firedAt || Date.now());
+      fireResolve({
+        rule: { ruleId: r.ruleId, inferenceId: null, label: r.ruleId, severity: 'info', variable: null },
+        deviceId: r.dId || '', stateKey: r.key, reason: 'rule-removed', mode: 'resolve-by-edit',
+        cooldownState, siteState, activeState,
+      });
+    }
+    fsmStore.remove(r.key);
+  }
+  fsmStore.start();
+  console.log(`[edge-engine] GRAFCET: ${fsm.instances.size} instancia(s) hidratada(s) · ${[...fsm.instances.values()].filter(i => i.alarmOpen).length} alarma(s) abierta(s)`);
   console.log(`[edge-engine] Packs cargados: ${packs.map(p => p.packId).join(', ') || '(ninguno)'}`);
   console.log(`[edge-engine] Dispositivos en estado: ${siteState.size}`);
   console.log(`[edge-engine] Autonomía configurada en ${autonomyConfigs.size} equipo(s): ${[...autonomyConfigs.keys()].join(', ') || '(ninguno)'}`);
@@ -108,11 +157,17 @@ async function start() {
   // siempre la versión vigente.
   setInterval(() => {
     try {
-      processStalenessTick({ packs, siteState, cooldownState, activeState, mState });
+      processStalenessTick({ packs, siteState, mState, fsm });
     } catch (e) {
       console.error('[edge-engine] staleness tick error:', e.message);
     }
   }, EDGE_TICK_SEC * 1000);
+
+  // G1a — tick del GRAFCET (esperas y cierres vencidos con la última receptividad).
+  setInterval(() => {
+    try { fsm.tick(ruleById, Date.now()); }
+    catch (e) { console.error('[edge-engine] fsm tick error:', e.message); }
+  }, FSM_TICK_SEC * 1000);
 
   // reloadPacks — handler del canal de control SF-3 (DEC-REF-58 + DEC-REF-61).
   // Payload ignorado (DEC-REF-61.c "recargar todo"). Errores no dejan al motor
@@ -183,6 +238,9 @@ async function start() {
         });
       }
 
+      // G1a — las instancias del GRAFCET de esas reglas vuelven a cero (E0 → E1 al recargar).
+      for (const inst of fsm.drop(toClean)) fsmStore.remove(inst.key);
+
       // DEC-REF-128 (A9.2) — borrar la persistencia de acumuladores de reglas
       // ELIMINADAS (no editadas): una regla recreada con el mismo ruleId no debe
       // rehidratar un acc obsoleto. Fire-and-forget (no introduce await antes del swap).
@@ -192,6 +250,7 @@ async function start() {
 
       // Swap sincrónico post-await — no hay await entre estas líneas.
       packs = nextPacks;
+      ruleById = ruleIndex(nextPacks);
       ruleSnapshot = nextSnap;
       stateSnapshot = nextStateSnap;
       // Auditoría 2026-10-14 (M-24) — resetear historial SOLO de los equipos cuya
@@ -313,7 +372,7 @@ async function start() {
     const effUserId = (autonomyConfigs.get(dId) || {}).userId || userId;
     maybeComputeEfficiency({ client, userId: effUserId, dId, variable, deviceState, eventTs });
 
-    processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, mState, eventTs });
+    processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, activeState, mState, eventTs, fsm });
   });
 
   client.on('error', err => {
@@ -326,6 +385,8 @@ async function start() {
     // (sin esto se perdía hasta MSOFT_FLUSH_SEC de acumulado por reinicio).
     try { const n = await flushMSoftState(SITE_ID, mState); if (n) console.log(`[edge-engine] flush final: ${n} acumulador(es)`); }
     catch (e) { console.error('[msoftstate] flush final error:', e.message); }
+    // G1a — flush final del GRAFCET y la bitácora.
+    try { fsmStore.stop(); await fsmStore.flush(); } catch (e) { console.error('[fsmStore] flush final error:', e.message); }
     client.end();
     await mongoose.disconnect();
     process.exit(0);

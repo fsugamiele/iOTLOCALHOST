@@ -1,7 +1,7 @@
 const { evaluateD, resolveClears, effectiveCondition } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
 const { evaluateS } = require('./evaluators/typeS');
-const { evaluateCross } = require('./evaluators/typeCross');
+const { evaluateCrossTree } = require('./evaluators/typeCross');
 const { evaluateM } = require('./evaluators/typeM');
 const { notify }    = require('./notificationRouter');
 
@@ -17,7 +17,15 @@ const NO_SETPOINT_INFO_COOLDOWN_MS = 60 * 60 * 1000;
 // mismo deviceType se pisaban (resolve cruzado, cooldown compartido). mState
 // (typeM) y crossState (firedKey) ya eran por instancia → no se tocan.
 
-function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, crossState, activeState, mState, eventTs }) {
+// spec_grafcet_g1 · G1a (DEC-REF-145) — cada tipo calcula su RECEPTIVIDAD y la entrega
+// al GRAFCET de la instancia (ruleFsm). La espera (graceSec), la histéresis, el cierre
+// (resolveGraceSec), "sin datos" y si la alarma está abierta viven SOLO en el FSM;
+// fireAlarm/fireResolve son las ACCIONES de sus transiciones (callbacks en index.js).
+//   'on' = se cumple · 'band' = no se cumple pero sigue en la banda de histéresis
+//   'off' = no se cumple y cruzó la banda · null = no evaluable
+const toR = (val) => (val === null || val === undefined ? null : (val ? 'on' : 'off'));
+
+function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, activeState, mState, eventTs, fsm }) {
   const deviceState = siteState.get(dId) || {};
   const deviceType  = deviceState._deviceType || null;
   const siteCode    = deviceState._siteCode   || null;
@@ -25,175 +33,62 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
   for (const pack of packs) {
     for (let rule of pack.rules) {
       // Auditoría 2026-10-14 (M-03) — aislamiento por regla: una regla mal formada
-      // (p.ej. type C sin condition) NO puede tirar el proceso. Antes la excepción
-      // subía a uncaughtException → process.exit(1) → bucle de caída del edge.
+      // (p.ej. type C sin condition) NO puede tirar el proceso.
       try {
         if (rule.type === 'cross') {
           if (!siteCode) continue;
           // DEC-REF-122 — cross es por SITIO: instancia = ruleId:siteCode.
           const ck = `${rule.ruleId}:${siteCode}`;
-          const res = evaluateCross(rule, siteState, crossState, eventTs, siteCode);
-          if (res.fired) {
-            // DEC-REF-65-A · propagamos sumTotal + thresholdUsed cuando la
-            // regla es cross-con-hoja-sum (evaluateCross los expone). Reglas
-            // cross-tree sin sum: res.sumTotal es undefined → value queda
-            // null como antes (path DEC-REF-56-A intacto).
-            fireAlarm({
-              rule, value: res.sumTotal ?? null, deviceId: dId, stateKey: ck,
-              reason: 'cross-tree-fired',
-              mode: 'cross',
-              thresholdUsed: res.thresholdUsed ?? null,
-              cooldownState, siteState, activeState,
-            });
-          } else if (res.resolved) {
-            // SF-4 · DEC-REF-64 — el evaluador cross reportó que la regla ACTIVA
-            // dejó de cumplirse (transición firedKey true→delete). Sólo emite
-            // resolve si estaba en activeState (defensa vs delete de una regla
-            // que nunca fired en esta sesión, p.ej. tras un reload).
-            if (activeState.has(ck)) {
-              fireResolve({
-                rule, deviceId: dId, stateKey: ck,
-                reason: 'cross-tree-cleared',
-                mode: 'resolve-by-condition',
-                cooldownState, siteState, activeState,
-              });
-            }
-          }
+          const res = evaluateCrossTree(rule, siteState, eventTs, siteCode);
+          // DEC-REF-65-A — sumTotal + thresholdUsed viajan a la notificación (hoja sum).
+          fsm.evaluate(rule, ck, toR(res.val), {
+            dId, value: res.total ?? null, thresholdUsed: res.thresholdUsed ?? null,
+            reason: 'cross-tree-fired', mode: 'cross', resolveReason: 'cross-tree-cleared',
+          }, eventTs);
           continue;
         }
 
         if (rule.deviceType !== deviceType) continue;
         if (rule.variable   !== variable)   continue;
-        // spec_cascada_ficha C3 — umbral relativo a la instalación (ej. batería 24 V):
-        // la regla se evalúa con el valor escalado para ESTE equipo.
+        // spec_cascada_ficha C3 — umbral relativo a la instalación (ej. batería 24 V).
         if (rule.condition && rule.condition.scaleRef) {
           rule = { ...rule, condition: effectiveCondition(rule.condition, deviceState) };
         }
 
         // DEC-REF-122 — D/S/C son por EQUIPO: instancia = ruleId:dId.
-        // (M `spread` re-ancla al equipo outlier dentro de su case → mkey.)
         const key = `${rule.ruleId}:${dId}`;
 
-        let triggered = false;
-        let evaluated = false;  // marca los cases que llegaron a evaluar
         switch (rule.type) {
           case 'D': {
-            // Auditoría 2026-10-14 (M-07) — null = no evaluable (dato malo/ausente):
-            // ni fire ni resolve.
+            // M-07 — null = no evaluable (dato malo/ausente).
             let r = evaluateD(rule, value);
-            // spec_cascada_ficha C2 — precondición del límite de ficha (ej. alternador
-            // solo con el motor en marcha): si no se cumple, la condición NO aplica
-            // (false → resuelve si estaba activa); si se desconoce, no evaluable.
+            // C2 — precondición del límite de ficha (ej. solo con el motor en marcha).
             const wh = rule.condition && rule.condition.when;
             if (wh && r !== null) {
               const w = evaluateD({ ruleId: `${rule.ruleId}:when`, condition: { op: wh.op, value: wh.value } }, deviceState[wh.variable]);
               if (w === null) r = null; else if (w === false) r = false;
             }
-            triggered = r === true;
-            evaluated = r !== null;
+            // DEC-REF-132 — histéresis: no cumplida pero sin cruzar la banda = 'band'.
+            const R = r === null ? null : (r ? 'on' : (resolveClears(rule, value) ? 'off' : 'band'));
+            fsm.evaluate(rule, key, R, {
+              dId, value, thresholdUsed: rule.condition ? rule.condition.value : null,
+              reason: 'threshold', mode: 'direct', resolveReason: 'threshold-cleared',
+            }, eventTs);
             break;
           }
           case 'C': {
             const res = evaluateC(rule, value, deviceState);
-            triggered = res.fired;
-            if (triggered) {
-              fireAlarm({
-                rule, value, deviceId: dId, stateKey: key,
-                reason: res.mode === 'fallback' ? 'threshold-fallback' : 'threshold-calibrated',
-                mode: res.mode, thresholdUsed: res.thresholdUsed,
-                cooldownState, siteState,
-                // A4 (DEC-REF-124) — SOLO el camino CALIBRADO entra a activeState → resuelve
-                // por condición (espejo de D). fallback/no-ref NO: su cierre es
-                // setpoint-recovered (DEC-REF-64.c + EDGE-2, abajo).
-                activeState: res.mode === 'calibrated' ? activeState : undefined,
-              });
-            } else if (res.mode === 'calibrated' && activeState.has(key)) {
-              // A4 (DEC-REF-124) — el calibrado dejó de cumplirse → resolve-by-condición.
-              // Antes la alarma C calibrada NUNCA cerraba (quedaba abierta para siempre).
-              fireResolve({
-                rule, deviceId: dId, stateKey: key,
-                reason: 'threshold-cleared', mode: 'resolve-by-condition',
-                cooldownState, siteState, activeState,
-              });
-            }
-            // Sub-paso 2b: INFO de configuración cuando setpoint no disponible (DEC-REF-24)
+            // INFO de configuración + escalada EDGE-2 cuando falta el setpoint: avisos de
+            // CONFIGURACIÓN, fuera del GRAFCET (spec §5). Se resuelve ANTES de entregar la
+            // receptividad: cierra la escalada y libera la clave (M-16).
             if (res.mode === 'fallback' || res.mode === 'no-ref') {
-              const noSetpointKey = `${key}:no-setpoint`;
-              const startKey      = `${key}:no-setpoint:start`;
-              const escalatedKey  = `${key}:no-setpoint:escalated`;
-
-              // EDGE-2: marca de inicio del episodio (tiempo-de-eventos). Nace la primera vez que falta el setpoint.
-              if (!cooldownState.has(startKey)) {
-                cooldownState.set(startKey, Date.now());
-              }
-
-              // INFO de configuración (cooldown propio, intacto)
-              const lastNoSetpoint = cooldownState.get(noSetpointKey) || 0;
-              const cooldownMs = NO_SETPOINT_INFO_COOLDOWN_MS;
-              if (Date.now() - lastNoSetpoint > cooldownMs) {
-                cooldownState.set(noSetpointKey, Date.now());
-                notify({
-                  ruleId:         rule.ruleId,
-                  inferenceId:    rule.inferenceId,
-                  label:          rule.label,
-                  variableLabel:  rule.variableLabel || '',
-                  unit:           rule.unit || '',
-                  severity:       'info',
-                  recommendation: `Setpoint de "${rule.variableLabel || rule.variable}" no disponible en siteState. Verificar configuración del controlador y variable "${rule.setpointSource?.variable || 'no definida'}".`,
-                  deviceId:       dId,
-                  deviceName:     deviceState._deviceName || dId,
-                  variable:       rule.variable,
-                  value,
-                  mode:           res.mode,
-                  thresholdUsed:  res.thresholdUsed,
-                  userId:         deviceState._userId || '',
-                  ts:             new Date().toISOString(),
-                  reason:         'setpoint-unavailable',
-                });
-              }
-
-              // EDGE-2: escalada temporal INFO→warning (ATENCIÓN). Opt-in, una sola vez por episodio.
-              if (rule.escalateAfterMinutes != null && !cooldownState.has(escalatedKey)) {
-                const episodeStart = cooldownState.get(startKey);
-                const escalateMs   = rule.escalateAfterMinutes * 60 * 1000;
-                if (Date.now() - episodeStart >= escalateMs) {
-                  cooldownState.set(escalatedKey, Date.now());  // marca idempotente: no re-emitir ni re-bypass
-                  // DEC-REF-66-B (#45/R22): la escalada pinta el pin warning
-                  // (DEC-REF-27) — marcar activeState para que el reset
-                  // calibrado pueda emitir fireResolve simétrico.
-                  if (activeState) activeState.set(key, Date.now());
-                  notify({
-                    ruleId:         rule.ruleId,
-                    inferenceId:    rule.inferenceId,
-                    label:          rule.label,
-                    variableLabel:  rule.variableLabel || '',
-                    unit:           rule.unit || '',
-                    severity:       'warning',
-                    recommendation: `Setpoint de "${rule.variableLabel || rule.variable}" sigue no disponible tras ${rule.escalateAfterMinutes} min. Revisar configuración del controlador con prioridad.`,
-                    deviceId:       dId,
-                    deviceName:     deviceState._deviceName || dId,
-                    variable:       rule.variable,
-                    value,
-                    mode:           res.mode,
-                    thresholdUsed:  res.thresholdUsed,
-                    userId:         deviceState._userId || '',
-                    ts:             new Date().toISOString(),
-                    reason:         'setpoint-unavailable-escalated',
-                  });
-                }
-              }
+              handleNoSetpoint({ rule, key, dId, value, res, deviceState, cooldownState, activeState });
             } else if (res.mode === 'calibrated') {
-              // EDGE-2 reset: el setpoint reapareció → cerrar el episodio.
-              // DEC-REF-66-B (#45/R22): si el episodio HABÍA escalado (pin
-              // warning visible al operador vía DEC-REF-64.a), emitir
-              // fireResolve simétrico. El INFO sin escalada (DEC-REF-27,
-              // no pinta pin) sigue cerrando en silencio.
               const escalatedKey = `${key}:no-setpoint:escalated`;
               if (cooldownState.has(escalatedKey)) {
                 fireResolve({
                   rule, deviceId: dId, stateKey: key,
-                  reason: 'setpoint-recovered',
-                  mode:   'resolve-by-setpoint-recovered',
+                  reason: 'setpoint-recovered', mode: 'resolve-by-setpoint-recovered',
                   recommendation: `Resuelto: setpoint de "${rule.variableLabel || rule.variable}" recuperado.`,
                   cooldownState, siteState, activeState,
                 });
@@ -202,120 +97,42 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
               cooldownState.delete(`${key}:no-setpoint:start`);
               cooldownState.delete(escalatedKey);
             }
-            continue;
+            // Receptividad: calibrado → su resultado; respaldo → el D de respaldo (ahora
+            // también CIERRA, M-15); sin referencia → alarma solo si on_missing_ref:'alarm',
+            // si no, no evaluable.
+            const R = res.mode === 'no-ref' ? (res.fired ? 'on' : null) : toR(res.fired);
+            fsm.evaluate(rule, key, R, {
+              dId, value, thresholdUsed: res.thresholdUsed,
+              reason: res.mode === 'fallback' ? 'threshold-fallback' : (res.mode === 'no-ref' ? 'no-ref' : 'threshold-calibrated'),
+              mode: res.mode, resolveReason: 'threshold-cleared',
+            }, eventTs);
+            break;
           }
           case 'S': {
-            const { fired, count, windowActual } = evaluateS(rule, value, windowState, dId);
-            if (fired) {
-              fireAlarm({
-                rule, value, deviceId: dId, stateKey: key,
-                reason: 'window',
-                thresholdUsed: rule.window?.countThreshold,
-                mode: 'window',
-                cooldownState, siteState, activeState,
-              });
-            } else if (activeState.has(key) && count < (rule.window?.countThreshold || 1)) {
-              // SF-4 · DEC-REF-64 + DEC-REF-122 (A2) — resolver SOLO cuando la ventana
-              // deslizante ya NO cumple el countThreshold (no ante cualquier no-match).
-              fireResolve({
-                rule, deviceId: dId, stateKey: key,
-                reason: 'window-cleared',
-                mode: 'resolve-by-condition',
-                cooldownState, siteState, activeState,
-              });
-            }
-            continue;
+            const { fired } = evaluateS(rule, value, windowState, dId);
+            fsm.evaluate(rule, key, fired ? 'on' : 'off', {
+              dId, value, thresholdUsed: rule.window ? rule.window.countThreshold : null,
+              reason: 'window', mode: 'window', resolveReason: 'window-cleared',
+            }, eventTs);
+            break;
           }
           case 'M': {
-            // spec_motor_m.md — soft sensor: métrica derivada vs condition.
-            // M2 multivariante (spread) puede devolver `outlierDId` = el equipo
-            // puntual a intervenir (A+B): la alarma se ancla a ESE device.
+            // spec_motor_m — soft sensor. spread puede anclar la instancia al equipo outlier.
             const res = evaluateM(rule, value, { mState, dId, eventTs, siteState, siteCode });
-            if (res.detail) {
-              // A5 (DEC-REF-124) — la métrica dejó de ser evaluable (insufficient/maturing/
-              // unsupported): si había alarma M activa de esta regla en ESTE equipo, cerrarla.
-              // Antes el `continue` saltaba también el resolve → alarma M zombie en activeState.
-              const dkey = `${rule.ruleId}:${dId}`;
-              if (activeState.has(dkey)) {
-                fireResolve({
-                  rule, deviceId: dId, stateKey: dkey,
-                  reason: 'soft-sensor-insufficient', mode: 'M',
-                  cooldownState, siteState, activeState,
-                });
-              }
-              continue;   // insufficient/maturing/unsupported → sin señal de fire
-            }
             const targetDId = res.outlierDId || dId;
-            // DEC-REF-122 — la instancia M se ancla al equipo objetivo (spread → outlier).
             const mkey = `${rule.ruleId}:${targetDId}`;
-            if (res.fired) {
-              fireAlarm({
-                rule, value: res.metricValue, deviceId: targetDId, stateKey: mkey,
-                reason: 'soft-sensor', mode: 'M',
-                thresholdUsed: rule.condition ? rule.condition.value : null,
-                cooldownState, siteState, activeState,
-              });
-            } else if (activeState.has(mkey)) {
-              fireResolve({
-                rule, deviceId: targetDId, stateKey: mkey,
-                reason: 'soft-sensor-cleared', mode: 'M',
-                cooldownState, siteState, activeState,
-              });
-            }
-            continue;
+            // Q1 — no evaluable (insufficient/maturing/unsupported) = Sin datos: una alarma
+            // abierta SIGUE abierta (antes se cerraba, ruleEngine A5).
+            const R = res.detail ? null : toR(res.fired);
+            fsm.evaluate(rule, mkey, R, {
+              dId: targetDId, value: res.detail ? null : res.metricValue,
+              thresholdUsed: rule.condition ? rule.condition.value : null,
+              reason: 'soft-sensor', mode: 'M', resolveReason: 'soft-sensor-cleared',
+            }, eventTs);
+            break;
           }
           default:
             console.warn(`[ruleEngine] Tipo desconocido '${rule.type}' en regla ${rule.ruleId}`);
-            continue;
-        }
-        if (evaluated && triggered) {
-          // DEC-REF-102 D-2 — un fire cancela un resolve pendiente: la alarma
-          // sigue activa y NO se re-notifica (el cooldown de fireAlarm gobierna).
-          cooldownState.delete(`${key}:resolveStart`);
-          fireAlarm({ rule, value, deviceId: dId, stateKey: key, reason: 'threshold',
-                      thresholdUsed: rule.condition?.value, cooldownState, siteState, activeState });
-        } else if (evaluated && !triggered && rule.type === 'D' && activeState.has(key)) {
-          // SF-4 · DEC-REF-64 — transición activa→inactiva en typeD: el mensaje
-          // recibido para esta variable no cumple la condition. Cierra el evento.
-          // Restricción a type 'D': para type 'C' la semántica no-ref/fallback
-          // no equivale a "condición resuelta" — queda como pendiente (ver
-          // DEC-REF-64.c: la ventana temporal cubre C hasta que se aclare).
-          // DEC-REF-132 — histéresis/deadband: resolver SOLO si el valor cruzó el
-          // umbral de RESOLUCIÓN. En la zona pegajosa queda ACTIVA (anti-flap) y se
-          // cancela el grace pendiente (el valor volvió hacia el umbral de disparo).
-          if (!resolveClears(rule, value)) {
-            cooldownState.delete(`${key}:resolveStart`);
-          } else {
-            // DEC-REF-102 D-2 — persistencia del resolve: con resolveGraceSec > 0 la
-            // condición (ya cruzada la banda) debe permanecer así durante la ventana;
-            // un valor que vuelve a cruzar el umbral dentro de la ventana cancela el cierre.
-            const resolveGraceMs = (rule.resolveGraceSec || 0) * 1000;
-            if (resolveGraceMs === 0) {
-              fireResolve({
-                rule, deviceId: dId, stateKey: key,
-                reason: 'threshold-cleared',
-                mode: 'resolve-by-condition',
-                cooldownState, siteState, activeState,
-              });
-            } else {
-              const rsKey = `${key}:resolveStart`;
-              if (!cooldownState.has(rsKey)) {
-                cooldownState.set(rsKey, Date.now());
-              } else if (Date.now() - cooldownState.get(rsKey) >= resolveGraceMs) {
-                cooldownState.delete(rsKey);
-                fireResolve({
-                  rule, deviceId: dId, stateKey: key,
-                  reason: 'threshold-cleared',
-                  mode: 'resolve-by-condition',
-                  cooldownState, siteState, activeState,
-                });
-              }
-            }
-          }
-        } else if (evaluated && !triggered && rule.type === 'D') {
-          // Regla inactiva y condición no cumplida — limpiar un resolveStart
-          // huérfano (p.ej. quedó de un episodio anterior ya resuelto).
-          cooldownState.delete(`${key}:resolveStart`);
         }
       } catch (err) {
         console.error(`[ruleEngine] Regla ${rule && rule.ruleId} falló evaluando ${dId}/${variable} — omitida: ${err && (err.stack || err.message)}`);
@@ -324,36 +141,60 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
   }
 }
 
-// spec_motor_m.md §8-D3 (Ola M4) — tick periódico para `staleness`: el silencio
-// NO llega por mensaje entrante (si el equipo dejó de publicar, no hay evento que
-// dispare la evaluación). Un setInterval en index.js llama a esto: recorre las
-// reglas M `staleness` y, por cada device de su deviceType, mide (ahora − últimoTs)
-// en mState y entra al MISMO camino de emisión (fire/resolve/cooldown) que el resto.
-// El resolve al reconectar lo emite el camino de mensaje (processMessage · case M).
-function processStalenessTick({ packs, siteState, cooldownState, activeState, mState }) {
+// DEC-REF-24 / EDGE-2 — INFO "setpoint no disponible" + escalada opt-in a warning.
+// Sin cambios de comportamiento respecto de antes de G1a; solo se movió de lugar.
+function handleNoSetpoint({ rule, key, dId, value, res, deviceState, cooldownState, activeState }) {
+  const noSetpointKey = `${key}:no-setpoint`;
+  const startKey      = `${key}:no-setpoint:start`;
+  const escalatedKey  = `${key}:no-setpoint:escalated`;
+  if (!cooldownState.has(startKey)) cooldownState.set(startKey, Date.now());
+  const lastNoSetpoint = cooldownState.get(noSetpointKey) || 0;
+  if (Date.now() - lastNoSetpoint > NO_SETPOINT_INFO_COOLDOWN_MS) {
+    cooldownState.set(noSetpointKey, Date.now());
+    notify({
+      ruleId: rule.ruleId, inferenceId: rule.inferenceId, label: rule.label,
+      variableLabel: rule.variableLabel || '', unit: rule.unit || '', severity: 'info',
+      recommendation: `Setpoint de "${rule.variableLabel || rule.variable}" no disponible en siteState. Verificar configuración del controlador y variable "${rule.setpointSource?.variable || 'no definida'}".`,
+      deviceId: dId, deviceName: deviceState._deviceName || dId, variable: rule.variable, value,
+      mode: res.mode, thresholdUsed: res.thresholdUsed, userId: deviceState._userId || '',
+      ts: new Date().toISOString(), reason: 'setpoint-unavailable',
+    });
+  }
+  if (rule.escalateAfterMinutes != null && !cooldownState.has(escalatedKey)) {
+    const episodeStart = cooldownState.get(startKey);
+    if (Date.now() - episodeStart >= rule.escalateAfterMinutes * 60 * 1000) {
+      cooldownState.set(escalatedKey, Date.now());
+      // DEC-REF-66-B — la escalada pinta pin warning: marcar activo para el resolve simétrico.
+      if (activeState) activeState.set(key, Date.now());
+      notify({
+        ruleId: rule.ruleId, inferenceId: rule.inferenceId, label: rule.label,
+        variableLabel: rule.variableLabel || '', unit: rule.unit || '', severity: 'warning',
+        recommendation: `Setpoint de "${rule.variableLabel || rule.variable}" sigue no disponible tras ${rule.escalateAfterMinutes} min. Revisar configuración del controlador con prioridad.`,
+        deviceId: dId, deviceName: deviceState._deviceName || dId, variable: rule.variable, value,
+        mode: res.mode, thresholdUsed: res.thresholdUsed, userId: deviceState._userId || '',
+        ts: new Date().toISOString(), reason: 'setpoint-unavailable-escalated',
+      });
+    }
+  }
+}
+
+// spec_motor_m §8-D3 — tick de `staleness`: el silencio no llega por mensaje. Recorre las
+// reglas staleness y, por cada equipo de su deviceType, entrega la receptividad al FSM.
+function processStalenessTick({ packs, siteState, mState, fsm }) {
   const now = Date.now();
   for (const pack of packs) {
     for (const rule of pack.rules) {
       if (rule.type !== 'M' || rule.metric !== 'staleness') continue;
       for (const [dId, devState] of siteState) {
         if (!devState || devState._deviceType !== rule.deviceType) continue;
-        const key = `${rule.ruleId}:${dId}`;   // DEC-REF-122 — staleness es por equipo
+        const key = `${rule.ruleId}:${dId}`;   // DEC-REF-122 — por equipo
         const res = evaluateM(rule, null, { mState, dId, eventTs: now, siteState, tick: true });
-        if (res.detail) continue;   // insufficient (device sin muestras aún) → sin señal
-        if (res.fired) {
-          fireAlarm({
-            rule, value: res.metricValue, deviceId: dId, stateKey: key,
-            reason: 'stale', mode: 'M',
-            thresholdUsed: rule.condition ? rule.condition.value : null,
-            cooldownState, siteState, activeState,
-          });
-        } else if (activeState.has(key)) {
-          fireResolve({
-            rule, deviceId: dId, stateKey: key,
-            reason: 'stale-cleared', mode: 'M',
-            cooldownState, siteState, activeState,
-          });
-        }
+        if (res.detail && !fsm.get(key)) continue;   // equipo nunca visto y sin instancia: nada que decir
+        fsm.evaluate(rule, key, res.detail ? null : toR(res.fired), {
+          dId, value: res.detail ? null : res.metricValue,
+          thresholdUsed: rule.condition ? rule.condition.value : null,
+          reason: 'stale', mode: 'M', resolveReason: 'stale-cleared',
+        }, now);
       }
     }
   }
@@ -454,4 +295,4 @@ function fireResolve({ rule, deviceId, stateKey, reason, mode, recommendation, c
   notify(alarm);
 }
 
-module.exports = { processMessage, processStalenessTick, fireResolve };
+module.exports = { processMessage, processStalenessTick, fireAlarm, fireResolve };

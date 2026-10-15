@@ -19,6 +19,11 @@ Decisiones firmadas que esta spec aplica:
 | Q5 | Eventos (salto abrupto) **quedan abiertos hasta que el operador confirma** | G1b (spec propia) |
 | Q6 | Acumulados se cierran **cuando el técnico registra el service** desde la app | G1b (spec propia) |
 
+> **G1a IMPLEMENTADO** (2026-10-15, DEC-REF-145). Verificado en harness:
+> - equivalencia contra el motor anterior: 34/36 reglas de seeds con notificaciones idénticas; las 2 que difieren son las divergencias de sifoneo, por Q1 (ya no cierran al quedar sin datos);
+> - 39/39 pruebas de §5, §6 e invariantes I1–I6 (incluidas 5 corridas aleatorias con 124 avisos y cierres);
+> - reinicio sin re-aviso (M-05) y C en respaldo con cierre (M-15).
+>
 > El bloque se parte en **G1a** (esta spec, motor sin campos nuevos) y **G1b** (cierre por acción
 > humana: Q5/Q6; necesita campo nuevo + endpoint + UI, y `routes/alarms.js` hoy tiene trabajo local
 > sin subir de Franco). G1b se escribe después de G1a. Esta spec **solo autoriza G1a**.

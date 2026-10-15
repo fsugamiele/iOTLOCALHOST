@@ -246,4 +246,11 @@ function evaluateCross(rule, siteState, crossState, eventTs, siteCode) {
   return { fired: false };
 }
 
-module.exports = { evaluateCross, validateCrossTree };
+// spec_grafcet_g1 · G1a (DEC-REF-145) — evaluación PURA del árbol (receptividad).
+// El motor GRAFCET (ruleFsm) decide espera/cierre; esta función no toca crossState.
+// evaluateCross (con su temporizador propio) queda para qa/lib/backtest.js hasta G2.
+function evaluateCrossTree(rule, siteState, eventTs, siteCode) {
+  return evaluateNode(rule.crossExpr, siteState, siteCode, eventTs, rule.ruleId);
+}
+
+module.exports = { evaluateCross, evaluateCrossTree, validateCrossTree };
