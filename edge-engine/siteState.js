@@ -131,4 +131,30 @@ async function hydrateSiteState(siteId, siteState) {
   console.log(`[siteState] Reconstruct: ${hydrated}/${dIds.length} devices con data histórica (todos los ${dIds.length} registrados en siteState)`);
 }
 
-module.exports = { loadPacks, hydrateSiteState };
+// refreshRefParams(siteId, siteState) — spec_umbral_por_referencia / cascada C3.
+// Vuelca device.refParams como pseudo-variables del device (deviceState[param]).
+// Boot y CADA reload (PUT /device/refparams publica reload). Las claves que se
+// sacaron del device se borran del estado (deviceState._refKeys).
+async function refreshRefParams(siteId, siteState) {
+  const db = mongoose.connection.db;
+  const site = await db.collection('sites').findOne({ siteCode: siteId });
+  const dIds = (site && site.devices) || [];
+  if (!dIds.length) return 0;
+  const devs = await db.collection('devices').find({ dId: { $in: dIds } }).project({ dId: 1, refParams: 1 }).toArray();
+  let n = 0;
+  for (const d of devs) {
+    const st = siteState.get(d.dId);
+    if (!st) continue;
+    for (const k of (st._refKeys || [])) delete st[k];
+    const keys = [];
+    for (const [k, v] of Object.entries(d.refParams || {})) {
+      const num = Number(v);
+      if (Number.isFinite(num) && num > 0) { st[k] = num; keys.push(k); n++; }
+    }
+    st._refKeys = keys;
+  }
+  return n;
+}
+
+module.exports = {
+  refreshRefParams, loadPacks, hydrateSiteState };

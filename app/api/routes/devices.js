@@ -286,6 +286,44 @@ router.put("/device/autonomy", checkAuth, async (req, res) => {
   }
 });
 
+// PUT /device/refparams — spec_cascada_ficha C3. Parámetros de la instalación
+// del equipo (merge por clave; valor null borra la clave). Números > 0.
+// Body: { dId, refParams: { battery_nominal_v: 24, rated_kw: 20 } }
+const REF_PARAM_RE = /^[a-z][a-z0-9_]*$/;
+router.put("/device/refparams", checkAuth, async (req, res) => {
+  try {
+    const { dId, refParams } = req.body || {};
+    if (!dId) return res.status(400).json({ status: "error", error: "dId es requerido" });
+    if (!refParams || typeof refParams !== 'object' || Array.isArray(refParams)) {
+      return res.status(400).json({ status: "error", error: "refParams debe ser un objeto { nombre: número }" });
+    }
+    const writeFilter = await buildWriteFilter(req, 'Device');
+    const existing = await Device.findOne({ ...writeFilter, dId }).lean();
+    if (!existing) return res.status(404).json({ status: "error", error: "device not found" });
+
+    const merged = { ...(existing.refParams || {}) };
+    for (const [k, v] of Object.entries(refParams)) {
+      if (!REF_PARAM_RE.test(k)) return res.status(400).json({ status: "error", error: `nombre de parámetro inválido '${k}' (snake_case)` });
+      if (v === null) { delete merged[k]; continue; }
+      const n = Number(v);
+      if (!(Number.isFinite(n) && n > 0)) return res.status(400).json({ status: "error", error: `${k} debe ser un número > 0 (o null para borrarlo)` });
+      merged[k] = n;
+    }
+    if (Object.keys(merged).length) await Device.updateOne({ ...writeFilter, dId }, { $set: { refParams: merged } });
+    else await Device.updateOne({ ...writeFilter, dId }, { $unset: { refParams: 1 } });
+
+    if (global.mqttClient && global.mqttClient.connected) {
+      global.mqttClient.publish('wanomi/edge/all/reload', '{}', { qos: 1 }, (err) => {
+        if (err) console.error(`[devices] Reload publish FALLÓ (PUT refparams ${dId}): ${err.message}`);
+      });
+    }
+    return res.json({ status: "success", dId, refParams: merged });
+  } catch (error) {
+    console.log("ERROR UPDATING DEVICE REFPARAMS"); console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
 //SAVER-RULE STATUS UPDATER
 router.put("/saver-rule", checkAuth, async (req, res) => {
   try {

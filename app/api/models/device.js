@@ -28,7 +28,13 @@ const deviceSchema = new Schema({
     autonomy: {
       tankCapacity:   { type: Number },
       consumptionLph: { type: Number },
-    }
+    },
+    // spec_umbral_por_referencia + spec_cascada_ficha C3 — parámetros de la
+    // INSTALACIÓN (no del modelo): battery_nominal_v, rated_kw, … El edge los
+    // hidrata como pseudo-variables del device (deviceState[param]). Los límites
+    // de la ficha con relativeTo y las reglas con condition.ref / setpointSource
+    // los usan. Ausente = defaults de la ficha (ej. batería 12 V).
+    refParams: { type: Object, default: undefined },
 });
 
 // Validator

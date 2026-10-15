@@ -1,4 +1,4 @@
-const { evaluateD, resolveClears } = require('./evaluators/typeD');
+const { evaluateD, resolveClears, effectiveCondition } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
 const { evaluateS } = require('./evaluators/typeS');
 const { evaluateCross } = require('./evaluators/typeCross');
@@ -23,7 +23,7 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
   const siteCode    = deviceState._siteCode   || null;
 
   for (const pack of packs) {
-    for (const rule of pack.rules) {
+    for (let rule of pack.rules) {
       // Auditoría 2026-10-14 (M-03) — aislamiento por regla: una regla mal formada
       // (p.ej. type C sin condition) NO puede tirar el proceso. Antes la excepción
       // subía a uncaughtException → process.exit(1) → bucle de caída del edge.
@@ -64,6 +64,11 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
 
         if (rule.deviceType !== deviceType) continue;
         if (rule.variable   !== variable)   continue;
+        // spec_cascada_ficha C3 — umbral relativo a la instalación (ej. batería 24 V):
+        // la regla se evalúa con el valor escalado para ESTE equipo.
+        if (rule.condition && rule.condition.scaleRef) {
+          rule = { ...rule, condition: effectiveCondition(rule.condition, deviceState) };
+        }
 
         // DEC-REF-122 — D/S/C son por EQUIPO: instancia = ruleId:dId.
         // (M `spread` re-ancla al equipo outlier dentro de su case → mkey.)

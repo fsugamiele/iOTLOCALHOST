@@ -59,6 +59,10 @@ function resolveRule(rule0, sheetsByType) {
     cond.op = lim.op;
     cond.value = lim.value;
     cond.resolvedFrom = { deviceType, variable, kind: cond.limitRef };
+    // C3 — límite relativo a un parámetro de la instalación: el motor lo escala por equipo.
+    if (lim.relativeTo && lim.relativeTo.param && Number(lim.relativeTo.base) > 0) {
+      cond.scaleRef = { param: lim.relativeTo.param, base: Number(lim.relativeTo.base) };
+    }
     // La copia RESUELTA lleva solo el número: limitRef y value son excluyentes para
     // la validación de forma (validateCrossTree corre en loadPacks DESPUÉS de resolver).
     delete cond.limitRef;

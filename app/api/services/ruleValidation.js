@@ -66,6 +66,15 @@ function validateCrossTree(node, depth = 0) {
     if (!ALL_OPS.includes(c.op)) {
       return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: op inválido '${c.op}'` };
     }
+    if (c.ref) {
+      // spec_umbral_por_referencia — umbral desde una variable/parámetro de un equipo del sitio.
+      const r = c.ref;
+      if (!r.deviceType || !r.variable) return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: ref requiere deviceType y variable` };
+      if (!ARITHMETIC_OPS.includes(c.op)) return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: ref requiere op aritmético` };
+      if ((c.value !== undefined && c.value !== null && c.value !== '') || c.limitRef) return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: ref, limitRef y value son excluyentes` };
+      if (r.scale != null && !(Number(r.scale) > 0)) return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: ref.scale debe ser > 0` };
+      return { ok: true };
+    }
     if (c.limitRef !== undefined && c.limitRef !== null) {
       // spec_cascada_ficha C2 — umbral por referencia a la ficha (se resuelve al cargar).
       if (!['warning', 'trip'].includes(c.limitRef)) return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: limitRef inválido '${c.limitRef}'` };

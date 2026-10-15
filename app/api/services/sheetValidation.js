@@ -48,6 +48,12 @@ function validateVariable(v, i) {
     if (ARITH_OPS.has(l.op) && !isNum(l.value)) return `${lw}: value debe ser numérico (punto decimal) para op '${l.op}'`;
     if (l.value === undefined || l.value === null || l.value === '') return `${lw}: value requerido`;
     if (l.unit && v.unit && l.unit !== v.unit) return `${lw}: unidad '${l.unit}' distinta de la variable '${v.unit}'`;
+    if (l.relativeTo != null) {
+      const r = l.relativeTo;
+      if (typeof r !== 'object' || !r.param || !/^[a-z][a-z0-9_]*$/.test(r.param) || !(Number(r.base) > 0)) {
+        return `${lw}: relativeTo debe ser {param (snake_case), base > 0}`;
+      }
+    }
     if (l.when != null) {
       const w = l.when;
       if (typeof w !== 'object' || !w.variable || !w.op || w.value === undefined) return `${lw}: when debe ser {variable, op, value}`;

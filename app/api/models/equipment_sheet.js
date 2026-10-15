@@ -12,6 +12,11 @@ const LimitSchema = new Schema({
   // {variable op value} del MISMO equipo se cumple (ej. alternador solo en marcha).
   // El widget no puede evaluarla (no colorea); la usan las reglas (cascada C2).
   when:   { type: Schema.Types.Mixed },
+  // spec_cascada_ficha C3 — límite relativo a un parámetro de la INSTALACIÓN:
+  // { param: 'battery_nominal_v', base: 12 } → para un equipo con refParams
+  // battery_nominal_v = 24 el umbral efectivo es value × 24/12. Sin el parámetro
+  // cargado en el equipo se usa `base` (decisión Franco 2026-10-14).
+  relativeTo: { type: Schema.Types.Mixed },
 }, { _id: false });
 
 const VariableSchema = new Schema({

@@ -27,11 +27,14 @@ const SRC_FRANCO = 'decisión Franco 2026-10-14';
 
 // Batería de arranque 12 V (parque Claro, decisión Franco). Override por equipo
 // instalado: pendiente de la cascada (spec_cascada_ficha.md · refParams).
+// C3 — relativos a la tensión nominal del equipo instalado (refParams.battery_nominal_v);
+// sin dato cargado se asume 12 V (base). Un equipo de 24 V escala ×2.
+const BATT_REL = { param: 'battery_nominal_v', base: 12 };
 const BATTERY_12V = [
-  L('warning', 'lt', 11.8, 'V', `${SRC_FRANCO} (sistema 12 V) — pack gen-grupo-v1`),
-  L('trip',    'lt', 11.0, 'V', `${SRC_FRANCO} (sistema 12 V) — pack gen-grupo-v1`),
-  L('warning', 'gt', 15.0, 'V', `${SRC_GEF} b10-11 escalado a 12 V — sobretensión cargador`),
-  L('trip',    'gt', 16.0, 'V', `${SRC_GEF} b10-11 escalado a 12 V — sobretensión cargador`),
+  { ...L('warning', 'lt', 11.8, 'V', `${SRC_FRANCO} (sistema 12 V) — pack gen-grupo-v1`), relativeTo: BATT_REL },
+  { ...L('trip',    'lt', 11.0, 'V', `${SRC_FRANCO} (sistema 12 V) — pack gen-grupo-v1`), relativeTo: BATT_REL },
+  { ...L('warning', 'gt', 15.0, 'V', `${SRC_GEF} b10-11 escalado a 12 V — sobretensión cargador`), relativeTo: BATT_REL },
+  { ...L('trip',    'gt', 16.0, 'V', `${SRC_GEF} b10-11 escalado a 12 V — sobretensión cargador`), relativeTo: BATT_REL },
 ];
 const FUEL = [
   L('warning', 'lt', 25, '%', `${SRC_GEF} b0`),

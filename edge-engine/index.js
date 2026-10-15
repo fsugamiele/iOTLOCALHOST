@@ -7,7 +7,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') });
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
-const { loadPacks, hydrateSiteState } = require('./siteState');
+const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
 const { processMessage, processStalenessTick, fireResolve } = require('./ruleEngine');
 const notificationRouter      = require('./notificationRouter');
 const { buildSnapshot, buildStateSnapshot, diffSnapshots, cleanupStateForRules } = require('./reloadState');
@@ -84,6 +84,9 @@ async function start() {
   let ruleSnapshot = buildSnapshot(packs);
   let stateSnapshot = buildStateSnapshot(packs);   // DEC-REF-128 — huella de estado por regla
   await hydrateSiteState(SITE_ID, siteState);
+  // spec_cascada_ficha C3 — parámetros de instalación (device.refParams) como pseudo-vars.
+  const nRef = await refreshRefParams(SITE_ID, siteState);
+  console.log(`[edge-engine] Parámetros de instalación (refParams) cargados: ${nRef}`);
   // DEC-REF-115 (#85) — config de autonomía (ficha + override por equipo).
   let autonomyConfigs = await loadAutonomyConfigs(SITE_ID);
   // Auditoría 2026-10-14 (M-07/M-21) — tipos de variable desde la FICHA.
@@ -126,6 +129,8 @@ async function start() {
       // autonomía (PUT /equipmentsheet y PUT /device/autonomy publican acá).
       const nextAutonomy = await loadAutonomyConfigs(SITE_ID);
       const nextVarTypes = await loadVariableTypes(SITE_ID);
+      // C3 — PUT /device/refparams publica reload: refrescar los parámetros de instalación.
+      await refreshRefParams(SITE_ID, siteState);
       const diff      = diffSnapshots(ruleSnapshot, nextSnap);
       // DEC-REF-128 (A9) — limpiar estado (buffers/acumuladores) SOLO de reglas
       // removidas o cuya HUELLA DE ESTADO cambió. Editar umbral/severidad/texto NO

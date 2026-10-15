@@ -23,8 +23,11 @@ const ConditionSchema = new Schema({
   op:    { type: String, enum: OPERATORS, required: true },
   // spec_cascada_ficha C2 — value NO es requerido si la condición referencia un
   // límite de la ficha (limitRef): el edge resuelve el número al cargar packs.
-  value: { type: Schema.Types.Mixed, required: function () { return !this.limitRef; } },
+  value: { type: Schema.Types.Mixed, required: function () { return !this.limitRef && !(this.ref && this.ref.variable); } },
   limitRef: { type: String, enum: ['warning', 'trip'] },
+  // spec_umbral_por_referencia — umbral = variable/parámetro de un equipo del sitio × scale
+  // (ej. load_kw > rated_kw × 0,9). Hoy en hojas cross.
+  ref: { type: new Schema({ deviceType: String, variable: String, scale: Number }, { _id: false }), default: undefined },
   // DEC-REF-132 — histéresis/deadband (solo type D hoy): dispara en `value`, pero
   // RESUELVE recién cuando cruza `value ± deadband` (zona pegajosa = anti-flap).
   // Opcional; ausente = resuelve apenas la condición deja de cumplirse (como hoy).

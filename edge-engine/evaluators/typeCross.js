@@ -11,7 +11,7 @@
 // DEC-REF-57). Se re-exporta desde este módulo para preservar el consumo
 // existente (`siteState.js:4`).
 
-const { evaluateD } = require('./typeD');
+const { evaluateD, effectiveCondition } = require('./typeD');
 const { validateCrossTree } = require('../../app/api/services/ruleValidation');
 
 // SF-6 · DEC-REF-65.b — ventana de frescura para sumandos.
@@ -151,8 +151,20 @@ function evaluateNode(node, siteState, siteCode, eventTs, ruleId) {
   const devState = findDeviceByType(siteState, node.deviceType, siteCode);
   if (!devState) return { val: false, total: null, thresholdUsed: null };
   const value = devState[node.variable];
+  let cond = effectiveCondition(node.condition, devState);   // C3: relativo a la instalación
+  // spec_umbral_por_referencia — condition.ref: el umbral es una variable/parámetro
+  // de otro equipo del sitio × scale. Sin dato (o ≤ 0) ⇒ hoja desconocida (null):
+  // nunca comparar contra un umbral basura.
+  if (cond && cond.ref) {
+    const refDev = cond.ref.deviceType === node.deviceType
+      ? devState : findDeviceByType(siteState, cond.ref.deviceType, siteCode);
+    const raw = refDev ? Number(refDev[cond.ref.variable]) : NaN;
+    if (!(Number.isFinite(raw) && raw > 0)) return { val: null, total: null, thresholdUsed: null };
+    const sc = cond.ref.scale != null ? Number(cond.ref.scale) : 1;
+    cond = { op: cond.op, value: raw * sc };
+  }
   const val = evaluateD(
-    { ruleId: `${node.deviceType}/${node.variable}`, condition: node.condition },
+    { ruleId: `${node.deviceType}/${node.variable}`, condition: cond },
     value
   );
   return { val, total: null, thresholdUsed: null };

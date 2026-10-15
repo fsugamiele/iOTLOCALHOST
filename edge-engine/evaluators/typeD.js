@@ -66,4 +66,21 @@ function resolveClears(rule, value) {
   }
 }
 
-module.exports = { evaluateD, resolveClears };
+// spec_cascada_ficha C3 — umbral relativo a un parámetro de la INSTALACIÓN.
+// condition.scaleRef = { param, base } (viene del límite de ficha con relativeTo):
+// valor efectivo = value × (deviceState[param] || base) / base. Sin el parámetro
+// cargado en el equipo se usa `base` (decisión Franco 2026-10-14: batería 12 V por
+// defecto). Escala también el deadband. Sin scaleRef → la condición tal cual.
+function effectiveCondition(cond, deviceState) {
+  if (!cond || !cond.scaleRef) return cond;
+  const base = Number(cond.scaleRef.base);
+  if (!(base > 0)) return cond;
+  const p = deviceState && Number(deviceState[cond.scaleRef.param]);
+  const k = (p > 0 ? p : base) / base;
+  if (k === 1) return cond;
+  const out = { ...cond, value: Math.round(cond.value * k * 1000) / 1000 };
+  if (typeof cond.deadband === 'number') out.deadband = Math.round(cond.deadband * k * 1000) / 1000;
+  return out;
+}
+
+module.exports = { evaluateD, resolveClears, effectiveCondition };
