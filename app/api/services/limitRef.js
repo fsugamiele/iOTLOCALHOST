@@ -59,6 +59,9 @@ function resolveRule(rule0, sheetsByType) {
     cond.op = lim.op;
     cond.value = lim.value;
     cond.resolvedFrom = { deviceType, variable, kind: cond.limitRef };
+    // La copia RESUELTA lleva solo el número: limitRef y value son excluyentes para
+    // la validación de forma (validateCrossTree corre en loadPacks DESPUÉS de resolver).
+    delete cond.limitRef;
     return lim;
   };
   if (rule.condition && rule.condition.limitRef) {
