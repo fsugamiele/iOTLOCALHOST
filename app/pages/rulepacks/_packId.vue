@@ -318,9 +318,11 @@ export default {
       if (!r.deviceType || !r.variable) return false;
       if (!r.severity || !r.type) return false;
       // typeD requiere condition.op y condition.value
+      // C2 — con "umbral de la ficha" (limitRef) o referencia (ref) no lleva value.
       if (r.type === 'D') {
         if (!r.condition || !r.condition.op) return false;
-        if (r.condition.value === '' || r.condition.value === null || r.condition.value === undefined) return false;
+        const c = r.condition;
+        if (!c.limitRef && !c.ref && (c.value === '' || c.value === null || c.value === undefined)) return false;
       }
       // typecross requiere crossExpr con forma mínima
       if (r.type === 'cross') {
@@ -695,7 +697,15 @@ export default {
     // Watchers Vue no juegan bien con select v-model (Vue actualiza
     // antes de reactivar), así que hago la lógica en watch.
     async submitRule() {
-      if (!this.isRuleReady) return;
+      // Nunca volver en silencio: el editor ya se cerró y el usuario cree que guardó.
+      if (!this.isRuleReady) {
+        this.$notify({
+          type: 'warning',
+          icon: 'tim-icons icon-alert-circle-exc',
+          message: 'No se guardó: faltan datos de la regla (id, nombre, inferencia, equipo, variable o condición).'
+        });
+        return;
+      }
       this.saving = true;
       try {
         // Preparar la regla final: strip de crossExpr keys si es cross,
