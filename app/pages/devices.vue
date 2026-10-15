@@ -407,6 +407,15 @@ export default {
     this.getTemplates();
     this.getSites();
   },
+  // keep-alive (layouts/default.vue): al VOLVER a esta pestaña no corre mounted();
+  // se recargan los datos para no mostrar valores viejos (ej. ficha editada en otra).
+  // El primer activated() viene pegado al mount → se saltea con _kaSeen.
+  activated() {
+    if (!this._kaSeen) { this._kaSeen = true; return; }
+    this.$store.dispatch("getDevices");
+    this.getTemplates();
+    this.getSites();
+  },
   computed: {
     // spec_cascada_ficha C3 — rated_kw vacío o > 0 (batería viene de un select).
     refFormValid() {

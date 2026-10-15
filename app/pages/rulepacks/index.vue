@@ -128,6 +128,14 @@ export default {
     await this.loadPacks();
     await this.loadSheets();
   },
+  // keep-alive (layouts/default.vue): al VOLVER a esta pestaña no corre mounted();
+  // se recargan los datos para no mostrar valores viejos (ej. ficha editada en otra).
+  // El primer activated() viene pegado al mount → se saltea con _kaSeen.
+  activated() {
+    if (!this._kaSeen) { this._kaSeen = true; return; }
+    this.loadPacks();
+    this.loadSheets();
+  },
   methods: {
     async revalidateSuperadmin() {
       try {

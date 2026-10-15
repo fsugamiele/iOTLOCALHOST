@@ -354,6 +354,15 @@ export default {
     await this.loadPack();
     this.loadSheets();
   },
+  // keep-alive (layouts/default.vue): al VOLVER a esta pestaña no corre mounted();
+  // se recargan los datos para no mostrar valores viejos (ej. ficha editada en otra).
+  // El primer activated() viene pegado al mount → se saltea con _kaSeen.
+  activated() {
+    if (!this._kaSeen) { this._kaSeen = true; return; }
+    if (this.editorOpen || this.ruleModal || this.wizardOpen || this.saving) return;
+    this.loadPack();
+    this.loadSheets();
+  },
   methods: {
     // S6 — catálogo de fichas para los selectores del editor. Lectura
     // global (D-1). Si falla, deviceType queda deshabilitado y variable

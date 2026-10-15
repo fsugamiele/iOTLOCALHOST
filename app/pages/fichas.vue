@@ -440,6 +440,14 @@ export default {
   async mounted() {
     await this.loadSheets();
   },
+  // keep-alive (layouts/default.vue): al VOLVER a esta pestaña no corre mounted();
+  // se recargan los datos para no mostrar valores viejos (ej. ficha editada en otra).
+  // El primer activated() viene pegado al mount → se saltea con _kaSeen.
+  activated() {
+    if (!this._kaSeen) { this._kaSeen = true; return; }
+    if (this.createModal) return;   // formulario abierto: no pisar la edición
+    this.loadSheets();
+  },
   methods: {
     // Auditoría 2026-10-14 (F-04) — arma el bloque autonomy conservando los campos
     // que el form no edita (flowVariable/flowScale/minDropPct). Vacío → no se envía.
