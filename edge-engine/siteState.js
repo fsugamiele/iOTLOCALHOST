@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 const RulePack = require('../app/api/models/rule_pack');
 const { validateCrossTree } = require('./evaluators/typeCross');
+// spec_cascada_ficha C2 — umbrales por referencia a la ficha (fuente única con la API).
+const { resolveRule } = require('../app/api/services/limitRef');
 
 // Schemas inline — los de app/api/models/ usan import (Babel), no son require-ables
 const SiteRO   = mongoose.models.SiteRO   || mongoose.model('SiteRO',
@@ -24,11 +26,31 @@ async function loadPacks(siteId) {
     console.warn('[siteState] No hay RulePacks en producción — motor sin reglas.');
   }
 
+  // spec_cascada_ficha C2 — fichas para resolver condition.limitRef (solo si hay refs).
+  let sheetsByType = null;
+  if (packs.some(p => JSON.stringify(p.rules || []).includes('"limitRef"'))) {
+    const sheets = await mongoose.connection.db.collection('equipmentsheets')
+      .find({}).project({ deviceType: 1, variables: 1 }).toArray();
+    sheetsByType = new Map(sheets.map(s => [s.deviceType, s]));
+  }
+
   for (const pack of packs) {
     // DEC-REF-121 (spec_interruptor_enabled) — reglas fuera de circulación: excluidas
     // antes del filtro cross. El reload (reloadState.js) las ve como `removed` → cierre
     // limpio de la alarma activa. Un pack enabled:false ya no entró (query de arriba).
     pack.rules = pack.rules.filter(r => r.enabled !== false);
+    // spec_cascada_ficha C2 — resolver umbrales de ficha. Sin límite ⇒ regla NEUTRA
+    // (descartada con aviso): nunca evaluar contra un umbral inventado.
+    if (sheetsByType) {
+      pack.rules = pack.rules.map(r => {
+        const { rule, unresolved } = resolveRule(r, sheetsByType);
+        if (unresolved.length) {
+          console.warn(`[siteState] pack ${pack.packId}: regla ${r.ruleId} descartada — umbral de ficha inexistente: ${unresolved.join(', ')}`);
+          return null;
+        }
+        return rule;
+      }).filter(Boolean);
+    }
     const before = pack.rules.length;
     pack.rules = pack.rules.filter(r => {
       if (r.type !== 'cross') return true;

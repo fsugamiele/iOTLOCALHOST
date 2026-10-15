@@ -23,6 +23,9 @@ const { checkAuth } = require("../middlewares/authentication.js");
 // Modelos. rule_pack / quality_finding / qa_run son module.exports; notifications
 // es `export default` (babel resuelve el require en node).
 const RulePack = require("../models/rule_pack.js");
+// spec_cascada_ficha C2 — reglas con umbral de ficha (limitRef) se resuelven al leer.
+const { resolvePacksForRead } = require("../services/limitRef.js");
+const _db = () => require("mongoose").connection.db;
 const QualityFinding = require("../models/quality_finding.js");
 const QaRun = require("../models/qa_run.js");
 const Notification = require("../models/notifications.js").default;
@@ -245,6 +248,7 @@ router.get("/qa/inventory", checkAuth, async (req, res) => {
     const desde30d = ahora - VENTANA_30D_MS;
 
     const packs = await RulePack.find({}).lean();
+    await resolvePacksForRead(packs, _db());
 
     // Findings agrupados por ruleId: types presentes (para el badge) + ids (findingIds).
     const findingsPorRegla = await QualityFinding.aggregate([
@@ -416,6 +420,7 @@ router.get("/qa/rule/:ruleId/timeline", checkAuth, async (req, res) => {
     // Resolver la regla en los packs (para 404 y para la variable observada). El
     // ruleId es único por regla; se busca en cualquier pack que la contenga.
     const pack = await RulePack.findOne({ 'rules.ruleId': ruleId }, { packId: 1, rules: 1 }).lean();
+    if (pack) await resolvePacksForRead([pack], _db());
     const rule = pack && (pack.rules || []).find(r => r.ruleId === ruleId);
     if (!rule) {
       return res.status(404).json({ status: "error", error: "regla no encontrada" });
@@ -486,6 +491,7 @@ router.get("/qa/rule/:ruleId/detail", checkAuth, async (req, res) => {
 
     // Resolver la regla en los packs (ruleId único por regla; cualquier pack que la contenga).
     const pack = await RulePack.findOne({ 'rules.ruleId': ruleId }, { packId: 1, rules: 1 }).lean();
+    if (pack) await resolvePacksForRead([pack], _db());
     const rule = pack && (pack.rules || []).find(r => r.ruleId === ruleId);
     if (!rule) {
       return res.status(404).json({ status: "error", error: "regla no encontrada" });
@@ -571,6 +577,7 @@ router.get("/qa/rule/:ruleId/forecast", checkAuth, async (req, res) => {
     const { ruleId } = req.params;
 
     const pack = await RulePack.findOne({ 'rules.ruleId': ruleId }, { packId: 1, rules: 1 }).lean();
+    if (pack) await resolvePacksForRead([pack], _db());
     const rule = pack && (pack.rules || []).find(r => r.ruleId === ruleId);
     if (!rule) {
       return res.status(404).json({ status: "error", error: "regla no encontrada" });

@@ -112,6 +112,8 @@ async function backtest({ packId, days = 7, ruleId = null } = {}) {
   const db = mongoose.connection.db;
   const pack = await db.collection('rulepacks').findOne({ packId });
   if (!pack) return { error: 'pack no encontrado', packId };
+  // spec_cascada_ficha C2 — umbrales de ficha (limitRef) resueltos igual que el motor.
+  await require('../../app/api/services/limitRef').resolvePacksForRead([pack], db);
 
   const cutoff = Date.now() - DAYS * 86400000;
   const devs = await db.collection('devices').find({}).project({ dId: 1, deviceType: 1 }).toArray();

@@ -19,6 +19,29 @@ export const OPERATOR_LABELS = {
 };
 export const OPERATORS = ['lt', 'lte', 'gt', 'gte', 'eq', 'neq'];
 
+// spec_cascada_ficha C2 — umbral por referencia a la ficha.
+export const LIMIT_REF_LABELS = { warning: 'umbral de atención de la ficha', trip: 'umbral crítico de la ficha' };
+// Valor efectivo de una condición: el literal, o el límite de la ficha (resuelto con `sheets`).
+export function resolveCondValue(c, deviceType, variable, sheets) {
+  if (!c) return '';
+  if (!c.limitRef) return c.value;
+  const sh = (sheets || []).find(s => s.deviceType === deviceType);
+  const v = sh && (sh.variables || []).find(x => x.name === variable);
+  const dir = ['lt', 'lte'].includes(c.op) ? ['lt', 'lte'] : ['gt', 'gte'].includes(c.op) ? ['gt', 'gte'] : [c.op];
+  const lim = v && (v.limits || []).find(l => l.kind === c.limitRef && dir.includes(l.op));
+  return lim ? lim.value : undefined;
+}
+function condValueText(c, deviceType, variable, sheets) {
+  if (!c || !c.limitRef) return c ? c.value : '';
+  const val = resolveCondValue(c, deviceType, variable, sheets);
+  return `${LIMIT_REF_LABELS[c.limitRef]}${val !== undefined ? ` (${val})` : ' (no definido)'}`;
+}
+// Condición del payload desde una condición de la frase.
+function condFromSentence(c) {
+  if (c.limitRef) return { op: c.op, limitRef: c.limitRef };
+  return { op: c.op, value: coerceValue(c.value, c.variableType) };
+}
+
 export const SEVERITIES = [
   { value: 'critical', label: 'Urgencia',     help: 'Requiere acción inmediata',       badge: 'badge-danger'  },
   { value: 'warning',  label: 'Atención',      help: 'Hay que revisarlo pronto',        badge: 'badge-warning' },
@@ -37,6 +60,7 @@ export function summarize(r, opts = {}) {
   const varName = r.variableLabel || r.variable || '';
   const unit = r.unit ? ` ${r.unit}` : '';
   if (r.type === 'D' && r.condition) {
+    if (r.condition.limitRef) return `${varName} ${OPERATOR_LABELS[r.condition.op] || r.condition.op} ${condValueText(r.condition, r.deviceType, r.variable, sheets)}${unit}`;
     return `${varName} ${OPERATOR_LABELS[r.condition.op] || r.condition.op} ${r.condition.value}${unit}`;
   }
   if (r.type === 'C' && r.setpointSource) {
@@ -212,7 +236,7 @@ function resolveVarLabel(deviceType, variable, sheets) {
 }
 function leafText(node, sheets) {
   const c = node.condition || {};
-  return `${resolveVarLabel(node.deviceType, node.variable, sheets)} ${OPERATOR_LABELS[c.op] || c.op} ${c.value}`;
+  return `${resolveVarLabel(node.deviceType, node.variable, sheets)} ${OPERATOR_LABELS[c.op] || c.op} ${condValueText(c, node.deviceType, node.variable, sheets)}`;
 }
 function isFlatCross(crossExpr) {
   return crossExpr && Array.isArray(crossExpr.children) && crossExpr.children.length > 0 && crossExpr.children.every(isLeaf);
@@ -259,7 +283,7 @@ export function coerceValue(value, variableType) {
 //   nested: false,                    // true = cross anidado (va a avanzado)
 // }
 export function emptyCondition(deviceType) {
-  return { deviceType: deviceType || '', variable: '', op: 'lt', value: '', variableLabel: '', unit: '', variableType: 'float' };
+  return { deviceType: deviceType || '', variable: '', op: 'lt', value: '', limitRef: '', variableLabel: '', unit: '', variableType: 'float' };
 }
 export function emptySentence(deviceType) {
   return {
@@ -310,7 +334,7 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       children: s.conditions.map(c => ({
         deviceType: c.deviceType || deviceType,
         variable: c.variable,
-        condition: { op: c.op, value: coerceValue(c.value, c.variableType) },
+        condition: condFromSentence(c),
       })),
     };
   } else if (type === 'C') {
@@ -391,7 +415,7 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       rule.unit = s.compare.kind === 'ratio' ? '' : (c0.unit || '');
     }
   } else { // D
-    rule.condition = { op: c0.op, value: coerceValue(c0.value, c0.variableType) };
+    rule.condition = condFromSentence(c0);
   }
   // DEC-REF-126 — OVERLAY DE PRESERVACIÓN: la frase no representa estos campos; se
   // copian de `existing` para que guardar sin tocarlos NO mute la regla (idempotencia).
@@ -400,6 +424,12 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       if (existing[f] !== undefined) rule[f] = existing[f];
     }
     if (existing.graceSec != null) rule.graceSec = existing.graceSec;
+    // DEC-REF-132 — la histéresis (condition.deadband) no se edita en la frase: se
+    // preserva si el comparador no cambió (antes se perdía al guardar una regla D).
+    if (rule.condition && existing.condition && existing.condition.deadband != null &&
+        rule.condition.op === existing.condition.op) {
+      rule.condition.deadband = existing.condition.deadband;
+    }
     if (existing.resolveGraceSec != null) rule.resolveGraceSec = existing.resolveGraceSec;
     // cross: `variable` es etiqueta del primario → preservar el guardado (no el 1er leaf).
     if (type === 'cross' && existing.variable != null) rule.variable = existing.variable;
@@ -439,7 +469,8 @@ export function ruleToSentence(rule) {
     base.join = rule.crossExpr.op === 'OR' ? 'OR' : 'AND';
     base.conditions = rule.crossExpr.children.map(ch => ({
       deviceType: ch.deviceType || rule.deviceType || '', variable: ch.variable,
-      op: (ch.condition || {}).op || 'lt', value: (ch.condition || {}).value, variableLabel: '', unit: '', variableType: 'float',
+      op: (ch.condition || {}).op || 'lt', value: (ch.condition || {}).value, limitRef: (ch.condition || {}).limitRef || '',
+      variableLabel: '', unit: '', variableType: 'float',
     }));
   } else if (rule.type === 'cross') {
     base.nested = true;                       // anidado: la frase plana no lo cubre
@@ -501,6 +532,7 @@ export function ruleToSentence(rule) {
     }
   } else { // D
     base.conditions = [leaf(rule.variable, (rule.condition || {}).op, (rule.condition || {}).value)];
+    if (rule.condition && rule.condition.limitRef) base.conditions[0].limitRef = rule.condition.limitRef;
   }
   if (!base.conditions.length) base.conditions = [leaf('', 'lt', '')];
   return base;

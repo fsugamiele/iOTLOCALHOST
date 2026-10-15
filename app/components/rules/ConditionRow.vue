@@ -25,7 +25,14 @@
       <el-option v-for="op in operators" :key="op" :value="op" :label="opLabels[op]" />
     </el-select>
 
-    <el-select v-if="valueType === 'bool'" v-model="c.value" size="small" class="cond-val">
+    <!-- spec_cascada_ficha C2 — el valor puede venir de la FICHA (se actualiza solo). -->
+    <el-select v-if="limitOptions.length" v-model="c.limitRef" size="small" class="cond-src" @change="onLimitRef">
+      <el-option value="" label="valor fijo" />
+      <el-option v-for="o in limitOptions" :key="o.kind" :value="o.kind" :label="o.label" />
+    </el-select>
+
+    <el-input v-if="c.limitRef" :value="refValueText" size="small" class="cond-val" disabled />
+    <el-select v-else-if="valueType === 'bool'" v-model="c.value" size="small" class="cond-val">
       <el-option :value="1" label="verdadero" />
       <el-option :value="0" label="falso" />
     </el-select>
@@ -61,9 +68,32 @@ export default {
     selectedVar() { return this.variables.find(v => v.name === this.c.variable) || null; },
     valueType() { return this.c.variableType || (this.selectedVar && this.selectedVar.type) || 'float'; },
     unit() { return this.c.unit || (this.selectedVar && this.selectedVar.unit) || ''; },
+    // Límites de la ficha para esta variable en el sentido del comparador elegido.
+    dirLimits() {
+      const lims = (this.selectedVar && this.selectedVar.limits) || [];
+      const dir = ['lt', 'lte'].includes(this.c.op) ? ['lt', 'lte'] : ['gt', 'gte'].includes(this.c.op) ? ['gt', 'gte'] : [this.c.op];
+      return lims.filter(l => dir.includes(l.op) && typeof l.value === 'number');
+    },
+    limitOptions() {
+      const lbl = { warning: 'umbral de atención (ficha)', trip: 'umbral crítico (ficha)' };
+      return this.dirLimits.map(l => ({ kind: l.kind, label: `${lbl[l.kind] || l.kind}: ${l.value}${this.unit ? ' ' + this.unit : ''}` }));
+    },
+    refValueText() {
+      const l = this.dirLimits.find(x => x.kind === this.c.limitRef);
+      return l ? `${l.value}${this.unit ? ' ' + this.unit : ''} (ficha)` : 'no definido en la ficha';
+    },
   },
   methods: {
     varLabel(v) { return (v.label || v.name) + (v.unit ? ` [${v.unit}]` : ''); },
+    onLimitRef() {
+      // Con referencia a la ficha el número no se guarda en la regla (lo resuelve el motor).
+      if (this.c.limitRef) {
+        const l = this.dirLimits.find(x => x.kind === this.c.limitRef);
+        if (l) this.c.op = l.op;
+        this.c.value = '';
+      }
+      this.$emit('change');
+    },
     onEquipo() { this.c.variable = ''; this.c.variableLabel = ''; this.c.unit = ''; this.$emit('change'); },
     onVariable() {
       const v = this.selectedVar;
@@ -80,5 +110,6 @@ export default {
 .cond-var { width: 170px; }
 .cond-op  { width: 140px; }
 .cond-val { width: 110px; }
+.cond-src { width: 200px; }
 .cond-rm { flex-shrink: 0; }
 </style>

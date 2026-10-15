@@ -21,7 +21,10 @@ const OPERATOR_LABELS = {
 
 const ConditionSchema = new Schema({
   op:    { type: String, enum: OPERATORS, required: true },
-  value: { type: Schema.Types.Mixed, required: true },
+  // spec_cascada_ficha C2 — value NO es requerido si la condición referencia un
+  // límite de la ficha (limitRef): el edge resuelve el número al cargar packs.
+  value: { type: Schema.Types.Mixed, required: function () { return !this.limitRef; } },
+  limitRef: { type: String, enum: ['warning', 'trip'] },
   // DEC-REF-132 — histéresis/deadband (solo type D hoy): dispara en `value`, pero
   // RESUELVE recién cuando cruza `value ± deadband` (zona pegajosa = anti-flap).
   // Opcional; ausente = resuelve apenas la condición deja de cumplirse (como hoy).

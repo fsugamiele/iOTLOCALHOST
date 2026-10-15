@@ -66,6 +66,12 @@ function validateCrossTree(node, depth = 0) {
     if (!ALL_OPS.includes(c.op)) {
       return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: op inválido '${c.op}'` };
     }
+    if (c.limitRef !== undefined && c.limitRef !== null) {
+      // spec_cascada_ficha C2 — umbral por referencia a la ficha (se resuelve al cargar).
+      if (!['warning', 'trip'].includes(c.limitRef)) return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: limitRef inválido '${c.limitRef}'` };
+      if (c.value !== undefined && c.value !== null && c.value !== '') return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: limitRef y value son excluyentes` };
+      return { ok: true };
+    }
     if (ARITHMETIC_OPS.includes(c.op) && !isNumber(c.value)) {
       return { ok: false, reason: `hoja equipo ${node.deviceType}/${node.variable}: value debe ser numérico para op '${c.op}'` };
     }
@@ -80,6 +86,12 @@ function validateD(rule) {
   if (!c || !c.op) return { ok: false, reason: 'typeD: condition ausente o sin op' };
   if (!ALL_OPS.includes(c.op)) {
     return { ok: false, reason: `typeD: condition.op inválido '${c.op}' (esperado uno de ${ALL_OPS.join('/')})` };
+  }
+  if (c.limitRef !== undefined && c.limitRef !== null) {
+    // spec_cascada_ficha C2 — umbral por referencia a la ficha.
+    if (!['warning', 'trip'].includes(c.limitRef)) return { ok: false, reason: `typeD: limitRef inválido '${c.limitRef}' (warning/trip)` };
+    if (c.value !== undefined && c.value !== null && c.value !== '') return { ok: false, reason: 'typeD: limitRef y value son excluyentes' };
+    return { ok: true };
   }
   if (ARITHMETIC_OPS.includes(c.op) && !isNumber(c.value)) {
     return { ok: false, reason: `typeD: condition.value debe ser numérico para op '${c.op}'` };

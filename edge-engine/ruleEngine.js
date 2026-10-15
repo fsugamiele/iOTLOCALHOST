@@ -75,7 +75,15 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
           case 'D': {
             // Auditoría 2026-10-14 (M-07) — null = no evaluable (dato malo/ausente):
             // ni fire ni resolve.
-            const r = evaluateD(rule, value);
+            let r = evaluateD(rule, value);
+            // spec_cascada_ficha C2 — precondición del límite de ficha (ej. alternador
+            // solo con el motor en marcha): si no se cumple, la condición NO aplica
+            // (false → resuelve si estaba activa); si se desconoce, no evaluable.
+            const wh = rule.condition && rule.condition.when;
+            if (wh && r !== null) {
+              const w = evaluateD({ ruleId: `${rule.ruleId}:when`, condition: { op: wh.op, value: wh.value } }, deviceState[wh.variable]);
+              if (w === null) r = null; else if (w === false) r = false;
+            }
             triggered = r === true;
             evaluated = r !== null;
             break;

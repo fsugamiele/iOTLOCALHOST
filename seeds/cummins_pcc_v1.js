@@ -51,7 +51,7 @@ const pack = {
         op: 'AND',
         children: [
           { deviceType: 'cummins-pcc', variable: 'rpm',          condition: { op: 'gt', value: 300 } },
-          { deviceType: 'cummins-pcc', variable: 'oil_pressure', condition: { op: 'lt', value: 200 } }   // kPa (2,0 bar) — auditoría 2026-10-14 F-03,
+          { deviceType: 'cummins-pcc', variable: 'oil_pressure', condition: { op: 'lt', limitRef: 'warning' } }   // ficha: 200 kPa (2,0 bar) — cascada C2,
         ],
       },
       source_filter:  'connect',
@@ -84,7 +84,7 @@ const pack = {
         op: 'AND',
         children: [
           { deviceType: 'cummins-pcc', variable: 'rpm',          condition: { op: 'gt', value: 300 } },
-          { deviceType: 'cummins-pcc', variable: 'oil_pressure', condition: { op: 'lt', value: 100 } }   // kPa (1,0 bar) — auditoría 2026-10-14 F-03,
+          { deviceType: 'cummins-pcc', variable: 'oil_pressure', condition: { op: 'lt', limitRef: 'trip' } }      // ficha: 100 kPa (1,0 bar) — cascada C2,
         ],
       },
       source_filter:  'connect',
@@ -110,7 +110,7 @@ const pack = {
       deviceType:  'cummins-pcc',
       variable:    'fuel_level',
       // deadband 2 (auditoría M-19): resuelve en ≥17 % — anti-flap con deadband de publicación 1 %.
-      condition:   { op: 'lt', value: 15, deadband: 2 },
+      condition:   { op: 'lt', limitRef: 'trip', deadband: 2 },   // ficha: 15 % — cascada C2
       source_filter:  'connect',
       on_missing_ref: 'alarm',
       reset_behavior: 'auto',
@@ -139,7 +139,7 @@ const pack = {
         op: 'AND',
         children: [
           { deviceType: 'cummins-pcc', variable: 'rpm',            condition: { op: 'gt', value: 300 } },
-          { deviceType: 'cummins-pcc', variable: 'autonomy_hours', condition: { op: 'lt', value: 48 } },
+          { deviceType: 'cummins-pcc', variable: 'autonomy_hours', condition: { op: 'lt', limitRef: 'warning' } },
         ],
       },
       fallbackToD:    true,
@@ -166,7 +166,7 @@ const pack = {
         op: 'AND',
         children: [
           { deviceType: 'cummins-pcc', variable: 'rpm',            condition: { op: 'gt', value: 300 } },
-          { deviceType: 'cummins-pcc', variable: 'autonomy_hours', condition: { op: 'lt', value: 12 } },
+          { deviceType: 'cummins-pcc', variable: 'autonomy_hours', condition: { op: 'lt', limitRef: 'trip' } },
         ],
       },
       fallbackToD:    true,

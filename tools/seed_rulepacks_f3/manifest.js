@@ -155,7 +155,7 @@ const ELTEK_SMARTPACK_V1 = {
       variable:          'dc_bus_voltage',
       // Convención NEGATIVA (DEC-REF-123 / spec_signo_bus_dc.md): "baja" = gt sobre
       // umbral negativo. Antes `lt 52` disparaba SIEMPRE (auditoría 2026-10-14 F-02).
-      condition:         { op: 'gt', value: -52, deadband: 0.5 },
+      condition:         { op: 'gt', limitRef: 'warning', deadband: 0.5 },   // ficha ELTEK: −52 V (cascada C2)
       fallbackToD:       true,
       on_missing_ref:    'ignore',
       reset_behavior:    'auto',
@@ -173,7 +173,7 @@ const ELTEK_SMARTPACK_V1 = {
       cooldownSec:       300,
       deviceType:        'ELTEK',
       variable:          'dc_bus_voltage',
-      condition:         { op: 'gt', value: -48, deadband: 0.5 },
+      condition:         { op: 'gt', limitRef: 'trip', deadband: 0.5 },      // ficha ELTEK: −48 V
       fallbackToD:       true,
       on_missing_ref:    'ignore',
       reset_behavior:    'auto',

@@ -13,7 +13,7 @@ y ya divergían (aceite psi↔Bar, autonomía 4/2↔6/3↔48/12, combustible 10�
 
 ## 0 · CANDADO
 **preguntas_abiertas: 0** — Q1–Q4 **firmadas por Franco el 2026-10-14** con la opción recomendada.
-C1 implementado (commit "feat(cascada): C1 Ficha → Template"). C2 y C3 pendientes.
+C1 implementado (commit "feat(cascada): C1 Ficha → Template"). C2 implementado (commit "feat(cascada): C2 Ficha → Regla"): `condition.limitRef` + `op` (el op elige el límite por sentido; no hizo falta `limitOp`), `limits[].when` aplicado por el motor. C3 pendiente.
 
 ### 0.1 · Decisiones a firmar (con recomendación)
 | # | Pregunta | Opción recomendada | Alternativa |

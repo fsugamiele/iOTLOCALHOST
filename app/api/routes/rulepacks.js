@@ -23,6 +23,7 @@ const router = express.Router();
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
 const { validateRule, collectRuleRefs } = require("../services/ruleValidation.js");
+const { resolveRule } = require("../services/limitRef.js");   // spec_cascada_ficha C2
 
 const RulePack = require("../models/rule_pack.js");
 // DEC-REF-137 — snapshot canónico ("de fábrica") por ruleId. require sin babel (module.exports).
@@ -156,6 +157,19 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
     // productivo cummins-pcc-v1 (hojas ATS sin ficha — cascada DEC-REF-53
     // D4 transitoria). La variable solo se chequea cuando la ficha declara
     // variables (una ficha con variables:[] no tiene contra qué validar).
+    // spec_cascada_ficha C2 — toda condición con limitRef tiene que resolver contra la
+    // ficha (si no, el motor la descartaría: regla muda). Rechazo 400 con el detalle.
+    if ((doc.rules || []).some(r => JSON.stringify(r).includes('"limitRef"'))) {
+      const allSheets = await EquipmentSheet.find({}).lean();
+      const byType = new Map(allSheets.map(s => [s.deviceType, s]));
+      for (const r of doc.rules) {
+        const { unresolved } = resolveRule(r, byType);
+        if (unresolved.length) {
+          return res.status(400).json({ status: "error", error: `regla ${r.ruleId}: umbral de ficha inexistente — ${unresolved.join(', ')}` });
+        }
+      }
+    }
+
     const refs = collectRuleRefs(doc);
     if (refs.length) {
       const sheets = await EquipmentSheet.find({}).lean();

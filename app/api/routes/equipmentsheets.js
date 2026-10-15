@@ -8,6 +8,7 @@ const { extractFromPdf } = require("../services/sheetExtractor.js");
 const { validateSheetContent } = require("../services/sheetValidation.js");  // auditoría 2026-10-14 (F-05)
 const { applySheetToWidgets } = require("../services/sheetCascade.js");     // spec_cascada_ficha C1
 const { collectRuleRefs } = require("../services/ruleValidation.js");
+const { refsToLimit } = require("../services/limitRef.js");   // spec_cascada_ficha C2
 
 // spec_cascada_ficha C1 — quién usa cada variable de un deviceType (templates y
 // reglas). Base de las guardas de borrado de variable (§6 #3) y cambio de unidad (Q4).
@@ -214,6 +215,22 @@ router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
         }
         res.locals.unitWarnings = detail;
         res.locals.unitChangedVars = new Set(unitChanged.map(v => v.name));
+      }
+      // spec_cascada_ficha C2 (§6 #2) — no se borra un límite que una regla referencia
+      // (limitRef). Cambiar su VALOR sí se puede: es justamente la cascada.
+      const packsAll = await RulePack.find({}).lean();
+      const lost = [];
+      for (const [name, o] of oldVars) {
+        const nv = newVars.get(name);
+        for (const l of (o.limits || [])) {
+          const still = nv && (nv.limits || []).some(x => x.kind === l.kind && x.op === l.op);
+          if (still) continue;
+          const users = refsToLimit(packsAll, deviceType, name, l.kind, l.op);
+          if (users.length) lost.push(`${name} ${l.kind} ${l.op} (reglas: ${users.join(', ')})`);
+        }
+      }
+      if (lost.length) {
+        return res.status(409).json({ status: "error", error: `No se pueden quitar límites que usan reglas: ${lost.join(' · ')}. Cambiá el valor en vez de borrarlo, o pasá esas reglas a valor fijo.` });
       }
       sheet.variables = upd.variables;
     }
