@@ -203,6 +203,7 @@ function leafPhrase(node, sheets) {
   const unit = (v && v.unit) ? ` ${v.unit}` : '';
   const eq = node.deviceType ? ` del ${node.deviceType}` : '';
   const c = node.condition || {};
+  if (c.limitRef) return `la ${vlabel}${eq} sea ${OPERATOR_LABELS[c.op] || c.op} ${condValueText(c, node.deviceType, node.variable, s, v && v.unit)}`;
   return `la ${vlabel}${eq} sea ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${unit}`;
 }
 
@@ -255,7 +256,9 @@ function resolveVarLabel(deviceType, variable, sheets) {
 }
 function leafText(node, sheets) {
   const c = node.condition || {};
-  return `${resolveVarLabel(node.deviceType, node.variable, sheets)} ${OPERATOR_LABELS[c.op] || c.op} ${condValueText(c, node.deviceType, node.variable, sheets)}`;
+  const sh = (sheets || []).find(x => x.deviceType === node.deviceType);
+  const v = sh && (sh.variables || []).find(x => x.name === node.variable);
+  return `${resolveVarLabel(node.deviceType, node.variable, sheets)} ${OPERATOR_LABELS[c.op] || c.op} ${condValueText(c, node.deviceType, node.variable, sheets, v && v.unit)}`;
 }
 function isFlatCross(crossExpr) {
   return crossExpr && Array.isArray(crossExpr.children) && crossExpr.children.length > 0 && crossExpr.children.every(isLeaf);

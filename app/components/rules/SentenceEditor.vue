@@ -345,7 +345,7 @@ export default {
       for (const c of conds) {
         if (!c.variable) return false;
         // spread SÍ usa c.value (umbral del desbalance); setpoint/trend/projection/compare no.
-        if (!this.s.setpoint && !this.s.trend && !this.s.projection && !this.s.compare && (c.value === '' || c.value === null || c.value === undefined)) return false;
+        if (!this.s.setpoint && !this.s.trend && !this.s.projection && !this.s.compare && !c.limitRef && (c.value === '' || c.value === null || c.value === undefined)) return false;
       }
       if (this.s.setpoint && !this.s.setpoint.variable) return false;
       if (this.s.temporal && (!(this.s.temporal.durationMin > 0) || !(this.s.temporal.count >= 1))) return false;
@@ -393,7 +393,8 @@ export default {
         op: this.s.join === 'OR' ? 'OR' : 'AND',
         children: this.s.conditions.map(c => ({
           deviceType: c.deviceType || dt, variable: c.variable,
-          condition: { op: c.op, value: coerceValue(c.value, c.variableType) },
+          // spec_cascada_ficha C2 — conservar el umbral de ficha al agrupar.
+          condition: c.limitRef ? { op: c.op, limitRef: c.limitRef } : { op: c.op, value: coerceValue(c.value, c.variableType) },
         })),
       };
       this.advanced = true; this.touch();

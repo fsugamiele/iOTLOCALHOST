@@ -86,7 +86,13 @@
         <el-option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op" :label="lbl" />
       </el-select>
 
-      <el-select v-if="leafValueType === 'bool'" :value="condValue" size="small" class="cn-val" @change="updateCondition('value', $event)">
+      <!-- spec_cascada_ficha C2 — el valor puede venir de la FICHA (se actualiza solo). -->
+      <el-select v-if="leafLimitOptions.length" :value="condLimitRef" size="small" class="cn-src" @change="setLimitRef">
+        <el-option value="" label="valor fijo" />
+        <el-option v-for="o in leafLimitOptions" :key="o.kind" :value="o.kind" :label="o.label" />
+      </el-select>
+      <el-input v-if="condLimitRef" :value="leafRefText" size="small" class="cn-val" disabled />
+      <el-select v-else-if="leafValueType === 'bool'" :value="condValue" size="small" class="cn-val" @change="updateCondition('value', $event)">
         <el-option :value="1" label="verdadero" />
         <el-option :value="0" label="falso" />
       </el-select>
@@ -96,7 +102,7 @@
         :placeholder="leafUnit ? ('valor (' + leafUnit + ')') : 'valor'"
         @input="updateCondition('value', numericOrRaw($event))"
       />
-      <span v-if="leafUnit" class="cn-unit">{{ leafUnit }}</span>
+      <span v-if="leafUnit && !condLimitRef" class="cn-unit">{{ leafUnit }}</span>
 
       <base-button type="danger" size="sm" icon class="cn-rm" @click="$emit('remove')" title="Quitar condición">
         <i class="tim-icons icon-simple-remove"></i>
@@ -223,6 +229,23 @@ export default {
     leafSelectedVar() { return this.leafVariables.find(v => v.name === this.value.variable) || null; },
     leafValueType() { return (this.leafSelectedVar && this.leafSelectedVar.type) || 'float'; },
     leafUnit() { return (this.leafSelectedVar && this.leafSelectedVar.unit) || ''; },
+    condLimitRef() { return (this.value.condition && this.value.condition.limitRef) || ''; },
+    // Límites de ficha de la variable en el sentido del comparador.
+    leafDirLimits() {
+      const lims = (this.leafSelectedVar && this.leafSelectedVar.limits) || [];
+      const op = this.condOp;
+      const dir = ['lt', 'lte'].includes(op) ? ['lt', 'lte'] : ['gt', 'gte'].includes(op) ? ['gt', 'gte'] : [op];
+      return lims.filter(l => dir.includes(l.op) && typeof l.value === 'number');
+    },
+    leafLimitOptions() {
+      const lbl = { warning: 'umbral de atención (ficha)', trip: 'umbral crítico (ficha)' };
+      const u = this.leafUnit ? ' ' + this.leafUnit : '';
+      return this.leafDirLimits.map(l => ({ kind: l.kind, label: `${lbl[l.kind] || l.kind}: ${l.value}${u}` }));
+    },
+    leafRefText() {
+      const l = this.leafDirLimits.find(x => x.kind === this.condLimitRef);
+      return l ? `${l.value}${this.leafUnit ? ' ' + this.leafUnit : ''} (ficha)` : 'no definido en la ficha';
+    },
   },
   methods: {
     varLabel(v) { return (v.label || v.name) + (v.unit ? ` [${v.unit}]` : ''); },
@@ -259,6 +282,20 @@ export default {
     updateLeaf(field, value) { this.emitUpdate({ ...this.value, [field]: value }); },
     updateCondition(field, value) {
       const cond = { ...(this.value.condition || {}), [field]: value };
+      if (field === 'value') delete cond.limitRef;   // valor fijo y umbral de ficha son excluyentes
+      this.emitUpdate({ ...this.value, condition: cond });
+    },
+    // spec_cascada_ficha C2 — elegir el umbral de la ficha (o volver a valor fijo).
+    setLimitRef(kind) {
+      const cond = { ...(this.value.condition || {}) };
+      if (kind) {
+        const l = this.leafDirLimits.find(x => x.kind === kind);
+        cond.limitRef = kind;
+        if (l) cond.op = l.op;
+        delete cond.value;
+      } else {
+        delete cond.limitRef;
+      }
       this.emitUpdate({ ...this.value, condition: cond });
     },
 
@@ -348,7 +385,8 @@ export { stripEditorKeys };
 
 /* ── hoja condición ── */
 .cn-leaf { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:4px 0; }
-.cn-equipo { width:120px; } .cn-var { width:160px; } .cn-op { width:140px; } .cn-val { width:96px; }
+.cn-equipo { width:120px; } .cn-var { width:160px; } .cn-op { width:140px; } .cn-src { width: 190px; }
+.cn-val { width:96px; }
 .cn-unit { font-size:12px; color:var(--muted); }
 .cn-rm { flex-shrink:0; }
 
