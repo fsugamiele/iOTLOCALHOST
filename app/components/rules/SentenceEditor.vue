@@ -25,6 +25,7 @@
           <condition-row
             v-for="(c, i) in s.conditions" :key="i"
             :condition="c" :sheets="sheets"
+            :allow-limit-ref="limitRefAllowed" :metric-unit="metricUnit"
             :show-equipo="s.conditions.length > 1" :removable="s.conditions.length > 1"
             @remove="removeCondition(i)" @change="touch"
           />
@@ -337,6 +338,16 @@ export default {
       if (rule.type === 'cross') return describeCross(rule.crossExpr, this.sheets, this.sevLabel);
       return { mode: 'sentence', sentence: `Se disparará una alarma de ${this.sevLabel} cuando ${summarize(rule, { sheets: this.sheets })}.`, lines: [] };
     },
+    // E1 · U-01 — el umbral de la ficha solo vale para umbral simple (D) y combinadas.
+    limitRefAllowed() { this.tick; return (this.s.conditions || []).length > 1 || !this.activeMod; },
+    // E1 · U-08 (parcial) — unidad de la métrica cuando el valor no está en la unidad de la variable.
+    metricUnit() {
+      this.tick;
+      if (this.s.dutyCycle) return '%';
+      if (this.s.staleness) return 'min';
+      if (this.s.mPreset) return this.rule && this.rule.metric === 'baseline' ? 'σ' : ((this.rule && this.rule.unit) || 'umbral');
+      return '';
+    },
     canSave() {
       if (!this.s.label) return false;
       if (this.advanced) return !!(this.advCross && Array.isArray(this.advCross.children) && this.advCross.children.length);
@@ -344,8 +355,9 @@ export default {
       if (!conds.length) return false;
       for (const c of conds) {
         if (!c.variable) return false;
+        if (c.limitRef && !this.limitRefAllowed) return false;   // E1 · U-01
         // spread SÍ usa c.value (umbral del desbalance); setpoint/trend/projection/compare no.
-        if (!this.s.setpoint && !this.s.trend && !this.s.projection && !this.s.compare && !c.limitRef && (c.value === '' || c.value === null || c.value === undefined)) return false;
+        if (!this.s.setpoint && !this.s.trend && !this.s.projection && !this.s.compare && !c.limitRef && !c.ref && (c.value === '' || c.value === null || c.value === undefined)) return false;
       }
       if (this.s.setpoint && !this.s.setpoint.variable) return false;
       if (this.s.temporal && (!(this.s.temporal.durationMin > 0) || !(this.s.temporal.count >= 1))) return false;
@@ -394,7 +406,9 @@ export default {
         children: this.s.conditions.map(c => ({
           deviceType: c.deviceType || dt, variable: c.variable,
           // spec_cascada_ficha C2 — conservar el umbral de ficha al agrupar.
-          condition: c.limitRef ? { op: c.op, limitRef: c.limitRef } : { op: c.op, value: coerceValue(c.value, c.variableType) },
+          condition: c.limitRef ? { op: c.op, limitRef: c.limitRef }
+            : (c.ref && (c.value === '' || c.value == null)) ? { op: c.op, ref: c.ref }   // E1 · U-05
+            : { op: c.op, value: coerceValue(c.value, c.variableType) },
         })),
       };
       this.advanced = true; this.touch();
@@ -409,16 +423,24 @@ export default {
       const dt = (this.pack && this.pack.deviceType) || '';
       const ex = this.rule;
       const crossExpr = stripEditorKeys(JSON.parse(JSON.stringify(this.advCross || { op: 'AND', children: [] })));
-      const rule = {
+      // E1 · U-06 — se parte de la regla existente COMPLETA (enabled, unit, correlationParent,
+      // cooldownSec 0, deviceType…) y se pisa solo lo que edita esta pantalla.
+      const base = ex ? JSON.parse(JSON.stringify(ex)) : {};
+      if (ex && ex.type !== 'cross') {   // venía de otro tipo: sin campos que ya no aplican
+        for (const f of ['window', 'setpointSource', 'fallbackToD', 'metric', 'mWindow', 'mParams', 'inputs']) delete base[f];
+      }
+      const rule = Object.assign(base, {
         ruleId: ex ? ex.ruleId : genRuleId(this.pack, dt, this.s.label, this.editingIndex),
         label: this.s.label,
         variableLabel: (ex && ex.variableLabel) || '',
         inferenceId: ex ? ex.inferenceId : genInferenceId(this.pack, this.s.label, this.editingIndex),
         type: 'cross', severity: this.s.severity, recommendation: this.s.recommendation || '',
-        deviceType: dt, variable: firstLeafVar(crossExpr) || (ex && ex.variable) || 'combined',
-        cooldownSec: (ex && ex.cooldownSec) || 300, condition: null, crossExpr,
-      };
-      if (ex) { if (ex.graceSec != null) rule.graceSec = ex.graceSec; if (ex.resolveGraceSec != null) rule.resolveGraceSec = ex.resolveGraceSec; }
+        deviceType: (ex && ex.deviceType) || dt,
+        variable: (ex && ex.variable) || firstLeafVar(crossExpr) || 'combined',
+        cooldownSec: ex && ex.cooldownSec != null ? ex.cooldownSec : 300,
+        condition: null, crossExpr,
+      });
+      delete rule._id;
       return rule;
     },
     save() { if (this.canSave) this.$emit('save', { rule: this.buildRule(), index: this.editingIndex }); },

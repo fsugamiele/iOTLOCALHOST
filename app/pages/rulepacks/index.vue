@@ -206,6 +206,12 @@ export default {
       if (!this.newPack.packId || !this.newPack.deviceType) return;
       this.creating = true;
       const packId = this.newPack.packId.trim();
+      // E1 · U-03 — no pisar un pack existente (el back también responde 409).
+      if ((this.packs || []).some(p => p.packId === packId)) {
+        this.$notify({ type: 'warning', icon: 'tim-icons icon-alert-circle-exc', message: `Ya existe un pack con el id '${packId}'. Elegí otro nombre.` });
+        this.creating = false;
+        return;
+      }
       try {
         await this.$axios.put(
           `/rulepacks/${encodeURIComponent(packId)}`,
@@ -216,7 +222,8 @@ export default {
               description: this.newPack.description || '',
               canary: false,
               rules: []
-            }
+            },
+            createOnly: true
           },
           { headers: { token: this.$store.state.auth.token } }
         );

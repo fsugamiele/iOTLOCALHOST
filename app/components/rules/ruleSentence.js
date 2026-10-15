@@ -57,8 +57,13 @@ export function fillThresholdText(text, rule, sheets) {
 
 // Condición del payload desde una condición de la frase.
 function condFromSentence(c) {
-  if (c.limitRef) return { op: c.op, limitRef: c.limitRef };
-  return { op: c.op, value: coerceValue(c.value, c.variableType) };
+  let out;
+  if (c.limitRef) out = { op: c.op, limitRef: c.limitRef };
+  // E1 · U-05 — umbral relativo a otra variable (condition.ref): se conserva mientras no se escriba un número.
+  else if (c.ref && (c.value === '' || c.value === null || c.value === undefined)) out = { op: c.op, ref: c.ref };
+  else out = { op: c.op, value: coerceValue(c.value, c.variableType) };
+  if (c.deadband != null && c.deadband !== '') out.deadband = c.deadband;   // E1 · U-05 histéresis de la hoja
+  return out;
 }
 
 export const SEVERITIES = [
@@ -429,12 +434,14 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       if (existing && existing.unit)    rule.unit = existing.unit;
     } else {                                         // M2 · relación/diferencia entre dos datos
       rule.metric = s.compare.kind;                  // 'ratio' | 'divergence'
-      rule.inputs = [
-        { deviceType, variable: c0.variable },
-        { deviceType, variable: s.compare.variable2 },
-      ];
+      // E1 · U-11 — cada entrada conserva su equipo y campos propios si la variable no cambió.
+      const exIn = (existing && existing.metric === rule.metric && Array.isArray(existing.inputs)) ? existing.inputs : [];
+      const inp = (i, variable) => (exIn[i] && exIn[i].variable === variable) ? { ...exIn[i] } : { deviceType, variable };
+      rule.inputs = [inp(0, c0.variable), inp(1, s.compare.variable2)];
       rule.condition = { op: s.compare.op, value: coerceValue(s.compare.value, 'float') };
-      rule.unit = s.compare.kind === 'ratio' ? '' : (c0.unit || '');
+      // E1 · U-11 — la unidad de la relación (ej. L/kWh) se conserva.
+      rule.unit = (existing && existing.metric === rule.metric && existing.unit !== undefined) ? existing.unit
+        : (s.compare.kind === 'ratio' ? '' : (c0.unit || ''));
     }
   } else { // D
     rule.condition = condFromSentence(c0);
@@ -442,8 +449,17 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
   // DEC-REF-126 — OVERLAY DE PRESERVACIÓN: la frase no representa estos campos; se
   // copian de `existing` para que guardar sin tocarlos NO mute la regla (idempotencia).
   if (existing) {
-    for (const f of ['correlationParent', 'escalateAfterMinutes', 'on_missing_ref', 'source_filter', 'reset_behavior']) {
+    // E1 · U-02 — enabled/disabled* incluidos: editar una regla apagada NO la reactiva.
+    for (const f of ['correlationParent', 'escalateAfterMinutes', 'on_missing_ref', 'source_filter', 'reset_behavior',
+                     'enabled', 'disabledBy', 'disabledAt', 'disabledReason']) {
       if (existing[f] !== undefined) rule[f] = existing[f];
+    }
+    // E1 · U-11 — misma métrica M: mParams (watchVariable, freshnessSec, target…) se mezclan,
+    // lo que la frase define pisa; spread conserva sus inputs.
+    if (type === 'M' && existing.type === 'M' && existing.metric === rule.metric) {
+      if (existing.mParams) rule.mParams = { ...existing.mParams, ...(rule.mParams || {}) };
+      if (rule.inputs === undefined && existing.inputs !== undefined) rule.inputs = existing.inputs;
+      if (rule.mWindow === undefined && existing.mWindow !== undefined) rule.mWindow = existing.mWindow;
     }
     if (existing.graceSec != null) rule.graceSec = existing.graceSec;
     // DEC-REF-132 — la histéresis (condition.deadband) no se edita en la frase: se
@@ -453,6 +469,13 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
       rule.condition.deadband = existing.condition.deadband;
     }
     if (existing.resolveGraceSec != null) rule.resolveGraceSec = existing.resolveGraceSec;
+    // E1 — histéresis de la condición de ventana (S), mismo criterio que D.
+    const exMc = existing.window && existing.window.matchCondition;
+    if (rule.window && rule.window.matchCondition && exMc && exMc.deadband != null && rule.window.matchCondition.op === exMc.op) {
+      rule.window.matchCondition.deadband = exMc.deadband;
+    }
+    // E1 — fallbackToD guardado (C lo deriva arriba; en el resto se conserva tal cual).
+    if (rule.fallbackToD === undefined && existing.fallbackToD !== undefined) rule.fallbackToD = existing.fallbackToD;
     // cross: `variable` es etiqueta del primario → preservar el guardado (no el 1er leaf).
     if (type === 'cross' && existing.variable != null) rule.variable = existing.variable;
     // unit: preservar el de existing (incluso '') si la frase no derivó uno.
@@ -485,13 +508,15 @@ export function ruleToSentence(rule) {
   };
   const leaf = (variable, op, value) => ({
     deviceType: rule.deviceType || '', variable: variable || '', op: op || 'lt',
-    value: (value !== undefined ? value : ''), variableLabel: rule.variableLabel || '', unit: rule.unit || '', variableType: 'float',
+    value: (value !== undefined ? value : ''), limitRef: '', variableLabel: rule.variableLabel || '', unit: rule.unit || '', variableType: 'float',
   });
   if (rule.type === 'cross' && isFlatCross(rule.crossExpr)) {
     base.join = rule.crossExpr.op === 'OR' ? 'OR' : 'AND';
     base.conditions = rule.crossExpr.children.map(ch => ({
       deviceType: ch.deviceType || rule.deviceType || '', variable: ch.variable,
       op: (ch.condition || {}).op || 'lt', value: (ch.condition || {}).value, limitRef: (ch.condition || {}).limitRef || '',
+      // E1 · U-05 — ref y deadband de la hoja viajan con la condición (antes se perdían).
+      ref: (ch.condition || {}).ref, deadband: (ch.condition || {}).deadband,
       variableLabel: '', unit: '', variableType: 'float',
     }));
   } else if (rule.type === 'cross') {

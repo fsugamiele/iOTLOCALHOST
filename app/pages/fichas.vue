@@ -669,6 +669,7 @@ export default {
               unit: l.unit || undefined,
               source: l.source || undefined,
               when: l.when || undefined,   // precondición (ej. solo en marcha) — no se pierde al editar
+              relativeTo: l.relativeTo || undefined,   // E1 · U-04 — escalado C3 (12/24 V): no se pierde al editar
             })),
           })),
         };

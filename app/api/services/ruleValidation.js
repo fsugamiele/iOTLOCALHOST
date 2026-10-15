@@ -247,6 +247,14 @@ function validateM(rule) {
 // Retorna { ok:true, warnings:[] } (agregado de warnings de todas las reglas
 // que pasaron) o { ok:false, ruleId, reason } con el primer error.
 function validateRule(rule) {
+  // E1 · U-01 — el umbral de la ficha (limitRef) solo lo resuelven D y las hojas cross.
+  // En C/S/M el editor lo guardaba como value:0 (regla muerta o disparando siempre).
+  if (['C', 'S', 'M'].includes(rule.type)) {
+    const conds = [rule.condition, rule.window && rule.window.matchCondition];
+    if (conds.some(c => c && c.limitRef !== undefined && c.limitRef !== null && c.limitRef !== '')) {
+      return { ok: false, reason: `type${rule.type}: el umbral de la ficha solo se puede usar en reglas de umbral simple o combinadas — cargá un valor fijo` };
+    }
+  }
   switch (rule.type) {
     case 'cross': return validateCrossTree(rule.crossExpr);
     case 'D':     return validateD(rule);

@@ -125,6 +125,12 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
     const packId = req.params.packId;
     const body = req.body.rulepack || {};
 
+    // E1 · U-03 — alta ("Nuevo pack"): si el packId ya existe, 409 en vez de vaciarlo.
+    if (req.body.createOnly) {
+      const exists = await RulePack.findOne({ packId }).lean();
+      if (exists) return res.status(409).json({ status: "error", error: `ya existe un pack con el id '${packId}' — elegí otro nombre o editá el existente` });
+    }
+
     if (!body.deviceType) {
       return res.status(400).json({ status: "error", error: "deviceType is required" });
     }

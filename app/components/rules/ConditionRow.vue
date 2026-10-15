@@ -26,19 +26,20 @@
     </el-select>
 
     <!-- spec_cascada_ficha C2 — el valor puede venir de la FICHA (se actualiza solo). -->
-    <el-select v-if="limitOptions.length" v-model="c.limitRef" size="small" class="cond-src" @change="onLimitRef">
+    <!-- E1 · U-01 — solo donde el motor lo resuelve (umbral simple y combinadas). -->
+    <el-select v-if="allowLimitRef && limitOptions.length" v-model="c.limitRef" size="small" class="cond-src" placeholder="valor fijo" @change="onLimitRef">
       <el-option value="" label="valor fijo" />
       <el-option v-for="o in limitOptions" :key="o.kind" :value="o.kind" :label="o.label" />
     </el-select>
 
-    <el-input v-if="c.limitRef" :value="refValueText" size="small" class="cond-val" disabled />
+    <el-input v-if="allowLimitRef && c.limitRef" :value="refValueText" size="small" class="cond-val" disabled />
     <el-select v-else-if="valueType === 'bool'" v-model="c.value" size="small" class="cond-val">
       <el-option :value="1" label="verdadero" />
       <el-option :value="0" label="falso" />
     </el-select>
     <el-input v-else v-model="c.value" size="small" class="cond-val"
       :type="valueType === 'categorical' || valueType === 'string' ? 'text' : 'number'"
-      :placeholder="unit ? ('valor (' + unit + ')') : 'valor'" />
+      :placeholder="c.ref ? 'referencia a otra variable' : (unit ? ('valor (' + unit + ')') : 'valor')" />
 
     <base-button v-if="removable" size="sm" type="danger" icon class="cond-rm" @click="$emit('remove')">
       <i class="fa fa-trash"></i>
@@ -58,16 +59,27 @@ export default {
     sheets:     { type: Array,  default: () => [] },
     showEquipo: { type: Boolean, default: false },
     removable:  { type: Boolean, default: false },
+    // E1 · U-01 — false en S/C/M: el motor no resuelve el umbral de la ficha ahí.
+    allowLimitRef: { type: Boolean, default: true },
+    // E1 · U-08 (parcial) — unidad de la MÉTRICA (%, min, σ) cuando no es la de la variable:
+    // fuerza input numérico (no el select verdadero/falso de una variable bool).
+    metricUnit: { type: String, default: '' },
   },
   data() { return { c: this.condition, operators: OPERATORS, opLabels: OPERATOR_LABELS }; },
-  watch: { condition(nv) { this.c = nv; } },
+  watch: {
+    condition(nv) { this.c = nv; },
+    // E1 — sin umbral de ficha permitido, se limpia (el valor queda vacío y hay que cargarlo).
+    allowLimitRef: { immediate: true, handler(ok) { if (!ok && this.c && this.c.limitRef) { this.c.limitRef = ''; this.$emit('change'); } } },
+    // E1 · U-19 — si el comparador cambia de sentido y la ficha no tiene ese límite, vuelve a valor fijo.
+    'c.op'() { if (this.c.limitRef && !this.dirLimits.some(l => l.kind === this.c.limitRef)) { this.c.limitRef = ''; this.$emit('change'); } },
+  },
   computed: {
     sheetByType() { const m = {}; for (const x of this.sheets) m[x.deviceType] = x; return m; },
     currentSheet() { return this.sheetByType[this.c.deviceType] || null; },
     variables() { return (this.currentSheet && this.currentSheet.variables) || []; },
     selectedVar() { return this.variables.find(v => v.name === this.c.variable) || null; },
-    valueType() { return this.c.variableType || (this.selectedVar && this.selectedVar.type) || 'float'; },
-    unit() { return this.c.unit || (this.selectedVar && this.selectedVar.unit) || ''; },
+    valueType() { if (this.metricUnit) return 'float'; return this.c.variableType || (this.selectedVar && this.selectedVar.type) || 'float'; },
+    unit() { return this.metricUnit || this.c.unit || (this.selectedVar && this.selectedVar.unit) || ''; },
     // Límites de la ficha para esta variable en el sentido del comparador elegido.
     dirLimits() {
       const lims = (this.selectedVar && this.selectedVar.limits) || [];

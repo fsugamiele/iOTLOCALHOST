@@ -22,7 +22,9 @@ function sd(x) { const o = new RD(x).toObject({ versionKey: false, minimize: fal
 const FIELDS = ['type', 'deviceType', 'variable', 'severity', 'unit', 'cooldownSec',
   'graceSec', 'resolveGraceSec', 'condition', 'crossExpr', 'window', 'mWindow', 'mParams',
   'inputs', 'setpointSource', 'fallbackToD', 'on_missing_ref', 'correlationParent',
-  'escalateAfterMinutes', 'metric', 'source_filter', 'reset_behavior'];
+  'escalateAfterMinutes', 'metric', 'source_filter', 'reset_behavior',
+  // E1 · U-24 — también lo que el operador ve y el interruptor on/off.
+  'label', 'recommendation', 'enabled', 'disabledBy', 'disabledReason'];
 function diffs(aRaw, bRaw) {
   const a = sd(aRaw), b = sd(bRaw), out = [];
   for (const f of FIELDS) {
@@ -41,11 +43,17 @@ function diffs(aRaw, bRaw) {
   for (const pack of packs) {
     for (let i = 0; i < (pack.rules || []).length; i++) {
       const r = pack.rules[i];
-      if (!isSentenceEditable(r)) { skipped++; continue; }
-      tested++;
-      const back = sentenceToRule(ruleToSentence(r), pack, r, i);
-      const d = diffs(r, back);
-      if (d.length) { bad++; console.log(`\n✗ ${pack.packId} · ${r.ruleId} (${r.type}/${r.metric || ''})`); d.forEach(x => console.log('    ' + x)); }
+      // E1 · U-24 — las M también se abren en el editor-frase: se prueban. Solo se saltea
+      // el cross ANIDADO (va al modo avanzado, sin frase plana).
+      if (!isSentenceEditable(r) && r.type !== 'M') { skipped++; continue; }
+      // Cada regla se prueba tal cual Y apagada (editar una regla apagada no la reactiva).
+      const variants = [r, { ...r, enabled: false, disabledBy: 'idem-test', disabledReason: 'mantenimiento' }];
+      for (const rv of variants) {
+        tested++;
+        const back = sentenceToRule(ruleToSentence(rv), pack, rv, i);
+        const d = diffs(rv, back);
+        if (d.length) { bad++; console.log(`\n✗ ${pack.packId} · ${r.ruleId} (${r.type}/${r.metric || ''})${rv === r ? '' : ' [apagada]'}`); d.forEach(x => console.log('    ' + x)); }
+      }
     }
   }
   console.log(`\n── ${tested} reglas probadas · ${skipped} salteadas (no sentence-editable) · ${bad} con diffs ──`);
