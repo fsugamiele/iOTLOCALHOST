@@ -79,6 +79,11 @@ const widgetSchema = new Schema({
     // ser negativo: "-58--42"). Nace en la ficha; valueStatus lo dibuja como
     // banda de rango bajo el valor. String, no parseado en el schema.
     factoryRange:     { type: String },
+    // spec_cascada_ficha.md C1 (Q3) — campos heredables de la ficha (unit,
+    // factoryRange, deadband, thresholds, variableSendFreq) que ESTE widget pisó
+    // a propósito. La propagación Ficha → Template no los toca. Vacío = hereda todo.
+    // Lo calcula el servidor al guardar el template (routes/templates.js).
+    overrides:        { type: [String], default: undefined },
 
     icon:          { type: String },
     class:         { type: String },

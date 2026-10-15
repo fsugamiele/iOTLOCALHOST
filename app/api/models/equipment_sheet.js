@@ -8,6 +8,10 @@ const LimitSchema = new Schema({
   value:  { type: Schema.Types.Mixed },
   unit:   { type: String },
   source: { type: String },
+  // spec_cascada_ficha (F-12) — precondición opcional del límite: solo aplica si
+  // {variable op value} del MISMO equipo se cumple (ej. alternador solo en marcha).
+  // El widget no puede evaluarla (no colorea); la usan las reglas (cascada C2).
+  when:   { type: Schema.Types.Mixed },
 }, { _id: false });
 
 const VariableSchema = new Schema({

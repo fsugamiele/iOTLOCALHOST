@@ -6,6 +6,30 @@ import Template from "../models/template.js";
 const RulePack = require("../models/rule_pack.js");
 const { extractFromPdf } = require("../services/sheetExtractor.js");
 const { validateSheetContent } = require("../services/sheetValidation.js");  // auditoría 2026-10-14 (F-05)
+const { applySheetToWidgets } = require("../services/sheetCascade.js");     // spec_cascada_ficha C1
+const { collectRuleRefs } = require("../services/ruleValidation.js");
+
+// spec_cascada_ficha C1 — quién usa cada variable de un deviceType (templates y
+// reglas). Base de las guardas de borrado de variable (§6 #3) y cambio de unidad (Q4).
+async function dependentsOf(deviceType, varNames) {
+  const want = new Set(varNames);
+  const out = new Map([...want].map(v => [v, { templates: [], rules: [] }]));
+  const templates = await Template.find({ deviceType }).lean();
+  for (const t of templates) {
+    for (const w of t.widgets || []) {
+      if (want.has(w.variable)) out.get(w.variable).templates.push(t.name);
+      for (const src of w.sources || []) if (want.has(src.variable)) out.get(src.variable).templates.push(t.name);
+    }
+  }
+  const packs = await RulePack.find({}).lean();
+  for (const p of packs) {
+    for (const ref of collectRuleRefs(p)) {
+      if (ref.deviceType === deviceType && want.has(ref.variable)) out.get(ref.variable).rules.push(`${ref.ruleId} (${p.packId})`);
+    }
+  }
+  for (const v of out.values()) { v.templates = [...new Set(v.templates)]; v.rules = [...new Set(v.rules)]; }
+  return out;
+}
 
 // DEC-REF-115 (#85) — el edge recarga su config de autonomía por el mismo
 // canal de control SF-3 que los packs (payload ignorado, DEC-REF-61.c).
@@ -156,7 +180,43 @@ router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
     if ('model' in upd) sheet.model = upd.model;
     if ('origin' in upd) sheet.origin = upd.origin;
     if ('domain' in upd) sheet.domain = upd.domain || '';   // DEC-REF-108 F2 (#80): dominio → tabs del sitio
-    if (Array.isArray(upd.variables)) sheet.variables = upd.variables;
+    if (Array.isArray(upd.variables)) {
+      const oldVars = new Map(sheet.variables.map(v => [v.name, v]));
+      const newVars = new Map(upd.variables.map(v => [v.name, v]));
+      // spec_cascada_ficha §6 #3 — no se borra una variable que usa un template o una regla.
+      const removed = [...oldVars.keys()].filter(n => !newVars.has(n));
+      if (removed.length) {
+        const deps = await dependentsOf(deviceType, removed);
+        const used = [...deps.entries()].filter(([, d]) => d.templates.length || d.rules.length);
+        if (used.length) {
+          return res.status(409).json({ status: "error", error:
+            `No se pueden quitar variables en uso: ` + used.map(([n, d]) =>
+              `${n} (templates: ${d.templates.join(', ') || '—'}; reglas: ${d.rules.join(', ') || '—'})`).join(' · ') });
+        }
+      }
+      // spec_cascada_ficha Q4 — cambio de UNIDAD: bloqueado salvo confirmUnitChange.
+      // El equipo/driver tiene que publicar en la unidad nueva: la plataforma no
+      // puede convertir lo que manda el device.
+      const unitChanged = [...newVars.values()].filter(v => {
+        const o = oldVars.get(v.name);
+        return o && o.unit && (v.unit || '') !== o.unit;
+      });
+      if (unitChanged.length) {
+        const deps = await dependentsOf(deviceType, unitChanged.map(v => v.name));
+        const detail = unitChanged.map(v => {
+          const d = deps.get(v.name);
+          return `${v.name}: ${oldVars.get(v.name).unit} → ${v.unit || '(sin unidad)'} (templates: ${d.templates.join(', ') || '—'}; reglas: ${d.rules.join(', ') || '—'})`;
+        });
+        if (!upd.confirmUnitChange) {
+          return res.status(409).json({ status: "error", code: "UNIT_CHANGE", error:
+            `Cambio de unidad: ${detail.join(' · ')}. El equipo debe publicar en la unidad nueva. ` +
+            `Los templates se actualizan solos; las reglas con valor fijo hay que revisarlas. Reenviar con confirmUnitChange:true para confirmar.` });
+        }
+        res.locals.unitWarnings = detail;
+        res.locals.unitChangedVars = new Set(unitChanged.map(v => v.name));
+      }
+      sheet.variables = upd.variables;
+    }
     // DEC-REF-115 (#85): parámetros del cálculo de autonomía de la plataforma.
     // Auditoría 2026-10-14 (F-04): MERGE campo a campo — antes el bloque se
     // reemplazaba entero y un form que solo conocía 3 campos borraba
@@ -181,7 +241,36 @@ router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
     // Auditoría 2026-10-14: el edge ahora también lee variables[].type de la ficha
     // (normalización de entrada) → recargar también si cambiaron las variables.
     if ('autonomy' in upd || Array.isArray(upd.variables)) publishEdgeReload(`PUT ${deviceType}`);
-    return res.json({ status: "success", deviceType: sheet.deviceType, version: sheet.version });
+
+    // spec_cascada_ficha C1 (Q1) — PROPAGAR al escribir: cada template de este
+    // deviceType toma unit/factoryRange/deadband/thresholds/variableSendFreq de la
+    // ficha, salvo los campos que el widget pisó (`overrides`). Un template que no
+    // valida no frena la ficha: se informa en `propagationErrors`.
+    const propagated = [], propagationErrors = [];
+    if (Array.isArray(upd.variables)) {
+      const templates = await Template.find({ deviceType });
+      const ucv = res.locals.unitChangedVars || new Set();
+      for (const t of templates) {
+        // Q4 — un widget que PISÓ umbrales de una variable cuya unidad cambió queda
+        // con números en la unidad vieja: se avisa (no se convierte a ciegas).
+        for (const w of t.widgets || []) {
+          if (ucv.has(w.variable) && (w.overrides || []).length) {
+            res.locals.unitWarnings.push(`template ${t.name}: widget ${w.variable} tiene valores propios (${w.overrides.join(', ')}) en la unidad anterior — revisarlos`);
+          }
+        }
+        const { widgets, changes } = applySheetToWidgets(t.widgets, sheet);
+        if (!changes.length) continue;
+        try {
+          t.widgets = widgets;
+          await t.save();
+          propagated.push({ template: t.name, changes });
+        } catch (e) {
+          propagationErrors.push({ template: t.name, error: e.message });
+        }
+      }
+    }
+    return res.json({ status: "success", deviceType: sheet.deviceType, version: sheet.version,
+      propagated, propagationErrors, unitWarnings: res.locals.unitWarnings || [] });
   } catch (error) {
     console.log("ERROR UPDATING EQUIPMENT SHEET"); console.log(error);
     return res.status(500).json({ status: "error", error: error.message || error });

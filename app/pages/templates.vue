@@ -165,6 +165,13 @@
           <!-- DEC-REF-108 F3 (#80): marca el widget como "solo vista Técnica".
                La página de sitio lo oculta en modo Operador. -->
           <span v-if="widget.advanced" class="badge badge-info" style="margin-right:auto" title="Este widget solo se ve en la vista Técnico">TÉCNICO</span>
+          <!-- spec_cascada_ficha C1 (Q3): heredado de la ficha vs pisado en este template -->
+          <span v-if="sheetVariableNames.includes(widget.variable) && !(widget.overrides || []).length"
+                class="badge badge-success" :style="widget.advanced ? '' : 'margin-right:auto'"
+                title="Unidad, rango, umbrales y cadencia vienen de la ficha: si cambian allá, cambian acá">FICHA</span>
+          <span v-else-if="(widget.overrides || []).length"
+                class="badge badge-warning" :style="widget.advanced ? '' : 'margin-right:auto'"
+                :title="'Pisado en este template (no se actualiza desde la ficha): ' + widget.overrides.join(', ')">PROPIO: {{ widget.overrides.join(', ') }}</span>
           <base-button
             size="sm"
             :type="widget.advanced ? 'info' : 'default'"
@@ -444,6 +451,8 @@ import { Table, TableColumn, Dialog, Tooltip } from "element-ui";
 import { Select, Option, OptionGroup, Input, MessageBox } from "element-ui";
 import { resolveWidget } from "@/components/Widgets/resolver.js";
 import WidgetConfigForm from "@/components/Widgets/WidgetConfigForm.vue";
+// spec_cascada_ficha C1 — misma derivación ficha→widget que el servidor (fuente única).
+import { deriveWidgetFields } from "@/api/services/sheetCascade.js";
 import {
   getDescriptor,
   colorHex,
@@ -649,6 +658,11 @@ export default {
       // DEC-REF-108 F4 (#80): el rango normal del fabricante también viaja
       // (valueStatus lo dibuja como banda bajo el valor).
       if (v.factoryRange) cfg.factoryRange = v.factoryRange;
+      // spec_cascada_ficha C1 — umbrales (desde limits) y cadencia también nacen en
+      // la ficha. Sin esto el servidor marcaría el widget como "pisado" desde el alta.
+      const d = deriveWidgetFields(v);
+      if (d.thresholds) cfg.thresholds = { ...d.thresholds };
+      if (d.variableSendFreq) cfg.variableSendFreq = d.variableSendFreq;
       // valueStatus declara variableType propio: se adopta el de la ficha
       // solo si es uno de los 4 que el widget entiende.
       if (

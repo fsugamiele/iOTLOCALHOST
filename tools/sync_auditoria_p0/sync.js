@@ -119,7 +119,9 @@ async function syncFichas() {
     for (const c of canon.variables) {
       if (!curVars.some((v) => v.name === c.name)) { merged.push(c); touched = true; changes++; console.log(`  + ${canon.deviceType} variable ${c.name} (nueva)`); }
     }
-    const upd = { variables: merged };
+    // confirmUnitChange: los cambios de unidad de esta sincronización son decisiones
+    // firmadas (aceite psi→kPa, 2026-10-14) — se confirman explícitamente (spec Q4).
+    const upd = { variables: merged, confirmUnitChange: true };
     if (canon.autonomy) {
       const a = { ...canon.autonomy, ...(cur.autonomy || {}) };       // la base gana; canónica completa
       if (report(canon.deviceType, 'autonomy', cur.autonomy || null, a)) touched = true;
@@ -174,15 +176,10 @@ const THRESHOLD_FIELDS = ['label', 'variableLabel', 'unit', 'condition', 'crossE
 const sub = (x) => ({ label: x.label, unit: x.unit, condition: x.condition, crossExpr: x.crossExpr, recommendation: x.recommendation });
 
 // ── 3. TEMPLATES ─────────────────────────────────────────────────────────
-function thresholdsFrom(limits) {
-  const t = {};
-  for (const l of limits || []) {
-    if (typeof l.value !== 'number') continue;
-    if (['lt', 'lte'].includes(l.op)) t[l.kind === 'trip' ? 'criticalLow' : 'warningLow'] = l.value;
-    if (['gt', 'gte'].includes(l.op)) t[l.kind === 'trip' ? 'criticalHigh' : 'warningHigh'] = l.value;
-  }
-  return t;
-}
+// Misma derivación que la cascada productiva (app/api/services/sheetCascade.js):
+// respeta widgets[].overrides. Con la cascada C1 el PUT de ficha ya propaga; este
+// paso queda para templates que la propagación no alcanzó + migrar widgets 'gauge'.
+const { applySheetToWidgets } = require(path.join(REPO, 'app/api/services/sheetCascade.js'));
 async function syncTemplates() {
   console.log('\n== 3. Templates (widgets) ==');
   const r = await call('GET', '/template');
@@ -190,9 +187,8 @@ async function syncTemplates() {
   for (const tpl of r.json.data || []) {
     const canon = FICHAS.find((f) => f.deviceType === tpl.deviceType);
     if (!canon) continue;
-    const byName = new Map(canon.variables.map((v) => [v.name, v]));
     let touched = false;
-    const widgets = (tpl.widgets || []).map((w0) => {
+    const pre = (tpl.widgets || []).map((w0) => {
       const w = clean(w0);
       // Widget legacy 'gauge' (seed viejo del simulador) no está en el enum del
       // schema → el template no se puede guardar ni desde la UI. Forma vigente
@@ -201,28 +197,16 @@ async function syncTemplates() {
         report(`template '${tpl.name}'`, `widget ${w.variable} tipo`, { widget: 'gauge' }, { widget: 'numeric', render: 'gauge' });
         w.widget = 'numeric'; w.render = 'gauge'; touched = true;
       }
-      const v = byName.get(w.variable);
-      if (v) {
-        const before = { unit: w.unit, factoryRange: w.factoryRange, deadband: w.deadband, thresholds: w.thresholds };
-        const th = thresholdsFrom(v.limits);
-        if (v.unit !== undefined) w.unit = v.unit;
-        if (v.factoryRange) w.factoryRange = v.factoryRange;
-        if (v.deadband != null) w.deadband = v.deadband;
-        if (Object.keys(th).length) w.thresholds = th;
-        if (typeof w.variableFullName === 'string') w.variableFullName = w.variableFullName.replace('(psi)', '(kPa)');
-        if (report(`template '${tpl.name}'`, `widget ${w.variable}`, before, { unit: w.unit, factoryRange: w.factoryRange, deadband: w.deadband, thresholds: w.thresholds })) touched = true;
-      }
-      if (Array.isArray(w.sources)) {
-        for (const s of w.sources) {
-          const sv = byName.get(s.variable);
-          if (sv && sv.unit !== undefined && s.unit !== sv.unit) {
-            report(`template '${tpl.name}'`, `widget ${w.widget} source ${s.variable} unit`, s.unit, sv.unit);
-            s.unit = sv.unit; touched = true;
-          }
-        }
-      }
+      if (typeof w.variableFullName === 'string' && w.variableFullName.includes('(psi)')) { w.variableFullName = w.variableFullName.replace('(psi)', '(kPa)'); touched = true; }
       return w;
     });
+    const { widgets, changes } = applySheetToWidgets(pre, canon);
+    for (const c of changes) {
+      const w = widgets.find((x) => (x.variable || x.widget) === c.variable);
+      const before = pre.find((x) => (x.variable || x.widget) === c.variable);
+      report(`template '${tpl.name}'`, `widget ${c.variable}`, pickW(before), pickW(w));
+      touched = true;
+    }
     if (touched && APPLY) {
       const t = clean(tpl);
       const w = await call('PUT', '/template', { templateId: tpl._id, template: { name: t.name, description: t.description, deviceType: t.deviceType, widgets } });
@@ -230,6 +214,7 @@ async function syncTemplates() {
     }
   }
 }
+const pickW = (w) => w && ({ unit: w.unit, factoryRange: w.factoryRange, deadband: w.deadband, thresholds: w.thresholds, variableSendFreq: w.variableSendFreq });
 
 function log(w, what) {
   if (w.code === 200 && (!w.json || w.json.status !== 'error')) console.log(`    ✓ ${what}`);

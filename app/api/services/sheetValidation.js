@@ -48,6 +48,11 @@ function validateVariable(v, i) {
     if (ARITH_OPS.has(l.op) && !isNum(l.value)) return `${lw}: value debe ser numérico (punto decimal) para op '${l.op}'`;
     if (l.value === undefined || l.value === null || l.value === '') return `${lw}: value requerido`;
     if (l.unit && v.unit && l.unit !== v.unit) return `${lw}: unidad '${l.unit}' distinta de la variable '${v.unit}'`;
+    if (l.when != null) {
+      const w = l.when;
+      if (typeof w !== 'object' || !w.variable || !w.op || w.value === undefined) return `${lw}: when debe ser {variable, op, value}`;
+      if (!['lt', 'lte', 'gt', 'gte', 'eq', 'neq'].includes(w.op)) return `${lw}: when.op inválido '${w.op}'`;
+    }
   }
   // Orden warning/trip por sentido: gt → warning < trip ; lt → warning > trip.
   for (const dir of ['gt', 'lt']) {
@@ -73,6 +78,9 @@ function validateSheetContent(sheet) {
     if (err) return err;
     if (seen.has(v.name)) return `variable duplicada: ${v.name}`;
     seen.add(v.name);
+  }
+  for (const v of vars) for (const l of (v.limits || [])) {
+    if (l && l.when && !seen.has(l.when.variable)) return `variables (${v.name}): when.variable '${l.when.variable}' no existe en la ficha`;
   }
   const a = sheet.autonomy;
   if (a && a.fuelVariable) {

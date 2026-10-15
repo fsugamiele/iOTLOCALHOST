@@ -660,19 +660,38 @@ export default {
               value: l.value === '' || l.value === null ? undefined : Number(l.value),
               unit: l.unit || undefined,
               source: l.source || undefined,
+              when: l.when || undefined,   // precondición (ej. solo en marcha) — no se pierde al editar
             })),
           })),
         };
         // DEC-REF-111 — PUT si editás una ficha existente; POST si es nueva.
+        let extra = '';
         if (this.editing) {
-          await this.$axios.put('/equipmentsheet/' + encodeURIComponent(payload.deviceType), { newEquipmentSheet: payload }, this.headers());
+          const url = '/equipmentsheet/' + encodeURIComponent(payload.deviceType);
+          let r;
+          try {
+            r = await this.$axios.put(url, { newEquipmentSheet: payload }, this.headers());
+          } catch (e) {
+            // spec_cascada_ficha Q4 — cambio de unidad: confirmación explícita.
+            if (e.response?.status === 409 && e.response?.data?.code === 'UNIT_CHANGE' &&
+                window.confirm(e.response.data.error + '\n\n¿Confirmás el cambio de unidad?')) {
+              r = await this.$axios.put(url, { newEquipmentSheet: { ...payload, confirmUnitChange: true } }, this.headers());
+            } else {
+              throw e;
+            }
+          }
+          // spec_cascada_ficha C1 — informar a qué templates llegó el cambio.
+          const d = r.data || {};
+          if ((d.propagated || []).length) extra += ` Actualizados ${d.propagated.length} template(s): ${d.propagated.map(p => p.template).join(', ')}.`;
+          if ((d.propagationErrors || []).length) extra += ` No se pudieron actualizar: ${d.propagationErrors.map(p => p.template).join(', ')}.`;
+          if ((d.unitWarnings || []).length) extra += ' Revisar: ' + d.unitWarnings.join(' · ');
         } else {
           await this.$axios.post('/equipmentsheet', { newEquipmentSheet: payload }, this.headers());
         }
         this.$notify({
           type: 'success',
           icon: 'tim-icons icon-check-2',
-          message: `Ficha ${payload.deviceType} ${this.editing ? 'actualizada' : 'creada'}.`,
+          message: `Ficha ${payload.deviceType} ${this.editing ? 'actualizada' : 'creada'}.${extra}`,
         });
         this.createModal = false;
         this.editing = false;

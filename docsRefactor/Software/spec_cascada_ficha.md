@@ -12,7 +12,8 @@ y ya divergían (aceite psi↔Bar, autonomía 4/2↔6/3↔48/12, combustible 10�
 `tools/sync_auditoria_p0/sync.js` hizo la cascada **una vez, a mano**. Esta spec la vuelve permanente.
 
 ## 0 · CANDADO
-**preguntas_abiertas: 4** → el bloque NO entra a implementación hasta que Franco firme §0.1.
+**preguntas_abiertas: 0** — Q1–Q4 **firmadas por Franco el 2026-10-14** con la opción recomendada.
+C1 implementado (commit "feat(cascada): C1 Ficha → Template"). C2 y C3 pendientes.
 
 ### 0.1 · Decisiones a firmar (con recomendación)
 | # | Pregunta | Opción recomendada | Alternativa |

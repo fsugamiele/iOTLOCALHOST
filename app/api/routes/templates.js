@@ -9,6 +9,22 @@ const { collectCrossLeafRefs } = require('../services/ruleValidation.js');
 import Template from '../models/template.js';
 import Device from '../models/device.js';
 import EquipmentSheet from '../models/equipment_sheet.js';
+const { computeOverrides } = require('../services/sheetCascade.js');   // spec_cascada_ficha C1
+
+// spec_cascada_ficha C1 (Q3) — marca en cada widget los campos que difieren de la
+// ficha (el template los pisó → la propagación no los toca). Sin ficha: no-op.
+function markOverrides(widgets, sheet) {
+    if (!sheet) return widgets;
+    const byName = new Map((sheet.variables || []).map(v => [v.name, v.toObject ? v.toObject() : v]));
+    return widgets.map(w => {
+        const v = byName.get(w.variable);
+        if (!v) return w;
+        const ov = computeOverrides(w, v);
+        const out = { ...w };
+        if (ov.length) out.overrides = ov; else delete out.overrides;
+        return out;
+    });
+}
 
 //get templates
 router.get('/template', checkAuth, async (req, res) => {
@@ -70,6 +86,7 @@ router.post('/template', checkAuth, async (req, res) => {
             if (!sheet) {
                 return res.status(400).json({ status: "error", error: "deviceType does not reference an existing equipment sheet" });
             }
+            newTemplate.widgets = markOverrides(newTemplate.widgets, sheet);
         }
 
         newTemplate.userId = userId;
@@ -130,6 +147,7 @@ router.put('/template', checkAuth, async (req, res) => {
             if (!sheet) {
                 return res.status(400).json({ status: "error", error: "deviceType does not reference an existing equipment sheet" });
             }
+            template.widgets = markOverrides(template.widgets, sheet);
         }
 
         const filter = await buildWriteFilter(req, 'Template');

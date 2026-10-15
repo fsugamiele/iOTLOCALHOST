@@ -21,6 +21,7 @@ const V = (name, label, type, unit, deadband, factoryRange, limits) => {
   return v;
 };
 
+const RUNNING_GEN = { variable: 'genset_running', op: 'eq', value: 1 };
 const SRC_GEF = 'registros_consolidado_gef.md §4 (NFPA 110)';
 const SRC_FRANCO = 'decisión Franco 2026-10-14';
 
@@ -67,8 +68,8 @@ const FICHAS = [
     V('coolant_temp_setpoint', 'Setpoint temp. refrigerante', 'float', '°C', 0.5),
     V('oil_pressure_setpoint', 'Setpoint presión aceite', 'float', 'kPa', 7),
     // spec_autonomy_extendido / _deteccion_sifoneo_eficiencia — caudalímetro + carga.
-    V('fuel_rate', 'Caudal de combustible', 'float', 'L/h', 0.2),
-    V('genset_power_kw', 'Potencia del grupo', 'float', 'kW', 0.3),
+    V('fuel_rate', 'Caudal de combustible', 'float', 'L/h', 0.2, '0-10'),        // decisión Franco 2026-10-14 — confirmar con placa
+    V('genset_power_kw', 'Potencia del grupo', 'float', 'kW', 0.3, '0-20'),      // coherente con ATS load_kw 0-20 — confirmar con placa
     AUTONOMY_HOURS(SRC_FRANCO),
   ], autonomy: { fuelVariable: 'fuel_level', tankCapacity: 250, consumptionLph: 3.46, flowVariable: 'fuel_rate', flowScale: 1,
                  runningVariable: 'rpm', runningThreshold: 300, ...AUTONOMY_ESTIMATOR } },
@@ -119,19 +120,46 @@ const FICHAS = [
   { deviceType: 'GEN', manufacturer: 'Genérico', model: 'Generador genérico', origin: 'third_party', domain: 'grupo', variables: [
     V('fuel_level', 'Nivel combustible', 'float', '%', 1, '0-100', FUEL),
     V('genset_running', 'Motor en marcha', 'bool', '', null),
-    V('exhaust_temp', 'Temperatura escape', 'float', '°C', 0.5, '0-700'),
+    V('exhaust_temp', 'Temperatura escape', 'float', '°C', 0.5, '0-700', [
+      L('warning', 'gt', 550, '°C', 'decisión Franco 2026-10-14 — a confirmar con datasheet del motor'),
+      L('trip',    'gt', 600, '°C', 'decisión Franco 2026-10-14 — a confirmar con datasheet del motor')]),
     V('vibration_signature', 'Firma de vibración', 'categorical', '', null),
     V('crank_current', 'Corriente de arranque', 'float', 'A', 2, '0-600'),
-    V('alternator_voltage', 'Tensión alternador', 'float', 'V', 0.1, '12-15'),
+    // Solo con el motor EN MARCHA (`when`): parado, el borne mide la batería (~12,6 V).
+    // El widget no puede evaluar `when` → no colorea; lo usan las reglas (cascada C2).
+    V('alternator_voltage', 'Tensión alternador', 'float', 'V', 0.1, '12-15', [
+      { ...L('warning', 'lt', 13.0, 'V', 'decisión Franco 2026-10-14 — carga baja, a confirmar con regulador'), when: RUNNING_GEN },
+      { ...L('warning', 'gt', 14.8, 'V', 'decisión Franco 2026-10-14 — sobrecarga, a confirmar con regulador'), when: RUNNING_GEN }]),
     V('battery_voltage', 'Tensión arranque batería', 'float', 'V', 0.3, '10-16', BATTERY_12V),
-    V('crank_attempts_failed', 'Arranques fallidos', 'int', '', null, '0-10', [
+    V('crank_attempts_failed', 'Arranques fallidos', 'int', 'u', null, '0-10', [
       L('trip', 'gte', 3, '', `${SRC_GEF} b8 — regla cat-CR00061-D4`)]),
-    V('mains_voltage', 'Tensión red eléctrica', 'float', 'V', 2, '200-240'),
-    V('fuel_rate', 'Caudal de combustible', 'float', 'L/h', 0.2),
-    V('genset_power_kw', 'Potencia del grupo', 'float', 'kW', 0.3),
+    V('mains_voltage', 'Tensión red eléctrica', 'float', 'V', 2, '200-240', [
+      L('warning', 'lt', 198, 'V', 'igual que ATS (−10 % de 220 V) — decisión Franco 2026-10-14'),
+      L('warning', 'gt', 242, 'V', 'igual que ATS (+10 % de 220 V) — decisión Franco 2026-10-14')]),
+    V('fuel_rate', 'Caudal de combustible', 'float', 'L/h', 0.2, '0-10'),        // decisión Franco 2026-10-14 — confirmar con placa
+    V('genset_power_kw', 'Potencia del grupo', 'float', 'kW', 0.3, '0-20'),      // coherente con ATS load_kw 0-20 — confirmar con placa
     AUTONOMY_HOURS(SRC_FRANCO),
   ], autonomy: { fuelVariable: 'fuel_level', tankCapacity: 250, consumptionLph: 3.46, flowVariable: 'fuel_rate', flowScale: 1,
                  runningVariable: 'genset_running', ...AUTONOMY_ESTIMATOR } },
 ];
+
+// Cadencia de publicación por variable (spec_cascada_ficha C1: nace en la ficha y
+// se propaga a widgets[].variableSendFreq). Valores = los vigentes en los templates
+// (tools/device_simulator/seed.js); ELTEK sin template de sim → 60 s. Aprobado por
+// Franco 2026-10-14. Variables no listadas: 60 s.
+const CADENCE_30S = {
+  'cummins-pcc': ['rpm', 'fuel_rate', 'genset_power_kw', 'fault_code'],
+  ATS: ['transfer_state', 'gen_status'],
+  ELTEK: [],
+  SEC: ['door_shelter', 'door_front', 'door_rear', 'door_battery_cabinet', 'pir_motion', 'fence_vibration', 'copper_field_anomaly'],
+  GEN: ['fuel_rate', 'genset_power_kw', 'genset_running', 'crank_current', 'crank_attempts_failed'],
+};
+const CADENCE_120S = { SEC: ['shelter_temp'] };
+for (const f of FICHAS) {
+  for (const v of f.variables) {
+    v.cadence = (CADENCE_30S[f.deviceType] || []).includes(v.name) ? '30s'
+      : (CADENCE_120S[f.deviceType] || []).includes(v.name) ? '120s' : '60s';
+  }
+}
 
 module.exports = { FICHAS };
