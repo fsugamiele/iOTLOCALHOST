@@ -457,6 +457,14 @@ export function sentenceToRule(s, pack, existing, editingIndex) {
     // E1 · U-11 — misma métrica M: mParams (watchVariable, freshnessSec, target…) se mezclan,
     // lo que la frase define pisa; spread conserva sus inputs.
     if (type === 'M' && existing.type === 'M' && existing.metric === rule.metric) {
+      // E1 · U-12 (parcial) — tendencia/proyección/sensor clavado/deja de reportar fuerzan el
+      // comparador; si el guardado va en el MISMO sentido (gt↔gte, lt↔lte) se conserva el guardado.
+      const fam = (op) => (['gt', 'gte'].includes(op) ? 'gt' : ['lt', 'lte'].includes(op) ? 'lt' : op);
+      if (rule.condition && existing.condition && existing.condition.op && rule.condition.op !== existing.condition.op &&
+          fam(rule.condition.op) === fam(existing.condition.op)) {
+        rule.condition.op = existing.condition.op;
+        if (existing.condition.deadband != null) rule.condition.deadband = existing.condition.deadband;
+      }
       if (existing.mParams) rule.mParams = { ...existing.mParams, ...(rule.mParams || {}) };
       if (rule.inputs === undefined && existing.inputs !== undefined) rule.inputs = existing.inputs;
       if (rule.mWindow === undefined && existing.mWindow !== undefined) rule.mWindow = existing.mWindow;
