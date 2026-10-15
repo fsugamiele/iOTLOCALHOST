@@ -5,7 +5,7 @@
        on/off quirúrgico (emite `toggle`; el PATCH no pasa por el editor-frase). -->
   <div class="rule-card" :class="['rule-card--' + rule.severity, { 'rule-card--off': !isEnabled }]">
     <div class="rule-card__head">
-      <span class="rule-card__title">{{ rule.label || rule.ruleId }}</span>
+      <span class="rule-card__title">{{ labelText || rule.ruleId }}</span>
       <span class="rule-card__head-right">
         <span v-if="!isEnabled" class="rule-card__off-chip" :title="offTitle">fuera de circulación</span>
         <span class="badge" :class="badge">{{ sevLabel }}</span>
@@ -15,7 +15,7 @@
     <div class="rule-card__body">{{ summary }}</div>
 
     <div v-if="rule.recommendation" class="rule-card__rec">
-      <i class="fa fa-wrench"></i> {{ rule.recommendation }}
+      <i class="fa fa-wrench"></i> {{ recText }}
     </div>
     <div v-else class="rule-card__norec">
       <i class="fa fa-exclamation-triangle"></i> Sin recomendación
@@ -40,7 +40,7 @@
 </template>
 
 <script>
-import { summarize, severityLabel, severityBadge } from '@/components/rules/ruleSentence.js';
+import { summarize, severityLabel, severityBadge, fillThresholdText } from '@/components/rules/ruleSentence.js';
 
 export default {
   name: 'RuleCard',
@@ -51,6 +51,9 @@ export default {
   },
   computed: {
     summary()  { return summarize(this.rule, { sheets: this.sheets }); },
+    // {umbral} → valor vigente (ficha o literal) — mismo criterio que el motor.
+    labelText() { return fillThresholdText(this.rule.label, this.rule, this.sheets); },
+    recText()   { return fillThresholdText(this.rule.recommendation, this.rule, this.sheets); },
     sevLabel() { return severityLabel(this.rule.severity); },
     badge()    { return severityBadge(this.rule.severity); },
     // DEC-REF-121 — enabled !== false (histórico sin el campo = en circulación).

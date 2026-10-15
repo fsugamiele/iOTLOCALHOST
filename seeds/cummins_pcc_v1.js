@@ -93,7 +93,7 @@ const pack = {
     },
     {
       ruleId:      'cummins-G2-fuel-critical',
-      label:       'Nivel de combustible crítico (<15%)',
+      label:       'Nivel de combustible crítico (<{umbral})',   // {umbral} = valor vigente de la ficha
       variableLabel: 'Nivel de combustible',
       unit:          '%',
       inferenceId: 'G2',
@@ -121,13 +121,13 @@ const pack = {
     // la deriva y publica el edge (autonomy.js) desde la ficha cummins-pcc.
     {
       ruleId:      'cummins-GA1-autonomy-warn',
-      label:       'Autonomía baja (<48 h)',
+      label:       'Autonomía baja (<{umbral})',
       variableLabel: 'Autonomía estimada',
       unit:          'h',
       inferenceId: 'GA1',
       type:        'cross',
       severity:    'warning',
-      recommendation: 'Autonomía estimada por debajo de 48 h con el grupo en marcha. Programar recarga de combustible.',
+      recommendation: 'Autonomía estimada por debajo de {umbral} con el grupo en marcha. Programar recarga de combustible.',
       correlationParent: null,
       cooldownSec: 900,
       resolveGraceSec: 0,
@@ -148,13 +148,13 @@ const pack = {
     },
     {
       ruleId:      'cummins-GA2-autonomy-crit',
-      label:       'Autonomía crítica (<12 h)',
+      label:       'Autonomía crítica (<{umbral})',
       variableLabel: 'Autonomía estimada',
       unit:          'h',
       inferenceId: 'GA2',
       type:        'cross',
       severity:    'critical',
-      recommendation: 'Autonomía crítica (<12 h) con el grupo en marcha. Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
+      recommendation: 'Autonomía crítica (<{umbral}) con el grupo en marcha. Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
       correlationParent: null,
       cooldownSec: 900,
       resolveGraceSec: 0,

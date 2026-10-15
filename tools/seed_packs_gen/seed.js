@@ -53,24 +53,24 @@ const GEN_GRUPO_V1 = {
   canary: false,
   rules: [
     base('gen-fuel-warn', 'Combustible bajo', 'Nivel de combustible', '%', 'GF1', 'warning',
-      'Nivel de combustible por debajo de 25%. Coordinar recarga con el proveedor antes de que baje la autonomía.',
+      'Nivel de combustible por debajo de {umbral}. Coordinar recarga con el proveedor antes de que baje la autonomía.',
       'fuel_level', { op: 'lt', limitRef: 'warning', deadband: 2 }),   // umbral de la FICHA (cascada C2)
     base('gen-fuel-crit', 'Combustible crítico', 'Nivel de combustible', '%', 'GF2', 'critical',
-      'Combustible crítico (<15%). Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
+      'Combustible crítico (<{umbral}). Riesgo de sitio caído por tanque vacío. Despachar recarga urgente.',
       'fuel_level', { op: 'lt', limitRef: 'trip', deadband: 2 }),      // ficha: 15 % — decisión Franco 2026-10-14
     // Autonomía: 48/12 h (decisión Franco 2026-10-14) SOLO con el grupo EN MARCHA
     // (cross AND genset_running) — diseño vigente en producción. Sin la condición de
     // marcha, con 48 h de umbral y ~72 h de tanque lleno, avisaría con el grupo parado
     // apenas el tanque baja del 66 %.
     autonomyCross('gen-autonomy-warn', 'Autonomía baja', 'GA1', 'warning', 'warning',
-      'Autonomía estimada por debajo de 48 h con el grupo en marcha. Programar recarga de combustible.'),
+      'Autonomía estimada por debajo de {umbral} con el grupo en marcha. Programar recarga de combustible.'),
     autonomyCross('gen-autonomy-crit', 'Autonomía crítica', 'GA2', 'critical', 'trip',
-      'Acción: despachar recarga de combustible ya: autonomía menor a 12 h con el grupo en marcha.'),
+      'Acción: despachar recarga de combustible ya: autonomía menor a {umbral} con el grupo en marcha.'),
     base('gen-batt-warn', 'Batería de arranque baja', 'Tensión de batería', 'V', 'GB1', 'warning',
-      'Batería de arranque baja (<11,8 V, sistema 12V). Verificar cargador y estado de batería; el grupo puede no arrancar en el próximo corte.',
+      'Batería de arranque baja (<{umbral}). Verificar cargador y estado de batería; el grupo puede no arrancar en el próximo corte.',
       'battery_voltage', { op: 'lt', limitRef: 'warning', deadband: 0.4 }),
     base('gen-batt-crit', 'Batería de arranque crítica', 'Tensión de batería', 'V', 'GB2', 'critical',
-      'Batería de arranque crítica (<11 V, sistema 12V). Reemplazar batería; alto riesgo de fallo de arranque.',
+      'Batería de arranque crítica (<{umbral}). Reemplazar batería; alto riesgo de fallo de arranque.',
       'battery_voltage', { op: 'lt', limitRef: 'trip', deadband: 0.4 }),
   ],
 };

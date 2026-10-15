@@ -151,6 +151,19 @@
                 </base-button>
               </el-tooltip>
 
+              <!-- spec_cascada_ficha C3 — parámetros de la INSTALACIÓN (Vn batería, P_nom) -->
+              <el-tooltip content="Parámetros de instalación — tensión de batería, potencia" effect="light" :open-delay="300" placement="top">
+                <base-button
+                  :type="row.refParams && Object.keys(row.refParams).length ? 'success' : 'info'"
+                  icon
+                  size="sm"
+                  class="btn-link"
+                  @click="openRefModal(row)"
+                >
+                  <i class="fas fa-sliders-h"></i>
+                </base-button>
+              </el-tooltip>
+
               <el-tooltip content="Delete" effect="light" :open-delay="300" placement="top">
                 <base-button
                   type="danger"
@@ -252,6 +265,44 @@
       </span>
     </el-dialog>
 
+    <!-- spec_cascada_ficha C3 — PARÁMETROS DE INSTALACIÓN del equipo (device.refParams).
+         Los usan los umbrales relativos de la ficha (batería 12/24 V) y las reglas por
+         referencia (p.ej. carga > 90 % de la potencia nominal). Vacío = valor de la ficha. -->
+    <el-dialog
+      :title="refDevice ? 'Parámetros de instalación de ' + refDevice.name + ' (' + refDevice.dId + ')' : ''"
+      :visible.sync="refModal"
+      width="480px"
+      append-to-body
+    >
+      <div v-if="refDevice">
+        <p class="text-muted" style="font-size:12px">
+          Datos de <b>este equipo instalado</b>. Las alarmas se ajustan solas: por ejemplo, con batería de
+          24 V los umbrales de la ficha (definidos para 12 V) se escalan ×2. Campo vacío = se usa el valor
+          por defecto de la ficha.
+        </p>
+        <div class="row">
+          <div class="col-6 form-group">
+            <label>Tensión nominal de batería de arranque</label>
+            <select v-model="refForm.battery_nominal_v" class="form-control">
+              <option value="">Por defecto (12 V)</option>
+              <option :value="12">12 V</option>
+              <option :value="24">24 V</option>
+            </select>
+          </div>
+          <div class="col-6 form-group">
+            <label>Potencia nominal del grupo (kW)</label>
+            <base-input v-model="refForm.rated_kw" placeholder="ej. 20" type="number" />
+          </div>
+        </div>
+      </div>
+      <span slot="footer">
+        <base-button type="secondary" @click="refModal = false">Cancelar</base-button>
+        <base-button type="primary" @click="saveRefParams()" :disabled="refLoading || !refFormValid">
+          <i class="fa" :class="refLoading ? 'fa-spinner fa-spin' : 'fa-check'" style="margin-right:6px"></i>Guardar
+        </base-button>
+      </span>
+    </el-dialog>
+
     <!-- BIND DEVICE ↔ SITE MODAL (DEC-REF-97) -->    <el-dialog
       :title="bindDevice ? 'Sitio de ' + bindDevice.name + ' (' + bindDevice.dId + ')' : ''"
       :visible.sync="bindModal"
@@ -344,12 +395,24 @@ export default {
       autonomyModal: false,
       autonomyDevice: null,
       autonomyForm: { tankCapacity: "", consumptionLph: "" },
-      autonomyLoading: false
+      autonomyLoading: false,
+      // spec_cascada_ficha C3 — parámetros de instalación
+      refModal: false,
+      refDevice: null,
+      refForm: { battery_nominal_v: "", rated_kw: "" },
+      refLoading: false
     };
   },
   mounted() {
     this.getTemplates();
     this.getSites();
+  },
+  computed: {
+    // spec_cascada_ficha C3 — rated_kw vacío o > 0 (batería viene de un select).
+    refFormValid() {
+      const k = this.refForm.rated_kw;
+      return k === "" || k === null || Number(k) > 0;
+    },
   },
   methods: {
 
@@ -384,6 +447,45 @@ export default {
         consumptionLph: a.consumptionLph != null ? a.consumptionLph : "",
       };
       this.autonomyModal = true;
+    },
+
+    // ── spec_cascada_ficha C3 — parámetros de instalación (device.refParams) ──
+    openRefModal(device) {
+      this.refDevice = device;
+      const r = device.refParams || {};
+      this.refForm = {
+        battery_nominal_v: r.battery_nominal_v != null ? r.battery_nominal_v : "",
+        rated_kw: r.rated_kw != null ? r.rated_kw : "",
+      };
+      this.refModal = true;
+    },
+
+    async saveRefParams() {
+      if (this.refLoading || !this.refDevice) return;
+      this.refLoading = true;
+      const dId = this.refDevice.dId;
+      // Vacío → null (borra el parámetro: vuelve al valor de la ficha).
+      const refParams = {};
+      for (const k of ["battery_nominal_v", "rated_kw"]) {
+        const v = this.refForm[k];
+        refParams[k] = v === "" || v === null || v === undefined ? null : Number(v);
+      }
+      const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.put("/device/refparams", { dId, refParams }, axiosHeaders);
+        if (res.data.status == "success") {
+          const p = res.data.refParams || {};
+          const txt = Object.keys(p).length ? Object.entries(p).map(([k, v]) => `${k}=${v}`).join(", ") : "valores de la ficha";
+          this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId}: parámetros de instalación — ${txt}` });
+          this.refModal = false;
+          this.$store.dispatch("getDevices");
+        }
+      } catch (e) {
+        const msg = (e.response && e.response.data && e.response.data.error) || "Error al guardar los parámetros";
+        this.$notify({ type: "danger", icon: "tim-icons icon-alert-circle-exc", message: String(msg) });
+      } finally {
+        this.refLoading = false;
+      }
     },
 
     async saveAutonomy(autonomy) {

@@ -361,6 +361,9 @@ function processStalenessTick({ packs, siteState, cooldownState, activeState, mS
 
 // stateKey (DEC-REF-122): identidad de la instancia; el caller la calcula y la
 // pasa. Fallback a `rule.ruleId` si no viene (compat defensiva).
+// spec_cascada_ficha — `{umbral}` en label/recommendation → valor vigente (fuente única).
+const { fillThreshold } = require('../app/api/services/limitRef');
+
 function fireAlarm({ rule, value, deviceId, stateKey, reason, mode, thresholdUsed, cooldownState, siteState, activeState }) {
   const now       = Date.now();
   const key       = stateKey || rule.ruleId;
@@ -387,10 +390,10 @@ function fireAlarm({ rule, value, deviceId, stateKey, reason, mode, thresholdUse
     userId:            devState._userId     || '',
     deviceName:        devState._deviceName || '',
     inferenceId:       rule.inferenceId,
-    label:             rule.label,
+    label:             fillThreshold(rule.label, rule, thresholdUsed),
     variableLabel:     rule.variableLabel || '',
     severity:          rule.severity,
-    recommendation:    rule.recommendation,
+    recommendation:    fillThreshold(rule.recommendation, rule, thresholdUsed),
     unit:              rule.unit || '',
     correlationParent: rule.correlationParent,
     deviceId,
@@ -432,10 +435,10 @@ function fireResolve({ rule, deviceId, stateKey, reason, mode, recommendation, c
     userId:            devState._userId     || '',
     deviceName:        devState._deviceName || '',
     inferenceId:       rule.inferenceId,
-    label:             rule.label,
+    label:             fillThreshold(rule.label, rule),
     variableLabel:     rule.variableLabel || '',
     severity:          rule.severity,
-    recommendation:    recommendation || ('Alarma resuelta: ' + (rule.label || rule.ruleId)),
+    recommendation:    recommendation || ('Alarma resuelta: ' + (fillThreshold(rule.label, rule) || rule.ruleId)),
     unit:              rule.unit || '',
     correlationParent: rule.correlationParent,
     deviceId,

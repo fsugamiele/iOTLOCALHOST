@@ -31,11 +31,30 @@ export function resolveCondValue(c, deviceType, variable, sheets) {
   const lim = v && (v.limits || []).find(l => l.kind === c.limitRef && dir.includes(l.op));
   return lim ? lim.value : undefined;
 }
-function condValueText(c, deviceType, variable, sheets) {
+function condValueText(c, deviceType, variable, sheets, unit) {
   if (!c || !c.limitRef) return c ? c.value : '';
   const val = resolveCondValue(c, deviceType, variable, sheets);
-  return `${LIMIT_REF_LABELS[c.limitRef]}${val !== undefined ? ` (${val})` : ' (no definido)'}`;
+  const u = unit ? ` ${unit}` : '';
+  return `${LIMIT_REF_LABELS[c.limitRef]}${val !== undefined ? ` (${val}${u})` : ' (no definido)'}`;
 }
+// Texto con `{umbral}` (label / recomendación) → con el valor vigente de la regla
+// (literal, o el límite de la ficha). Espejo del fillThreshold del motor.
+export function fillThresholdText(text, rule, sheets) {
+  if (typeof text !== 'string' || !text.includes('{umbral}') || !rule) return text;
+  let v;
+  if (rule.condition) v = resolveCondValue(rule.condition, rule.deviceType, rule.variable, sheets);
+  if (typeof v !== 'number' && rule.crossExpr) {
+    const leaves = [];
+    const walk = (n) => { if (!n) return; if (Array.isArray(n.children)) n.children.forEach(walk); else if (n.condition) leaves.push(n); };
+    walk(rule.crossExpr);
+    const own = leaves.find(l => l.variable === rule.variable && (l.condition.limitRef || typeof l.condition.value === 'number')) || leaves.find(l => l.condition.limitRef);
+    if (own) v = resolveCondValue(own.condition, own.deviceType, own.variable, sheets);
+  }
+  if (typeof v !== 'number') return text.replace(/\{umbral\}/g, 'el umbral configurado');
+  const u = rule.unit ? (rule.unit === '%' ? ' %' : ` ${rule.unit}`) : '';
+  return text.replace(/\{umbral\}/g, `${String(Math.round(v * 100) / 100).replace('.', ',')}${u}`);
+}
+
 // Condición del payload desde una condición de la frase.
 function condFromSentence(c) {
   if (c.limitRef) return { op: c.op, limitRef: c.limitRef };
@@ -60,7 +79,7 @@ export function summarize(r, opts = {}) {
   const varName = r.variableLabel || r.variable || '';
   const unit = r.unit ? ` ${r.unit}` : '';
   if (r.type === 'D' && r.condition) {
-    if (r.condition.limitRef) return `${varName} ${OPERATOR_LABELS[r.condition.op] || r.condition.op} ${condValueText(r.condition, r.deviceType, r.variable, sheets)}${unit}`;
+    if (r.condition.limitRef) return `${varName} ${OPERATOR_LABELS[r.condition.op] || r.condition.op} ${condValueText(r.condition, r.deviceType, r.variable, sheets, r.unit)}`;
     return `${varName} ${OPERATOR_LABELS[r.condition.op] || r.condition.op} ${r.condition.value}${unit}`;
   }
   if (r.type === 'C' && r.setpointSource) {

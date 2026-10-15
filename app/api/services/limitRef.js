@@ -56,6 +56,10 @@ function resolveRule(rule0, sheetsByType) {
   const resolveCond = (deviceType, variable, cond) => {
     const lim = findLimit(sheetsByType, deviceType, variable, cond.limitRef, cond.op);
     if (!lim) { unresolved.push(`${deviceType}/${variable} ${cond.limitRef}${cond.op ? ' ' + cond.op : ''}`); return null; }
+    // Valor para el placeholder {umbral} de label/recommendation: el de la variable
+    // propia de la regla si está, si no el primero que se resuelva.
+    if (variable === rule.variable && !rule._umbralOwn) { rule._umbral = lim.value; rule._umbralOwn = true; }
+    else if (rule._umbral === undefined) rule._umbral = lim.value;
     cond.op = lim.op;
     cond.value = lim.value;
     cond.resolvedFrom = { deviceType, variable, kind: cond.limitRef };
@@ -107,22 +111,44 @@ function refsToLimit(packs, deviceType, variable, kind, op) {
   return [...new Set(out)];
 }
 
+// fillThreshold(text, rule, thresholdUsed) — `{umbral}` en label/recommendation →
+// valor vigente (thresholdUsed del disparo, o condition.value resuelto, o el del
+// límite de ficha de la regla) + unidad. Fuente única: motor (fireAlarm/Resolve) y QA.
+function fillThreshold(text, rule, thresholdUsed) {
+  if (typeof text !== 'string' || !text.includes('{umbral}')) return text;
+  const v = typeof thresholdUsed === 'number' ? thresholdUsed
+    : (rule.condition && typeof rule.condition.value === 'number') ? rule.condition.value
+    : rule._umbral;
+  if (typeof v !== 'number') return text.replace(/\{umbral\}/g, 'el umbral configurado');
+  const num = String(Math.round(v * 100) / 100).replace('.', ',');
+  const u = rule.unit ? (rule.unit === '%' ? ' %' : ` ${rule.unit}`) : '';
+  return text.replace(/\{umbral\}/g, `${num}${u}`);
+}
+
 // resolvePacksForRead(packs, db) — para LECTORES de reglas fuera del motor (QA:
 // backtest, invariantes, detalle de regla): resuelve limitRef IN PLACE contra
 // equipmentsheets (driver crudo). Sin refs no consulta nada. Una regla que no
 // resuelve queda como está y marcada `_limitRefUnresolved`.
 async function resolvePacksForRead(packs, db) {
-  if (!packs || !packs.length || !packs.some(p => JSON.stringify(p.rules || []).includes('"limitRef"'))) return packs;
+  if (!packs || !packs.length) return packs;
+  if (!packs.some(p => JSON.stringify(p.rules || []).includes('"limitRef"'))) {
+    for (const p of packs) for (const r of (p.rules || [])) {
+      r.label = fillThreshold(r.label, r); r.recommendation = fillThreshold(r.recommendation, r);
+    }
+    return packs;
+  }
   const sheets = await db.collection('equipmentsheets').find({}).project({ deviceType: 1, variables: 1 }).toArray();
   const by = new Map(sheets.map(s => [s.deviceType, s]));
   for (const p of packs) {
     p.rules = (p.rules || []).map(r => {
       const { rule, unresolved } = resolveRule(r, by);
       if (unresolved.length) return { ...r, _limitRefUnresolved: unresolved };
+      rule.label = fillThreshold(rule.label, rule);
+      rule.recommendation = fillThreshold(rule.recommendation, rule);
       return rule;
     });
   }
   return packs;
 }
 
-module.exports = { LIMIT_KINDS, findLimit, forEachRef, resolveRule, refsToLimit, resolvePacksForRead };
+module.exports = { LIMIT_KINDS, findLimit, forEachRef, resolveRule, refsToLimit, resolvePacksForRead, fillThreshold };
