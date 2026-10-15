@@ -190,6 +190,13 @@ async function syncTemplates() {
     let touched = false;
     const widgets = (tpl.widgets || []).map((w0) => {
       const w = clean(w0);
+      // Widget legacy 'gauge' (seed viejo del simulador) no está en el enum del
+      // schema → el template no se puede guardar ni desde la UI. Forma vigente
+      // (DEC-REF-107): widget 'numeric' + render 'gauge'.
+      if (w.widget === 'gauge') {
+        report(`template '${tpl.name}'`, `widget ${w.variable} tipo`, { widget: 'gauge' }, { widget: 'numeric', render: 'gauge' });
+        w.widget = 'numeric'; w.render = 'gauge'; touched = true;
+      }
       const v = byName.get(w.variable);
       if (v) {
         const before = { unit: w.unit, factoryRange: w.factoryRange, deadband: w.deadband, thresholds: w.thresholds };

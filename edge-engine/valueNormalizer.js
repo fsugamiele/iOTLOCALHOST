@@ -31,8 +31,12 @@ function toFiniteNumber(raw) {
   return null;   // boolean/objeto/null en una variable numérica = dato malo
 }
 
+// Tipos históricos que fichas.vue sigue ofreciendo → su equivalente canónico.
+const TYPE_ALIAS = { number: 'float', string: 'categorical', boolean: 'bool' };
+
 function normalizeValue(raw, type) {
   if (raw === null || raw === undefined) return { ok: false, reason: 'null' };
+  type = TYPE_ALIAS[type] || type;
   switch (type) {
     case 'float':
     case 'int': {

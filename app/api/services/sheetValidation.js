@@ -6,9 +6,11 @@
 //
 // validateSheetContent(sheet) → null | 'mensaje de error'
 
-const VAR_TYPES = ['float', 'int', 'bool', 'categorical'];
+// float/int/bool/categorical + los históricos que fichas.vue sigue ofreciendo
+// (number/string/boolean = alias de float/categorical/bool).
+const VAR_TYPES = ['float', 'int', 'bool', 'categorical', 'number', 'string', 'boolean'];
 const NAME_RE = /^[a-z][a-z0-9_]*$/;             // viaja en el topic MQTT
-const NUMERIC = new Set(['float', 'int']);
+const NUMERIC = new Set(['float', 'int', 'number']);
 const ARITH_OPS = new Set(['lt', 'lte', 'gt', 'gte']);
 
 function isNum(v) { return typeof v === 'number' && Number.isFinite(v); }
