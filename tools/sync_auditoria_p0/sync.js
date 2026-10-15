@@ -80,7 +80,11 @@ function call(method, p, body) {
   });
 }
 
-const j = (o) => JSON.stringify(o);
+// Comparación independiente del orden de claves (Mongo puede devolver los campos
+// en otro orden que el canónico → falso "cambio" perpetuo).
+const sortKeys = (o) => Array.isArray(o) ? o.map(sortKeys)
+  : (o && typeof o === 'object') ? Object.keys(o).sort().reduce((a, k) => (a[k] = sortKeys(o[k]), a), {}) : o;
+const j = (o) => JSON.stringify(sortKeys(o));
 const clean = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k === '_id' || k === '__v' ? undefined : v)));
 let changes = 0, failures = 0, conflicts = 0;
 function report(scope, what, before, after) {
