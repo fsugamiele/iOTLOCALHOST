@@ -101,4 +101,8 @@ y el almacenamiento (microSD o eMMC/SSD).
 | H7 | Hallazgos al NOC → backlog | **Igual**. |
 | H8 (nuevo) | — | **Registrar el cambio de hardware del Hub** en el corpus de hardware (`docs/wanomi.md`, familia DEC-11..20) y actualizar las referencias a "Zero 3". |
 
-**Dato pendiente:** el almacenamiento del Hub (eMMC o NVMe).
+**FIRMADO por Franco (2026-10-16, "aprobado"): H1–H8.** Almacenamiento definido: **en primera
+instancia el Hub funciona con microSD**. Consecuencias que acordó el equipo:
+- El desgaste por escrituras chicas vuelve a ser el **riesgo principal de hardware**. Recomendación: usar una microSD **de clase High Endurance** (pensada para grabación continua) y **medir en H6 los MB/día escritos** (Mongo, bitácora, logs) para estimar su vida útil.
+- Pasar a eMMC o NVMe queda como mejora prevista. El Hub ya tiene las dos opciones, así que no hace falta cambiar de placa.
+- H2 y H3 implementados (adenda de G2). H4–H6 van al bloque "Perfil Hub". H8 quedó registrado como DEC-ARCH-3 en `docs/wanomi.md`.

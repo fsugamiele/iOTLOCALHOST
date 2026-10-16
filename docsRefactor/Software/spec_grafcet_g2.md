@@ -87,6 +87,11 @@ preguntas_abiertas: 0 — Qg1–Qg4 **firmadas por Franco el 2026-10-15** ("apro
 |---|---|---|---|
 | Reintentar el guardado (Qg1-A) | Volver el GRAFCET a "Alarma" (Qg1-B) | B mezcla persistencia con lógica y re-evaluaría una alarma que ya terminó. A mantiene el GRAFCET puro. | A recomendado, a firmar |
 
+## 8b · Adenda Hub (firmada por Franco el 2026-10-16, "aprobado") — `analisis_hub_g2_2026-10-16.md` §5
+- **H2:** I15 solo mira episodios con actividad en los últimos 30 días (`QA_I15_WINDOW_DAYS`). Usa el índice nuevo `{ruleId, dId, siteId, time}` en `notifications` (`app/api/models/notifications.js`). Una instancia del edge abierta desde antes de la ventana se confirma con una búsqueda puntual antes de reportarla. **Límite aceptado:** una huérfana sin actividad en 30 días no se reporta.
+- **H3:** la cola de reintento tiene un tope de 200 (`RESOLVE_RETRY_MAX_ITEMS`). Al llenarse se descarta el cierre más viejo, con log "CIERRE NO GUARDADO … cola de reintento llena".
+- Archivos: `qa/checks/invariants.js`, `edge-engine/notificationRouter.js`, `app/api/models/notifications.js`.
+
 ## 9 · IDs reservados: DEC-REF-147 (G2)
 
 ## 10 · Cómo se prueba

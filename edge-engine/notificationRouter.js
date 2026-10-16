@@ -132,6 +132,9 @@ function sendNocEvent(alarm) {
 // (schema) no se reintenta: log "CIERRE NO GUARDADO" + lo detecta QA I15.
 const RESOLVE_RETRY_MS     = parseInt(process.env.RESOLVE_RETRY_MS || '5000', 10);
 const RESOLVE_RETRY_MAX_MS = parseInt(process.env.RESOLVE_RETRY_MAX_MS || '600000', 10);
+// Análisis Hub (H3) — tope de cantidad: la cola vive en RAM del Hub. Al llenarse se descarta
+// el cierre más viejo (log) y lo detecta QA I15.
+const RESOLVE_RETRY_MAX_ITEMS = parseInt(process.env.RESOLVE_RETRY_MAX_ITEMS || '200', 10);
 const resolveRetryQueue = [];   // { alarm, doc, firstTs, attempts }
 let resolveRetryTimer = null;
 
@@ -186,6 +189,10 @@ function logUnsavedResolve(alarm, motivo) {
 }
 
 function enqueueResolveRetry(alarm, doc) {
+  if (resolveRetryQueue.length >= RESOLVE_RETRY_MAX_ITEMS) {
+    const viejo = resolveRetryQueue.shift();
+    logUnsavedResolve(viejo.alarm, `cola de reintento llena (${RESOLVE_RETRY_MAX_ITEMS})`);
+  }
   resolveRetryQueue.push({ alarm, doc, firstTs: Date.now(), attempts: 1 });
   console.warn(`[notifRouter] cierre ${alarm.ruleId} ${alarm.deviceId} en cola de reintento (pendientes=${resolveRetryQueue.length})`);
   if (!resolveRetryTimer) {

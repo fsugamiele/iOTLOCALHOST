@@ -481,6 +481,7 @@ comercial).
 | 2026-05-09 | DEC-39 | `device.password` plain en MongoDB es deuda de seguridad — OK piloto, revisar antes de enterprise | ⚠️ deuda |
 | 2026-05-09 | DEC-40 | Sistema online/offline real no existe — `DEVICE_ONLINE/OFFLINE` solo manual desde panel | ⚠️ gap |
 | 2026-05-09 | DEC-41 | Para evitar deriva LLM: código aprobado va en `docs/CodigoCorregido/` y se COPIA, no se RECREA | ✅ proceso |
+| 2026-10-16 | DEC-ARCH-3 | **Hub de campo = Orange Pi 4 Pro (Allwinner A733, 8 núcleos, 4 GB LPDDR5)**, reemplaza a la Orange Pi Zero 3 citada en DEC-REF-68. Almacenamiento inicial: **microSD** (eMMC/NVMe como mejora). Ver `docsRefactor/Software/analisis_hub_g2_2026-10-16.md` | ✅ |
 
 ---
 
@@ -12822,3 +12823,24 @@ GEN no tiene `coolant_temp` → su accumulator de aceite queda pendiente de defi
    otro `weightRef`?).
 4. **Corpus (deuda menor):** fila propia DEC-REF-120 para el panel personalizable de Franco.
 5. Re-subir `WanomiRefactor.md` + `wanomi.md` al proyecto Claude web (recordatorio de `apertura.sh`).
+
+---
+
+## Sesión — 2026-10-15/16 · Área 2 (Software) + Área 3 (Hub) · GRAFCET de reglas G1 → G2
+
+**Hecho (rama `feature/grafcet-g1b`):**
+- **E1** — integridad del editor de reglas (guardado, preservación de campos, comparadores M).
+- **G1a** — motor GRAFCET por instancia (E1–E5, `rulefsm` + bitácora `ruletransitions`), en producción (DEC-REF-145).
+- **G1b** — cierre por acción humana: etapa E6, comandos ack/service, botón "Registrar service" (DEC-REF-146). Probado en producción con la vida de aceite.
+- **Bugs que aparecieron en la prueba:** el enum `mode` no tenía `resolve-by-ack/service` y Mongo rechazaba el cierre (alarma huérfana), corregido en `134e65e`. La regla de vida de aceite había pasado de `accumulator` a `cumulativeSince`; corregida con `tools/fix_oil_life_metric.js`, origen sin reproducir.
+- **G2** — coherencia de punta a punta (DEC-REF-147): el cierre se reintenta si falla el guardado, las huérfanas se cierran desde la UI, `tools/test_notif_modes.js` (verde 15/15 en producción), QA I15 (motor ⇔ consola) e I14 (cambio de cálculo). Adenda Hub: I15 con ventana de 30 días + índice, tope de 200 en la cola.
+- **Hub:** análisis con el equipo (`analisis_hub_g2_2026-10-16.md`). DEC-ARCH-3: Orange Pi 4 Pro 4 GB con microSD.
+
+**Pendiente:**
+1. Verificar en producción la corrida de `tools/qa_run_once.js` (el oráculo quedó corriendo).
+2. Bloque **Perfil Hub** (H4–H6): banco de 24 h en la 4 Pro con el gabinete cerrado; medir CPU, RAM, I/O y MB/día escritos en la microSD. Con eso se fijan el caché de Mongo y los límites por contenedor.
+3. Reproducir el cambio de `metric` del editor (cambiar el umbral de la vida de aceite y revisar con `fix_oil_life_metric.js`).
+4. G3: botón para cerrar una huérfana ya reconocida, "Cierre manual" en la lista, valores formateados.
+5. Quitar el log de la URI de Mongo con contraseña (`app/api/index.js:93`).
+6. Backlog H7: hallazgos graves de QA al NOC por `sendNocEvent`.
+7. Actualizar las referencias a "Zero 3" en el corpus (DEC-REF-68 y relacionadas) con un puntero a DEC-ARCH-3.

@@ -48,6 +48,10 @@ const notificationSchema = new Schema({
 
 });
 
+// Análisis Hub (H2) — episodio por pareja: lo usan la consola (alarms.js) y QA I15. Sin este
+// índice el agrupamiento recorre toda la colección, y en el Hub crece todos los días.
+notificationSchema.index({ ruleId: 1, dId: 1, siteId: 1, time: -1 });
+
 const Notification = mongoose.model('Notification', notificationSchema);
 
 export default Notification;  
