@@ -118,3 +118,20 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
   - C4: respaldo con su aviso informativo.
 - **Total B1:** DF 3/3 · S 5/5 · C 4/4 · cross 6/6.
 - **Lección operativa:** la primera corrida de C falló porque, en paralelo, se disparó un escenario del simulador sobre el mismo equipo. **El banco necesita el equipo simulado en exclusiva** mientras corre.
+
+### B2 · reglas M (2026-10-16, `8f3e58f`) — T 6/0/1 · R 6/1/1 · A 14/4/1
+**Funcionan (avisan y cierran según la métrica):**
+- slope, projection y acceleration.
+- ratio y divergence.
+- dutyCycle y cumulativeSince (la recarga reinicia el acumulado).
+- stepJump con cierre manual (queda en E6).
+- flatline (estimulado con snapshot).
+- staleness y variance.
+- accumulator, incluido el service que cierra y pone el acumulado en 0 (después sigue sumando desde ahí).
+
+**Hallazgos (van a la spec G1e):**
+1. **"Sin datos" por pocas muestras.** Toda regla M arranca con `E1→E5` mientras junta muestras, y una serie rala la vuelve a E5 (bM-slope-3) aunque el equipo esté reportando.
+2. **Eventos de una sola muestra con espera (bM-jump-1, bM-base-1, ROJO).** El salto y el pico cumplen la condición en UNA muestra. Si llega otra muestra antes de que termine la espera (latido o publicación periódica), la métrica vuelve a 0: `E2→E1` y el evento se pierde. El caso manual pasó por azar: no llegó otra muestra durante la espera.
+3. **Entradas de otro equipo (bM-div-3).** Si la entrada del propio equipo está vieja, ratio/divergence toman el mismo dato de OTRO equipo del mismo tipo y siguen calculando. Mezclan equipos sin avisar.
+4. **Desbalance con 2 equipos (bM-spread-1).** No hay "culpable" (los dos están a la misma distancia de la mediana) y se le asigna al primero de la lista. El cambio de culpable no se pudo probar: hace falta un 3.er equipo simulado del mismo tipo.
+5. **Sensor clavado real (bM-flat-3).** Con report-by-exception solo llegan latidos (cada 5 min). Una ventana menor a 3 latidos (15 min) nunca junta muestras.
