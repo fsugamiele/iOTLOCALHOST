@@ -29,10 +29,12 @@ function evaluateS(rule, value, windowState, dId) {
   const matches   = evaluateD(synthetic, value);
 
   if (!matches) {
-    // No matchea → no agrega timestamp, no dispara (el disparo lo decide el mensaje que matchea)
+    // spec_grafcet_g1d (S3 = A, Franco 2026-10-16) — un valor que no coincide NO suma, pero la
+    // condición de la regla es "N veces en T": sigue cumplida mientras queden N en la ventana.
+    // (Antes: fired:false → el primer valor normal cerraba la alarma con N todavía en la ventana.)
     windowState.set(key, purged);
     const windowActual = purged.length ? (now - purged[0]) / 1000 : 0;
-    return { fired: false, count: purged.length, windowActual };
+    return { fired: purged.length >= w.countThreshold, count: purged.length, windowActual };
   }
 
   // Matchea → registrar timestamp y reevaluar
@@ -46,4 +48,20 @@ function evaluateS(rule, value, windowState, dId) {
   return { fired, count, windowActual };
 }
 
-module.exports = { evaluateS };
+// spec_grafcet_g1d — evaluación SIN muestra nueva (tick): solo purga la ventana. La usa el
+// tick del motor para que una alarma S se cierre sola cuando la ventana baja de N aunque el
+// equipo no publique nada (antes quedaba abierta hasta el próximo mensaje).
+function evaluateSWindow(rule, windowState, dId, nowIn) {
+  const w = rule.window;
+  if (!w || !w.durationSec || !w.countThreshold) return null;
+  const key = dId != null ? `${rule.ruleId}:${dId}` : rule.ruleId;
+  // La ventana vive en memoria: tras un reinicio no hay historia → no se decide nada hasta el
+  // próximo mensaje (evita un cierre falso de una alarma S hidratada abierta).
+  if (!windowState.has(key)) return null;
+  const now = nowIn || Date.now();
+  const purged = (windowState.get(key) || []).filter(ts => ts >= now - w.durationSec * 1000);
+  windowState.set(key, purged);
+  return { fired: purged.length >= w.countThreshold, count: purged.length };
+}
+
+module.exports = { evaluateS, evaluateSWindow };

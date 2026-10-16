@@ -1,6 +1,6 @@
 const { evaluateD, resolveClears, effectiveCondition } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
-const { evaluateS } = require('./evaluators/typeS');
+const { evaluateS, evaluateSWindow } = require('./evaluators/typeS');
 const { evaluateCrossTree } = require('./evaluators/typeCross');
 const { evaluateM } = require('./evaluators/typeM');
 const { notify }    = require('./notificationRouter');
@@ -49,7 +49,11 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
         }
 
         if (rule.deviceType !== deviceType) continue;
-        if (rule.variable   !== variable)   continue;
+        // spec_grafcet_g1d (C2) — una regla C también se reevalúa cuando llega su SETPOINT
+        // (con el último valor medido): si el setpoint cambia, el umbral nuevo rige al instante.
+        const isSetpointMsg = rule.type === 'C' && rule.setpointSource && rule.setpointSource.variable === variable && rule.variable !== variable;
+        if (rule.variable !== variable && !isSetpointMsg) continue;
+        if (isSetpointMsg && (deviceState[rule.variable] === undefined || deviceState[rule.variable] === null)) continue;
         // spec_cascada_ficha C3 — umbral relativo a la instalación (ej. batería 24 V).
         if (rule.condition && rule.condition.scaleRef) {
           rule = { ...rule, condition: effectiveCondition(rule.condition, deviceState) };
@@ -77,12 +81,13 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
             break;
           }
           case 'C': {
-            const res = evaluateC(rule, value, deviceState);
+            const cValue = isSetpointMsg ? deviceState[rule.variable] : value;
+            const res = evaluateC(rule, cValue, deviceState);
             // INFO de configuración + escalada EDGE-2 cuando falta el setpoint: avisos de
             // CONFIGURACIÓN, fuera del GRAFCET (spec §5). Se resuelve ANTES de entregar la
             // receptividad: cierra la escalada y libera la clave (M-16).
             if (res.mode === 'fallback' || res.mode === 'no-ref') {
-              handleNoSetpoint({ rule, key, dId, value, res, deviceState, cooldownState, activeState });
+              handleNoSetpoint({ rule, key, dId, value: cValue, res, deviceState, cooldownState, activeState });
             } else if (res.mode === 'calibrated') {
               const escalatedKey = `${key}:no-setpoint:escalated`;
               if (cooldownState.has(escalatedKey)) {
@@ -102,7 +107,7 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
             // si no, no evaluable.
             const R = res.mode === 'no-ref' ? (res.fired ? 'on' : null) : toR(res.fired);
             fsm.evaluate(rule, key, R, {
-              dId, value, thresholdUsed: res.thresholdUsed,
+              dId, value: cValue, thresholdUsed: res.thresholdUsed,
               reason: res.mode === 'fallback' ? 'threshold-fallback' : (res.mode === 'no-ref' ? 'no-ref' : 'threshold-calibrated'),
               mode: res.mode, resolveReason: 'threshold-cleared',
             }, eventTs);
@@ -347,4 +352,26 @@ function processSilenceTick({ ruleById, siteState, fsm, silenceMs, startedAt, no
   return n;
 }
 
-module.exports = { processMessage, processStalenessTick, processSilenceTick, reevaluateRules, fireAlarm, fireResolve };
+// spec_grafcet_g1d (S4) — tick de ventanas S: las instancias S en curso (Observando, Alarma,
+// Recuperándose, Esperando confirmación) se reevalúan purgando la ventana, sin muestra nueva.
+// Así una alarma "N veces en T" se cierra sola cuando quedan menos de N en la ventana, aunque
+// el equipo no publique. No toca E5 (Sin datos no abre ni cierra) ni E1 en reposo.
+function processWindowTick({ ruleById, windowState, fsm, now }) {
+  const ts = now || Date.now();
+  let n = 0;
+  for (const inst of fsm.instances.values()) {
+    if (!['E2', 'E3', 'E4', 'E6'].includes(inst.step)) continue;
+    const rule = ruleById.get(inst.ruleId);
+    if (!rule || rule.type !== 'S') continue;
+    const res = evaluateSWindow(rule, windowState, inst.dId, ts);
+    if (!res) continue;
+    fsm.evaluate(rule, inst.key, res.fired ? 'on' : 'off', {
+      dId: inst.dId, value: null, thresholdUsed: rule.window.countThreshold,
+      reason: 'window', mode: 'window', resolveReason: 'window-cleared',
+    }, ts);
+    n++;
+  }
+  return n;
+}
+
+module.exports = { processMessage, processStalenessTick, processSilenceTick, processWindowTick, reevaluateRules, fireAlarm, fireResolve };

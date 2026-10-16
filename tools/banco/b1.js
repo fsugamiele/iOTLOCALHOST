@@ -95,13 +95,16 @@ async function b1() {
     ts = await trans(R, s); ns = fires(await notifs(R, s));
     result('S2', ns.length === 1 && Number(ns[0].thresholdUsed) === N ? 'VERDE' : 'ROJO', `${N} veces en ${WIN}s: avisa una vez tras la espera`,
       `${steps(ts)} · avisos: ${ns.length}${ns[0] ? ' (umbral ' + ns[0].thresholdUsed + ')' : ''}`);
-    // S3 — un valor normal con la ventana todavía llena: ¿cierra ya o cuando la ventana baja de N?
-    s = now(); await setVal(dId, V, lo); await sleep(CLOSE + 15);
-    ts = await trans(R, s); let rs = resolves(await notifs(R, s));
-    const t41 = ts.find((t) => t.from === 'E4' && t.to === 'E1');
-    result('S3', 'OBSERVADO', `qué cierra una alarma S: el primer valor normal o que la ventana baje de ${N}`,
-      rs.length ? `cerró ${Math.round(((t41 ? +t41.ts : rs[0].time) - s) / 1000)}s después del PRIMER valor normal, con ${N} coincidencias todavía dentro de la ventana de ${WIN}s · ${steps(ts)}`
-        : `no cerró en ${CLOSE + 15}s · ${steps(ts)}`);
+    // S3 (decisión A, spec_grafcet_g1d) — un valor normal NO cierra mientras queden N en la
+    // ventana; cierra cuando la ventana baja de N (y pasa el tiempo de cierre).
+    s = now(); await setVal(dId, V, lo); await sleep(20);
+    let row3 = await fsmRow(key); let rs = resolves(await notifs(R, s));
+    result('S3a', row3 && row3.alarmOpen && !rs.length ? 'VERDE' : 'ROJO', `un valor normal con ${N} coincidencias todavía en la ventana: la alarma sigue`,
+      `${steps(await trans(R, s))} · abierta: ${row3 ? !!row3.alarmOpen : false} · cierres: ${rs.length}`);
+    await sleep(WIN + CLOSE);
+    ts = await trans(R, s); rs = resolves(await notifs(R, s)); row3 = await fsmRow(key);
+    result('S3b', rs.length === 1 && !(row3 && row3.alarmOpen) ? 'VERDE' : 'ROJO', `cuando quedan menos de ${N} en la ventana, cierra tras el tiempo de cierre`,
+      `${steps(ts)} · cierres: ${rs.length}`);
     // S4 — sin valores nuevos, la ventana se vacía sola: ¿alguien la reevalúa?
     s = now(); await setVal(dId, V, hi); await sleep(5); await setVal(dId, V, hi2); await sleep(5); await setVal(dId, V, hi); await sleep(GRACE + 10);
     const abierta = (await fsmRow(key)) || {};
@@ -191,7 +194,7 @@ async function b1() {
 
   await api('POST', '/simulator/reset', { dId });
   log('Limpieza: pack de banco vacío, ficha restaurada, simulador reseteado.');
-  informe('INFORME B1 · núcleo (DF · S · C · cross)', ['DF', 'DF1', 'DF2', 'DF3', 'S1', 'S2', 'S3', 'S4', 'C1', 'C2', 'C3', 'C4', 'X0', 'X1a', 'X1b', 'X1c', 'X2a', 'X2b', 'X2c']);
+  informe('INFORME B1 · núcleo (DF · S · C · cross)', ['DF', 'DF1', 'DF2', 'DF3', 'S1', 'S2', 'S3a', 'S3b', 'S4', 'C1', 'C2', 'C3', 'C4', 'X0', 'X1a', 'X1b', 'X1c', 'X2a', 'X2b', 'X2c']);
 }
 
 (async () => {

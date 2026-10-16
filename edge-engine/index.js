@@ -8,7 +8,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') })
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
-const { processMessage, processStalenessTick, processSilenceTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
+const { processMessage, processStalenessTick, processSilenceTick, processWindowTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
 const { createRuleFsm } = require('./ruleFsm');      // spec_grafcet_g1 · G1a (DEC-REF-145)
 const { createFsmStore } = require('./fsmStore');
 const notificationRouter      = require('./notificationRouter');
@@ -190,6 +190,7 @@ async function start() {
     try {
       fsm.tick(ruleById, Date.now());
       processSilenceTick({ ruleById, siteState, fsm, silenceMs: FSM_SILENCE_SEC * 1000, startedAt: EDGE_STARTED_AT });
+      processWindowTick({ ruleById, windowState, fsm });   // G1d — ventanas S que se vacían solas
     }
     catch (e) { console.error('[edge-engine] fsm tick error:', e.message); }
   }, FSM_TICK_SEC * 1000);
