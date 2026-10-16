@@ -40,8 +40,11 @@ async function b2() {
     result(`${R}-1`, f ? 'VERDE' : 'ROJO', `${rule.label}: avisa cuando la métrica cruza el umbral`,
       `${steps(ts)} · aviso: ${f ? 'sí (métrica ' + (typeof f.value === 'number' ? +f.value.toFixed(3) : f.value) + ' vs ' + f.thresholdUsed + ')' : 'NO'}`);
     if (retorno) {
-      s = now(); await retorno();
-      const rs = resolves(await notifs(R, s)); ts = await trans(R, s); const row = await fsmRow(key);
+      // Los eventos de una muestra (salto, fuera de lo normal) pueden cerrarse solos antes del
+      // retorno: el cierre se cuenta desde el aviso, no desde el inicio del retorno.
+      const s0 = s; s = now(); await retorno();
+      const desde = opts.closeFromFire ? s0 : s;
+      const rs = resolves(await notifs(R, desde)); ts = await trans(R, desde); const row = await fsmRow(key);
       result(`${R}-2`, rs.length === 1 && !(row && row.alarmOpen) ? 'VERDE' : 'ROJO', `${rule.label}: cierra cuando la métrica vuelve`,
         `${steps(ts)} · cierres: ${rs.length} · etapa final ${row ? row.step : 'E1'}`);
     }
@@ -82,9 +85,11 @@ async function b2() {
       {
         const R = 'bM-div', key = `${R}:${dId}`;
         await two(95, 50); await sleep(GM + 12);
-        const s = now(); log('   (espera 190 s sin publicar la segunda variable: frescura de las entradas)');
+        const s = now(); log(`   simulador: mute_sensor ${SP} — 190 s sin esa entrada (el equipo sigue publicando ${V})`);
+        await mqttCmd(dId, 'mute_sensor', { sensor: SP });
         for (let i = 0; i < 19; i++) { await setVal(dId, V, 95 + (i % 2 ? u : 0)); await sleep(10); }
         const row = await fsmRow(key), ts = await trans(R, s);
+        await mqttCmd(dId, 'unmute_sensor', { sensor: SP });
         result('bM-div-3', row && row.step === 'E5' && row.alarmOpen ? 'VERDE' : 'ROJO', 'su propia entrada deja de llegar (> 180 s): "Sin datos" con la alarma abierta, sin usar el dato de otro equipo (G1e · Qf3)',
           `${steps(ts)} · etapa ${row ? row.step : '—'} · abierta: ${row ? !!row.alarmOpen : false}`);
         await setVal(dId, SP, 50 + u); await setVal(dId, V, 60); await sleep(CM + 12);
@@ -113,7 +118,7 @@ async function b2() {
       let s = now(); await setVal(b, v, 90); await sleep(GM + 12);
       let ns = fires(await notifs(R, s));
       result('bM-spread-1', ns[0] && ns[0].dId === b ? 'VERDE' : 'ROJO', 'desbalance con 2 equipos: señala al que se apartó de su propia historia (G1e · Qf4)',
-        ns[0] ? `aviso en ${ns[0].dId} (esperado ${b}) · métrica ${ns[0].value}` : 'sin aviso');
+        `${ns[0] ? `aviso en ${ns[0].dId} (esperado ${b}) · métrica ${ns[0].value}` : 'sin aviso'} · ${steps(await trans(R, s))}`);
       // el culpable cambia de equipo con la alarma abierta
       s = now(); await setVal(b, v, 52); await setVal(a, v, 10); await sleep(GM + CM + 15);
       const all = await notifs(R, s); const rowB = await fsmRow(`${R}:${b}`);
@@ -180,7 +185,7 @@ async function b2() {
       () => feed([50, 80, 45, 85, 40, 90], 5), () => feed(flat(60, 16), 6));
     // baseline: z > 3 tras madurar con valores estables
     await caso('bM-base', M('bM-base', 'Banco M · fuera de lo normal', 'baseline', { condition: { op: 'gt', value: 3 }, mWindow: { durationSec: 120, minSamples: 8 } }),
-      async () => { await feed(flat(60, 16), 5); await setVal(dId, V, 60 + 20 * u); await sleep(GM + 8); }, () => feed(flat(60, 4), 5));
+      async () => { await feed(flat(60, 16), 5); await setVal(dId, V, 60 + 20 * u); await sleep(GM + 8); }, () => feed(flat(60, 4), 5), { closeFromFire: true });
     // accumulator: horas acumuladas ≥ 0,01 h (36 s) → service cierra y pone a 0
     {
       const R = 'bM-acc', key = `${R}:${dId}`;

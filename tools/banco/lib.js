@@ -65,8 +65,8 @@ function result(c, estado, que, evidencia) {
   log(`${icon} ${c} ${estado} — ${que}${evidencia ? '\n           evidencia: ' + evidencia : ''}`);
 }
 
-function mqttCmd(dId, command) {
-  return new Promise((ok, ko) => mq.publish(`simulator/${dId}/control`, JSON.stringify({ command }), { qos: 1 }, (err) => err ? ko(err) : ok()));
+function mqttCmd(dId, command, extra = {}) {
+  return new Promise((ok, ko) => mq.publish(`simulator/${dId}/control`, JSON.stringify({ command, ...extra }), { qos: 1 }, (err) => err ? ko(err) : ok()));
 }
 async function setVal(dId, variable, value) {
   let r;

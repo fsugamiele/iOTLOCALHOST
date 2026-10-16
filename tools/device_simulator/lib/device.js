@@ -49,6 +49,9 @@ class SimulatedDevice {
     // Variables FIJADAS a mano (set_sensor desde la UI): retienen su valor (pico
     // inyectado para probar alarmas) y no evolucionan hasta reset. Ver _tick.
     this._pinned = new Set();
+    // Banco de conformidad: variables SILENCIADAS (mute_sensor) — el equipo sigue
+    // publicando el resto; simula una sola entrada que deja de llegar.
+    this._muted = new Set();
     // P2 (#79) — report-by-exception. deadband por variable (numéricas);
     // _lastPublished guarda el último valor EFECTIVAMENTE publicado.
     this._deadbandByVar = new Map();
@@ -242,6 +245,7 @@ class SimulatedDevice {
 
   _publish(varName, { force = false } = {}) {
     if (!this._connected) return;
+    if (this._muted && this._muted.has(varName)) return;
     const value = this._state[varName];
     // Defensa: nunca publicar undefined.
     // null se permite EXPLÍCITAMENTE para variables que matchean /setpoint/i —
@@ -306,6 +310,7 @@ class SimulatedDevice {
       // por eso se llama startPublishing() al final para reanudarlos.
       this._cancelActiveTimers();
       this._state = this._initialState(this._role);
+      this._muted.clear();
       this._pinned.clear();   // reset suelta los valores fijados → vuelven a evolucionar
       for (const v of this._variables) {
         this._publish(v.variable);
@@ -318,6 +323,12 @@ class SimulatedDevice {
       // Reactivar con `resume_publishing` o `reset`.
       this._cancelActiveTimers();
       console.log(`${this.tag} publishing STOPPED (frescura test)`);
+    } else if (command === 'mute_sensor') {
+      this._muted.add(sensor);
+      console.log(`${this.tag} sensor ${sensor} MUTED`);
+    } else if (command === 'unmute_sensor') {
+      this._muted.delete(sensor);
+      console.log(`${this.tag} sensor ${sensor} UNMUTED`);
     } else if (command === 'resume_publishing') {
       this._cancelActiveTimers();
       this.startPublishing();
