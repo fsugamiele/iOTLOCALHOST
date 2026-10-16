@@ -127,7 +127,8 @@ async function main() {
   if (!w || w.variableType !== 'float') throw new Error(`${variable} no es una variable float del template de ${dId}`);
   const u = Math.max(1, 3 * (Number(w.deadband) || 0));
   const T = Number(arg('T', 100));
-  const st = { dId, variable, deviceType: dev.deviceType, unit: w.unit || '', u, T, t0: now() };
+  const otra = ((tpl && tpl.widgets) || []).find((x) => x.variableType === 'float' && x.variable && x.variable !== variable);
+  const st = { dId, variable, deviceType: dev.deviceType, unit: w.unit || '', u, T, t0: now(), otraVar: otra ? otra.variable : null };
   const lo = T - 3 * u, hi = T + 3 * u, hi2 = T + 5 * u, band = T - u;
   log(`Banco D sobre ${dId} (${dev.deviceType}) · ${variable} · umbral > ${T} · banda ${2 * u} · espera ${GRACE}s · cierre ${CLOSE}s`);
   log(`Valores: debajo ${lo} · encima ${hi} · en banda ${band}`);
@@ -220,18 +221,36 @@ async function main() {
     'El tipo D se evalúa solo cuando llega un mensaje; no hay un tiempo de "sin datos" definido para D.');
   await mqttCmd(dId, 'resume_publishing'); log('   simulador: resume_publishing'); await sleep(10);
 
-  // C9 — edición de la regla con la alarma abierta.
-  const row9 = await fsmRow(dId);
-  if (!row9 || !row9.alarmOpen) { await setVal(dId, variable, lo); await sleep(8); await setVal(dId, variable, hi); await sleep(GRACE + 15); }
+  // C9 — edición de la regla con la alarma abierta. Dos casos (DEC-REF-128, reloadState.js:39):
+  //   C9a · cambio de UMBRAL: la alarma NO se cierra por edición (la huella de estado no
+  //         cambia); el mockup promete que "la regla nueva rige desde ese momento" → con el
+  //         valor actual debajo del umbral nuevo, tiene que pasar a cierre SIN esperar un dato nuevo.
+  //   C9b · cambio de VARIABLE (huella de estado): cierre por edición (resolve-by-edit).
+  const openAgain = async () => { const r = await fsmRow(dId); if (!r || !r.alarmOpen) { await setVal(dId, variable, lo); await sleep(8); await setVal(dId, variable, hi); await sleep(GRACE + 15); } };
+  await openAgain();
   s = now();
   const T2 = T + 10 * u;                  // nuevo umbral: el valor actual (hi) queda debajo
-  await putRule(st, ruleD(st, T2)); log(`   regla editada: umbral ${T} → ${T2}`); await sleep(20);
+  await putRule(st, ruleD(st, T2)); log(`   regla editada: umbral ${T} → ${T2} (sin publicar valores nuevos)`); await sleep(CLOSE + 20);
   ns = await notifs(s); ts = await trans(s);
-  const rEdit = ns.find((n) => n.kind === 'resolve' && n.mode === 'resolve-by-edit');
-  const row9b = await fsmRow(dId);
-  result('C9', rEdit && !(row9b && row9b.alarmOpen) ? 'VERDE' : 'ROJO',
-    'al editar la regla con la alarma abierta se cierra por edición y rige el umbral nuevo',
-    `cierre por edición: ${rEdit ? 'sí' : 'NO'} · ${steps(ts)} · alarma abierta después: ${row9b ? !!row9b.alarmOpen : false}`);
+  let row9 = await fsmRow(dId);
+  const cerro9a = ns.some((n) => n.kind === 'resolve');
+  result('C9a', cerro9a && !(row9 && row9.alarmOpen) ? 'VERDE' : 'ROJO',
+    'al cambiar el umbral con la alarma abierta, el umbral nuevo rige al instante (sin esperar otro dato)',
+    `${CLOSE + 20}s después de editar: ${steps(ts)} · cierre: ${cerro9a ? 'sí (' + ns.find((n) => n.kind === 'resolve').mode + ')' : 'NO'} · alarma abierta: ${row9 ? !!row9.alarmOpen : false}. ` +
+    'El motor solo reevalúa cuando llega un mensaje del equipo.');
+
+  // C9b — cambio de la huella de estado (otra variable del mismo equipo).
+  const otraV = st.otraVar;
+  if (otraV) {
+    await putRule(st, ruleD(st, T)); await sleep(15); await openAgain();
+    s = now();
+    await putRule(st, { ...ruleD(st, T), variable: otraV }); log(`   regla editada: variable ${variable} → ${otraV}`); await sleep(20);
+    ns = await notifs(s); ts = await trans(s); row9 = await fsmRow(dId);
+    const rEdit = ns.find((n) => n.kind === 'resolve' && n.mode === 'resolve-by-edit');
+    result('C9b', rEdit && !(row9 && row9.alarmOpen) ? 'VERDE' : 'ROJO',
+      'al cambiar QUÉ mide la regla (variable) con la alarma abierta, se cierra por edición',
+      `cierre por edición: ${rEdit ? 'sí' : 'NO'} · ${steps(ts)} · alarma abierta después: ${row9 ? !!row9.alarmOpen : false}`);
+  } else result('C9b', 'OBSERVADO', 'cierre por edición al cambiar la variable', 'el equipo no tiene otra variable float para probarlo');
 
   // Prepara C10: umbral original + alarma abierta. La fase post-reinicio la verifica.
   // (el simulador no republica un valor repetido: se baja y se vuelve a subir)
@@ -268,7 +287,7 @@ async function post() {
     fire ? `abrir http://localhost:3000/alarmas/${fire} y verificar la lista de abajo` : 'no hubo alarma para abrir');
 
   // Informe
-  const orden = ['C1a', 'C1', 'C2b', 'C2', 'C3', 'C3b', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12'];
+  const orden = ['C1a', 'C1', 'C2b', 'C2', 'C3', 'C3b', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9a', 'C9b', 'C10', 'C11', 'C12'];
   RESULTS.sort((a, b) => orden.indexOf(a.c) - orden.indexOf(b.c));
   const n = (k) => RESULTS.filter((r) => r.estado === k).length;
   console.log('\n════════ INFORME B0 · tipo D ════════');

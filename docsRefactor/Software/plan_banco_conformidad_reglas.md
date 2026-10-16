@@ -80,3 +80,10 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
 | Qc3 | Dónde corre | **En tu PC primero**. Después, el mismo banco en la Orange Pi 4 Pro como parte de H6. | Solo en el Hub |
 | Qc4 | Prueba de UI (C12) | **Lista de verificación + captura tuya por tipo** | Automatizada con navegador (no llego a tu localhost) |
 | Qc5 | Alcance de B0 | **Solo D, completo**, para validar el método antes de escalar | Todos los tipos de una vez |
+
+## 6 · Resultados
+### B0 · tipo D — primera corrida (2026-10-16, `Yf86psyC` · `battery_voltage`)
+**VERDE 11 · ROJO 1 · OBSERVADO 3.** El ciclo base funciona como el mockup: umbral exacto, espera (33 s medidos), un aviso por episodio, banda, recaída, cierre (33 s), episodio nuevo dentro del cooldown, reinicio del edge y tiempos de la consola = bitácora.
+- **C9 ROJO → partido en C9a/C9b.** Cambiar el umbral con la alarma abierta no la cierra por edición; eso es lo diseñado (DEC-REF-128: el umbral no es parte de la huella de estado). Pero **el umbral nuevo no rige hasta que llega otro dato del equipo**: con report-by-exception, ese dato puede tardar el latido completo (300 s en el simulador). Es candidato a causa del síntoma "no clarean". El corredor ahora separa C9a (umbral: tiene que regir al instante) y C9b (variable: cierre por edición).
+- **C7 OBSERVADO (decisión de diseño):** el tipo D se evalúa solo cuando llega un mensaje. Si el equipo deja de publicar, la alarma queda congelada en "Alarma" y nunca pasa a "Sin datos". El mockup promete E5.
+- **C12:** pendiente la lista de verificación de Franco sobre `/alarmas/6ad1aa9184ffc500084f30ff`.
