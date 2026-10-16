@@ -11,6 +11,8 @@
 //   docker exec -i node node - --apply < tools/set_reset_behavior.js
 
 const http = require('http');
+// JWT_SECRET y API_PORT viven en app/.env (los carga la app con dotenv, no el contenedor).
+try { require('/home/node/app/node_modules/dotenv').config({ path: '/home/node/app/.env' }); } catch (_) {}
 let jwt; try { jwt = require('jsonwebtoken'); } catch (_) { jwt = require('/home/node/app/node_modules/jsonwebtoken'); }
 
 const API_HOST    = process.env.API_HOST  || 'localhost';
