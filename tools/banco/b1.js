@@ -5,6 +5,8 @@
 // Lo orquesta tools/banco/banco.sh --b1.
 
 async function b1() {
+  const only = (arg('only') || 'DF,S,C,X').split(',');
+  const want = (k) => only.includes(k);
   const dId = arg('dId'), V = arg('var');
   const dev = await db.collection('devices').findOne({ dId });
   if (!dev || dev.firmwareType !== 'wanomi-sim') throw new Error(`${dId} no es un equipo simulado`);
@@ -24,30 +26,35 @@ async function b1() {
   await setVal(dId, V, lo); await setVal(dId, SP, lo); await sleep(8);
 
   // ── DF · D con umbral de FICHA (cascada ficha → regla) ─────────────────────
-  {
+  if (want('DF')) {
     const R = 'banco-DF', key = `${R}:${dId}`;
     const sh = await api('GET', `/equipmentsheet/${DT}`);
     const sheet = sh.json && (sh.json.data || sh.json);
     const vars0 = JSON.parse(JSON.stringify((sheet && sheet.variables) || []));
-    const vv = vars0.find((x) => x.name === V);
-    const kind = vv && !['warning', 'trip'].every((k) => (vv.limits || []).some((l) => l.kind === k && ['gt', 'gte'].includes(l.op)))
-      ? ['trip', 'warning'].find((k) => !(vv.limits || []).some((l) => l.kind === k && ['gt', 'gte'].includes(l.op))) : null;
+    const libre = (x) => ['trip', 'warning'].find((k) => !(x.limits || []).some((l) => l.kind === k && ['gt', 'gte'].includes(l.op)));
+    const candidatas = [V, ...floats.map((f) => f.variable).filter((n) => n !== V)];
+    const VF = candidatas.find((n) => { const x = vars0.find((y) => y.name === n); return x && libre(x); });
+    const vv = VF ? vars0.find((y) => y.name === VF) : null;
+    const kind = vv ? libre(vv) : null;
+    const resumen = candidatas.map((n) => { const x = vars0.find((y) => y.name === n); return `${n}: ${x ? (x.limits || []).map((l) => l.kind + ' ' + l.op + ' ' + l.value).join(', ') || 'sin límites' : 'NO está en la ficha'}`; }).join(' | ');
     if (!vv || !kind) {
-      result('DF', 'OBSERVADO', 'D con umbral de ficha', `la ficha ${DT} no tiene la variable ${V} o ya usa los dos límites "gt" — no se toca`);
+      result('DF', 'OBSERVADO', 'D con umbral de ficha', `ninguna variable float del equipo está en la ficha ${DT} con un límite "gt" libre — no se toca. Ficha: ${resumen}`);
     } else {
       const setLimit = async (value) => {
         const vars = JSON.parse(JSON.stringify(vars0));
-        const x = vars.find((y) => y.name === V);
+        const x = vars.find((y) => y.name === VF);
         x.limits = [...(x.limits || []).filter((l) => !(l.kind === kind && ['gt', 'gte'].includes(l.op))), { kind, op: 'gt', value, unit: x.unit, source: 'banco de conformidad (temporal)' }];
         const r = await api('PUT', `/equipmentsheet/${DT}`, { newEquipmentSheet: { variables: vars } });
         if (r.status !== 200) throw new Error(`PUT ficha → ${r.status} ${r.raw.slice(0, 200)}`);
-        log(`   ficha ${DT}: límite ${kind} de ${V} = ${value}`);
+        log(`   ficha ${DT}: límite ${kind} de ${VF} = ${value}`);
       };
       try {
+        log(`   DF sobre ${VF} (límite ${kind} gt)`);
+        await setVal(dId, VF, lo); await sleep(8);
         await setLimit(T);
-        await putPack(DT, [{ ...base(R, 'Banco · umbral de ficha (DF)', 'D', DT), variable: V, unit: w.unit || '', condition: { limitRef: kind, op: 'gt', deadband: 2 * u } }]);
+        await putPack(DT, [{ ...base(R, 'Banco · umbral de ficha (DF)', 'D', DT), variable: VF, unit: vv.unit || '', condition: { limitRef: kind, op: 'gt', deadband: 2 * u } }]);
         await sleep(15);
-        let s = now(); await setVal(dId, V, hi); await sleep(GRACE + 15);
+        let s = now(); await setVal(dId, VF, hi); await sleep(GRACE + 15);
         let ns = fires(await notifs(R, s));
         result('DF1', ns[0] && Number(ns[0].thresholdUsed) === T ? 'VERDE' : 'ROJO', 'dispara con el umbral que dice la ficha',
           ns[0] ? `aviso con umbral ${ns[0].thresholdUsed} (ficha ${T})` : 'sin aviso');
@@ -66,13 +73,13 @@ async function b1() {
         await putPack(DT, []);                         // primero sacar la regla (la ficha no deja borrar un límite en uso)
         const r = await api('PUT', `/equipmentsheet/${DT}`, { newEquipmentSheet: { variables: vars0 } });
         log(`   ficha ${DT} restaurada → ${r.status}`);
-        await setVal(dId, V, lo); await sleep(8);
+        await setVal(dId, VF, lo); await sleep(8);
       }
     }
   }
 
   // ── S · N veces en T ───────────────────────────────────────────────────────
-  {
+  if (want('S')) {
     const R = 'banco-S', key = `${R}:${dId}`, N = 3, WIN = 60;
     await putPack(DT, [{ ...base(R, 'Banco · N veces en T (S)', 'S', DT), variable: V, unit: w.unit || '',
       window: { durationSec: WIN, countThreshold: N, matchCondition: { op: 'gt', value: T } } }]);
@@ -107,7 +114,7 @@ async function b1() {
   }
 
   // ── C · contra el setpoint del equipo (SP) + respaldo D ────────────────────
-  {
+  if (want('C')) {
     const R = 'banco-C', key = `${R}:${dId}`;
     const ruleC = (spVar) => ({ ...base(R, 'Banco · vs setpoint (C)', 'C', DT), variable: V, unit: w.unit || '',
       condition: { op: 'gt', value: T }, setpointSource: { variable: spVar }, fallbackToD: true, on_missing_ref: 'ignore' });
@@ -130,8 +137,9 @@ async function b1() {
       `${steps(ts)} · cierres: ${rs.length} · abierta: ${row ? !!row.alarmOpen : false}`);
     // C4 — sin setpoint (variable que el equipo no publica): respaldo D + aviso informativo.
     await setVal(dId, V, lo); await sleep(8);
+    s = now();
     await putPack(DT, [ruleC('banco_setpoint_inexistente')]); await sleep(15);
-    s = now(); await setVal(dId, V, hi); await sleep(GRACE + 15);
+    await setVal(dId, V, hi); await sleep(GRACE + 15);
     const all = await notifs(R, s); ns = fires(all);
     const info = all.filter((n) => n.severity === 'info');
     result('C4', ns[0] && ns[0].mode === 'fallback' && Number(ns[0].thresholdUsed) === T ? 'VERDE' : 'ROJO',
@@ -141,7 +149,7 @@ async function b1() {
   }
 
   // ── cross · combinadas (instancia por SITIO) ───────────────────────────────
-  {
+  if (want('X')) {
     const mismos = await db.collection('devices').countDocuments({ siteId: SITE, deviceType: DT });
     if (mismos > 1) {
       result('X0', 'OBSERVADO', 'hoja cross con varios equipos del mismo tipo',
@@ -150,7 +158,7 @@ async function b1() {
     const leaf = (variable, op, value) => ({ deviceType: DT, variable, condition: { op, value } });
     const R1 = 'banco-X1', R2 = 'banco-X2', sc = dev.siteId;
     // X1 · plana: V>T Y SP>T
-    await putPack(DT, [{ ...base(R1, 'Banco · combinada plana (X1)', 'cross', DT), crossExpr: { op: 'AND', children: [leaf(V, 'gt', T), leaf(SP, 'gt', T)] } }]);
+    await putPack(DT, [{ ...base(R1, 'Banco · combinada plana (X1)', 'cross', DT), variable: V, crossExpr: { op: 'AND', children: [leaf(V, 'gt', T), leaf(SP, 'gt', T)] } }]);
     await sleep(15);
     let s = now(); await setVal(dId, V, hi); await sleep(GRACE + 10);
     let ns = fires(await notifs(R1, s));
@@ -165,7 +173,7 @@ async function b1() {
     await setVal(dId, V, lo); await sleep(8);
     // X2 · anidada: (V>T Y SP>T) O V>T+10u
     const big = T + 10 * u;
-    await putPack(DT, [{ ...base(R2, 'Banco · combinada anidada (X2)', 'cross', DT),
+    await putPack(DT, [{ ...base(R2, 'Banco · combinada anidada (X2)', 'cross', DT), variable: V,
       crossExpr: { op: 'OR', children: [{ op: 'AND', children: [leaf(V, 'gt', T), leaf(SP, 'gt', T)] }, leaf(V, 'gt', big)] } }]);
     await sleep(15);
     s = now(); await setVal(dId, V, big + 2 * u); await sleep(GRACE + 15);
@@ -189,6 +197,11 @@ async function b1() {
 (async () => {
   await connect();
   db = getDb();
-  await b1();
+  try { await b1(); }
+  catch (err) {
+    console.error('ERROR:', err.message);
+    try { const d0 = await db.collection('devices').findOne({ dId: arg('dId') }); if (d0) await putPack(d0.deviceType, []); await api('POST', '/simulator/reset', { dId: arg('dId') }); log('Limpieza tras el error: pack de banco vacío y simulador reseteado.'); } catch (_) {}
+    close(); process.exit(1);
+  }
   close(); process.exit(0);
 })().catch((err) => { console.error('ERROR:', err.message); process.exit(1); });
