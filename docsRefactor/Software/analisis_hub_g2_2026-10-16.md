@@ -1,4 +1,9 @@
-# Análisis de equipo — G2 y el supervisor de calidad sobre el Hub (Orange Pi Zero 3) · 2026-10-16
+# Análisis de equipo — G2 y el supervisor de calidad sobre el Hub · 2026-10-16
+
+> **ACTUALIZACIÓN (Franco, 2026-10-16):** el Hub actual es una **Orange Pi 4 Pro, 8 núcleos,
+> 4 GB de RAM**, no la Zero 3 que figura en el corpus (DEC-REF-68, `WanomiRefactor.md:113`).
+> La sección 5 rehace el análisis para este hardware. Las secciones 0–4 quedan como registro
+> del análisis original (Zero 3).
 
 **Pedido de Franco:** las decisiones de G2 que dependen del hardware se toman con los
 especialistas de cada área. Este informe reúne la mirada de cada uno, separa lo que está
@@ -65,3 +70,35 @@ y el almacenamiento (microSD o eMMC/SSD).
 ## 4 · Qué se implementa si se firma
 - **Adenda G2 (2 archivos):** `qa/checks/invariants.js` (ventana 30 días de I15) y `edge-engine/notificationRouter.js` (tope de la cola). El índice se crea en el modelo `app/api/models/notifications.js` (3 archivos en total).
 - **Fuera de G2 (H4–H6):** requiere la medición. Va a un bloque propio, "Perfil Hub", junto con el empaquetado del Hub que ya está previsto en el corpus.
+
+## 5 · Revisión para la Orange Pi 4 Pro (4 GB)
+
+**Hardware** (ficha publicada; la temperatura de operación no está publicada):
+| | Zero 3 (análisis original) | **4 Pro (actual)** |
+|---|---|---|
+| CPU | 4× Cortex-A53 (ARMv8.0) | **Allwinner A733: 2× Cortex-A76 + 6× Cortex-A55, hasta 2,0 GHz (ARMv8.2)** + coprocesador RISC-V |
+| RAM | 1–4 GB | **4 GB LPDDR5** (hasta 16 GB disponible) |
+| Almacenamiento | microSD | microSD, **eMMC opcional (16–128 GB), M.2 NVMe (PCIe 3.0 x1)** |
+| NPU | — | **3 TOPS INT8** |
+| Red / energía | GbE | GbE con **PoE** + DC |
+
+**Qué cambia en cada mirada**
+- **Backend:** el techo de Mongo 4.4 **desaparece**: A76/A55 son ARMv8.2, así que Mongo ≥ 5 en ARM64 es viable. No se propone migrar ahora; queda como opción abierta. Con 4 GB, un caché de WiredTiger de ~1 GB es razonable, pero se fija **después de medir** (H6). **H2 se mantiene:** el costo sin cota de I15 crece con el historial sin importar el hardware, y el índice también le sirve a la consola.
+- **Software:** **H3 se mantiene** (es una línea de código y protege ante una caída larga de Mongo). La deuda de `node:14` no cambia.
+- **Confiabilidad:** el backtest diario deja de ser un riesgo serio con 2 núcleos A76. **H4 baja a "medir y ajustar"**. La regla de que el supervisor nunca demora al motor se mantiene.
+- **Hardware:** el desgaste de la microSD **se resuelve si el sistema y Mongo van en NVMe o eMMC**. Falta definir cuál. La temperatura sigue pendiente: hay que medir con el gabinete cerrado.
+- **Nuevo, para el área de IA embebida:** la **NPU de 3 TOPS** habilita inferencia local (por ejemplo, la vibración y FFT del grupo electrógeno, o la detección de anomalías) sin cargar la CPU. Es un tema propio del área 3, fuera de G2.
+
+**Decisiones revisadas**
+| # | Antes (Zero 3) | **Ahora (4 Pro)** |
+|---|---|---|
+| H1 | En el Hub | **Igual**: en el Hub (DEC-ARCH-1). |
+| H2 | Ventana de 30 días + índice | **Igual** (independiente del hardware). |
+| H3 | Tope de 200 | **Igual**. |
+| H4 | 03:00 con tope de 15 min | **Se mantiene a las 03:00; el tope se fija con la medición** (probablemente no haga falta). |
+| H5 | Front compilado fuera del Hub | **Igual**: compilar Nuxt no aporta nada en campo. |
+| H6 | Banco con Zero 3 | **Banco con la Orange Pi 4 Pro** (24 h, gabinete cerrado, simulador). |
+| H7 | Hallazgos al NOC → backlog | **Igual**. |
+| H8 (nuevo) | — | **Registrar el cambio de hardware del Hub** en el corpus de hardware (`docs/wanomi.md`, familia DEC-11..20) y actualizar las referencias a "Zero 3". |
+
+**Dato pendiente:** el almacenamiento del Hub (eMMC o NVMe).
