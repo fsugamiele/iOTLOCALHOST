@@ -1,10 +1,11 @@
 <template>
-  <base-nav
-    v-model="showMenu"
-    class="top-navbar"
-    type="white"
-    :transparent="true"
-  >
+  <div>
+    <base-nav
+      v-model="showMenu"
+      class="top-navbar"
+      type="white"
+      :transparent="true"
+    >
     <div slot="brand" class="navbar-wrapper">
       <div
         class="navbar-toggle d-inline"
@@ -40,44 +41,27 @@
         </span>
       </li>
 
-      <base-dropdown
-        tag="li"
-        :menu-on-right="!$rtl.isRTL"
-        title-tag="a"
-        title-classes="nav-link"
-        class="nav-item"
-      >
-        <template slot="title">
-          <div
-            v-if="$store.state.notifications.length > 0"
-            class="notification d-none d-lg-block d-xl-block"
-          ></div>
-          <i class="tim-icons icon-sound-wave"></i>
-          <p class="d-lg-none">New Notifications</p>
-        </template>
-
-        <li
-          @click="notificationReaded(notification._id)"
-          v-for="notification in $store.state.notifications" :key="notification"
-          class="nav-link"
+      <!-- FASE 3 rediseño alarmas — la campana ya no abre el dropdown
+           legacy de notifications: muestra el conteo de activas sin ACK
+           (color = peor severidad activa) y abre el Centro de
+           Notificaciones (drawer). El store legacy `notifications` no
+           se toca: puede seguir usándose en otras vistas. -->
+      <li class="nav-item">
+        <button
+          type="button"
+          class="nav-link alarm-bell-btn"
+          aria-label="Abrir centro de notificaciones"
+          @click="drawerOpen = true"
         >
-          <a href="#" class="nav-item dropdown-item">
-            <b style="color:orangered">{{ unixToDate(notification.time) }}</b>
-            <div style="margin-left:50px">
-              <b>Device: </b> {{ notification.deviceName }} <br />
-              <b>Variable: </b> {{ notification.variableFullName }} <br />
-              <b>Condition: </b> {{ notification.condition }} <br />
-              <b>Limit: </b> {{ notification.value }} <br />
-              <b>Value: </b> {{ notification.payload.value }}
-              <!-- DEC-REF-100 D-4 — recomendación de la regla si existe -->
-              <template v-if="notification.recommendation">
-                <br />
-                <b>Recomendación: </b> {{ notification.recommendation }}
-              </template>
-            </div>
-          </a>
-        </li>
-      </base-dropdown>
+          <i class="tim-icons icon-sound-wave"></i>
+          <span
+            v-if="bellCount > 0"
+            class="alarm-bell-badge d-none d-lg-block d-xl-block"
+            :class="'sev-badge-' + bellWorstSev"
+          >{{ bellCount > 99 ? '99+' : bellCount }}</span>
+          <p class="d-lg-none">Notificaciones</p>
+        </button>
+      </li>
 
       <base-dropdown
         tag="li"
@@ -105,23 +89,34 @@
       </base-dropdown>
     </ul>
   </base-nav>
+
+  <notifications-drawer v-model="drawerOpen" />
+  </div>
 </template>
 <script>
 import { CollapseTransition } from "vue2-transitions";
 import { BaseNav, Modal } from "@/components";
+import NotificationsDrawer from "@/components/alarms/NotificationsDrawer.vue";
 
 export default {
   components: {
     CollapseTransition,
     BaseNav,
-    Modal
+    Modal,
+    NotificationsDrawer
   },
   data() {
     return {
       activeNotifications: false,
       showMenu: false,
       searchModalVisible: false,
-      searchQuery: ""
+      searchQuery: "",
+      // FASE 3 — drawer del Centro de Notificaciones + badge de la campana.
+      drawerOpen: false,
+      alarmSummary: null,
+      _summaryTimer: null,
+      _notifHandler: null,
+      _notifRefreshTimer: null
     };
   },
   computed: {
@@ -135,32 +130,60 @@ export default {
     },
     isRTL() {
       return this.$rtl.isRTL;
+    },
+    // Badge de la campana: activas sin ACK (GET /api/alarms/summary).
+    bellCount() {
+      return this.alarmSummary ? (this.alarmSummary.unacked || 0) : 0;
+    },
+    // Color del badge = peor severidad con activas (el summary no
+    // segmenta unacked por severidad: es la cota superior del peor
+    // severity sin ACK — criterio simple acordado).
+    bellWorstSev() {
+      const a = this.alarmSummary && this.alarmSummary.active;
+      if (!a) return "info";
+      if (a.critical > 0) return "critical";
+      if (a.warning > 0) return "warning";
+      return "info";
     }
   },
   mounted() {
     this.$store.dispatch("getDevices");
+    this.fetchAlarmSummary();
+    this._summaryTimer = setInterval(this.fetchAlarmSummary, 60000);
+    // Real-time-lite: cada notif refresca el badge (debounce 1.2 s por
+    // la race MQTT/Mongo — el notif llega antes que el doc).
+    this._notifHandler = () => {
+      if (this._notifRefreshTimer) clearTimeout(this._notifRefreshTimer);
+      this._notifRefreshTimer = setTimeout(() => {
+        this._notifRefreshTimer = null;
+        this.fetchAlarmSummary();
+      }, 1200);
+    };
+    this.$nuxt.$on("wanomi:notif", this._notifHandler);
+  },
+  beforeDestroy() {
+    if (this._summaryTimer) { clearInterval(this._summaryTimer); this._summaryTimer = null; }
+    if (this._notifHandler) {
+      this.$nuxt.$off("wanomi:notif", this._notifHandler);
+      this._notifHandler = null;
+    }
+    if (this._notifRefreshTimer) {
+      clearTimeout(this._notifRefreshTimer);
+      this._notifRefreshTimer = null;
+    }
   },
   methods: {
-    notificationReaded(notifId) {
-      const axiosHeaders = {
-        headers: {
-          token: this.$store.state.auth.token
-        }
-      };
-
-      const toSend = {
-        notifId: notifId
-      };
-
-      this.$axios
-        .put("/notifications", toSend, axiosHeaders)
-        .then(res => {
-          this.$store.dispatch("getNotifications");
-        })
-        .catch(e => {
-          console.log(e);
-          return;
+    async fetchAlarmSummary() {
+      try {
+        const res = await this.$axios.get("/alarms/summary", {
+          headers: { token: this.$store.state.auth.token }
         });
+        if (res.data && res.data.status === "success") {
+          this.alarmSummary = res.data.data;
+        }
+      } catch (e) {
+        // Silent — la campana conserva el último conteo conocido.
+      }
     },
     logOut() {
       console.log("logout");
@@ -171,33 +194,6 @@ export default {
       this.$store.commit("setAuth", auth);
 
       window.location.href = "/login";
-    },
-    //UNIX A FECHA
-    unixToDate(ms) {
-      var d = new Date(parseInt(ms)),
-        yyyy = d.getFullYear(),
-        mm = ("0" + (d.getMonth() + 1)).slice(-2), // Months are zero based. Add leading 0.
-        dd = ("0" + d.getDate()).slice(-2), // Add leading 0.
-        hh = d.getHours(),
-        h = hh,
-        min = ("0" + d.getMinutes()).slice(-2), // Add leading 0.
-        ampm = "AM",
-        time;
-
-      if (hh > 12) {
-        h = hh - 12;
-        ampm = "PM";
-      } else if (hh === 12) {
-        h = 12;
-        ampm = "PM";
-      } else if (hh == 0) {
-        h = 12;
-      }
-
-      // ie: 2013-02-18, 8:35 AM
-      time = dd + "/" + mm + "/" + yyyy + ", " + h + ":" + min + " " + ampm;
-
-      return time;
     },
     capitalizeFirstLetter(string) {
       if (!string || typeof string !== "string") {
@@ -226,6 +222,26 @@ export default {
 <style scoped>
 .top-navbar {
   top: 0px;
+}
+.alarm-bell-btn {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+}
+.alarm-bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
 }
 .mqtt-status-dot {
   display: inline-block;

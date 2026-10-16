@@ -166,5 +166,5 @@ export default {
 </script>
 
 <style scoped>
-.qa-echart { width: 100%; height: 200px; }
+.qa-echart { width: 100%; height: 300px; }
 </style>

@@ -595,10 +595,12 @@ router.get("/qa/rule/:ruleId/forecast", checkAuth, async (req, res) => {
       },
     });
 
-    // Gate 1 — regla cross/M: no sigue una medición numérica simple vs umbral (spec §5 caso 5).
-    if (TIPOS_SIN_SERIE_SIMPLE.includes(rule.type) || !variable || variable === 'n/a') {
-      return noAplica('regla sin variable simple',
-        'Sin pronóstico aplicable: esta regla no sigue una medición numérica simple.');
+    // Gate 1 — "no aplicable" SOLO si no hay variable numérica que seguir. Las reglas
+    // cross/M SÍ se proyectan por su variable-hoja (igual que el timeline); para ellas el
+    // cruce de umbral queda en null (su condición no es un umbral simple — ver threshold abajo).
+    if (!variable || variable === 'n/a') {
+      return noAplica('regla sin variable',
+        'Sin pronóstico aplicable: esta regla no sigue una medición numérica.');
     }
 
     // Ventana: hours acotado a (0, FORECAST_MAX_H], default FORECAST_WINDOW_H.

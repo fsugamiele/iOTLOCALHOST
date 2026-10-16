@@ -12,7 +12,7 @@
       </span>
     </div>
 
-    <div class="qa-finding">
+    <div class="qa-finding" :class="{ 'qa-finding--solo': !showCharts }">
       <!-- Izquierda: el caso explicado -->
       <div class="qa-finding__l">
         <h4 class="qa-problema">{{ badgeEmoji }} {{ headline }}</h4>
@@ -66,8 +66,10 @@
         </div>
       </div>
 
-      <!-- Derecha: gráficos (evidencia) -->
-      <div class="qa-finding__r">
+      <!-- Derecha: gráficos (evidencia). Se ocultan en el detalle de regla
+           (showCharts=false), donde los gráficos viven en su propia sección
+           "Comportamiento" → evita duplicarlos y la columna vacía. -->
+      <div class="qa-finding__r" v-if="showCharts">
         <div class="qa-chart-cap">
           <b>Distribución de la medición.</b> Cada barra es cuántas veces la medición cayó en ese rango;
           la zona roja es cuando la alarma suena.
@@ -110,6 +112,9 @@ export default {
     badge: { type: Object, default: null },
     timelineHours: { type: Number, default: 48 },
     histDays: { type: Number, default: 7 },
+    // false → oculta la columna de gráficos (modo detalle de regla: los gráficos
+    // viven en la sección "Comportamiento" aparte, no se duplican acá).
+    showCharts: { type: Boolean, default: true },
   },
   data() {
     return {
@@ -371,6 +376,8 @@ export default {
 }
 .qa-panel__meta { font-size: 12.5px; opacity: 0.65; }
 .qa-finding { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 0; }
+.qa-finding--solo { grid-template-columns: 1fr; }
+.qa-finding--solo .qa-finding__l { border-right: 0; }
 .qa-finding__l { padding: 16px 18px; border-right: 1px solid rgba(255, 255, 255, 0.1); }
 .qa-finding__r { padding: 16px 18px; background: rgba(0, 191, 154, 0.04); }
 .qa-problema { margin: 0 0 14px; font-size: 17px; line-height: 1.3; }

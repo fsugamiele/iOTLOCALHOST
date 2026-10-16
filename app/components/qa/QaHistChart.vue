@@ -66,11 +66,9 @@ export default {
       }];
 
       return {
-        grid: { left: 46, right: 14, top: 30, bottom: 34 },
-        title: {
-          text: this.variable ? ('Distribución de ' + this.variable) : 'Distribución de la medición',
-          textStyle: { color: '#b9b9c3', fontSize: 12, fontWeight: 'normal' }, left: 0, top: 2,
-        },
+        // Sin title interno: el caption de la sección ya dice "Distribución de la
+        // medición" (evita que el título se superponga con el eje Y).
+        grid: { left: 46, right: 14, top: 16, bottom: 34 },
         tooltip: {
           trigger: 'axis',
           formatter: (p) => {
@@ -98,5 +96,5 @@ export default {
 </script>
 
 <style scoped>
-.qa-echart { width: 100%; height: 190px; }
+.qa-echart { width: 100%; height: 320px; }
 </style>

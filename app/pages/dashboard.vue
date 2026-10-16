@@ -126,7 +126,11 @@
           @set-window="setWindow(item.i, $event)"
           @remove="removeWidget(item.i)"
         >
-          <template v-if="nocSlices[sliceOf(item.i)]">
+          <!-- FASE 5 rediseño alarmas — el feed tiene fetch propio
+               (GET /alarms?status=active&limit=6): no cuelga de la slice
+               'alarms' ni del skeleton del payload /noc. -->
+          <alarm-feed-compact v-if="item.i === 'alarms-feed'" />
+          <template v-else-if="nocSlices[sliceOf(item.i)]">
             <noc-kpi-card
               v-if="isKpiWidget(item.i)"
               :kpi-key="kpiKeyOf(item.i)"
@@ -148,10 +152,6 @@
               :is-light="isLight"
               :refresh-sec="refreshSecOf('trend')"
               :default-window="windowOf('trend')"
-            />
-            <noc-alarms-feed
-              v-else-if="item.i === 'alarms-feed'"
-              :recent-alarms="nocSlices.alarms.recentAlarms || []"
             />
             <noc-alarms-hist
               v-else-if="item.i === 'alarms-hist'"
@@ -224,7 +224,7 @@ import NocKpiCard      from '@/components/Noc/NocKpiCard.vue';
 import NocSiteMap      from '@/components/Noc/NocSiteMap.vue';
 import NocSitesTable   from '@/components/Noc/NocSitesTable.vue';
 import NocTrendChart   from '@/components/Noc/NocTrendChart.vue';
-import NocAlarmsFeed   from '@/components/Noc/NocAlarmsFeed.vue';
+import AlarmFeedCompact from '@/components/alarms/AlarmFeedCompact.vue';
 import NocAlarmsHist   from '@/components/Noc/NocAlarmsHist.vue';
 import PanelWidgetShell from '@/components/Noc/PanelWidgetShell.vue';
 import { resolveWidget } from '@/components/Widgets/resolver.js';
@@ -249,7 +249,7 @@ export default {
   name: 'DashboardNoc',
   middleware: 'authenticated',
   components: {
-    NocKpiCard, NocSiteMap, NocSitesTable, NocTrendChart, NocAlarmsFeed, NocAlarmsHist, PanelWidgetShell,
+    NocKpiCard, NocSiteMap, NocSitesTable, NocTrendChart, AlarmFeedCompact, NocAlarmsHist, PanelWidgetShell,
     'el-dropdown': Dropdown, 'el-dropdown-menu': DropdownMenu, 'el-dropdown-item': DropdownItem,
   },
   data() {
@@ -372,8 +372,9 @@ export default {
     },
     // ── Widgets atómicos NOC ───────────────────────────────────────────
     // Varios widgets pueden colgar de la misma slice del payload /noc
-    // (los 4 kpi-* de 'kpis'; map y sites-table de 'sites'; feed e hist de
-    // 'alarms'). sliceOf resuelve cuál alimenta a cada widget.
+    // (los 4 kpi-* de 'kpis'; map y sites-table de 'sites'; alarms-hist
+    // de 'alarms' — alarms-feed tiene fetch propio desde la FASE 5 del
+    // rediseño). sliceOf resuelve cuál alimenta a cada widget.
     sliceOf(id) {
       const def = WIDGETS.find(w => w.i === id);
       return def ? def.slice : null;

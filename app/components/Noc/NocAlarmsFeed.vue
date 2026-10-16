@@ -66,48 +66,10 @@
 // F1.b (DEC-REF-81 iv · DEC-REF-82 ii) — tarjeta de alertas con estado
 // resuelto, tipo de alarma en criollo y cascada agrupada. Diseño CERRADO
 // por Franco. Split del componente NocRecentAlarms (feed + histograma).
-
-// (DEC-REF-82 ii) · vocabulario del tipo de regla, mapa FIJO. Único origen:
-// el campo `type` que llega del backend (F1.a). Prohibido default a "D";
-// type null o desconocido ⇒ NO renderizar el subtítulo.
-const TYPE_LABELS = {
-  D:     'Umbral fijo · el valor cruzó un límite declarado',
-  C:     'Calibrada al equipo · el límite lo pone el propio equipo',
-  S:     'Sostenida en el tiempo · la condición se mantuvo durante una ventana',
-  cross: 'Cruzada · combina varias señales o equipos',
-};
-
-// R5 · G8 · 3 — REASON_LABELS: los `reason` emitidos por el edge-engine son
-// slugs técnicos; en la UI operador se muestran en castellano. Si aparece un
-// reason nuevo sin traducción, cae al slug crudo (no rompe).
-const REASON_LABELS = {
-  // ruleEngine — threshold (D)
-  'threshold':                       'Umbral superado',
-  'threshold-cleared':               'Umbral normalizado',
-  // ruleEngine — calibrated / fallback (C)
-  'threshold-calibrated':            'Umbral superado (calibrado)',
-  'threshold-fallback':              'Umbral de respaldo',
-  // ruleEngine — setpoint lifecycle
-  'setpoint-unavailable':            'Setpoint no disponible',
-  'setpoint-unavailable-escalated':  'Setpoint no disponible (escalada)',
-  'setpoint-recovered':              'Setpoint recuperado',
-  // ruleEngine — window
-  'window':                          'Ventana temporal superada',
-  'window-cleared':                  'Ventana temporal normalizada',
-  // ruleEngine — cross-tree (S)
-  'cross-tree-fired':                'Condición compuesta activada',
-  'cross-tree-cleared':              'Condición compuesta normalizada',
-  // index.js — hot-reload de pack cierra episodios abiertos
-  'rule-edited-or-removed':          'Regla editada o eliminada',
-};
-
-// F1.b · severidad en el badge (texto exacto por diseño cerrado):
-// "Crítica" / "Advertencia" / "Informativa".
-const SEVERITY_LABELS = {
-  critical: 'Crítica',
-  warning:  'Advertencia',
-  info:     'Informativa',
-};
+// FASE 1 rediseño: los vocabularios (SEVERITY/TYPE/REASON) y la lógica de
+// cascada viven en @/utils (fuente única compartida con AlarmCard).
+import { SEVERITY_LABELS, TYPE_LABELS, REASON_LABELS } from '@/utils/alarmLabels';
+import { buildAlarmTree } from '@/utils/alarmTree';
 
 export default {
   name: 'NocAlarmsFeed',
@@ -115,56 +77,10 @@ export default {
     recentAlarms: { type: Array, default: () => [] },
   },
   computed: {
-    // (F1.b) — cascada agrupada con recursión y red de seguridad (C2).
-    // Un ítem cuyo correlationParent apunta al ruleId de otro ítem PRESENTE
-    // se renderiza inmediatamente debajo de su madre (recursivo). Si la
-    // madre NO está, va suelto en su posición cronológica con el icono.
-    // Cierres defensivos: auto-parent no genera edge; ciclos blindados por
-    // el Set `emitted`; red de seguridad final appendea lo no emitido.
+    // (F1.b) — cascada agrupada; lógica extraída a @/utils/alarmTree
+    // (misma recursión, mismas redes de seguridad C2).
     itemsOrdered() {
-      const items = Array.isArray(this.recentAlarms) ? this.recentAlarms : [];
-      const rulesInList = new Set(items.map(i => i.ruleId));
-      const children = new Map();
-
-      items.forEach(i => {
-        if (i.correlationParent
-            && i.correlationParent !== i.ruleId
-            && rulesInList.has(i.correlationParent)) {
-          if (!children.has(i.correlationParent)) children.set(i.correlationParent, []);
-          children.get(i.correlationParent).push(i);
-        }
-      });
-
-      const out = [];
-      const emitted = new Set();
-
-      const pushWithDescendants = (item, cascadeMarked) => {
-        if (emitted.has(item._id)) return;
-        out.push({ ...item, isCascade: cascadeMarked });
-        emitted.add(item._id);
-        const kids = children.get(item.ruleId) || [];
-        kids.forEach(k => pushWithDescendants(k, true));
-      };
-
-      items.forEach(i => {
-        if (emitted.has(i._id)) return;
-        if (i.correlationParent
-            && i.correlationParent !== i.ruleId
-            && rulesInList.has(i.correlationParent)) return;
-        const orphanCascade = !!(i.correlationParent && !rulesInList.has(i.correlationParent));
-        pushWithDescendants(i, orphanCascade);
-      });
-
-      // Red de seguridad (C2): cualquier ítem no emitido — típicamente por
-      // un ciclo cerrado sin raíz externa — al final, marcado como cascada.
-      items.forEach(i => {
-        if (!emitted.has(i._id)) {
-          out.push({ ...i, isCascade: !!i.correlationParent });
-          emitted.add(i._id);
-        }
-      });
-
-      return out;
+      return buildAlarmTree(this.recentAlarms);
     },
   },
   methods: {

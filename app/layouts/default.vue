@@ -20,6 +20,17 @@
         >
         </sidebar-item>
 
+        <!-- FASE 4 rediseño alarmas — consola de triaje (Modelo B); visible
+             para todo usuario autenticado. -->
+        <sidebar-item
+          :link="{
+            name: 'Alarmas',
+            icon: 'tim-icons icon-alert-circle-exc',
+            path: '/alarmas'
+          }"
+        >
+        </sidebar-item>
+
         <sidebar-item
           :link="{
             name: 'Sitios',

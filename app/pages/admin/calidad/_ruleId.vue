@@ -71,6 +71,7 @@
             v-if="topFinding"
             :finding="topFinding"
             :badge="detail.badge"
+            :show-charts="false"
             @disable-rule="onDisableRule"
             @mute-finding="onMuteFinding"
             @revert-rule="onRevertRule"
@@ -128,6 +129,13 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- 2b · PROBAR ANTES DE ACTIVAR (backtest on-demand de esta regla) -->
+      <div class="row" v-if="detail.packId">
+        <div class="col-12">
+          <BacktestInline :pack-id="detail.packId" :rule-id="ruleId" :initial-days="7" />
         </div>
       </div>
 
@@ -232,6 +240,7 @@ import FichaHallazgo from '@/components/qa/FichaHallazgo.vue';
 import QaHistChart from '@/components/qa/QaHistChart.vue';
 import QaTimelineChart from '@/components/qa/QaTimelineChart.vue';
 import QaForecastChart from '@/components/qa/QaForecastChart.vue';
+import BacktestInline from '@/components/qa/BacktestInline.vue';
 
 // DEC-REF-144 — página de detalle superadmin. Mismo guard que el índice:
 //   middleware ['authenticated','superadmin'] + re-chequeo fresco /me (Capa 2).
@@ -244,6 +253,7 @@ export default {
     QaHistChart,
     QaTimelineChart,
     QaForecastChart,
+    BacktestInline,
   },
   data() {
     return {
@@ -279,7 +289,12 @@ export default {
     // prioridad por regla — mismo criterio que /inventory).
     topFinding() {
       const fs = (this.detail && this.detail.findings) || [];
-      return fs.length ? fs[0] : null;
+      if (!fs.length) return null;
+      // Mayor prioridad (mismo orden que el badge del header) → el hallazgo mostrado
+      // concuerda con el badge, en vez de tomar un findings[0] cualquiera.
+      const rank = { MUERTA: 0, PERMANENTE: 1, RUIDOSA: 2, I2: 2, I3: 3, I5: 4, I6: 5, I1: 6, I4: 7 };
+      const r = t => (rank[t] != null ? rank[t] : 99);
+      return fs.slice().sort((a, b) => r(a.type) - r(b.type))[0];
     },
     // dId representativo para charts/forecast: el del hallazgo, si lo hay.
     dId() {
@@ -575,9 +590,11 @@ export default {
 }
 .qa-panel__meta { font-size: 12.5px; opacity: 0.65; }
 
-.qa-behave { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px 16px; }
-.qa-behave__col { min-width: 0; }
-@media (max-width: 900px) { .qa-behave { grid-template-columns: 1fr; } }
+/* Apilados a ancho completo (no 2 columnas): cada gráfico tiene todo el ancho de
+   la tarjeta → se ven todos los datos y los ejes no quedan comprimidos. */
+.qa-behave { display: block; padding: 14px 16px; }
+.qa-behave__col { min-width: 0; margin-bottom: 18px; }
+.qa-behave__col:last-child { margin-bottom: 0; }
 
 .qa-chart-cap { font-size: 12px; opacity: 0.75; margin: 2px 0 6px; line-height: 1.4; }
 .qa-chart-cap b { opacity: 1; }

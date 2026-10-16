@@ -1,0 +1,70 @@
+// ============================================================
+// Wanomi · tokens semánticos de severidad (FASE 1 rediseño alarmas)
+// Fuente única de verdad para colores de severidad/estado.
+// La severidad se comunica por triple canal: color + icono + texto
+// del badge — estas clases solo aportan el canal color.
+// El violeta $forecast se reserva SOLO para pronósticos, nunca alarmas.
+// ============================================================
+
+$severity-critical: #fd5d93;
+$severity-warning:  #ff8d72;
+$severity-info:     #1d8cf8;
+$severity-resolved: #00bf9a;
+$forecast:          #a55eea;
+
+$wanomi-severities: (
+  critical: $severity-critical,
+  warning:  $severity-warning,
+  info:     $severity-info,
+  resolved: $severity-resolved,
+);
+
+// Texto del badge según contraste del fondo.
+$wanomi-severity-badge-fg: (
+  critical: #ffffff,
+  warning:  #27293d,
+  info:     #ffffff,
+  resolved: #27293d,
+);
+
+@each $name, $color in $wanomi-severities {
+  // Icono / texto semántico.
+  .sev-#{$name} {
+    color: $color;
+  }
+
+  // Riel izquierdo 3px (tarjetas de alarma).
+  .sev-rail-#{$name} {
+    border-left: 3px solid $color;
+  }
+
+  // Badge sólido con texto legible.
+  .sev-badge-#{$name} {
+    background-color: $color;
+    color: map-get($wanomi-severity-badge-fg, $name);
+  }
+
+  // Fondo sutil al ~9% alpha (estado hover/fila activa/cascada).
+  .sev-bg-#{$name} {
+    background-color: rgba($color, 0.09);
+  }
+}
+
+// Pronósticos (violeta) — solo forecast, nunca severidad.
+.sev-forecast       { color: $forecast; }
+.sev-rail-forecast  { border-left: 3px solid $forecast; }
+.sev-badge-forecast { background-color: $forecast; color: #ffffff; }
+.sev-bg-forecast    { background-color: rgba($forecast, 0.09); }
+
+// Tema claro: los fondos con alpha suben un punto para no lavarse
+// sobre blanco y los textos semánticos mantienen contraste.
+body.white-content {
+  @each $name, $color in $wanomi-severities {
+    .sev-bg-#{$name} {
+      background-color: rgba($color, 0.13);
+    }
+  }
+  .sev-bg-forecast {
+    background-color: rgba($forecast, 0.13);
+  }
+}

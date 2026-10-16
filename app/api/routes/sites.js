@@ -9,6 +9,7 @@ import Device from "../models/device.js";
 import Template from "../models/template.js";
 import Notification from "../models/notifications.js";
 import EquipmentSheet from "../models/equipment_sheet.js";
+import User   from "../models/user.js";
 
 const TIPO_ENUM             = ['BTS', 'shelter', 'repeater'];
 const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
@@ -246,7 +247,9 @@ router.get("/site/:siteCode/alarms", checkAuth, async (req, res) => {
 router.put("/site/:siteCode/alarms/:notificationId/ack", checkAuth, async (req, res) => {
   try {
     const { siteCode, notificationId } = req.params;
-    const actorId = req.userData._id;
+    // Nombre legible para auditoría de ACK (la UI muestra acknowledgedBy).
+    const actor = await User.findById(req.userData._id).select('name email').lean();
+    const actorId = (actor && (actor.name || actor.email)) || String(req.userData._id);
 
     if (!mongoose.Types.ObjectId.isValid(notificationId)) {
       return res.status(400).json({ status: "error", error: "notificationId inválido" });
