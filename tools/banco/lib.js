@@ -69,7 +69,14 @@ function mqttCmd(dId, command) {
   return new Promise((ok, ko) => mq.publish(`simulator/${dId}/control`, JSON.stringify({ command }), { qos: 1 }, (err) => err ? ko(err) : ok()));
 }
 async function setVal(dId, variable, value) {
-  const r = await api('POST', '/simulator/set', { dId, sensor: variable, value });
+  let r;
+  // El cliente MQTT del backend puede estar reconectando: reintento corto y visible (no es fallo de la regla).
+  for (let i = 0; i < 6; i++) {
+    r = await api('POST', '/simulator/set', { dId, sensor: variable, value });
+    if (!(r.status === 500 && /not connected/.test(r.raw))) break;
+    log(`   (backend sin MQTT, reintento ${i + 1}/6 en 5 s)`);
+    await new Promise((s) => setTimeout(s, 5000));
+  }
   if (r.status !== 200) throw new Error(`simulator/set ${variable}=${value} → ${r.status} ${r.raw.slice(0, 160)}`);
   log(`   set ${variable} = ${value}`);
 }
