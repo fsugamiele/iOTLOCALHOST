@@ -13,6 +13,10 @@ import Data from "../models/data.js";
 import Device from "../models/device.js";
 import Template from "../models/template.js";
 import { query as historyQuery } from "../services/historyProvider.js";
+const RulePack = require("../models/rule_pack.js");
+
+// spec_grafcet_g1b — etapas del GRAFCET de reglas (edge-engine/ruleFsm.js) en palabras.
+const FSM_STEP_NAMES = { E1: 'Vigilando', E2: 'Observando', E3: 'Alarma', E4: 'Recuperándose', E5: 'Sin datos', E6: 'Esperando confirmación' };
 
 // ── FASE 2 rediseño Alarmas (consola de triaje NOC) ──────────────────────────
 // Endpoints de LECTURA sobre Notification (episodios fire/resolve del edge-engine)
@@ -444,6 +448,9 @@ router.get("/alarms/:id/detail", checkAuth, async (req, res) => {
     // ── Children: alarmas activas con correlationParent === ruleId, mismo site.
     const children = await buildChildren(notifFilter, ruleId, notif.siteId);
 
+    // ── G1b — cómo cierra la regla y en qué etapa está su GRAFCET ahora.
+    const { rule, fsm } = await buildRuleState(ruleId, dId, notif.siteId);
+
     return res.json({
       status: "success",
       data: {
@@ -458,7 +465,9 @@ router.get("/alarms/:id/detail", checkAuth, async (req, res) => {
         episodes,
         siblings,
         autonomy,
-        children
+        children,
+        rule,
+        fsm
       }
     });
   } catch (error) {
@@ -1015,6 +1024,27 @@ async function buildChildren(notifFilter, ruleId, siteId) {
     thresholdUsed: g.thresholdUsed != null ? g.thresholdUsed : null,
     firedAt: g.lastTime
   }));
+}
+
+// G1b — regla (tipo de cierre) + etapa vigente del GRAFCET de la instancia (colección
+// rulefsm que escribe el edge; sin fila = Vigilando sin alarma abierta, reposo).
+async function buildRuleState(ruleId, dId, siteId) {
+  const pack = await RulePack.findOne({ 'rules.ruleId': ruleId }, { 'rules.$': 1 }).lean();
+  const r = pack && pack.rules && pack.rules[0];
+  const rule = r ? {
+    type: r.type, metric: r.metric || null,
+    resetBehavior: r.reset_behavior || 'auto',
+    canService: r.type === 'M' && r.metric === 'accumulator',
+  } : null;
+  let fsm = null;
+  if (siteId) {
+    const key = r && r.type === 'cross' ? `${ruleId}:${siteId}` : `${ruleId}:${dId}`;
+    const row = await mongoose.connection.db.collection('rulefsm').findOne({ siteId, key });
+    const step = row ? row.step : 'E1';
+    fsm = { step, stepName: FSM_STEP_NAMES[step] || step, since: row ? row.since : null,
+            alarmOpen: row ? !!row.alarmOpen : false, acked: row ? !!row.acked : false, ackedBy: row ? row.ackedBy || null : null };
+  }
+  return { rule, fsm };
 }
 
 module.exports = router;

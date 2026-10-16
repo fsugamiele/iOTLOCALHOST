@@ -43,6 +43,13 @@
           <span v-else class="badge-state b-resolved">
             ✓ Resuelta · duró {{ formatDuration(alarm.durationSec) || '—' }}
           </span>
+          <!-- spec_grafcet_g1b — regla de cierre manual: normalizada, espera confirmación (E6). -->
+          <span v-if="fsmWaiting" class="badge-state b-wait" title="El valor volvió a lo normal, pero esta alarma se cierra solo cuando alguien la confirma">
+            ⏳ Normalizada · falta confirmar
+          </span>
+          <span v-else-if="manualClose && alarm.state !== 'resolved'" class="badge-state b-manual" title="Esta regla no se cierra sola: requiere confirmación (o el service)">
+            Cierre manual
+          </span>
         </div>
         <div class="d-sub">
           {{ alarm.siteName || alarm.siteId || '—' }} · {{ alarm.deviceName || alarm.dId }}
@@ -69,7 +76,15 @@
               class="btn btn-sm btn-primary"
               :disabled="ackBusy"
               @click="ack"
-            >{{ ackBusy ? 'Reconociendo…' : 'Reconocer' }}</button>
+            >{{ ackBusy ? 'Reconociendo…' : (fsmWaiting ? 'Confirmar y cerrar' : 'Reconocer') }}</button>
+            <!-- spec_grafcet_g1b (Q6 · Qb4) — vida útil: el service pone el contador en 0 y cierra. -->
+            <button
+              v-if="canService && alarm.state !== 'resolved'"
+              type="button"
+              class="btn btn-sm btn-success"
+              :disabled="serviceBusy"
+              @click="registerService"
+            >{{ serviceBusy ? 'Registrando…' : 'Registrar service' }}</button>
           </div>
         </div>
         <div v-if="alarm.recommendation" class="callout">
@@ -260,6 +275,7 @@ export default {
       error: false,
       notFound: false,
       ackBusy: false,
+      serviceBusy: false,
       metaOpen: false,
       isLight: false,
       themeObserver: null,
@@ -269,6 +285,10 @@ export default {
   },
   computed: {
     alarm() { return this.detail ? this.detail.alarm : null; },
+    // spec_grafcet_g1b — tipo de cierre de la regla y etapa del GRAFCET (alarms.js buildRuleState).
+    manualClose() { return !!(this.detail && this.detail.rule && this.detail.rule.resetBehavior === 'manual'); },
+    canService() { return !!(this.detail && this.detail.rule && this.detail.rule.canService); },
+    fsmWaiting() { return !!(this.detail && this.detail.fsm && this.detail.fsm.step === 'E6'); },
     telemetry() { return this.detail ? (this.detail.telemetry || []) : []; },
     forecast() { return this.detail ? this.detail.forecast : null; },
     recurrence() { return this.detail ? this.detail.recurrence : null; },
@@ -396,13 +416,38 @@ export default {
           null,
           this.headers()
         );
-        this.$notify({ type: 'success', message: `Reconocida: ${this.alarm.label || this.alarm.ruleId}` });
+        this.$notify({ type: 'success', message: this.fsmWaiting
+          ? `Confirmada y cerrada: ${this.alarm.label || this.alarm.ruleId}`
+          : `Reconocida: ${this.alarm.label || this.alarm.ruleId}` });
         await this.fetchDetail();
+        // G1b — el cierre lo emite el edge (asíncrono): refrescar de nuevo en un momento.
+        setTimeout(() => { this.fetchDetail(); }, 2000);
       } catch (e) {
         console.error('ack', e);
         this.$notify({ type: 'danger', message: 'No se pudo reconocer la alarma.' });
       } finally {
         this.ackBusy = false;
+      }
+    },
+    // spec_grafcet_g1b (Q6) — registrar el service de mantenimiento (vida de aceite).
+    async registerService() {
+      if (this.serviceBusy || !this.alarm) return;
+      this.serviceBusy = true;
+      try {
+        await this.$axios.post(
+          `/site/${encodeURIComponent(this.alarm.siteId)}/alarms/${this.alarm._id}/service`,
+          null,
+          this.headers()
+        );
+        this.$notify({ type: 'success', message: 'Service registrado: el contador vuelve a cero y la alarma se cierra.' });
+        await this.fetchDetail();
+        setTimeout(() => { this.fetchDetail(); }, 2000);
+      } catch (e) {
+        console.error('service', e);
+        const msg = e.response && e.response.data && e.response.data.error;
+        this.$notify({ type: 'danger', message: msg || 'No se pudo registrar el service.' });
+      } finally {
+        this.serviceBusy = false;
       }
     },
   },
@@ -475,6 +520,8 @@ body.white-content .det-strip {
 }
 .b-live { color: #fd5d93; border-color: rgba(253, 93, 147, 0.45); background: rgba(253, 93, 147, 0.12); }
 .b-ack { color: #1d8cf8; border-color: rgba(29, 140, 248, 0.4); background: rgba(29, 140, 248, 0.12); }
+.b-wait { color: #d98a00; border-color: rgba(255, 141, 114, 0.5); background: rgba(255, 179, 64, 0.14); }
+.b-manual { color: #8898aa; border-color: rgba(136, 152, 170, 0.45); background: rgba(136, 152, 170, 0.1); }
 .b-resolved { color: #00bf9a; border-color: rgba(0, 191, 154, 0.4); background: rgba(0, 191, 154, 0.12); }
 .pulse-dot {
   display: inline-block;

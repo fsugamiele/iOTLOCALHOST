@@ -10,6 +10,21 @@ import Template from "../models/template.js";
 import Notification from "../models/notifications.js";
 import EquipmentSheet from "../models/equipment_sheet.js";
 import User   from "../models/user.js";
+const RulePack = require("../models/rule_pack.js");
+
+// spec_grafcet_g1b (DEC-REF-146 · Qb1) — la acción humana viaja al edge por el canal de
+// recarga con un payload tipado {cmd,…}: el edge lo trata como comando, no recarga.
+const EDGE_CTL_TOPIC = 'wanomi/edge/all/reload';
+function publishEdgeCommand(payload) {
+  if (!global.mqttClient || !global.mqttClient.connected) {
+    console.warn(`[sites] Comando ${payload.cmd} NO publicado — global.mqttClient no conectado (el edge lo recupera al arrancar)`);
+    return false;
+  }
+  global.mqttClient.publish(EDGE_CTL_TOPIC, JSON.stringify({ ...payload, ts: Date.now() }), { qos: 1 }, (err) => {
+    if (err) console.error(`[sites] Comando ${payload.cmd} publish FALLÓ: ${err.message}`);
+  });
+  return true;
+}
 
 const TIPO_ENUM             = ['BTS', 'shelter', 'repeater'];
 const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
@@ -291,6 +306,9 @@ router.put("/site/:siteCode/alarms/:notificationId/ack", checkAuth, async (req, 
       { _id: notif._id, ackAt: null },
       { $set: { acknowledgedBy: actorId, ackAt } }
     );
+    // G1b — avisar al edge: cierra las reglas manuales normalizadas (E6) o las deja
+    // confirmadas (Qb2). Notificaciones legacy sin ruleId: nada que avisar (caso raro #1).
+    if (notif.ruleId) publishEdgeCommand({ cmd: 'ack', ruleId: notif.ruleId, dId: notif.dId, siteId: siteCode, by: actorId });
 
     return res.json({
       status: "success",
@@ -303,6 +321,44 @@ router.put("/site/:siteCode/alarms/:notificationId/ack", checkAuth, async (req, 
     });
   } catch (error) {
     console.log("ERROR ACKING NOTIFICATION");
+    console.log(error);
+    return res.status(500).json({ status: "error", error });
+  }
+});
+
+// spec_grafcet_g1b (Q6 · Qb4) — POST /site/:siteCode/alarms/:notificationId/service
+// "Registrar service" desde el detalle de la alarma: solo reglas acumuladoras (vida de
+// aceite). Pone el acumulado en 0 en el edge y cierra la alarma (resolve-by-service).
+router.post("/site/:siteCode/alarms/:notificationId/service", checkAuth, async (req, res) => {
+  try {
+    const { siteCode, notificationId } = req.params;
+    const actor = await User.findById(req.userData._id).select('name email').lean();
+    const actorId = (actor && (actor.name || actor.email)) || String(req.userData._id);
+    if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+      return res.status(400).json({ status: "error", error: "notificationId inválido" });
+    }
+    const siteFilter = await buildReadFilter(req, 'Site');
+    const site = await Site.findOne({ ...siteFilter, siteCode }).lean();
+    if (!site) return res.status(404).json({ status: "error", error: "Site not found" });
+    const writeFilter = await buildWriteFilter(req, 'Notification');
+    const notif = await Notification.findOne({ ...writeFilter, _id: notificationId, siteId: siteCode });
+    if (!notif) return res.status(403).json({ status: "error", error: "forbidden: grant does not cover this notification" });
+    if (!notif.ruleId) return res.status(400).json({ status: "error", error: "Esta alarma no viene de una regla del motor" });
+    // Caso raro #6 — solo acumuladores.
+    const pack = await RulePack.findOne({ 'rules.ruleId': notif.ruleId }, { 'rules.$': 1 }).lean();
+    const rule = pack && pack.rules && pack.rules[0];
+    if (!rule || rule.type !== 'M' || rule.metric !== 'accumulator') {
+      return res.status(400).json({ status: "error", error: "Registrar service solo aplica a reglas de vida útil (acumuladores)" });
+    }
+    // Queda registrado quién hizo el service (y cuenta como confirmación).
+    const now = Date.now();
+    if (notif.ackAt == null) {
+      await Notification.updateOne({ _id: notif._id, ackAt: null }, { $set: { acknowledgedBy: actorId, ackAt: now } });
+    }
+    const sent = publishEdgeCommand({ cmd: 'service', ruleId: notif.ruleId, dId: notif.dId, siteId: siteCode, by: actorId });
+    return res.json({ status: "success", data: { _id: notif._id, serviceBy: actorId, serviceAt: now, sentToEdge: sent } });
+  } catch (error) {
+    console.log("ERROR REGISTERING SERVICE");
     console.log(error);
     return res.status(500).json({ status: "error", error });
   }

@@ -6,7 +6,12 @@ la app"* (`spec_grafcet_g1.md` §0). Base: G1a en producción (`9945656`) + cons
 (`feature/consola-alarmas`, `c813034`).
 
 ## 0 · CANDADO
-preguntas_abiertas: 4 (Qb1–Qb4) — **pendientes de firma**. Sin firma no entra a implementación.
+preguntas_abiertas: 0 — Qb1–Qb4 **firmadas por Franco el 2026-10-15** ("aprobadas", opción recomendada).
+
+**IMPLEMENTADO (2026-10-15):** G1b-1 `0fc7d57`, G1b-2 (commit siguiente). Desvíos registrados:
+- `fsmStore.js` entra a G1b-1 (2 campos: `acked`, `ackedBy`). Sin ellos la confirmación no sobrevive un reinicio.
+- `notifications.closeAction` **no** se agrega. El cierre humano queda en el `mode` del resolve (`resolve-by-ack` / `resolve-by-service`) y en la recomendación ("Confirmada por …" / "Service registrado por …"). No hay cambio de schema.
+- **Limitación conocida:** un service registrado con el edge caído **no** se reaplica al arrancar (la confirmación sí, caso #4). La alarma queda confirmada pero abierta; se vuelve a presionar "Registrar service".
 
 | # | Pregunta | Recomendada | Alternativa |
 |---|---|---|---|
