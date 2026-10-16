@@ -17,6 +17,7 @@ preguntas_abiertas: 0 — Qg1–Qg4 **firmadas por Franco el 2026-10-15** ("apro
 - `edge-engine/index.js` **no** se toca: el log "CIERRE NO GUARDADO" y la cola de reintento viven enteros en `notificationRouter.js` (3 archivos en vez de 4).
 - El control 4 (service = reconocimiento) **ya existía** desde G1b-2 (`sites.js`, POST …/service completa `ackAt`). Que "Reconocer" desaparezca después del service es correcto: la alarma ya está cerrada y reconocida.
 - Huérfanas: margen `ORPHAN_MIN_AGE_MS` = 15 s (un disparo más reciente puede no estar escrito aún en `rulefsm`). Caso raro #11.
+**G2-2 IMPLEMENTADO (2026-10-15).** I15 (Capa B, `invariants.js`) lee el historial completo de `notifications` (no la ventana de 48 h): una huérfana vieja sigue siendo huérfana. I14 se emite junto con I13 cuando cambia la identidad del cálculo (los dos hallazgos conviven: I14 grave por el cálculo, I13 leve por el resto del diff).
 - **Limitación conocida (UI, fuera de la lista cerrada):** una huérfana **ya reconocida** de una regla sin service (no acumulador) no muestra botón en el detalle ("Reconocer" solo aparece en estado activo). La API la cierra igual con un ack; falta mostrar el botón en estado "reconocida". Va a G3.
 
 | # | Pregunta | Recomendada | Alternativa |

@@ -213,6 +213,8 @@ router.get("/qa/overview", checkAuth, async (req, res) => {
     if (openFindingsByType['I4']) digest.push(`🪵 ${openFindingsByType['I4']} resolve(s) huérfano(s)`);
     if (openFindingsByType['I6']) digest.push(`⚠️ ${openFindingsByType['I6']} fire(s) con valor ≠ telemetría`);
     if (openFindingsByType['I13']) digest.push(`✏️ ${openFindingsByType['I13']} regla(s) cambiada(s) vs su siembra`);
+    if (openFindingsByType['I14']) digest.push(`🧮 ${openFindingsByType['I14']} regla(s) con el cálculo cambiado vs su siembra`);
+    if (openFindingsByType['I15']) digest.push(`⚖️ ${openFindingsByType['I15']} alarma(s) donde motor y consola no coinciden`);
     if (openFindingsByType['INGESTA']) digest.push(`📉 ${openFindingsByType['INGESTA']} fuente(s) que dejó de reportar`);
 
     return res.json({

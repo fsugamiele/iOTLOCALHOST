@@ -146,6 +146,8 @@ export default {
         I7: 'Un cálculo no coincide con los datos',
         I8: 'Valor físicamente imposible',
         I13: 'La regla cambió respecto de la original',
+        I14: 'Cambió lo que calcula la regla',
+        I15: 'El motor y la consola no coinciden',
         INGESTA: 'Un dato dejó de llegar',
       };
       const t = this.finding && this.finding.type;
@@ -156,6 +158,7 @@ export default {
         I1: 'Se cierra el equipo equivocado', I2: 'Alarma repetida', I3: 'Alarma que parpadea',
         I4: 'Cierre sin alarma abierta', I5: 'Alarma colgada', I6: 'Valor ≠ medición',
         I7: 'Cálculo desviado', I8: 'Valor imposible', I13: 'Cambió vs la original',
+        I14: 'Cambio de cálculo', I15: 'Motor ≠ consola',
         MUERTA: 'Nunca dispara', PERMANENTE: 'Encendida casi siempre', RUIDOSA: 'Ruidosa',
         INGESTA: 'Dato que no llega',
       };
@@ -173,6 +176,8 @@ export default {
         I7: 'Un cálculo (autonomía/consumo) no coincide con los datos: se decide sobre un número equivocado.',
         I8: 'Un sensor informa un valor físicamente imposible: ese dato no es confiable.',
         I13: 'La regla ya no es la original: alguien la editó y puede no comportarse como se validó.',
+        I14: 'La regla ahora calcula otra cosa (otro tipo, cálculo, variable o equipo): sus alarmas ya no significan lo que se validó.',
+        I15: 'Una alarma figura abierta en un lado y cerrada en el otro: el operador ve algo que no es real, o no ve algo que sí lo es.',
         MUERTA: 'La alarma nunca se activa: da una falsa sensación de cobertura.',
         PERMANENTE: 'Suena casi todo el tiempo: no distingue un problema real de la operación normal.',
         RUIDOSA: 'Dispara muchas veces por día y satura al operador.',
@@ -192,6 +197,8 @@ export default {
         I7: 'Revisar la fórmula del cálculo en el motor para ese equipo.',
         I8: 'Revisar el sensor o el signo de la lectura.',
         I13: 'Si el cambio fue a propósito, guardar la versión actual como original; si no, Revertir a la original.',
+        I14: 'Si el cambio fue a propósito, guardar la versión actual como original; si no, Revertir a la original.',
+        I15: 'Si la consola la muestra activa: cerrarla con Reconocer o Registrar service. Si solo el motor la tiene abierta: revisar el log del edge (Mongo save error).',
         MUERTA: 'Revisar el umbral (puede estar fuera de rango) o si la condición es alcanzable. Probá con “Probar antes de activar”.',
         PERMANENTE: 'Ajustar el umbral para que avise solo ante un problema real, no en operación normal.',
         RUIDOSA: 'Subir el umbral o agregar una banda de tolerancia.',
