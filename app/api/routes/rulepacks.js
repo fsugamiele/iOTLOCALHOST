@@ -158,6 +158,28 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
       });
     }
 
+    // spec_grafcet_g1e (Qf5) — sensor clavado (flatline): con report-by-exception un sensor
+    // clavado NO publica; solo llegan los latidos (cada 5 min). Una ventana < 3 latidos (15 min)
+    // nunca junta muestras. Se rechaza al CREAR la regla o al CAMBIAR su ventana (las reglas
+    // existentes no bloquean la edición del resto del pack).
+    {
+      const MIN_FLAT_SEC = 900;
+      const prev = await RulePack.findOne({ packId }).lean();
+      const prevById = new Map(((prev && prev.rules) || []).map(r => [r.ruleId, r]));
+      for (const r of (doc.rules || [])) {
+        if (r.type !== 'M' || r.metric !== 'flatline') continue;
+        const w = Number(r.mWindow && r.mWindow.durationSec);
+        if (!(w < MIN_FLAT_SEC)) continue;
+        const old = prevById.get(r.ruleId);
+        const sinCambio = old && Number(old.mWindow && old.mWindow.durationSec) === w;
+        if (!sinCambio) {
+          return res.status(400).json({ status: "error", error:
+            `regla ${r.ruleId}: "sensor clavado" necesita una ventana de al menos ${MIN_FLAT_SEC / 60} min. ` +
+            `Un sensor clavado no publica cambios: solo llegan los latidos del equipo (cada 5 min), y la regla necesita al menos 3.` });
+        }
+      }
+    }
+
     // S5 — referencias de hojas cross contra equipmentsheets: WARNING no
     // bloqueante (decisión de sesión #69). Estricto acá brickearía el pack
     // productivo cummins-pcc-v1 (hojas ATS sin ficha — cascada DEC-REF-53

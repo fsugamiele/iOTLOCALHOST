@@ -58,8 +58,8 @@ async function b2() {
       const R = 'bM-slope', key = `${R}:${dId}`;
       await sleep(65); const s = now(); await setVal(dId, V, 120); await sleep(6);
       const row = await fsmRow(key), ts = await trans(R, s);
-      result('bM-slope-3', 'OBSERVADO', 'serie rala (menos de minSamples en la ventana) → ¿"Sin datos"?',
-        `${steps(ts)} · etapa ${row ? row.step : 'E1 (sin fila)'}. Con report-by-exception una variable estable publica poco: la regla puede caer en "Sin datos" sin que el equipo haya dejado de reportar.`);
+      result('bM-slope-3', !ts.some((t) => t.to === 'E5') ? 'VERDE' : 'ROJO', 'serie rala (pocas muestras en la ventana): NO es "Sin datos" (G1e · Qf1)',
+        `${steps(ts)} · etapa ${row ? row.step : 'E1 (sin fila)'}`);
     }
     // projection: llega a 1000 en < 1 h (rampa +10/8 s)
     await caso('bM-proj', M('bM-proj', 'Banco M · proyección', 'projection', { condition: { op: 'lt', value: 1 }, unit: 'h', mParams: { target: 1000 }, mWindow: { durationSec: 60, minSamples: 3 } }),
@@ -85,7 +85,7 @@ async function b2() {
         const s = now(); log('   (espera 190 s sin publicar la segunda variable: frescura de las entradas)');
         for (let i = 0; i < 19; i++) { await setVal(dId, V, 95 + (i % 2 ? u : 0)); await sleep(10); }
         const row = await fsmRow(key), ts = await trans(R, s);
-        result('bM-div-3', 'OBSERVADO', 'una entrada deja de llegar (> 180 s) con la alarma abierta',
+        result('bM-div-3', row && row.step === 'E5' && row.alarmOpen ? 'VERDE' : 'ROJO', 'su propia entrada deja de llegar (> 180 s): "Sin datos" con la alarma abierta, sin usar el dato de otro equipo (G1e · Qf3)',
           `${steps(ts)} · etapa ${row ? row.step : '—'} · abierta: ${row ? !!row.alarmOpen : false}`);
         await setVal(dId, SP, 50 + u); await setVal(dId, V, 60); await sleep(CM + 12);
       }
@@ -108,9 +108,11 @@ async function b2() {
       const rule = { ...base(R, 'Banco M · desbalance (spread)', 'M', t), graceSec: GM, resolveGraceSec: CM, variable: v, metric: 'spread', condition: { op: 'gt', value: 20 } };
       await setVal(a, v, 50); await setVal(b, v, 52); await sleep(5);
       await putPack(t, [rule]); await sleep(12);
+      log('   historia propia de cada equipo (40 s estables) — G1e · Qf4');
+      for (let i = 0; i < 4; i++) { await setVal(a, v, 50 + (i % 2)); await setVal(b, v, 52 + (i % 2)); await sleep(10); }
       let s = now(); await setVal(b, v, 90); await sleep(GM + 12);
       let ns = fires(await notifs(R, s));
-      result('bM-spread-1', ns[0] && ns[0].dId === b ? 'VERDE' : 'ROJO', 'desbalance: avisa y señala al equipo que se aparta',
+      result('bM-spread-1', ns[0] && ns[0].dId === b ? 'VERDE' : 'ROJO', 'desbalance con 2 equipos: señala al que se apartó de su propia historia (G1e · Qf4)',
         ns[0] ? `aviso en ${ns[0].dId} (esperado ${b}) · métrica ${ns[0].value}` : 'sin aviso');
       // el culpable cambia de equipo con la alarma abierta
       s = now(); await setVal(b, v, 52); await setVal(a, v, 10); await sleep(GM + CM + 15);
@@ -152,10 +154,15 @@ async function b2() {
     // las muestras idénticas se fuerzan con snapshot (republica el estado actual).
     {
       const R = 'bM-flat';
-      await caso(R, M(R, 'Banco M · sensor clavado', 'flatline', { condition: { op: 'lte', value: 0.5 }, mWindow: { durationSec: 60, minSamples: 3 } }),
+      await caso(R, M(R, 'Banco M · sensor clavado', 'flatline', { condition: { op: 'lte', value: 0.5 }, mWindow: { durationSec: 900, minSamples: 3 } }),
         async () => { await setVal(dId, V, 70); for (let i = 0; i < 6; i++) { await sleep(6); await api('POST', '/simulator/snapshot', { dId }); } await sleep(GM); },
         async () => { await feed([70 + 3 * u, 70, 70 + 3 * u], 5); await sleep(CM + 5); });
-      result(`${R}-3`, 'OBSERVADO', 'sensor clavado en un equipo real', 'con report-by-exception un sensor clavado no publica: solo llegan los latidos (cada 5 min). Con ventanas cortas la regla nunca junta muestras; hace falta ventana ≥ 3 latidos (15 min).');
+      // Qf5 — la API rechaza crear un sensor clavado con ventana < 15 min.
+      const cur = await api('GET', `/rulepacks/${PACK}`);
+      const rq = await api('PUT', `/rulepacks/${PACK}`, { rulepack: { packId: PACK, deviceType: DT, version: ((cur.json && cur.json.data && cur.json.data.version) || 1) + 1, canary: false,
+        rules: [M('bM-flat60', 'Banco M · sensor clavado 60 s', 'flatline', { condition: { op: 'lte', value: 0.5 }, mWindow: { durationSec: 60, minSamples: 3 } })] } });
+      result(`${R}-3`, rq.status === 400 && /sensor clavado/.test(rq.raw) ? 'VERDE' : 'ROJO', 'la API rechaza un sensor clavado con ventana < 15 min (G1e · Qf5)',
+        `PUT → ${rq.status} ${rq.json && rq.json.error ? '· ' + rq.json.error.slice(0, 120) : ''}`);
     }
     // staleness: silencio ≥ 1 min (tick del motor cada 30 s)
     {

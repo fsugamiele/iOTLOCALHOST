@@ -143,13 +143,16 @@ function readOne(siteState, siteCode, dId, input, fallbackDt, eventTs, staleMs) 
   const variable = input && input.variable;
   const self = siteState.get(dId);
   if (self && Number.isFinite(Number(self[variable])) && isFresh(self, variable, eventTs, staleMs)) return Number(self[variable]);
+  // spec_grafcet_g1e (Qf3) — una entrada del MISMO tipo de equipo que la regla se lee SOLO del
+  // propio equipo: si está vieja, falta el dato (no se reemplaza con el de otro equipo).
+  if (dt === fallbackDt) return null;
   for (const [, st] of siteState) {
     if (st && st._siteCode === siteCode && st._deviceType === dt && Number.isFinite(Number(st[variable])) && isFresh(st, variable, eventTs, staleMs)) return Number(st[variable]);
   }
   return null;
 }
 
-function evaluateInstant(rule, { siteState, dId, siteCode, eventTs }) {
+function evaluateInstant(rule, { siteState, dId, siteCode, eventTs, mState }) {
   if (!siteState) return { fired: false, metricValue: null, detail: 'insufficient' };
   const staleMs = freshnessMs(rule);   // DEC-REF-125 — ventana de frescura
   const inputs = (rule.inputs && rule.inputs.length) ? rule.inputs : [{ deviceType: rule.deviceType, variable: rule.variable }];
@@ -165,22 +168,45 @@ function evaluateInstant(rule, { siteState, dId, siteCode, eventTs }) {
         if (Number.isFinite(n) && isFresh(st, variable, eventTs, staleMs)) members.push({ dId: id, v: n });
       }
     }
+    // spec_grafcet_g1e (Qf4 = opción 2) — historia propia por equipo (no persiste: es corta).
+    const histSec = (rule.mParams && Number(rule.mParams.historySec)) || 600;
+    const now = eventTs != null ? eventTs : Date.now();
+    if (mState) {
+      for (const m of members) {
+        const hk = `${rule.ruleId}:hist:${m.dId}`;
+        const h = (mState.get(hk) || []).filter(p => p.ts >= now - histSec * 1000);
+        if (!h.length || h[h.length - 1].v !== m.v || now - h[h.length - 1].ts > 30000) h.push({ ts: now, v: m.v });
+        mState.set(hk, h);
+      }
+    }
     if (members.length < 2) return { fired: false, metricValue: null, detail: 'insufficient' };
     let maxM = members[0], minM = members[0];
     for (const m of members) { if (m.v > maxM.v) maxM = m; if (m.v < minM.v) minM = m; }
     const spread = maxM.v - minM.v;
     const fired = evaluateD({ ruleId: rule.ruleId, condition: rule.condition }, spread);
-    // culpable = el más alejado de la mediana del grupo (alto o bajo)
-    const med = median(members.map(m => m.v));
-    let outlier = members[0];
-    for (const m of members) if (Math.abs(m.v - med) > Math.abs(outlier.v - med)) outlier = m;
-    return { fired, metricValue: spread, outlierDId: outlier.dId };
+    if (members.length >= 3) {
+      // 3 o más: culpable = el más alejado de la mediana del grupo (como antes)
+      const med = median(members.map(m => m.v));
+      let outlier = members[0];
+      for (const m of members) if (Math.abs(m.v - med) > Math.abs(outlier.v - med)) outlier = m;
+      return { fired, metricValue: spread, outlierDId: outlier.dId, members };
+    }
+    // 2 equipos: cuánto se movió cada uno respecto del promedio de SU historia (sin la muestra actual).
+    const dev = members.map((m) => {
+      const h = (mState && mState.get(`${rule.ruleId}:hist:${m.dId}`)) || [];
+      const prev = h.slice(0, -1).map(p => p.v);
+      return { ...m, mov: prev.length ? Math.abs(m.v - mean(prev)) : 0, hasHist: prev.length > 0 };
+    }).sort((x, y) => y.mov - x.mov);
+    // Distingue si el que más se movió lo hizo claramente más que el otro (≥ 2×) y hay historia.
+    const distingue = dev[0].hasHist && dev[0].mov > 0 && dev[0].mov >= 2 * dev[1].mov;
+    return { fired, metricValue: spread, outlierDId: distingue ? dev[0].dId : null, site: !distingue, members };
   }
 
   // ratio / divergence: dos entradas (típicamente dos variables del mismo equipo)
   const a = readOne(siteState, siteCode, dId, inputs[0], rule.deviceType, eventTs, staleMs);
   const b = readOne(siteState, siteCode, dId, inputs[1] || inputs[0], rule.deviceType, eventTs, staleMs);
-  if (a == null || b == null) return { fired: false, metricValue: null, detail: 'insufficient' };
+  // Qf3 — entrada faltante/vieja = el dato realmente falta → 'stale' (Sin datos), no 'insufficient'.
+  if (a == null || b == null) return { fired: false, metricValue: null, detail: 'stale' };
   let metricValue;
   if (rule.metric === 'ratio') {
     if (b === 0) return { fired: false, metricValue: Infinity };
@@ -322,4 +348,8 @@ function evaluateM(rule, value, ctx) {
   return { fired, metricValue };
 }
 
-module.exports = { evaluateM, slopePerMin };
+// spec_grafcet_g1e (Qf2) — métricas de EVENTO: la condición se cumple en UNA muestra (la
+// siguiente la borra). Avisan en esa muestra, sin espera (graceSec se ignora).
+const EVENT_METRICS = ['stepJump', 'baseline'];
+
+module.exports = { evaluateM, slopePerMin, EVENT_METRICS };

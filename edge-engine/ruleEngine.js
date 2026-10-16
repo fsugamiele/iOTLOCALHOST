@@ -2,7 +2,7 @@ const { evaluateD, resolveClears, effectiveCondition } = require('./evaluators/t
 const { evaluateC } = require('./evaluators/typeC');
 const { evaluateS, evaluateSWindow } = require('./evaluators/typeS');
 const { evaluateCrossTree } = require('./evaluators/typeCross');
-const { evaluateM } = require('./evaluators/typeM');
+const { evaluateM, EVENT_METRICS } = require('./evaluators/typeM');
 const { notify }    = require('./notificationRouter');
 
 // DEC-REF-130 (A13) — cadencia del INFO "setpoint no disponible" (aviso de config de
@@ -124,16 +124,38 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
           case 'M': {
             // spec_motor_m — soft sensor. spread puede anclar la instancia al equipo outlier.
             const res = evaluateM(rule, value, { mState, dId, eventTs, siteState, siteCode });
-            const targetDId = res.outlierDId || dId;
-            const mkey = `${rule.ruleId}:${targetDId}`;
-            // Q1 — no evaluable (insufficient/maturing/unsupported) = Sin datos: una alarma
-            // abierta SIGUE abierta (antes se cerraba, ruleEngine A5).
+            // spec_grafcet_g1e (Qf1) — "insuficiente/madurando" (pocas muestras en la ventana) NO es
+            // "Sin datos": el equipo reporta. La instancia queda en su etapa (no abre ni cierra).
+            // Solo 'stale' (el dato realmente falta, Qf3) entrega receptividad nula → E5.
+            if (res.detail && res.detail !== 'stale') break;
             const R = res.detail ? null : toR(res.fired);
-            fsm.evaluate(rule, mkey, R, {
-              dId: targetDId, value: res.detail ? null : res.metricValue,
+            // Qf2 — evento de una muestra: avisa en esa muestra (sin espera).
+            const evalRule = EVENT_METRICS.includes(rule.metric) ? { ...rule, graceSec: 0 } : rule;
+            const ctxM = {
+              value: res.detail ? null : res.metricValue,
               thresholdUsed: rule.condition ? rule.condition.value : null,
               reason: 'soft-sensor', mode: 'M', resolveReason: 'soft-sensor-cleared',
-            }, eventTs);
+            };
+            if (rule.metric === 'spread' && res.members) {
+              // Qf4 — instancia: equipo culpable o, si no se puede distinguir (2 equipos), el SITIO.
+              const targetKey = res.site ? `${rule.ruleId}:${siteCode}` : `${rule.ruleId}:${res.outlierDId}`;
+              const targetDId = res.site ? (res.members[0] && res.members[0].dId) : res.outlierDId;
+              const nombres = res.members.map((m) => `${(siteState.get(m.dId) || {})._deviceName || m.dId} (${m.v})`).join(' y ');
+              const ruleSp = res.site && res.fired
+                ? { ...evalRule, recommendation: `${rule.recommendation ? rule.recommendation + ' ' : ''}Desbalance entre ${nombres}: no se puede determinar cuál se apartó — revisar ambos.` }
+                : evalRule;
+              fsm.evaluate(ruleSp, targetKey, R, { ...ctxM, dId: targetDId }, eventTs);
+              // Las demás instancias de esta regla en el sitio (culpable anterior, o sitio↔equipo) se apagan.
+              const keys = [`${rule.ruleId}:${siteCode}`, ...res.members.map((m) => `${rule.ruleId}:${m.dId}`)];
+              for (const k of keys) {
+                if (k === targetKey) continue;
+                const other = fsm.get(k);
+                if (other && other.step !== 'E1') fsm.evaluate(evalRule, k, 'off', { ...ctxM, dId: other.dId }, eventTs);
+              }
+              break;
+            }
+            const targetDId = res.outlierDId || dId;
+            fsm.evaluate(evalRule, `${rule.ruleId}:${targetDId}`, R, { ...ctxM, dId: targetDId }, eventTs);
             break;
           }
           default:
@@ -194,7 +216,7 @@ function processStalenessTick({ packs, siteState, mState, fsm }) {
         if (!devState || devState._deviceType !== rule.deviceType) continue;
         const key = `${rule.ruleId}:${dId}`;   // DEC-REF-122 — por equipo
         const res = evaluateM(rule, null, { mState, dId, eventTs: now, siteState, tick: true });
-        if (res.detail && !fsm.get(key)) continue;   // equipo nunca visto y sin instancia: nada que decir
+        if (res.detail) continue;   // G1e (Qf1) — equipo todavía no visto en esta sesión: no se decide nada
         fsm.evaluate(rule, key, res.detail ? null : toR(res.fired), {
           dId, value: res.detail ? null : res.metricValue,
           thresholdUsed: rule.condition ? rule.condition.value : null,
