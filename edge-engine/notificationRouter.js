@@ -126,41 +126,107 @@ function sendNocEvent(alarm) {
 }
 
 // ── Canal 3: Mongo (DEC-REF-22) ──────────────────────────────────────────────
-async function saveToMongo(alarm) {
+// G2 (DEC-REF-147 · Qg1) — el cierre cuenta solo si se guardó. saveToMongo devuelve
+// {ok, transient}. Un RESOLVE con fallo transitorio (conexión) entra a una cola en memoria
+// y se reintenta cada RESOLVE_RETRY_MS hasta RESOLVE_RETRY_MAX_MS. Un fallo de validación
+// (schema) no se reintenta: log "CIERRE NO GUARDADO" + lo detecta QA I15.
+const RESOLVE_RETRY_MS     = parseInt(process.env.RESOLVE_RETRY_MS || '5000', 10);
+const RESOLVE_RETRY_MAX_MS = parseInt(process.env.RESOLVE_RETRY_MAX_MS || '600000', 10);
+const resolveRetryQueue = [];   // { alarm, doc, firstTs, attempts }
+let resolveRetryTimer = null;
+
+function buildNotifDoc(alarm) {
+  return {
+    // campos semánticamente correctos (motor edge)
+    ruleId:          alarm.ruleId,
+    inferenceId:     alarm.inferenceId,
+    label:           alarm.label,
+    severity:        alarm.severity,
+    recommendation:  alarm.recommendation,
+    siteId:          _siteId,
+    reason:          alarm.reason,
+    source:          'edge-engine',
+    correlationParent: alarm.correlationParent,   // DEC-REF-50
+    mode:             alarm.mode || 'direct',
+    thresholdUsed:    (alarm.thresholdUsed !== undefined && alarm.thresholdUsed !== null)
+                        ? alarm.thresholdUsed : null,
+    unit:             alarm.unit || '',
+    // campos comunes
+    userId:          alarm.userId,
+    dId:             alarm.deviceId,
+    deviceName:      alarm.deviceName,
+    variable:        alarm.variable,
+    variableFullName: alarm.variableLabel || '',
+    value:           typeof alarm.value === 'number' ? alarm.value : null,
+    payload:         { severity: alarm.severity, recommendation: alarm.recommendation, value: alarm.value },
+    readed:          false,
+    // El time se fija en el PRIMER intento: un reintento conserva el orden del episodio.
+    time:            Date.now(),
+    // SF-4 · DEC-REF-59/64 — persistir kind explícito. Sin esto, el
+    // default del schema ('fire') se aplicaría a los resolves y quedarían
+    // indistinguibles en Mongo.
+    kind:            alarm.kind || 'fire',
+  };
+}
+
+async function saveToMongo(alarm, docIn) {
+  const doc = docIn || buildNotifDoc(alarm);
   try {
-    await NotificationRO.create({
-      // campos semánticamente correctos (motor edge)
-      ruleId:          alarm.ruleId,
-      inferenceId:     alarm.inferenceId,
-      label:           alarm.label,
-      severity:        alarm.severity,
-      recommendation:  alarm.recommendation,
-      siteId:          _siteId,
-      reason:          alarm.reason,
-      source:          'edge-engine',
-      correlationParent: alarm.correlationParent,   // DEC-REF-50
-      mode:             alarm.mode || 'direct',
-      thresholdUsed:    (alarm.thresholdUsed !== undefined && alarm.thresholdUsed !== null)
-                          ? alarm.thresholdUsed : null,
-      unit:             alarm.unit || '',
-      // campos comunes
-      userId:          alarm.userId,
-      dId:             alarm.deviceId,
-      deviceName:      alarm.deviceName,
-      variable:        alarm.variable,
-      variableFullName: alarm.variableLabel || '',
-      value:           typeof alarm.value === 'number' ? alarm.value : null,
-      payload:         { severity: alarm.severity, recommendation: alarm.recommendation, value: alarm.value },
-      readed:          false,
-      time:            Date.now(),
-      // SF-4 · DEC-REF-59/64 — persistir kind explícito. Sin esto, el
-      // default del schema ('fire') se aplicaría a los resolves y quedarían
-      // indistinguibles en Mongo.
-      kind:            alarm.kind || 'fire',
-    });
+    await NotificationRO.create(doc);
+    return { ok: true, doc };
   } catch (err) {
+    const transient = !(err && err.name === 'ValidationError');
     console.error('[notifRouter] Mongo save error:', err.message);
+    return { ok: false, transient, doc, error: err.message };
   }
+}
+
+function logUnsavedResolve(alarm, motivo) {
+  console.error(`[notifRouter] CIERRE NO GUARDADO ${alarm.ruleId} ${alarm.deviceId} motivo: ${motivo}`);
+}
+
+function enqueueResolveRetry(alarm, doc) {
+  resolveRetryQueue.push({ alarm, doc, firstTs: Date.now(), attempts: 1 });
+  console.warn(`[notifRouter] cierre ${alarm.ruleId} ${alarm.deviceId} en cola de reintento (pendientes=${resolveRetryQueue.length})`);
+  if (!resolveRetryTimer) {
+    resolveRetryTimer = setInterval(() => { retryPendingResolves().catch(() => {}); }, RESOLVE_RETRY_MS);
+    if (resolveRetryTimer.unref) resolveRetryTimer.unref();
+  }
+}
+
+let retrying = false;
+async function retryPendingResolves(nowIn) {
+  if (retrying) return 0;
+  retrying = true;
+  let saved = 0;
+  try {
+    const now = nowIn || Date.now();
+    for (let i = 0; i < resolveRetryQueue.length;) {
+      const it = resolveRetryQueue[i];
+      if (now - it.firstTs > RESOLVE_RETRY_MAX_MS) {
+        resolveRetryQueue.splice(i, 1);
+        logUnsavedResolve(it.alarm, `sin conexión a Mongo tras ${it.attempts} intento(s)`);
+        continue;
+      }
+      it.attempts++;
+      const r = await saveToMongo(it.alarm, it.doc);
+      if (r.ok) { resolveRetryQueue.splice(i, 1); saved++; console.log(`[notifRouter] cierre ${it.alarm.ruleId} ${it.alarm.deviceId} guardado en el reintento ${it.attempts}`); continue; }
+      if (!r.transient) { resolveRetryQueue.splice(i, 1); logUnsavedResolve(it.alarm, `validación — ${r.error}`); continue; }
+      i++;
+    }
+  } finally {
+    retrying = false;
+    if (!resolveRetryQueue.length && resolveRetryTimer) { clearInterval(resolveRetryTimer); resolveRetryTimer = null; }
+  }
+  return saved;
+}
+
+async function persistAlarm(alarm) {
+  const r = await saveToMongo(alarm);
+  if (r.ok || alarm.kind !== 'resolve') return r;
+  if (r.transient) enqueueResolveRetry(alarm, r.doc);
+  else logUnsavedResolve(alarm, `validación — ${r.error}`);
+  return r;
 }
 
 // ── Canal 4: Telegram (feature flag por env) ─────────────────────────────────
@@ -272,8 +338,10 @@ function notify(alarm) {
   // Fire-and-forget — el orden no importa, ningún canal bloquea al siguiente
   sendMqttNotif(alarm);
   sendNocEvent(alarm);
-  saveToMongo(alarm).catch(err => console.error('[notifRouter] saveToMongo uncaught:', err.message));
+  persistAlarm(alarm).catch(err => console.error('[notifRouter] saveToMongo uncaught:', err.message));
   sendTelegram(alarm);
 }
 
-module.exports = { init, notify };
+module.exports = { init, notify,
+  // G2 — expuestos para tests (tools/test_notif_modes.js y harness).
+  NotificationRO, persistAlarm, retryPendingResolves, _resolveRetryQueue: resolveRetryQueue };

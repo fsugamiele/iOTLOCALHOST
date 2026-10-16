@@ -26,6 +26,37 @@ function publishEdgeCommand(payload) {
   return true;
 }
 
+// G2 (DEC-REF-147 · Qg2) — alarma HUÉRFANA: abierta en la consola (último evento ≠ resolve)
+// pero el edge ya no la tiene abierta (sin fila rulefsm con alarmOpen). Pasa cuando el
+// cierre del edge no se pudo guardar. La acción humana (ack / service) la cierra desde acá
+// con un resolve real (Notification.create, mismo schema que la consola · DEC-PROC-5).
+// Margen: un disparo de hace < ORPHAN_MIN_AGE_MS puede no estar escrito aún en rulefsm
+// (lote de escritura del edge) → no se considera huérfana.
+const ORPHAN_MIN_AGE_MS = parseInt(process.env.ORPHAN_MIN_AGE_MS || '15000', 10);
+async function closeIfOrphan(notif, siteCode, rule, mode, actorId) {
+  if (!notif.ruleId) return null;
+  const last = await Notification.findOne({ ruleId: notif.ruleId, dId: notif.dId, siteId: siteCode })
+    .sort({ time: -1 }).lean();
+  if (!last || (last.kind || 'fire') === 'resolve') return null;              // episodio ya cerrado
+  if (Date.now() - (Number(last.time) || 0) < ORPHAN_MIN_AGE_MS) return null; // disparo reciente
+  const key = rule && rule.type === 'cross' ? `${notif.ruleId}:${siteCode}` : `${notif.ruleId}:${notif.dId}`;
+  const row = await mongoose.connection.db.collection('rulefsm').findOne({ siteId: siteCode, key });
+  if (row && row.alarmOpen) return null;                                      // el edge la tiene abierta
+  const verb = mode === 'resolve-by-service' ? 'Service registrado' : 'Confirmada';
+  const doc = await Notification.create({
+    userId: last.userId || 'edge', dId: last.dId, deviceName: last.deviceName || last.dId,
+    topic: 'api/orphan-close', value: typeof last.value === 'number' ? last.value : 0,
+    variable: last.variable || '', variableFullName: last.variableFullName || '',
+    ruleId: last.ruleId, inferenceId: last.inferenceId, label: last.label, severity: last.severity,
+    recommendation: `${verb} por ${actorId}: alarma cerrada (el motor ya la había dado por terminada).`,
+    siteId: siteCode, reason: 'orphan-closed', source: 'api', mode,
+    thresholdUsed: last.thresholdUsed != null ? last.thresholdUsed : undefined, unit: last.unit || '',
+    correlationParent: last.correlationParent || null, kind: 'resolve', readed: false, time: Date.now(),
+  });
+  console.log(`[sites] Huérfana cerrada ${notif.ruleId}:${notif.dId} (${mode}) por ${actorId}`);
+  return doc;
+}
+
 const TIPO_ENUM             = ['BTS', 'shelter', 'repeater'];
 const ALLOWED_UPDATE_FIELDS = ['nombre', 'lat', 'lng', 'direccion', 'provincia',
                                'localidad', 'tipo', 'operatorCode', 'zoneCode', 'notes'];
@@ -288,6 +319,13 @@ router.put("/site/:siteCode/alarms/:notificationId/ack", checkAuth, async (req, 
       return res.status(403).json({ status: "error", error: "forbidden: grant does not cover this notification" });
     }
 
+    // G2 · Qg2 — huérfana: se cierra acá (también si ya estaba reconocida: es la única vía).
+    let orphanClosed = null;
+    if (notif.ruleId) {
+      const pk = await RulePack.findOne({ 'rules.ruleId': notif.ruleId }, { 'rules.$': 1 }).lean();
+      orphanClosed = await closeIfOrphan(notif, siteCode, pk && pk.rules && pk.rules[0], 'resolve-by-ack', actorId);
+    }
+
     // Idempotencia: primera ACK es la que vale.
     if (notif.ackAt != null) {
       return res.json({
@@ -296,7 +334,8 @@ router.put("/site/:siteCode/alarms/:notificationId/ack", checkAuth, async (req, 
           _id: notif._id,
           acknowledgedBy: notif.acknowledgedBy,
           ackAt: notif.ackAt,
-          idempotent: true
+          idempotent: true,
+          orphanClosed: !!orphanClosed
         }
       });
     }
@@ -316,7 +355,8 @@ router.put("/site/:siteCode/alarms/:notificationId/ack", checkAuth, async (req, 
         _id: notif._id,
         acknowledgedBy: actorId,
         ackAt,
-        idempotent: false
+        idempotent: false,
+        orphanClosed: !!orphanClosed
       }
     });
   } catch (error) {
@@ -355,8 +395,10 @@ router.post("/site/:siteCode/alarms/:notificationId/service", checkAuth, async (
     if (notif.ackAt == null) {
       await Notification.updateOne({ _id: notif._id, ackAt: null }, { $set: { acknowledgedBy: actorId, ackAt: now } });
     }
+    // G2 · Qg2 — huérfana: el resolve se guarda acá; el comando igual viaja (acumulado a 0).
+    const orphanClosed = await closeIfOrphan(notif, siteCode, rule, 'resolve-by-service', actorId);
     const sent = publishEdgeCommand({ cmd: 'service', ruleId: notif.ruleId, dId: notif.dId, siteId: siteCode, by: actorId });
-    return res.json({ status: "success", data: { _id: notif._id, serviceBy: actorId, serviceAt: now, sentToEdge: sent } });
+    return res.json({ status: "success", data: { _id: notif._id, serviceBy: actorId, serviceAt: now, sentToEdge: sent, orphanClosed: !!orphanClosed } });
   } catch (error) {
     console.log("ERROR REGISTERING SERVICE");
     console.log(error);

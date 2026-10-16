@@ -11,7 +11,13 @@ Lo que estaba previsto antes en G2 (casos de prueba por regla y alineación con 
 pasa a **G2c**, sin cambios.
 
 ## 0 · CANDADO
-preguntas_abiertas: 4 (Qg1–Qg4). Hasta que Franco firme, no se implementa.
+preguntas_abiertas: 0 — Qg1–Qg4 **firmadas por Franco el 2026-10-15** ("aprobado las recomendaciones").
+
+**G2-1 IMPLEMENTADO (2026-10-15).** Desvíos registrados:
+- `edge-engine/index.js` **no** se toca: el log "CIERRE NO GUARDADO" y la cola de reintento viven enteros en `notificationRouter.js` (3 archivos en vez de 4).
+- El control 4 (service = reconocimiento) **ya existía** desde G1b-2 (`sites.js`, POST …/service completa `ackAt`). Que "Reconocer" desaparezca después del service es correcto: la alarma ya está cerrada y reconocida.
+- Huérfanas: margen `ORPHAN_MIN_AGE_MS` = 15 s (un disparo más reciente puede no estar escrito aún en `rulefsm`). Caso raro #11.
+- **Limitación conocida (UI, fuera de la lista cerrada):** una huérfana **ya reconocida** de una regla sin service (no acumulador) no muestra botón en el detalle ("Reconocer" solo aparece en estado activo). La API la cierra igual con un ack; falta mostrar el botón en estado "reconocida". Va a G3.
 
 | # | Pregunta | Recomendada | Alternativa |
 |---|---|---|---|
@@ -68,6 +74,7 @@ preguntas_abiertas: 4 (Qg1–Qg4). Hasta que Franco firme, no se implementa.
 | 8 | Regla borrada con instancia abierta | El resolve-by-edit existente la cierra. Si quedó huérfana, I15 la marca `solo-consola`. |
 | 9 | I14 por un cambio de cálculo hecho a propósito | La acción existente "guardar la versión actual como original" lo apaga (igual que I13). |
 | 10 | Varias apretadas de service sobre una huérfana | La primera cierra. Las siguientes ven el episodio cerrado y solo publican el comando (idempotente en la consola). |
+| 11 | Ack/service a menos de 15 s del disparo y el edge todavía no escribió `rulefsm` | No se trata como huérfana (`ORPHAN_MIN_AGE_MS`). |
 
 ## 7 · Path real (DEC-PROC-5)
 - Edge: `NotificationRO.create()` (`notificationRouter.js:131`).
