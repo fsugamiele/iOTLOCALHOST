@@ -87,3 +87,9 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
 - **C9 ROJO → partido en C9a/C9b.** Cambiar el umbral con la alarma abierta no la cierra por edición; eso es lo diseñado (DEC-REF-128: el umbral no es parte de la huella de estado). Pero **el umbral nuevo no rige hasta que llega otro dato del equipo**: con report-by-exception, ese dato puede tardar el latido completo (300 s en el simulador). Es candidato a causa del síntoma "no clarean". El corredor ahora separa C9a (umbral: tiene que regir al instante) y C9b (variable: cierre por edición).
 - **C7 OBSERVADO (decisión de diseño):** el tipo D se evalúa solo cuando llega un mensaje. Si el equipo deja de publicar, la alarma queda congelada en "Alarma" y nunca pasa a "Sin datos". El mockup promete E5.
 - **C12:** pendiente la lista de verificación de Franco sobre `/alarmas/6ad1aa9184ffc500084f30ff`.
+
+### B0 · tipo D — segunda corrida, con G1c (2026-10-16 14:00, `0720079`)
+**VERDE 17 · ROJO 0 · OBSERVADO 2** (C8 no aplica a D; C12 es la UI y queda para G3).
+- **C7 y C7b:** "Sin datos" a los 576 s de silencio (se cuenta desde el último mensaje real, anterior al corte). La alarma sigue abierta, sin avisos, y con el dato vuelve a la misma alarma.
+- **C9a1, C9a2, C9b y C9c:** toda edición cierra por edición y repite el proceso al instante. Con el umbral bajado, vuelve a disparar con el umbral nuevo (99) tras la espera.
+- **El motor del tipo D cumple el protocolo del mockup.** Lo pendiente del tipo D es solo la UI (C12, anexo de `spec_grafcet_g1c.md`).
