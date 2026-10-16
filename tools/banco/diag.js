@@ -1,4 +1,4 @@
-// Diagnóstico del banco: bitácora + avisos + estado de una regla de banco en la última hora.
+// Diagnóstico del banco: bitácora + avisos + estado de una regla de banco en las últimas horas (--hours N, default 3).
 //   docker exec -i node node - --rule banco-C < tools/banco/diag.js
 const NM = '/home/node/app/node_modules/';
 require(NM + 'dotenv').config({ path: '/home/node/app/.env' });
@@ -7,7 +7,7 @@ const e = process.env;
 const i = process.argv.indexOf('--rule'); const R = i > 0 ? process.argv[i + 1] : 'banco-C';
 (async () => {
   await mongoose.connect(`mongodb://${e.MONGO_USERNAME}:${encodeURIComponent(e.MONGO_PASSWORD)}@${e.MONGO_HOST}:${e.MONGO_PORT}/${e.MONGO_DATABASE}`, { useNewUrlParser: true, useUnifiedTopology: true, authSource: 'admin' });
-  const db = mongoose.connection.db, since = Date.now() - 3600e3, f = (d) => new Date(d).toISOString().slice(11, 19);
+  const h = process.argv.indexOf('--hours'); const db = mongoose.connection.db, since = Date.now() - (h > 0 ? Number(process.argv[h + 1]) : 3) * 3600e3, f = (d) => new Date(d).toISOString().slice(11, 19);
   console.log(`── bitácora ${R}`);
   for (const t of await db.collection('ruletransitions').find({ ruleId: R, ts: { $gte: new Date(since) } }).sort({ ts: 1 }).toArray())
     console.log(`  ${f(t.ts)} ${t.from}→${t.to} ${t.transition} r=${JSON.stringify(t.receptivity)} v=${t.value} umbral=${t.thresholdUsed} ${t.action || ''}`);
