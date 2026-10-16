@@ -8,7 +8,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') })
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
-const { processMessage, processStalenessTick, fireAlarm, fireResolve } = require('./ruleEngine');
+const { processMessage, processStalenessTick, processSilenceTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
 const { createRuleFsm } = require('./ruleFsm');      // spec_grafcet_g1 · G1a (DEC-REF-145)
 const { createFsmStore } = require('./fsmStore');
 const notificationRouter      = require('./notificationRouter');
@@ -23,6 +23,9 @@ const MSOFT_FLUSH_SEC = parseInt(process.env.MSOFT_FLUSH_SEC || '30', 10);
 const EDGE_TICK_SEC = parseInt(process.env.EDGE_TICK_SEC || '30', 10);
 // G1a — tick del GRAFCET: vence esperas y cierres aunque el equipo publique por excepción.
 const FSM_TICK_SEC = parseInt(process.env.FSM_TICK_SEC || '5', 10);
+// spec_grafcet_g1c (Qe1) — silencio de un equipo que cuenta como "Sin datos" (2 latidos de 300 s).
+const FSM_SILENCE_SEC = parseInt(process.env.FSM_SILENCE_SEC || '600', 10);
+const EDGE_STARTED_AT = Date.now();
 
 const MQTT_HOST  = process.env.MQTT_HOST   || 'mqtt://localhost:1883';
 const MQTT_USER  = process.env.MQTT_USER;
@@ -184,7 +187,10 @@ async function start() {
 
   // G1a — tick del GRAFCET (esperas y cierres vencidos con la última receptividad).
   setInterval(() => {
-    try { fsm.tick(ruleById, Date.now()); }
+    try {
+      fsm.tick(ruleById, Date.now());
+      processSilenceTick({ ruleById, siteState, fsm, silenceMs: FSM_SILENCE_SEC * 1000, startedAt: EDGE_STARTED_AT });
+    }
     catch (e) { console.error('[edge-engine] fsm tick error:', e.message); }
   }, FSM_TICK_SEC * 1000);
 
@@ -211,19 +217,24 @@ async function start() {
       // invalida el acc (la vida de aceite acumulada sobrevive la edición).
       const stateChanged = diff.changed.filter(id => stateSnapshot.get(id) !== nextStateSnap.get(id));
       const toClean   = [...diff.removed, ...stateChanged];
+      // spec_grafcet_g1c — TODA edición (umbral, banda, tiempos, textos o huella) cierra la alarma
+      // abierta por edición y vuelve la instancia a E1. El estado acumulado (acc, buffers M,
+      // ventanas S) se sigue borrando SOLO si cambió la huella (DEC-REF-128).
+      const edited    = [...diff.removed, ...diff.changed];
+      const softEdited = diff.changed.filter(id => !stateChanged.includes(id));
 
       // SF-4 · DEC-REF-64.a — capturar defs VIEJAS de reglas que van a ser
       // limpiadas Y que están ACTIVAS. Las necesitamos para construir
       // fireResolve antes del swap; después del swap, `packs` cambió y ya
       // no tenemos la definición vieja de una regla eliminada.
       const oldRuleDefs = new Map();
-      if (toClean.length > 0) {
+      if (edited.length > 0) {
         for (const pack of packs) {
           for (const rule of (pack.rules || [])) {
             // DEC-REF-122 — def por ruleId (igual para todas las instancias). El
             // gate de "activa" ya no es por ruleId (activeState es por instancia);
             // lo resuelve resolvedRuleIds abajo.
-            if (toClean.includes(rule.ruleId)) {
+            if (edited.includes(rule.ruleId)) {
               oldRuleDefs.set(rule.ruleId, rule);
             }
           }
@@ -233,6 +244,10 @@ async function start() {
       const { deletedCount, resolvedRuleIds } = cleanupStateForRules(toClean, {
         cooldownState, windowState, crossState, activeState, mState, siteCode: SITE_ID,
       });
+      // G1c — ediciones sin cambio de huella: capturar sus alarmas abiertas y limpiar solo los
+      // temporizadores (cooldown, cross start/fired); acc/ventanas se conservan.
+      const soft = cleanupStateForRules(softEdited, { cooldownState, crossState, activeState, siteCode: SITE_ID });
+      resolvedRuleIds.push(...soft.resolvedRuleIds);
 
       // SF-4 · DEC-REF-64.a + DEC-REF-122 — resolve-by-edit POR INSTANCIA: una
       // regla activa en varios equipos emite UN resolve por equipo (antes uno
@@ -258,7 +273,7 @@ async function start() {
       }
 
       // G1a — las instancias del GRAFCET de esas reglas vuelven a cero (E0 → E1 al recargar).
-      for (const inst of fsm.drop(toClean)) fsmStore.remove(inst.key);
+      for (const inst of fsm.drop(edited)) fsmStore.remove(inst.key);
 
       // DEC-REF-128 (A9.2) — borrar la persistencia de acumuladores de reglas
       // ELIMINADAS (no editadas): una regla recreada con el mismo ruleId no debe
@@ -279,6 +294,10 @@ async function start() {
       variableTypes = nextVarTypes;
       resetAutonomyRuntime(autonomyChanged);
       resetEfficiencyRuntime();
+      // G1c — "repite el proceso" al instante con el último valor conocido (D, C, cross).
+      const nRe = diff.changed.length
+        ? reevaluateRules({ ruleIds: diff.changed, packs, siteState, cooldownState, windowState, activeState, mState, fsm })
+        : 0;
 
       console.log(
         `[edge-engine] Reload OK — packs: ${nextPacks.map(p => p.packId).join(', ') || '(ninguno)'} · ` +
@@ -286,7 +305,8 @@ async function start() {
         `editadas: ${diff.changed.length} [${diff.changed.join(', ')}] · ` +
         `eliminadas: ${diff.removed.length} [${diff.removed.join(', ')}] · ` +
         `intactas: ${diff.unchanged.length} · keys estado borradas: ${deletedCount}` +
-        (resolvedRuleIds.length ? ` · resolve-by-edit: ${resolvedRuleIds.length} [${resolvedRuleIds.join(', ')}]` : '')
+        (resolvedRuleIds.length ? ` · resolve-by-edit: ${resolvedRuleIds.length} [${resolvedRuleIds.map(r => r.stateKey).join(', ')}]` : '') +
+        (nRe ? ` · reevaluadas al instante: ${nRe}` : '')
       );
     } catch (err) {
       console.error(

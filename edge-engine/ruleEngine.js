@@ -295,4 +295,56 @@ function fireResolve({ rule, deviceId, stateKey, reason, mode, recommendation, c
   notify(alarm);
 }
 
-module.exports = { processMessage, processStalenessTick, fireAlarm, fireResolve };
+// spec_grafcet_g1c (DEC-REF-148) — "al modificarse la regla vuelve a Vigilando y repite el
+// proceso": tras una edición (la instancia ya volvió a E1), reevalúa AL INSTANTE con el último
+// valor conocido de cada equipo. Solo D, C y cross: S y M no admiten reinyectar un valor
+// repetido (contaría dos veces en su ventana/buffer) → repiten el proceso con el próximo dato.
+function reevaluateRules({ ruleIds, packs, siteState, cooldownState, windowState, activeState, mState, fsm, now }) {
+  const set = new Set(ruleIds || []);
+  const ts = now || Date.now();
+  let n = 0;
+  for (const pack of packs) {
+    for (const rule of (pack.rules || [])) {
+      if (!set.has(rule.ruleId) || !['D', 'C', 'cross'].includes(rule.type)) continue;
+      const sub = [{ rules: [rule] }];
+      const ctx = { siteState, packs: sub, cooldownState, windowState, activeState, mState, eventTs: ts, fsm };
+      if (rule.type === 'cross') {
+        for (const [dId, ds] of siteState) {
+          if (ds && ds._siteCode) { processMessage({ dId, variable: null, value: null, ...ctx }); n++; break; }
+        }
+        continue;
+      }
+      for (const [dId, ds] of siteState) {
+        if (!ds || ds._deviceType !== rule.deviceType || ds[rule.variable] === undefined) continue;
+        processMessage({ dId, variable: rule.variable, value: ds[rule.variable], ...ctx });
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
+// spec_grafcet_g1c (DEC-REF-148 · Qe1) — "Sin datos" por SILENCIO del equipo. En cada tick,
+// toda instancia cuyo equipo lleva más de silenceMs sin mensajes (`_lastSeen`) recibe
+// receptividad nula → E5 desde cualquier etapa. Protocolo: no abre ni cierra alarmas; se
+// queda en E5 HASTA QUE LLEGUE EL DATO (el próximo mensaje la saca: T51/T53).
+// Fuera: `staleness` (mide justamente el silencio) y cross (sus hojas ya controlan frescura).
+// Caso raro #7: sin mensajes desde el arranque, el reloj corre desde `startedAt`.
+function processSilenceTick({ ruleById, siteState, fsm, silenceMs, startedAt, now }) {
+  const ts = now || Date.now();
+  let n = 0;
+  for (const inst of fsm.instances.values()) {
+    if (inst.step === 'E5') continue;
+    const rule = ruleById.get(inst.ruleId);
+    if (!rule || rule.type === 'cross' || (rule.type === 'M' && rule.metric === 'staleness')) continue;
+    const ds = inst.dId ? siteState.get(inst.dId) : null;
+    if (!ds) continue;
+    const last = Math.max(Number(ds._lastSeen) || 0, startedAt || 0);
+    if (ts - last <= silenceMs) continue;
+    fsm.evaluate(rule, inst.key, null, { dId: inst.dId, value: null, reason: 'silence' }, ts);
+    n++;
+  }
+  return n;
+}
+
+module.exports = { processMessage, processStalenessTick, processSilenceTick, reevaluateRules, fireAlarm, fireResolve };

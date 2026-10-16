@@ -10,7 +10,7 @@
 //
 // Uso (contenedor node — tiene la API en localhost:3001, Mongo y EMQX):
 //   docker exec -i node node - --list < tools/banco/run.js
-//   docker exec -i node node - --dId XXXXXXXX --var VARIABLE [--T 100] < tools/banco/run.js
+//   docker exec -i node node - --dId XXXXXXXX --var VARIABLE [--T 100] [--silence 600] < tools/banco/run.js
 //   (la fase posterior al reinicio del edge la orquesta tools/banco/banco.sh)
 //
 // Resultados: VERDE (cumple el mockup) · ROJO (no cumple, con evidencia) · OBSERVADO (el
@@ -212,45 +212,54 @@ async function main() {
     'un episodio NUEVO (después de un cierre) avisa aunque no hayan pasado 5 min (cooldown)',
     `${steps(ts)} · aviso de disparo en la consola: ${refire ? 'sí' : 'NO'}`);
 
-  // C7 — se corta el dato con la alarma abierta.
-  s = now(); await mqttCmd(dId, 'stop_publishing'); log('   simulador: stop_publishing'); await sleep(90);
-  ts = await trans(s); const row7 = await fsmRow(dId);
-  result('C7', ts.some((t) => t.to === 'E5') ? 'VERDE' : 'OBSERVADO',
-    'sin datos → "Sin datos" (E5) y la alarma sigue abierta',
-    `90 s sin publicar: ${steps(ts)} · etapa ${row7 ? row7.step : 'E1 (sin fila)'} · alarma abierta: ${row7 ? !!row7.alarmOpen : false}. ` +
-    'El tipo D se evalúa solo cuando llega un mensaje; no hay un tiempo de "sin datos" definido para D.');
-  await mqttCmd(dId, 'resume_publishing'); log('   simulador: resume_publishing'); await sleep(10);
+  // C7 — se corta el dato con la alarma abierta (spec_grafcet_g1c · Qe1): tras FSM_SILENCE_SEC
+  // pasa a "Sin datos" (E5), la alarma sigue abierta, sin avisos; se queda ahí HASTA QUE
+  // LLEGUE EL DATO, y con el dato vuelve a Alarma (misma alarma, sin aviso nuevo).
+  const SIL = Number(arg('silence', 600));
+  s = now(); await mqttCmd(dId, 'stop_publishing'); log(`   simulador: stop_publishing (espera ${SIL + 20}s; FSM_SILENCE_SEC del edge = ${SIL})`);
+  await sleep(SIL + 20);
+  ts = await trans(s); ns = await notifs(s); const row7 = await fsmRow(dId);
+  const e5 = ts.find((t) => t.to === 'E5');
+  result('C7', e5 && row7 && row7.step === 'E5' && row7.alarmOpen && !ns.length ? 'VERDE' : 'ROJO',
+    `sin datos ${SIL}s → "Sin datos" (E5), la alarma sigue abierta y no hay avisos`,
+    `${steps(ts)} · entró a E5 a los ${e5 ? Math.round((e5.ts - s) / 1000) + 's' : '—'} · etapa ${row7 ? row7.step : 'E1 (sin fila)'} · abierta: ${row7 ? !!row7.alarmOpen : false} · avisos: ${ns.length}`);
+  s = now(); await mqttCmd(dId, 'resume_publishing'); await setVal(dId, variable, hi2); await sleep(10);
+  ts = await trans(s); ns = await notifs(s); const row7b = await fsmRow(dId);
+  result('C7b', row7b && row7b.step === 'E3' && !ns.length ? 'VERDE' : 'ROJO',
+    'vuelve el dato → sale de "Sin datos" a la misma alarma, sin aviso nuevo',
+    `${steps(ts)} · etapa ${row7b ? row7b.step : '—'} · avisos: ${ns.length}`);
 
-  // C9 — edición de la regla con la alarma abierta. Dos casos (DEC-REF-128, reloadState.js:39):
-  //   C9a · cambio de UMBRAL: la alarma NO se cierra por edición (la huella de estado no
-  //         cambia); el mockup promete que "la regla nueva rige desde ese momento" → con el
-  //         valor actual debajo del umbral nuevo, tiene que pasar a cierre SIN esperar un dato nuevo.
-  //   C9b · cambio de VARIABLE (huella de estado): cierre por edición (resolve-by-edit).
+  // C9 — edición con la alarma abierta (spec_grafcet_g1c): TODA edición cierra por edición,
+  // vuelve a Vigilando y repite el proceso AL INSTANTE con el último valor (sin esperar un dato).
   const openAgain = async () => { const r = await fsmRow(dId); if (!r || !r.alarmOpen) { await setVal(dId, variable, lo); await sleep(8); await setVal(dId, variable, hi); await sleep(GRACE + 15); } };
-  await openAgain();
-  s = now();
-  const T2 = T + 10 * u;                  // nuevo umbral: el valor actual (hi) queda debajo
-  await putRule(st, ruleD(st, T2)); log(`   regla editada: umbral ${T} → ${T2} (sin publicar valores nuevos)`); await sleep(CLOSE + 20);
-  ns = await notifs(s); ts = await trans(s);
-  let row9 = await fsmRow(dId);
-  const cerro9a = ns.some((n) => n.kind === 'resolve');
-  result('C9a', cerro9a && !(row9 && row9.alarmOpen) ? 'VERDE' : 'ROJO',
-    'al cambiar el umbral con la alarma abierta, el umbral nuevo rige al instante (sin esperar otro dato)',
-    `${CLOSE + 20}s después de editar: ${steps(ts)} · cierre: ${cerro9a ? 'sí (' + ns.find((n) => n.kind === 'resolve').mode + ')' : 'NO'} · alarma abierta: ${row9 ? !!row9.alarmOpen : false}. ` +
-    'El motor solo reevalúa cuando llega un mensaje del equipo.');
+  const edit = async (c, regla, texto, esperaReabrir) => {
+    await openAgain();
+    const t0 = now();
+    await putRule(st, regla); log(`   regla editada: ${texto} (sin publicar valores nuevos)`);
+    await sleep(esperaReabrir ? GRACE + 20 : 20);
+    const n9 = await notifs(t0), t9 = await trans(t0), r9 = await fsmRow(dId);
+    const rEdit = n9.find((n) => n.kind === 'resolve' && n.mode === 'resolve-by-edit');
+    const refire = n9.find((n) => (n.kind || 'fire') === 'fire');
+    const ok = rEdit && (esperaReabrir ? (refire && r9 && r9.alarmOpen && Number(refire.thresholdUsed) === regla.condition.value) : !(r9 && r9.alarmOpen) && !refire);
+    result(c, ok ? 'VERDE' : 'ROJO', `${texto}: cierra por edición y ${esperaReabrir ? 'vuelve a disparar con el umbral nuevo tras la espera' : 'queda vigilando'}`,
+      `cierre por edición: ${rEdit ? 'sí' : 'NO'} · ${steps(t9)} · aviso nuevo: ${refire ? 'sí (umbral ' + refire.thresholdUsed + ')' : 'no'} · abierta: ${r9 ? !!r9.alarmOpen : false}`);
+  };
+  await edit('C9a1', ruleD(st, T + 10 * u), `umbral ${T} → ${T + 10 * u} (el valor actual queda debajo)`, false);
+  await putRule(st, ruleD(st, T)); await sleep(15);
+  await edit('C9a2', ruleD(st, T - u), `umbral ${T} → ${T - u} (el valor actual sigue arriba)`, true);
+  await putRule(st, ruleD(st, T)); await sleep(15);
+  if (st.otraVar) await edit('C9b', { ...ruleD(st, T), variable: st.otraVar }, `variable ${variable} → ${st.otraVar}`, false);
+  else result('C9b', 'OBSERVADO', 'cierre por edición al cambiar la variable', 'el equipo no tiene otra variable float para probarlo');
+  await putRule(st, ruleD(st, T)); await sleep(15);
 
-  // C9b — cambio de la huella de estado (otra variable del mismo equipo).
-  const otraV = st.otraVar;
-  if (otraV) {
-    await putRule(st, ruleD(st, T)); await sleep(15); await openAgain();
-    s = now();
-    await putRule(st, { ...ruleD(st, T), variable: otraV }); log(`   regla editada: variable ${variable} → ${otraV}`); await sleep(20);
-    ns = await notifs(s); ts = await trans(s); row9 = await fsmRow(dId);
-    const rEdit = ns.find((n) => n.kind === 'resolve' && n.mode === 'resolve-by-edit');
-    result('C9b', rEdit && !(row9 && row9.alarmOpen) ? 'VERDE' : 'ROJO',
-      'al cambiar QUÉ mide la regla (variable) con la alarma abierta, se cierra por edición',
-      `cierre por edición: ${rEdit ? 'sí' : 'NO'} · ${steps(ts)} · alarma abierta después: ${row9 ? !!row9.alarmOpen : false}`);
-  } else result('C9b', 'OBSERVADO', 'cierre por edición al cambiar la variable', 'el equipo no tiene otra variable float para probarlo');
+  // C9c — Apagada: el interruptor cierra prolijamente la alarma abierta.
+  await openAgain();
+  s = now(); await api('PATCH', `/rulepacks/${PACK}/rules/${RULE}/enabled`, { enabled: false }); log('   interruptor: regla apagada'); await sleep(15);
+  ns = await notifs(s); const r9c = await fsmRow(dId);
+  const rOff = ns.find((n) => n.kind === 'resolve');
+  result('C9c', rOff && !(r9c && r9c.alarmOpen) ? 'VERDE' : 'ROJO', 'apagar la regla cierra prolijamente la alarma abierta',
+    `cierre: ${rOff ? 'sí (' + rOff.mode + ')' : 'NO'} · abierta después: ${r9c ? !!r9c.alarmOpen : false}`);
+  await putRule(st, ruleD(st, T)); await sleep(15);
 
   // Prepara C10: umbral original + alarma abierta. La fase post-reinicio la verifica.
   // (el simulador no republica un valor repetido: se baja y se vuelve a subir)
@@ -287,7 +296,7 @@ async function post() {
     fire ? `abrir http://localhost:3000/alarmas/${fire} y verificar la lista de abajo` : 'no hubo alarma para abrir');
 
   // Informe
-  const orden = ['C1a', 'C1', 'C2b', 'C2', 'C3', 'C3b', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9a', 'C9b', 'C10', 'C11', 'C12'];
+  const orden = ['C1a', 'C1', 'C2b', 'C2', 'C3', 'C3b', 'C4', 'C5', 'C6', 'C7', 'C7b', 'C8', 'C9a1', 'C9a2', 'C9b', 'C9c', 'C10', 'C11', 'C12'];
   RESULTS.sort((a, b) => orden.indexOf(a.c) - orden.indexOf(b.c));
   const n = (k) => RESULTS.filter((r) => r.estado === k).length;
   console.log('\n════════ INFORME B0 · tipo D ════════');

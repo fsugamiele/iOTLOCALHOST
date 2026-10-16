@@ -9,7 +9,11 @@ el del mockup "Ciclo de vida de una regla":
 - **Apagada:** *"si tenía una alarma abierta, la cierra prolijamente"*.
 
 ## 0 · CANDADO
-preguntas_abiertas: 1 (Qe1). Hasta que se firme, no se implementa.
+preguntas_abiertas: 0. Qe1 firmada por Franco el 2026-10-16: *"la condición tiene que ser hasta que llegue el dato, en algún momento tiene que restablecer"*.
+- **Salida de E5:** solo con la llegada del dato. No hay plazo de salida.
+- **Entrada:** sigue siendo el silencio mayor a `FSM_SILENCE_SEC`, por defecto 600 s (2 latidos).
+
+**IMPLEMENTADO (2026-10-16):** `ruleEngine.js` (`reevaluateRules`, `processSilenceTick`) e `index.js` (recarga y tick). `reloadState.js` **no** se tocó: se reusa `cleanupStateForRules` pasándole solo los temporizadores para las ediciones sin cambio de huella. Banco: C7 y C7b (vuelta del dato), C9a1, C9a2, C9b y C9c (interruptor).
 
 | # | Pregunta | Recomendada | Alternativa |
 |---|---|---|---|
