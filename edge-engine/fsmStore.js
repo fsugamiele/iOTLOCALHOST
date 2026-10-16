@@ -31,6 +31,8 @@ const RuleFsmRow = mongoose.models.RuleFsm || mongoose.model('RuleFsm',
     closeStart: Number,
     lastR:      mongoose.Schema.Types.Mixed,
     lastCtx:    mongoose.Schema.Types.Mixed,
+    acked:      Boolean,     // G1b — confirmada por el operador (sobrevive reinicios)
+    ackedBy:    String,
     updatedAt:  Number,
   }, { collection: 'rulefsm' }).index({ siteId: 1, key: 1 }, { unique: true })
 );

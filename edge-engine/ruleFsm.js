@@ -16,7 +16,10 @@
 // PURO: sin Mongo, sin MQTT, sin Date.now(). El reloj llega como argumento y las acciones
 // (notificar, resolver, trazar, persistir) son callbacks inyectados → replay determinista.
 
-const STEP_NAMES = { E1: 'Vigilando', E2: 'Observando', E3: 'Alarma', E4: 'Recuperándose', E5: 'Sin datos' };
+const STEP_NAMES = { E1: 'Vigilando', E2: 'Observando', E3: 'Alarma', E4: 'Recuperándose', E5: 'Sin datos', E6: 'Esperando confirmación' };
+// G1b (DEC-REF-146) — reglas con reset_behavior:'manual' no cierran solas: al normalizarse
+// pasan a E6 y cierran con la confirmación del operador (ack) o el service (acumuladores).
+const isManual = (rule) => !!rule && rule.reset_behavior === 'manual';
 const MAX_HOPS = 6;   // transiciones encadenadas en una misma evaluación (E5→E1→E2→E3 es la más larga)
 
 function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
@@ -29,6 +32,7 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
       step: 'E1', since: now, alarmOpen: false, firedAt: null,
       graceStart: null, closeStart: null,
       lastR: undefined, lastCtx: null,
+      acked: false, ackedBy: null,
     };
   }
 
@@ -40,10 +44,12 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
     if (action === 'notify') {
       inst.alarmOpen = true;
       inst.firedAt = now;
+      inst.acked = false; inst.ackedBy = null;   // episodio nuevo
       if (onNotify) onNotify(inst, ctx, now, currentRule);
     } else if (action === 'resolve') {
       inst.alarmOpen = false;
       inst.firedAt = null;
+      inst.acked = false; inst.ackedBy = null;
       if (onResolve) onResolve(inst, ctx, now, currentRule);
     }
     if (onTransition) {
@@ -73,8 +79,16 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
         return false;
       case 'E3':
         if (r === null) { go(inst, 'E5', 'T35', r, ctx, now); return true; }
+        // G1b · Qb2 — manual sin confirmar: normalizada, espera al operador (no cierra).
+        if (r === 'off' && isManual(rule) && !inst.acked) { go(inst, 'E6', 'T36', r, ctx, now); return true; }
         if (r === 'off') { inst.closeStart = now; go(inst, 'E4', 'T34', r, ctx, now); return true; }
         return false;   // 'on' o 'band' (histéresis): sigue en alarma
+      case 'E6':
+        if (r === null) { go(inst, 'E5', 'T65', r, ctx, now); return true; }
+        if (r === 'on') { go(inst, 'E3', 'T63', r, ctx, now); return true; }   // volvió: misma alarma, sin re-avisar
+        // Caso raro #9 — la regla dejó de ser manual: sigue el cierre normal por tiempo.
+        if (r === 'off' && (!isManual(rule) || inst.acked)) { inst.closeStart = now; go(inst, 'E4', 'T64', r, ctx, now); return true; }
+        return false;
       case 'E4':
         if (r === null) { inst.closeStart = null; go(inst, 'E5', 'T45', r, ctx, now); return true; }
         if (r !== 'off') { inst.closeStart = null; go(inst, 'E3', 'T43', r, ctx, now); return true; }   // sin re-notificar
@@ -112,6 +126,36 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
     return inst;
   }
 
+  // command — acción humana desde la API (G1b · Qb1): 'ack' (confirmación) o 'service'
+  // (registro de mantenimiento en acumuladores; el caller ya puso el acumulado en 0).
+  // Devuelve lo que hizo: 'resolved' | 'acked' | 'ignored'.
+  function command(rule, key, type, ctx, nowIn) {
+    const inst = instances.get(key);
+    if (!inst || !inst.alarmOpen) return 'ignored';
+    const now = Math.max(Number(nowIn) || 0, inst.since || 0);
+    currentRule = rule;
+    const by = (ctx && ctx.by) || null;
+    const c = { ...(inst.lastCtx || {}), ...(ctx || {}) };
+    if (type === 'service' || (type === 'ack' && inst.step === 'E6')) {
+      inst.graceStart = null; inst.closeStart = null;
+      c.resolveReason = type === 'service' ? 'service-registered' : 'acknowledged';
+      c.resolveMode = type === 'service' ? 'resolve-by-service' : 'resolve-by-ack';
+      c.closedBy = by;
+      go(inst, 'E1', type === 'service' ? 'TSV' : 'TACK', inst.lastR, c, now, 'resolve');
+      if (onPersist) onPersist(inst);
+      return 'resolved';
+    }
+    if (type === 'ack') {
+      if (inst.acked) return 'ignored';   // caso raro #5: idempotente
+      inst.acked = true; inst.ackedBy = by;
+      if (onTransition) onTransition({ key: inst.key, ruleId: inst.ruleId, dId: inst.dId, from: inst.step, to: inst.step,
+        transition: 'ACK', receptivity: inst.lastR === undefined ? null : inst.lastR, value: null, thresholdUsed: null, action: 'ack', ts: now });
+      if (onPersist) onPersist(inst);
+      return 'acked';
+    }
+    return 'ignored';
+  }
+
   // tick — vence temporizaciones (espera / cierre) con la ÚLTIMA receptividad conocida.
   // No inventa datos: solo instancias en E2/E4 con receptividad no nula.
   // ruleById: Map<ruleId, rule> vigente.
@@ -140,6 +184,7 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
         closeStart: r.closeStart != null ? Number(r.closeStart) : null,
         lastR: r.lastR === undefined ? undefined : r.lastR,
         lastCtx: r.lastCtx || null,
+        acked: !!r.acked, ackedBy: r.ackedBy || null,
       });
     }
     return instances.size;
@@ -156,7 +201,7 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
     return removed;
   }
 
-  return { evaluate, tick, hydrate, drop, get: (k) => instances.get(k), instances };
+  return { evaluate, command, tick, hydrate, drop, get: (k) => instances.get(k), instances };
 }
 
 // Vista persistible de una instancia (lo que guarda fsmStore).
@@ -166,6 +211,7 @@ function toRow(inst) {
     step: inst.step, since: inst.since, alarmOpen: inst.alarmOpen, firedAt: inst.firedAt,
     graceStart: inst.graceStart, closeStart: inst.closeStart,
     lastR: inst.lastR === undefined ? null : inst.lastR, lastCtx: inst.lastCtx || null,
+    acked: !!inst.acked, ackedBy: inst.ackedBy || null,
   };
 }
 

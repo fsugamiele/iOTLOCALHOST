@@ -70,7 +70,11 @@ const fsm = createRuleFsm({
   onResolve: (inst, ctx, now, rule) => fireResolve({
     rule, deviceId: (ctx && ctx.dId) || inst.dId, stateKey: inst.key,
     reason: (ctx && ctx.resolveReason) || 'threshold-cleared',
-    mode: ctx && ctx.mode === 'M' ? 'M' : 'resolve-by-condition',
+    // G1b — cierre por acción humana: resolve-by-ack / resolve-by-service (auditoría en la notificación).
+    mode: (ctx && ctx.resolveMode) || (ctx && ctx.mode === 'M' ? 'M' : 'resolve-by-condition'),
+    recommendation: ctx && ctx.resolveMode
+      ? `${ctx.resolveMode === 'resolve-by-service' ? 'Service registrado' : 'Confirmada'}${ctx.closedBy ? ' por ' + ctx.closedBy : ''}: alarma cerrada.`
+      : undefined,
     cooldownState, siteState, activeState,
   }),
   onTransition: (t) => fsmStore.trace(t),
@@ -140,6 +144,21 @@ async function start() {
     }
     fsmStore.remove(r.key);
   }
+  // G1b · caso raro #4 — confirmaciones hechas con el edge caído: alarmas manuales
+  // abiertas sin confirmar cuyo fire ya tiene ackAt en Mongo → aplicar el ack.
+  try {
+    const pend = [...fsm.instances.values()].filter(i => i.alarmOpen && !i.acked && ruleById.has(i.ruleId) && ruleById.get(i.ruleId).reset_behavior === 'manual');
+    for (const inst of pend) {
+      const n = await mongoose.connection.db.collection('notifications').findOne(
+        { ruleId: inst.ruleId, siteId: SITE_ID, ...(ruleById.get(inst.ruleId).type === 'cross' ? {} : { dId: inst.dId }),
+          kind: { $ne: 'resolve' }, ackAt: { $ne: null }, time: { $gte: (inst.firedAt || 0) - 60000 } },
+        { sort: { time: -1 }, projection: { acknowledgedBy: 1, dId: 1 } });
+      if (n) {
+        const r = fsm.command(ruleById.get(inst.ruleId), inst.key, 'ack', { dId: inst.dId, by: n.acknowledgedBy }, Date.now());
+        console.log(`[edge-engine] G1b: confirmación pendiente aplicada a ${inst.key} → ${r}`);
+      }
+    }
+  } catch (e) { console.error('[edge-engine] G1b reconciliación de confirmaciones:', e.message); }
   fsmStore.start();
   console.log(`[edge-engine] GRAFCET: ${fsm.instances.size} instancia(s) hidratada(s) · ${[...fsm.instances.values()].filter(i => i.alarmOpen).length} alarma(s) abierta(s)`);
   console.log(`[edge-engine] Packs cargados: ${packs.map(p => p.packId).join(', ') || '(ninguno)'}`);
@@ -276,6 +295,24 @@ async function start() {
     }
   }
 
+  // G1b (DEC-REF-146 · Qb1) — comando humano por el canal de recarga: {cmd:'ack'|'service', ruleId, dId, siteId, by}.
+  function handleCommand(c) {
+    if (c.siteId && c.siteId !== SITE_ID) return;            // es de otro sitio
+    const rule = ruleById.get(c.ruleId);
+    if (!rule) { console.warn(`[edge-engine] Comando ${c.cmd} ignorado: regla ${c.ruleId} no cargada`); return; }
+    const key = rule.type === 'cross' ? `${rule.ruleId}:${SITE_ID}` : `${rule.ruleId}:${c.dId}`;
+    if (c.cmd === 'service') {
+      if (rule.metric !== 'accumulator') { console.warn(`[edge-engine] service ignorado: ${rule.ruleId} no es acumulador`); return; }
+      // Acumulado a 0 (y persistido por el flush de msoftstate) — cierra M-10.
+      const mk = `${rule.ruleId}:${c.dId}`;
+      const st = mState.get(mk) || { acc: 0, lastValue: null, lastTs: null };
+      st.acc = 0; st._persist = true; st.dirty = true; mState.set(mk, st);
+      flushMSoftState(SITE_ID, mState).catch(e => console.error('[msoftstate] flush error:', e.message));
+    }
+    const r = fsm.command(rule, key, c.cmd, { dId: c.dId, by: c.by || null }, Date.now());
+    console.log(`[edge-engine] Comando ${c.cmd} ${key} por ${c.by || '?'} → ${r}`);
+  }
+
   // SF-4 · DEC-REF-64.a helper — busca el primer dId cuyo device state tenga
   // el deviceType requerido en el siteCode del edge. Usado por resolve-by-edit
   // para poner un deviceId semánticamente correcto en el alarm object (necesario
@@ -312,6 +349,13 @@ async function start() {
   client.on('message', (topic, raw) => {
     // Canal de control: reload. Payload ignorado (DEC-REF-61.c).
     if (topic === RELOAD_TOPIC_SITE || topic === RELOAD_TOPIC_ALL) {
+      // G1b · Qb1 — payload con `cmd` = comando humano (ack/service), NO recarga.
+      let ctl = null;
+      try { ctl = JSON.parse(raw.toString()); } catch (_) { ctl = null; }
+      if (ctl && (ctl.cmd === 'ack' || ctl.cmd === 'service') && ctl.ruleId) {
+        try { handleCommand(ctl); } catch (e) { console.error('[edge-engine] comando error:', e.message); }
+        return;
+      }
       console.log(`[edge-engine] Reload solicitado por ${topic}`);
       reloadPacks();  // fire-and-forget — el handler tiene su propio try/catch
       return;

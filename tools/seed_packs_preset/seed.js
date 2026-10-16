@@ -66,6 +66,8 @@ const oilLife = (deviceType, tempVar) => M({
   inferenceId: 'OIL_LIFE',
   severity: 'warning', deviceType, variable: tempVar, unit: '', metric: 'accumulator',
   condition: { op: 'gte', value: 250 },
+  // G1b (Q6/Qb3) — no se cierra sola: cierra cuando el técnico registra el service.
+  reset_behavior: 'manual',
   mParams: { weightVariable: tempVar, weightFn: 'arrhenius', weightRef: 90, weightStep: 10 },
   variableLabel: 'Desgaste del aceite',
   recommendation: 'El aceite ya acumuló las horas de uso de su intervalo de cambio (las horas cuentan más cuando el motor trabaja caliente). Programar el cambio de aceite.',
