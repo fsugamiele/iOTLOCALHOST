@@ -18,7 +18,10 @@ function get(path) {
 }
 
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+  // Misma URI que app/api/index.js (MONGODB_URI apunta a localhost, que dentro del contenedor no es Mongo).
+  const e = process.env;
+  const uri = `mongodb://${e.MONGO_USERNAME}:${encodeURIComponent(e.MONGO_PASSWORD)}@${e.MONGO_HOST}:${e.MONGO_PORT}/${e.MONGO_DATABASE}`;
+  await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true, authSource: 'admin' });
   const n = await mongoose.connection.db.collection('notifications')
     .find({ ruleId: /oil-life/, kind: { $ne: 'resolve' } }).sort({ time: -1 }).limit(1).next();
   if (!n) { console.log('No hay alarmas de vida de aceite.'); process.exit(0); }
