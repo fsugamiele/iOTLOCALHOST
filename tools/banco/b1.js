@@ -112,7 +112,7 @@ async function b1() {
     ts = await trans(R, s); rs = resolves(await notifs(R, s));
     result('S4', abierta.alarmOpen && rs.length ? 'VERDE' : abierta.alarmOpen ? 'ROJO' : 'OBSERVADO',
       'sin valores nuevos, cuando la ventana se vacía la alarma cierra sola',
-      `alarma abierta al empezar: ${!!abierta.alarmOpen} · ${WIN + CLOSE + 10}s sin publicar: ${steps(ts)} · cierres: ${rs.length}. S se evalúa solo al llegar un mensaje.`);
+      `alarma abierta al empezar: ${!!abierta.alarmOpen} · ${WIN + CLOSE + 10}s sin publicar: ${steps(ts)} · cierres: ${rs.length}.`);
     await putPack(DT, []); await setVal(dId, V, lo); await sleep(8);
   }
 
@@ -132,7 +132,7 @@ async function b1() {
     let ts = await trans(R, s), rs = resolves(await notifs(R, s)), row = await fsmRow(key);
     result('C2', rs.length && !(row && row.alarmOpen) ? 'VERDE' : 'ROJO',
       `sube el setpoint (${T + 10 * u}) con la alarma abierta: rige al instante y la alarma pasa a cierre`,
-      `${steps(ts)} · cierres: ${rs.length} · abierta: ${row ? !!row.alarmOpen : false}. C solo se evalúa cuando llega la variable ${V}, no el setpoint.`);
+      `${steps(ts)} · cierres: ${rs.length} · abierta: ${row ? !!row.alarmOpen : false}`);
     // C3 — llega el valor: con el setpoint nuevo, cierra.
     s = now(); await setVal(dId, V, hi2); await sleep(CLOSE + 15);
     ts = await trans(R, s); rs = resolves(await notifs(R, s)); row = await fsmRow(key);

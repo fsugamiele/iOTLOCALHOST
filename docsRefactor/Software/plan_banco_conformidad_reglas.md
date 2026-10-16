@@ -105,3 +105,16 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
   - **S4 ROJO:** sin datos nuevos, la ventana se vacía y la alarma no se cierra (S se evalúa solo con mensajes).
   - **S3, decisión de diseño:** hoy cierra con el primer valor normal, aunque la ventana todavía tenga N coincidencias.
   - S1 y S2 en verde.
+
+### B1 con G1d (2026-10-16, `b19d44d`) — **B1 CERRADO EN VERDE**
+- **S, 5/5:**
+  - S1 y S2 en verde.
+  - S3a/S3b: un valor normal no cierra mientras haya N coincidencias en la ventana; cuando quedan menos de N, cierra (opción A).
+  - S4: la ventana se vacía sin mensajes y la alarma cierra sola.
+- **C, 4/4:**
+  - C1 en verde.
+  - C2: subir el setpoint con la alarma abierta la pasa a cierre al instante.
+  - C3: queda cubierto por C2 (la alarma ya está cerrada).
+  - C4: respaldo con su aviso informativo.
+- **Total B1:** DF 3/3 · S 5/5 · C 4/4 · cross 6/6.
+- **Lección operativa:** la primera corrida de C falló porque, en paralelo, se disparó un escenario del simulador sobre el mismo equipo. **El banco necesita el equipo simulado en exclusiva** mientras corre.
