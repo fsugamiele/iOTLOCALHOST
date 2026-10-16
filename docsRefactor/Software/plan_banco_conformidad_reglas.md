@@ -93,3 +93,15 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
 - **C7 y C7b:** "Sin datos" a los 576 s de silencio (se cuenta desde el último mensaje real, anterior al corte). La alarma sigue abierta, sin avisos, y con el dato vuelve a la misma alarma.
 - **C9a1, C9a2, C9b y C9c:** toda edición cierra por edición y repite el proceso al instante. Con el umbral bajado, vuelve a disparar con el umbral nuevo (99) tras la espera.
 - **El motor del tipo D cumple el protocolo del mockup.** Lo pendiente del tipo D es solo la UI (C12, anexo de `spec_grafcet_g1c.md`).
+
+### B1 · núcleo (2026-10-16, corridas 14:33 y 14:47 · `327cf92`)
+**VERDE 14 · ROJO 2 · DISEÑO 1.**
+- **DF (umbral de ficha), 3/3:** dispara con el límite de la ficha. Al cambiar la ficha con la alarma abierta, la cierra por edición y repite el proceso con el límite nuevo (cascada + G1c).
+- **cross, 6/6:** combinada plana (Y) y anidada ((Y) O), incluido el pase de una rama a la otra sin cerrar.
+- **C, 3/4:**
+  - **C2 ROJO:** si cambia el setpoint con la alarma abierta, no se reevalúa hasta que llega la variable medida.
+  - C1, C3 y C4 en verde.
+- **S, 2/4:**
+  - **S4 ROJO:** sin datos nuevos, la ventana se vacía y la alarma no se cierra (S se evalúa solo con mensajes).
+  - **S3, decisión de diseño:** hoy cierra con el primer valor normal, aunque la ventana todavía tenga N coincidencias.
+  - S1 y S2 en verde.
