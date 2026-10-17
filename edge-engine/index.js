@@ -8,7 +8,8 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') })
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
-const { processMessage, processStalenessTick, processSilenceTick, processWindowTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
+const { processMessage, processStalenessTick, processSilenceTick, processWindowTick, processCombinedTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
+const { isCombined, leavesOf, measureOf, leafIds } = require('../app/api/services/combinedRule');
 const { createRuleFsm } = require('./ruleFsm');      // spec_grafcet_g1 · G1a (DEC-REF-145)
 const { createFsmStore } = require('./fsmStore');
 const notificationRouter      = require('./notificationRouter');
@@ -68,6 +69,7 @@ const fsm = createRuleFsm({
     deviceId: (ctx && ctx.dId) || inst.dId, stateKey: inst.key,
     reason: ctx && ctx.reason, mode: ctx && ctx.mode,
     thresholdUsed: ctx && ctx.thresholdUsed !== undefined ? ctx.thresholdUsed : null,
+    leaves: ctx && ctx.leaves,
     cooldownState, siteState, activeState,
   }),
   onResolve: (inst, ctx, now, rule) => fireResolve({
@@ -188,6 +190,7 @@ async function start() {
   // G1a — tick del GRAFCET (esperas y cierres vencidos con la última receptividad).
   setInterval(() => {
     try {
+      processCombinedTick({ packs, siteState, mState, fsm });   // spec_reglas_compuestas — combinadas
       fsm.tick(ruleById, Date.now());
       processSilenceTick({ ruleById, siteState, fsm, silenceMs: FSM_SILENCE_SEC * 1000, startedAt: EDGE_STARTED_AT });
       processWindowTick({ ruleById, windowState, fsm });   // G1d — ventanas S que se vacían solas
@@ -321,13 +324,20 @@ async function start() {
     if (c.siteId && c.siteId !== SITE_ID) return;            // es de otro sitio
     const rule = ruleById.get(c.ruleId);
     if (!rule) { console.warn(`[edge-engine] Comando ${c.cmd} ignorado: regla ${c.ruleId} no cargada`); return; }
-    const key = rule.type === 'cross' ? `${rule.ruleId}:${SITE_ID}` : `${rule.ruleId}:${c.dId}`;
+    // spec_reglas_compuestas — una combinada con ancla es por equipo; sin ancla, por sitio.
+    const comb = isCombined(rule);
+    const key = rule.type === 'cross' && !(comb && rule.scope && rule.scope.deviceType) ? `${rule.ruleId}:${SITE_ID}` : `${rule.ruleId}:${c.dId}`;
     if (c.cmd === 'service') {
-      if (rule.metric !== 'accumulator') { console.warn(`[edge-engine] service ignorado: ${rule.ruleId} no es acumulador`); return; }
-      // Acumulado a 0 (y persistido por el flush de msoftstate) — cierra M-10.
-      const mk = `${rule.ruleId}:${c.dId}`;
-      const st = mState.get(mk) || { acc: 0, lastValue: null, lastTs: null };
-      st.acc = 0; st._persist = true; st.dirty = true; mState.set(mk, st);
+      // Acumulado a 0 (y persistido por el flush de msoftstate) — cierra M-10. En una combinada:
+      // todas sus condiciones "vida útil" de ese equipo.
+      const mks = comb
+        ? leavesOf(rule.crossExpr).filter(l => measureOf(l) === 'metric' && l.metric === 'accumulator').map(l => `${rule.ruleId}#${leafIds(rule).get(l)}:${c.dId}`)
+        : (rule.metric === 'accumulator' ? [`${rule.ruleId}:${c.dId}`] : []);
+      if (!mks.length) { console.warn(`[edge-engine] service ignorado: ${rule.ruleId} no es acumulador`); return; }
+      for (const mk of mks) {
+        const st = mState.get(mk) || { acc: 0, lastValue: null, lastTs: null };
+        st.acc = 0; st._persist = true; st.dirty = true; mState.set(mk, st);
+      }
       flushMSoftState(SITE_ID, mState).catch(e => console.error('[msoftstate] flush error:', e.message));
     }
     const r = fsm.command(rule, key, c.cmd, { dId: c.dId, by: c.by || null }, Date.now());

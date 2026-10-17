@@ -4,6 +4,7 @@
 # Uso:
 #   bash tools/banco/banco.sh --b1 --dId XXXXXXXX --var VARIABLE [--sp OTRA] [--T 100]   (B1)
 #   bash tools/banco/banco.sh --b2 --dId XXXXXXXX --var VARIABLE [--sp OTRA] [--only T,R,A]   (B2 · reglas M)
+#   bash tools/banco/banco.sh --b4 --dId XXXXXXXX --var VARIABLE [--sp OTRA] [--only A,B,C]   (B4 · combinadas)
 #   bash tools/banco/banco.sh --list
 #   bash tools/banco/banco.sh --dId XXXXXXXX --var VARIABLE [--T 100] [--silence 600]
 #   --silence = FSM_SILENCE_SEC del edge (default 600). Para un banco más corto: FSM_SILENCE_SEC=60
@@ -22,6 +23,13 @@ if [[ "${1:-}" == "--b2" ]]; then
   LOG="banco_B2_$(date +%Y%m%d_%H%M).log"
   echo "Banco B2 (reglas M) — T ~8 min · R ~10 min · A ~15 min. Salida también en $LOG"
   cat tools/banco/lib.js tools/banco/b2.js | docker exec -i node node - "$@" 2>&1 | tee "$LOG"
+  exit 0
+fi
+if [[ "${1:-}" == "--b4" ]]; then
+  shift
+  LOG="banco_B4_$(date +%Y%m%d_%H%M).log"
+  echo "Banco B4 (reglas combinadas) — A ~9 min · B ~3 min · C ~3 min. Salida también en $LOG"
+  cat tools/banco/lib.js tools/banco/b4.js | docker exec -i node node - "$@" 2>&1 | tee "$LOG"
   exit 0
 fi
 if [[ "${1:-}" == "--list" ]]; then

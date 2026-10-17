@@ -36,6 +36,8 @@ const NotificationRO = mongoose.models.NotificationRO || mongoose.model('Notific
     // Paridad total con app/api/models/notifications.js — este schema inline y el
     // ES-module de app/ escriben la MISMA colección notifications.
     kind:          { type: String, enum: ['fire', 'resolve'], default: 'fire' },
+    // spec_reglas_compuestas (Qh7) — foto del disparo de una regla combinada.
+    leaves:        { type: Array, default: undefined },
   }, { collection: 'notifications' })
 );
 
@@ -89,6 +91,7 @@ function sendMqttNotif(alarm) {
     // SF-4 · DEC-REF-59/64 — kind extiende DEC-REF-55. El frontend
     // condiciona el color del toast por este campo.
     kind:              alarm.kind || 'fire',
+    leaves:            Array.isArray(alarm.leaves) ? alarm.leaves : undefined,
   });
   _mqttClient.publish(topic, payload, { qos: 0 }, err => {
     if (err) console.error('[notifRouter] MQTT notif error:', err.message);
@@ -154,6 +157,7 @@ function buildNotifDoc(alarm) {
     thresholdUsed:    (alarm.thresholdUsed !== undefined && alarm.thresholdUsed !== null)
                         ? alarm.thresholdUsed : null,
     unit:             alarm.unit || '',
+    leaves:           Array.isArray(alarm.leaves) ? alarm.leaves : undefined,
     // campos comunes
     userId:          alarm.userId,
     dId:             alarm.deviceId,

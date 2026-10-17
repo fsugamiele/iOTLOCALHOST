@@ -4,6 +4,8 @@ const { evaluateS, evaluateSWindow } = require('./evaluators/typeS');
 const { evaluateCrossTree } = require('./evaluators/typeCross');
 const { evaluateM, EVENT_METRICS } = require('./evaluators/typeM');
 const { notify }    = require('./notificationRouter');
+const combined = require('./evaluators/typeCombined');
+const { isCombined } = require('../app/api/services/combinedRule');
 
 // DEC-REF-130 (A13) — cadencia del INFO "setpoint no disponible" (aviso de config de
 // baja prioridad): constante EXPLÍCITA. Antes se leía `rule.cooldownMinutes`, un campo
@@ -25,6 +27,53 @@ const NO_SETPOINT_INFO_COOLDOWN_MS = 60 * 60 * 1000;
 //   'off' = no se cumple y cruzó la banda · null = no evaluable
 const toR = (val) => (val === null || val === undefined ? null : (val ? 'on' : 'off'));
 
+// spec_reglas_compuestas (DEC-REF-151) — regla COMBINADA: fase 1 alimenta las hojas métrica
+// con el mensaje (msg = null en el tick); fase 2 evalúa el árbol de cada instancia afectada.
+// Con ancla (scope.deviceType): una instancia por equipo del tipo ancla (`ruleId:dId`); el
+// mensaje de un ancla evalúa solo esa, cualquier otro (o el tick) evalúa todas. Sin ancla:
+// una instancia por sitio (`ruleId:siteCode`). 'jun' (juntando muestras) no decide nada.
+const K_TO_R = { si: 'on', no: 'off', sin: null };
+function processCombined(rule, { siteState, siteCode, msg, eventTs, mState, fsm }) {
+  const ctx = { siteState, siteCode, msg, eventTs, mState };
+  combined.feed(rule, ctx);
+  const at = combined.anchorType(rule);
+  let targets;
+  if (at) {
+    const st = msg && msg.dId ? siteState.get(msg.dId) : null;
+    targets = msg && msg.variable && st && st._deviceType === at ? [msg.dId] : combined.devicesOfType(siteState, at, siteCode);
+  } else targets = [null];
+  for (const anchor of targets) {
+    const res = combined.evaluate(rule, ctx, anchor);
+    if (res.state === 'jun') continue;
+    const first = res.leaves.find((l) => typeof l.value === 'number');
+    const key = anchor ? `${rule.ruleId}:${anchor}` : `${rule.ruleId}:${siteCode}`;
+    fsm.evaluate(rule, key, K_TO_R[res.state], {
+      dId: anchor || (msg && msg.dId) || (res.leaves.find((l) => l.dId) || {}).dId || null,
+      value: first ? first.value : null, thresholdUsed: first ? first.threshold : null,
+      leaves: res.leaves, reason: 'combined', mode: 'cross', resolveReason: 'combined-cleared',
+    }, eventTs);
+  }
+}
+
+// Tick de combinadas: "deja de reportar", eventos que vencen y datos que envejecen se notan
+// aunque no llegue ningún mensaje.
+function processCombinedTick({ packs, siteState, mState, fsm, now }) {
+  const ts = now || Date.now();
+  const sites = new Set();
+  for (const [, st] of siteState) if (st && st._siteCode) sites.add(st._siteCode);
+  let n = 0;
+  for (const pack of packs) {
+    for (const rule of (pack.rules || [])) {
+      if (!isCombined(rule)) continue;
+      for (const siteCode of sites) {
+        try { processCombined(rule, { siteState, siteCode, msg: null, eventTs: ts, mState, fsm }); n++; }
+        catch (err) { console.error(`[ruleEngine] combinada ${rule.ruleId} falló en el tick: ${err && (err.stack || err.message)}`); }
+      }
+    }
+  }
+  return n;
+}
+
 function processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, activeState, mState, eventTs, fsm }) {
   const deviceState = siteState.get(dId) || {};
   const deviceType  = deviceState._deviceType || null;
@@ -35,6 +84,11 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
       // Auditoría 2026-10-14 (M-03) — aislamiento por regla: una regla mal formada
       // (p.ej. type C sin condition) NO puede tirar el proceso.
       try {
+        if (rule.type === 'cross' && isCombined(rule)) {
+          if (!siteCode) continue;
+          processCombined(rule, { siteState, siteCode, msg: { dId, variable, value }, eventTs, mState, fsm });
+          continue;
+        }
         if (rule.type === 'cross') {
           if (!siteCode) continue;
           // DEC-REF-122 — cross es por SITIO: instancia = ruleId:siteCode.
@@ -240,7 +294,7 @@ function processStalenessTick({ packs, siteState, mState, fsm }) {
 // spec_cascada_ficha — `{umbral}` en label/recommendation → valor vigente (fuente única).
 const { fillThreshold } = require('../app/api/services/limitRef');
 
-function fireAlarm({ rule, value, deviceId, stateKey, reason, mode, thresholdUsed, cooldownState, siteState, activeState }) {
+function fireAlarm({ rule, value, deviceId, stateKey, reason, mode, thresholdUsed, leaves, cooldownState, siteState, activeState }) {
   const now       = Date.now();
   const key       = stateKey || rule.ruleId;
   // DEC-REF-122 (anti-refire · A3) — si ya hay una alarma ABIERTA para esta
@@ -278,6 +332,8 @@ function fireAlarm({ rule, value, deviceId, stateKey, reason, mode, thresholdUse
     reason,
     mode:              mode || 'direct',
     thresholdUsed:     thresholdUsed !== undefined ? thresholdUsed : null,
+    // spec_reglas_compuestas (Qh7) — foto del disparo: cada condición en el instante del aviso.
+    leaves:            Array.isArray(leaves) ? leaves : undefined,
     kind:              'fire',
     ts:                new Date().toISOString(),
   };
@@ -404,4 +460,4 @@ function processWindowTick({ ruleById, windowState, fsm, now }) {
   return n;
 }
 
-module.exports = { processMessage, processStalenessTick, processSilenceTick, processWindowTick, reevaluateRules, fireAlarm, fireResolve };
+module.exports = { processMessage, processStalenessTick, processSilenceTick, processWindowTick, processCombinedTick, reevaluateRules, fireAlarm, fireResolve };

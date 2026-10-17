@@ -30,12 +30,14 @@ function loadEvaluators() {
         evaluateS: require(base + '/evaluators/typeS').evaluateS,
         evaluateM: require(base + '/evaluators/typeM').evaluateM,
         evaluateCross: require(base + '/evaluators/typeCross').evaluateCross,
+        combined: require(base + '/evaluators/typeCombined'),   // spec_reglas_compuestas
+        isCombined: require(base + '/../app/api/services/combinedRule').isCombined,
       };
     } catch (e) { ultimoError = e; }
   }
   throw new Error('no pude resolver los evaluadores del edge (seteá EDGE_DIR). último error: ' + (ultimoError && ultimoError.message));
 }
-const { evaluateD, evaluateC, evaluateS, evaluateM, evaluateCross } = loadEvaluators();
+const { evaluateD, evaluateC, evaluateS, evaluateM, evaluateCross, combined, isCombined } = loadEvaluators();
 
 // Tope de días configurable (caso raro #4 de la spec). Sin hardcodeo: default 90.
 const MAX_DAYS = parseInt(process.env.QA_BACKTEST_MAX_DAYS || '90', 10);
@@ -51,7 +53,11 @@ function neededVars(rule) {
     const walk = n => { if (!n || typeof n !== 'object') return;
       if (n.op === 'AND' || n.op === 'OR') { (n.children || []).forEach(walk); return; }
       if (Array.isArray(n.sum)) { for (const t of n.sum) { if (t.variable) vars.add(t.variable); if (t.deviceType) dts.add(t.deviceType); } return; }
-      if (n.variable) { vars.add(n.variable); if (n.deviceType) dts.add(n.deviceType); } };
+      if (n.variable) { vars.add(n.variable); if (n.deviceType) dts.add(n.deviceType); }
+      // spec_reglas_compuestas — entradas y setpoint de una condición de regla combinada.
+      if (Array.isArray(n.inputs)) for (const i of n.inputs) { if (i.variable) vars.add(i.variable); if (i.deviceType) dts.add(i.deviceType); }
+      if (n.setpointSource && n.setpointSource.variable) vars.add(n.setpointSource.variable);
+      if (n.mParams && n.mParams.weightVariable) vars.add(n.mParams.weightVariable); };
     walk(rule.crossExpr);
   }
   return { vars: [...vars], dts: [...dts] };
@@ -161,7 +167,15 @@ async function backtest({ packId, days = 7, ruleId = null } = {}) {
       dev[r.variable] = r.value; dev._lastUpdate[r.variable] = r.time; dev._lastSeen = r.time;
       if (r.variable === rule.variable && typeof r.value === 'number') prim.push(r.value);
       let met = false, did = false;
-      if (rule.type === 'cross') {
+      if (rule.type === 'cross' && isCombined(rule)) {
+        // Combinada: alimenta y evalúa cada instancia (ancla) sin espera; "se cumple" = alguna en "sí".
+        const ctx = { siteState, siteCode: SITE, msg: { dId: r.dId, variable: r.variable, value: r.value }, eventTs: r.time, mState };
+        combined.feed(rule, ctx);
+        const at = combined.anchorType(rule);
+        const anchors = at ? combined.devicesOfType(siteState, at, SITE) : [null];
+        const states = anchors.map((a) => combined.evaluate(rule, ctx, a).state);
+        if (!states.every((x) => x === 'jun' || x === 'sin')) { met = states.includes('si'); did = true; }
+      } else if (rule.type === 'cross') {
         const res = evaluateCross(rule, siteState, crossState, r.time, SITE);
         if (res.fired) { episodes++; fired++; } evaluated++;
         continue;

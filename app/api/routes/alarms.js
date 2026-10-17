@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
 const colors = require("colors");
+const { hasAccumulatorLeaf } = require("../services/combinedRule.js");   // spec_reglas_compuestas
 
 import AlarmRule from "../models/emqx_alarm_rule.js";
 import Notification from "../models/notifications.js";
@@ -1034,7 +1035,7 @@ async function buildRuleState(ruleId, dId, siteId) {
   const rule = r ? {
     type: r.type, metric: r.metric || null,
     resetBehavior: r.reset_behavior || 'auto',
-    canService: r.type === 'M' && r.metric === 'accumulator',
+    canService: (r.type === 'M' && r.metric === 'accumulator') || hasAccumulatorLeaf(r),
   } : null;
   let fsm = null;
   if (siteId) {

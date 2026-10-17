@@ -38,10 +38,14 @@ function buildSnapshot(packs) {
 // el buffer/acumulador. Si cambian, el estado viejo no aplica → se limpia el mState.
 // Un cambio de condition(umbral)/severity/textos/cooldown/grace NO toca esta huella
 // → el `acc` acumulado (vida de aceite, consumo desde recarga) sobrevive la edición.
-const STATE_FIELDS = ['type', 'deviceType', 'variable', 'metric', 'mWindow', 'mParams', 'inputs', 'crossExpr', 'window', 'setpointSource'];
+const STATE_FIELDS = ['type', 'deviceType', 'variable', 'metric', 'mWindow', 'mParams', 'inputs', 'crossExpr', 'window', 'setpointSource', 'scope'];
+// spec_reglas_compuestas — en el árbol, el umbral de cada condición tampoco define el estado
+// (la vida útil acumulada de una condición sobrevive a un cambio de umbral, como en M).
+const stripConditions = (node) => JSON.parse(JSON.stringify(node, (k, v) => (k === 'condition' ? undefined : v)));
 function stateFingerprint(rule) {
   const o = {};
   for (const f of STATE_FIELDS) o[f] = rule[f] === undefined ? null : rule[f];
+  if (o.crossExpr) o.crossExpr = stripConditions(o.crossExpr);
   return crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex');
 }
 function buildStateSnapshot(packs) {
@@ -123,7 +127,7 @@ function cleanupStateForRules(ruleIds, { cooldownState, windowState, crossState,
   const ruleIdSet = new Set(ruleIds);
   const matchRuleId = (k) => {
     for (const ruleId of ruleIdSet) {
-      if (k === ruleId || k.startsWith(`${ruleId}:`)) return ruleId;
+      if (k === ruleId || k.startsWith(`${ruleId}:`) || k.startsWith(`${ruleId}#`)) return ruleId;   // `#` = condiciones de una combinada
     }
     return null;
   };

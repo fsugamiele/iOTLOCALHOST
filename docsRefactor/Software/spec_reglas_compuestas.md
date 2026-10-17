@@ -3,8 +3,18 @@
 **Origen:** pedido de Franco (2026-10-16): "poder hacer combinaciones de reglas cross, C o D con M incluso por UI — una o varias condiciones y a esa regla agregarle tendencia, proyección, aceleración, relación, diferencia, uso %, caída acumulada, sensor clavado, deja de reportar, lecturas inestables y vida útil". Orden firmado: G1e → **diseño (esta spec + mockup)** → implementación por bloques + banco B4.
 **Mockup:** canvas "Wanomi · Regla combinada" (artifact X199Uz71diVcXvjbnpEpYP): editor + detalle de la alarma con la foto del disparo.
 
+**Firmado por Franco (2026-10-17, "aprobado las recomendaciones"):** Qh1–Qh8 = A.
+
 ## 0 · CANDADO
-preguntas_abiertas: **8 (Qh1–Qh8, §3)**. No se implementa nada hasta la firma (DEC-PROC-6). DEC-REF-151 (propuesto).
+preguntas_abiertas: 0. DEC-REF-151. **K1 (motor) + K2 (API + backtest) IMPLEMENTADOS (2026-10-17)**; K3 (editor) y K4 (detalle) pendientes.
+
+### Notas de implementación (K1/K2)
+- Forma nueva en `app/api/services/combinedRule.js` (fuente única: API, edge y QA). Evaluador `edge-engine/evaluators/typeCombined.js`; las cross sin forma nueva siguen por `typeCross.js` sin cambios.
+- Frescura de una condición: `freshnessSec` (por defecto **600 s** = 2 latidos). Los 180 s de M2 se mantienen para relación/diferencia.
+- Todas las combinadas se reevalúan en el tick de 5 s (no solo las que tienen "deja de reportar"): así un dato que envejece o un evento que vence se nota sin mensajes.
+- Estado por condición en `mState` con clave `ruleId#leafId:dId`; el umbral de una condición no forma parte de la huella de estado (la vida útil acumulada sobrevive a un cambio de umbral, como en M).
+- "Registrar service" en una combinada pone en 0 todas sus condiciones "vida útil" de ese equipo; `canService` también es verdadero para esas reglas.
+- La notificación guarda `leaves[]` (también viaja al NOC).
 
 ## 1 · Qué se quiere, en una frase
 Una **regla combinada** es un árbol Y/O de **condiciones** (hojas). Cada hoja mide una variable de un equipo de una de tres formas:

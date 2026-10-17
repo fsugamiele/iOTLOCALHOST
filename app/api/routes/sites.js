@@ -11,6 +11,7 @@ import Notification from "../models/notifications.js";
 import EquipmentSheet from "../models/equipment_sheet.js";
 import User   from "../models/user.js";
 const RulePack = require("../models/rule_pack.js");
+const { hasAccumulatorLeaf } = require("../services/combinedRule.js");   // spec_reglas_compuestas
 
 // spec_grafcet_g1b (DEC-REF-146 · Qb1) — la acción humana viaja al edge por el canal de
 // recarga con un payload tipado {cmd,…}: el edge lo trata como comando, no recarga.
@@ -387,7 +388,7 @@ router.post("/site/:siteCode/alarms/:notificationId/service", checkAuth, async (
     // Caso raro #6 — solo acumuladores.
     const pack = await RulePack.findOne({ 'rules.ruleId': notif.ruleId }, { 'rules.$': 1 }).lean();
     const rule = pack && pack.rules && pack.rules[0];
-    if (!rule || rule.type !== 'M' || rule.metric !== 'accumulator') {
+    if (!rule || !((rule.type === 'M' && rule.metric === 'accumulator') || hasAccumulatorLeaf(rule))) {
       return res.status(400).json({ status: "error", error: "Registrar service solo aplica a reglas de vida útil (acumuladores)" });
     }
     // Queda registrado quién hizo el service (y cuenta como confirmación).

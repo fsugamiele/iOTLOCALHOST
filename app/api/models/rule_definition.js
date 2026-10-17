@@ -68,6 +68,9 @@ const RuleDefinitionSchema = new Schema({
   },
 
   crossExpr: { type: Schema.Types.Mixed, default: null },
+  // spec_reglas_compuestas (Qh2) — ancla de una regla combinada: una alarma por equipo de este
+  // tipo; las condiciones de ese tipo miran a ese mismo equipo. Sin ancla = por sitio.
+  scope: { type: new Schema({ deviceType: String }, { _id: false }), default: undefined },
   graceSec:  { type: Number },  // DEC-REF-53 D3 — grace del temporizador reactivo (cross), consumido por typeCross.js:96
   // DEC-REF-102 D-2 (#77) — persistencia del RESOLVE: la condición debe estar
   // NO cumplida durante resolveGraceSec segundos antes de emitir el resolve.

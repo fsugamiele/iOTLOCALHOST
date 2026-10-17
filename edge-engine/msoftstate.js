@@ -58,7 +58,9 @@ async function flushMSoftState(siteId, mState) {
 // obsoleto. Se llama desde el reload solo con los ruleIds removidos del pack.
 async function deleteMSoftState(siteId, ruleIds) {
   if (!ruleIds || !ruleIds.length) return 0;
-  const r = await MSoftState.deleteMany({ siteId, ruleId: { $in: ruleIds } });
+  // spec_reglas_compuestas — también las condiciones de una combinada (`ruleId#leafId`).
+  const esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const r = await MSoftState.deleteMany({ siteId, $or: [{ ruleId: { $in: ruleIds } }, { ruleId: { $regex: `^(${ruleIds.map(esc).join('|')})#` } }] });
   return (r && (r.deletedCount != null ? r.deletedCount : r.n)) || 0;
 }
 

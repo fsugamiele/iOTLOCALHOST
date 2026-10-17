@@ -16,6 +16,8 @@
 //     responde 200 con el pack guardado + warnings[]; el frontend las
 //     muestra en amarillo sin bloquear el save.
 
+const { isCombined, validateCombined } = require('./combinedRule');
+
 const ALL_OPS        = ['lt', 'lte', 'gt', 'gte', 'eq', 'neq'];
 const ARITHMETIC_OPS = ['lt', 'lte', 'gt', 'gte'];
 
@@ -256,7 +258,11 @@ function validateRule(rule) {
     }
   }
   switch (rule.type) {
-    case 'cross': return validateCrossTree(rule.crossExpr);
+    case 'cross': {
+      const v = validateCrossTree(rule.crossExpr);
+      if (!v.ok || !isCombined(rule)) return v;
+      return validateCombined(rule, validateM);   // spec_reglas_compuestas — hojas y límites
+    }
     case 'D':     return validateD(rule);
     case 'C':     return validateC(rule);
     case 'S':     return validateS(rule);

@@ -38,6 +38,8 @@ const notificationSchema = new Schema({
     // (mongoose aplica default en lectura si el campo está ausente en el doc).
     // El motor edge y notificationRouter.js debe llenar este campo en cada emisión.
     kind:          { type: String, enum: ['fire', 'resolve'], default: 'fire' },
+    // spec_reglas_compuestas (Qh7) — foto del disparo de una regla combinada (paridad con el edge).
+    leaves:        { type: Array, default: undefined },
 
     // DEC-REF-46 / DEC-REF-54 — ACK auditable, separado de `readed`.
     // `readed` es vista pasiva del listado; `acknowledgedBy` + `ackAt` registran
