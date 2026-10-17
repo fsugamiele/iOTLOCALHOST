@@ -100,7 +100,15 @@ function validateCombined(rule, validateM) {
   return { ok: true };
 }
 
+// Identidad de la instancia (rulefsm.key): cross clásica y combinada SIN ancla = por sitio;
+// combinada CON ancla y el resto de los tipos = por equipo.
+function instanceKey(rule, ruleId, dId, siteCode) {
+  const perSite = !!rule && rule.type === 'cross' && !(rule.scope && rule.scope.deviceType);
+  return perSite ? `${ruleId}:${siteCode}` : `${ruleId}:${dId}`;
+}
+
 module.exports = {
+  instanceKey,
   LIMITS, LEAF_METRICS, EVENT_LEAF_METRICS, MEASURES,
   isGroup, isSum, leavesOf, measureOf, isCombined, leafIds, hasAccumulatorLeaf, groupDepth, validateCombined,
 };

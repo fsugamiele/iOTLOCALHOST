@@ -9,7 +9,7 @@ const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
 const { processMessage, processStalenessTick, processSilenceTick, processWindowTick, processCombinedTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
-const { isCombined, leavesOf, measureOf, leafIds } = require('../app/api/services/combinedRule');
+const { isCombined, leavesOf, measureOf, leafIds, instanceKey } = require('../app/api/services/combinedRule');
 const { createRuleFsm } = require('./ruleFsm');      // spec_grafcet_g1 · G1a (DEC-REF-145)
 const { createFsmStore } = require('./fsmStore');
 const notificationRouter      = require('./notificationRouter');
@@ -326,7 +326,7 @@ async function start() {
     if (!rule) { console.warn(`[edge-engine] Comando ${c.cmd} ignorado: regla ${c.ruleId} no cargada`); return; }
     // spec_reglas_compuestas — una combinada con ancla es por equipo; sin ancla, por sitio.
     const comb = isCombined(rule);
-    const key = rule.type === 'cross' && !(comb && rule.scope && rule.scope.deviceType) ? `${rule.ruleId}:${SITE_ID}` : `${rule.ruleId}:${c.dId}`;
+    const key = instanceKey(rule, rule.ruleId, c.dId, SITE_ID);
     if (c.cmd === 'service') {
       // Acumulado a 0 (y persistido por el flush de msoftstate) — cierra M-10. En una combinada:
       // todas sus condiciones "vida útil" de ese equipo.

@@ -11,7 +11,7 @@ import Notification from "../models/notifications.js";
 import EquipmentSheet from "../models/equipment_sheet.js";
 import User   from "../models/user.js";
 const RulePack = require("../models/rule_pack.js");
-const { hasAccumulatorLeaf } = require("../services/combinedRule.js");   // spec_reglas_compuestas
+const { hasAccumulatorLeaf, instanceKey } = require("../services/combinedRule.js");   // spec_reglas_compuestas
 
 // spec_grafcet_g1b (DEC-REF-146 · Qb1) — la acción humana viaja al edge por el canal de
 // recarga con un payload tipado {cmd,…}: el edge lo trata como comando, no recarga.
@@ -40,7 +40,7 @@ async function closeIfOrphan(notif, siteCode, rule, mode, actorId) {
     .sort({ time: -1 }).lean();
   if (!last || (last.kind || 'fire') === 'resolve') return null;              // episodio ya cerrado
   if (Date.now() - (Number(last.time) || 0) < ORPHAN_MIN_AGE_MS) return null; // disparo reciente
-  const key = rule && rule.type === 'cross' ? `${notif.ruleId}:${siteCode}` : `${notif.ruleId}:${notif.dId}`;
+  const key = instanceKey(rule, notif.ruleId, notif.dId, siteCode);   // combinada con ancla = por equipo
   const row = await mongoose.connection.db.collection('rulefsm').findOne({ siteId: siteCode, key });
   if (row && row.alarmOpen) return null;                                      // el edge la tiene abierta
   const verb = mode === 'resolve-by-service' ? 'Service registrado' : 'Confirmada';

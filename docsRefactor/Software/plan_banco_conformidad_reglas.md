@@ -147,3 +147,8 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
   - `setVal` reintenta si el cliente MQTT del backend está reconectando (pasó 2 veces).
 - **Corrección del motor (caso raro 5 de G1e):** en spread, el culpable con alarma abierta que deja de reportar pasa a "Sin datos" (antes quedaba en Alarma sin evaluarse).
 - **Observación:** "fuera de lo normal" toma un escalón sostenido como nuevo normal en segundos (detecta picos, no escalones).
+
+### B4 · reglas combinadas (2026-10-17, `7c9d028`) — 18/0/1
+- **Verde:** Y y O de valor con métrica (bK-1/2), juntando muestras no decide (bK-3), entrada callada → "Sin datos" con la alarma abierta y vuelta a Alarma (bK-4), un "no" cierra aunque otra esté sin dato (bK-5), salto dentro/fuera de `holdSec` (bK-6), una alarma por equipo con ancla (bK-7), alguno/todos (bK-8), vida útil + "Registrar service" (bK-10), foto del disparo (bK-11), límites en la API (bK-12).
+- **Observado:** bK-9 (respecto del setpoint): la plantilla del GEN simulado no tiene variable de setpoint. Cubierto por la prueba unitaria.
+- **Hallazgo (corregido en `instanceKey`):** bK-10b guardó **dos** cierres "resolve-by-service". El cierre de huérfanas de la API buscaba la instancia de una cross siempre por sitio; en una combinada con ancla es por equipo, así que no la encontraba y creaba un segundo cierre. Lo mismo afectaba al detalle de la alarma (`alarms.js`). Una sola función de identidad para API y edge; el banco ahora exige un único cierre.

@@ -5,7 +5,7 @@ const mongoose = require("mongoose");
 const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter } = require("../middlewares/scope.js");
 const colors = require("colors");
-const { hasAccumulatorLeaf } = require("../services/combinedRule.js");   // spec_reglas_compuestas
+const { hasAccumulatorLeaf, instanceKey } = require("../services/combinedRule.js");   // spec_reglas_compuestas
 
 import AlarmRule from "../models/emqx_alarm_rule.js";
 import Notification from "../models/notifications.js";
@@ -1039,7 +1039,7 @@ async function buildRuleState(ruleId, dId, siteId) {
   } : null;
   let fsm = null;
   if (siteId) {
-    const key = r && r.type === 'cross' ? `${ruleId}:${siteId}` : `${ruleId}:${dId}`;
+    const key = instanceKey(r, ruleId, dId, siteId);   // combinada con ancla = por equipo
     const row = await mongoose.connection.db.collection('rulefsm').findOne({ siteId, key });
     const step = row ? row.step : 'E1';
     fsm = { step, stepName: FSM_STEP_NAMES[step] || step, since: row ? row.since : null,

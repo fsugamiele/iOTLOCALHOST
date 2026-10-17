@@ -182,7 +182,7 @@ async function b4() {
         s = now(); const r = await api('POST', `/site/${dev.siteId}/alarms/${f._id}/service`, {}); await sleep(8);
         const rs = resolves(await notifs(R, s)); await sleep(35);
         const acc = await db.collection('msoftstate').findOne({ siteId: SITE, ruleId: `${R}#L1`, dId }).catch(() => null);
-        result('bK-10b', r.status === 200 && rs.some((n) => n.mode === 'resolve-by-service') ? 'VERDE' : 'ROJO', '"Registrar service" cierra y pone la condición en 0',
+        result('bK-10b', r.status === 200 && rs.filter((n) => n.mode === 'resolve-by-service').length === 1 ? 'VERDE' : 'ROJO', '"Registrar service" cierra y pone la condición en 0',
           `API ${r.status}${r.status !== 200 ? ' ' + r.raw.slice(0, 120) : ''} · cierre: ${rs.map((n) => n.mode).join(', ') || 'no'} · acumulado guardado: ${acc ? acc.acc : '—'}`);
       }
     }
