@@ -135,3 +135,15 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
 3. **Entradas de otro equipo (bM-div-3).** Si la entrada del propio equipo está vieja, ratio/divergence toman el mismo dato de OTRO equipo del mismo tipo y siguen calculando. Mezclan equipos sin avisar.
 4. **Desbalance con 2 equipos (bM-spread-1).** No hay "culpable" (los dos están a la misma distancia de la mediana) y se le asigna al primero de la lista. El cambio de culpable no se pudo probar: hace falta un 3.er equipo simulado del mismo tipo.
 5. **Sensor clavado real (bM-flat-3).** Con report-by-exception solo llegan latidos (cada 5 min). Una ventana menor a 3 latidos (15 min) nunca junta muestras.
+
+### B2 · re-corrida tras G1e (2026-10-16/17, `0eb6075` → `72e088f`)
+- **T 7/7** (incluye bM-slope-3: serie rala ya no es "Sin datos").
+- **R 9/9** (`72e088f`): bM-div-3 E3→E5 con la alarma abierta · bM-spread-1/2/3 con 2 equipos (historia propia) · **bM-spread-4** con 3 equipos (mediana).
+- **A 18/1** (`0563d5f`): jump, base-1, flat-3 (rechazo API) en verde. bM-base-2 rojo era del banco (ver abajo); pendiente re-corrida.
+- **Correcciones del banco (no del motor):**
+  - El simulador republica en cada ciclo los valores fijados con `set_sensor`: no hay "report-by-exception" para valores fijados. Se agregó `mute_sensor`/`unmute_sensor` (calla una variable sola) para probar frescura.
+  - Los eventos de una muestra (fuera de lo normal) se cierran solos cuando el valor fijado entra al historial: el cierre se cuenta desde el aviso.
+  - El sitio tiene un 3.er ELTEK simulado (`wi4brXc7`): el banco lo silencia para la prueba de 2 equipos y lo usa para spread-4.
+  - `setVal` reintenta si el cliente MQTT del backend está reconectando (pasó 2 veces).
+- **Corrección del motor (caso raro 5 de G1e):** en spread, el culpable con alarma abierta que deja de reportar pasa a "Sin datos" (antes quedaba en Alarma sin evaluarse).
+- **Observación:** "fuera de lo normal" toma un escalón sostenido como nuevo normal en segundos (detecta picos, no escalones).
