@@ -191,7 +191,29 @@ export function crossDepth(node) {
   return 1 + max;
 }
 
-function leafPhrase(node, sheets) {
+// spec_reglas_compuestas (K3) — cómo se mide cada condición de una regla combinada.
+export const METRIC_LABELS = {
+  slope: 'tendencia', projection: 'proyección', acceleration: 'aceleración', ratio: 'relación',
+  divergence: 'diferencia', dutyCycle: 'uso %', cumulativeSince: 'caída acumulada', flatline: 'sensor clavado',
+  staleness: 'deja de reportar', variance: 'lecturas inestables', accumulator: 'vida útil',
+  stepJump: 'salto abrupto', baseline: 'fuera de lo normal',
+};
+export const LEAF_METRIC_ORDER = ['slope', 'projection', 'acceleration', 'ratio', 'divergence', 'dutyCycle',
+  'cumulativeSince', 'flatline', 'staleness', 'variance', 'accumulator', 'stepJump', 'baseline'];
+// Regla simple (D/C/M) → condición de una combinada (para "agregar condición" sin perder la métrica).
+export function ruleToLeaf(rule) {
+  const leaf = {
+    deviceType: rule.deviceType || '',
+    variable: rule.type === 'M' && Array.isArray(rule.inputs) && rule.inputs[0] && rule.inputs[0].variable ? rule.inputs[0].variable : (rule.variable || ''),
+    condition: rule.condition ? { ...rule.condition } : { op: 'gt', value: 0 },
+  };
+  if (rule.type === 'M') Object.assign(leaf, { measure: 'metric', metric: rule.metric, mWindow: rule.mWindow, mParams: rule.mParams || undefined, inputs: rule.inputs });
+  if (rule.type === 'C') Object.assign(leaf, { measure: 'setpoint', setpointSource: rule.setpointSource, fallbackToD: rule.fallbackToD });
+  return JSON.parse(JSON.stringify(leaf));
+}
+const isNewLeaf = (n) => !!n && !isSum(n) && !!(n.measure || n.pick || n.leafId);
+
+function leafPhrase(node, sheets, anchorType) {
   const s = (sheets || []);
   if (isSum(node)) {
     const first = node.sum[0] || {};
@@ -206,15 +228,21 @@ function leafPhrase(node, sheets) {
   const v = sh && (sh.variables || []).find(x => x.name === node.variable);
   const vlabel = (v && v.label) || node.variable || 'la variable';
   const unit = (v && v.unit) ? ` ${v.unit}` : '';
-  const eq = node.deviceType ? ` del ${node.deviceType}` : '';
+  let eq = node.deviceType ? ` del ${node.deviceType}` : '';
+  if (anchorType && node.deviceType === anchorType) eq = ' de este equipo';
+  else if (node.pick === 'all') eq = ` de todos los ${node.deviceType}`;
+  else if (anchorType || node.pick === 'any') eq = ` de algún ${node.deviceType}`;
   const c = node.condition || {};
-  if (c.limitRef) return `la ${vlabel}${eq} sea ${OPERATOR_LABELS[c.op] || c.op} ${condValueText(c, node.deviceType, node.variable, s, v && v.unit)}`;
-  return `la ${vlabel}${eq} sea ${OPERATOR_LABELS[c.op] || c.op} ${c.value}${unit}`;
+  const cmp = OPERATOR_LABELS[c.op] || c.op;
+  if (node.measure === 'metric') return `la ${METRIC_LABELS[node.metric] || node.metric} de ${vlabel}${eq} sea ${cmp} ${c.value}`;
+  if (node.measure === 'setpoint') return `la ${vlabel}${eq} sea ${cmp} su setpoint (${(node.setpointSource && node.setpointSource.variable) || '?'})`;
+  if (c.limitRef) return `la ${vlabel}${eq} sea ${cmp} ${condValueText(c, node.deviceType, node.variable, s, v && v.unit)}`;
+  return `la ${vlabel}${eq} sea ${cmp} ${c.value}${unit}`;
 }
 
-function phraseOf(node, sheets, isRoot) {
-  if (!isGroup(node)) return leafPhrase(node, sheets);
-  const parts = node.children.map(ch => phraseOf(ch, sheets, false));
+function phraseOf(node, sheets, isRoot, anchorType) {
+  if (!isGroup(node)) return leafPhrase(node, sheets, anchorType);
+  const parts = node.children.map(ch => phraseOf(ch, sheets, false, anchorType));
   if (node.op === 'OR') {
     const joined = parts.join(', o ');
     return isRoot ? `se cumpla alguna de estas condiciones: ${joined}` : `alguna de estas (${joined})`;
@@ -223,33 +251,34 @@ function phraseOf(node, sheets, isRoot) {
   return isRoot ? `se cumpla todo esto: ${joined}` : `todas estas (${joined})`;
 }
 
-function outlineOf(node, sheets, depth, acc) {
+function outlineOf(node, sheets, depth, acc, anchorType) {
   if (isGroup(node)) {
     acc.push({ depth, group: true, text: node.op === 'OR' ? 'ALGUNA de estas se cumple:' : 'TODO esto se cumple:' });
-    for (const ch of node.children) outlineOf(ch, sheets, depth + 1, acc);
+    for (const ch of node.children) outlineOf(ch, sheets, depth + 1, acc, anchorType);
   } else {
-    acc.push({ depth, group: false, text: leafPhrase(node, sheets) });
+    acc.push({ depth, group: false, text: leafPhrase(node, sheets, anchorType) });
   }
   return acc;
 }
 
 // Devuelve { mode: 'sentence'|'outline', sentence, lines }.
-export function describeCross(crossExpr, sheets, sevLabel) {
+export function describeCross(crossExpr, sheets, sevLabel, anchorType) {
   const sev = sevLabel || 'alarma';
+  const where = anchorType ? ` en cada ${anchorType}` : '';
   if (!isGroup(crossExpr) || !crossExpr.children.length) {
     return { mode: 'sentence', sentence: 'Todavía no hay condiciones cargadas.', lines: [] };
   }
   if (crossDepth(crossExpr) <= 2) {
     return {
       mode: 'sentence',
-      sentence: `Se disparará una alarma de ${sev} cuando ${phraseOf(crossExpr, sheets, true)}.`,
+      sentence: `Se disparará una alarma de ${sev}${where} cuando ${phraseOf(crossExpr, sheets, true, anchorType)}.`,
       lines: [],
     };
   }
   return {
     mode: 'outline',
-    sentence: `Se dispara una alarma de ${sev} cuando:`,
-    lines: outlineOf(crossExpr, sheets, 0, []),
+    sentence: `Se dispara una alarma de ${sev}${where} cuando:`,
+    lines: outlineOf(crossExpr, sheets, 0, [], anchorType),
   };
 }
 
@@ -266,14 +295,15 @@ function leafText(node, sheets) {
   return `${resolveVarLabel(node.deviceType, node.variable, sheets)} ${OPERATOR_LABELS[c.op] || c.op} ${condValueText(c, node.deviceType, node.variable, sheets, v && v.unit)}`;
 }
 function isFlatCross(crossExpr) {
-  return crossExpr && Array.isArray(crossExpr.children) && crossExpr.children.length > 0 && crossExpr.children.every(isLeaf);
+  return crossExpr && Array.isArray(crossExpr.children) && crossExpr.children.length > 0 && crossExpr.children.every(isLeaf)
+    && !crossExpr.children.some(isNewLeaf);   // una combinada (métrica/setpoint/alguno-todos) va al editor de grupos
 }
 
 // El editor-frase representa D, S, C y cross PLANO. El cross anidado va a avanzado.
 export function isSentenceEditable(rule) {
   if (!rule) return true;
   if (rule.type === 'D' || rule.type === 'S' || rule.type === 'C') return true;
-  if (rule.type === 'cross') return isFlatCross(rule.crossExpr);
+  if (rule.type === 'cross') return isFlatCross(rule.crossExpr) && !(rule.scope && rule.scope.deviceType);
   return false;
 }
 
@@ -518,7 +548,7 @@ export function ruleToSentence(rule) {
     deviceType: rule.deviceType || '', variable: variable || '', op: op || 'lt',
     value: (value !== undefined ? value : ''), limitRef: '', variableLabel: rule.variableLabel || '', unit: rule.unit || '', variableType: 'float',
   });
-  if (rule.type === 'cross' && isFlatCross(rule.crossExpr)) {
+  if (rule.type === 'cross' && isFlatCross(rule.crossExpr) && !(rule.scope && rule.scope.deviceType)) {
     base.join = rule.crossExpr.op === 'OR' ? 'OR' : 'AND';
     base.conditions = rule.crossExpr.children.map(ch => ({
       deviceType: ch.deviceType || rule.deviceType || '', variable: ch.variable,

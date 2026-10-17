@@ -32,6 +32,8 @@
             :depth="depth + 1"
             :max-depth="maxDepth"
             :sheets="sheets"
+            :combined="combined"
+            :anchor-type="anchorType"
             @input="onChildInput(i, $event)"
             @remove="onChildRemove(i)"
           />
@@ -102,11 +104,58 @@
         :placeholder="leafUnit ? ('valor (' + leafUnit + ')') : 'valor'"
         @input="updateCondition('value', numericOrRaw($event))"
       />
-      <span v-if="leafUnit && !condLimitRef" class="cn-unit">{{ leafUnit }}</span>
+      <span v-if="shownUnit && !condLimitRef" class="cn-unit">{{ shownUnit }}</span>
 
       <base-button type="danger" size="sm" icon class="cn-rm" @click="$emit('remove')" title="Quitar condición">
         <i class="tim-icons icon-simple-remove"></i>
       </base-button>
+
+      <!-- spec_reglas_compuestas (K3) — a qué equipo mira y cómo se mide esta condición. -->
+      <div v-if="combined" class="cn-measure">
+        <span class="cn-mlbl">Equipo</span>
+        <span v-if="isAnchorLeaf" class="cn-anchor">este equipo</span>
+        <el-select v-else :value="value.pick || 'any'" size="small" class="cn-pick" @change="updateLeaf('pick', $event)">
+          <el-option value="any" :label="'alguno ' + (value.deviceType || '') + ' del sitio'" />
+          <el-option value="all" :label="'todos los ' + (value.deviceType || '') + ' del sitio'" />
+        </el-select>
+        <span class="cn-mlbl">Cómo se mide</span>
+        <el-select :value="measureKey" size="small" class="cn-mkind" @change="setMeasure">
+          <el-option value="value" label="valor actual" />
+          <el-option value="setpoint" label="respecto del setpoint del equipo" />
+          <el-option-group label="métrica">
+            <el-option v-for="m in metricOrder" :key="m" :value="'m:' + m" :label="metricLabels[m]" />
+          </el-option-group>
+        </el-select>
+        <template v-if="value.measure === 'setpoint'">
+          <span class="cn-mlbl">setpoint</span>
+          <el-select v-if="leafVariables.length" :value="(value.setpointSource || {}).variable || ''" size="small" filterable class="cn-var" @change="updateLeaf('setpointSource', { ...(value.setpointSource || {}), variable: $event })">
+            <el-option v-for="v in leafVariables" :key="v.name" :value="v.name" :label="varLabel(v)" />
+          </el-select>
+          <el-input v-else :value="(value.setpointSource || {}).variable || ''" size="small" class="cn-var" placeholder="variable del setpoint" @input="updateLeaf('setpointSource', { ...(value.setpointSource || {}), variable: $event })" />
+        </template>
+        <template v-if="value.measure === 'metric'">
+          <template v-if="hasWindow">
+            <span class="cn-mlbl">ventana</span>
+            <el-input :value="windowMin" size="small" type="number" class="cn-mini" @input="setWindowMin" /><span class="cn-unit">min</span>
+          </template>
+          <template v-if="value.metric === 'projection'">
+            <span class="cn-mlbl">llega a</span>
+            <el-input :value="(value.mParams || {}).target" size="small" type="number" class="cn-mini" @input="setParam('target', numericOrRaw($event))" />
+          </template>
+          <template v-if="value.metric === 'ratio' || value.metric === 'divergence'">
+            <span class="cn-mlbl">con</span>
+            <el-select v-if="leafVariables.length" :value="secondInput" size="small" filterable class="cn-var" @change="setSecondInput">
+              <el-option v-for="v in leafVariables" :key="v.name" :value="v.name" :label="varLabel(v)" />
+            </el-select>
+            <el-input v-else :value="secondInput" size="small" class="cn-var" placeholder="segunda variable" @input="setSecondInput" />
+          </template>
+          <template v-if="value.metric === 'stepJump' || value.metric === 'baseline'">
+            <span class="cn-mlbl">vale</span>
+            <el-input :value="(value.mParams || {}).holdSec || 120" size="small" type="number" class="cn-mini" @input="setParam('holdSec', numericOrRaw($event))" /><span class="cn-unit">s</span>
+          </template>
+          <span class="cn-mhelp">{{ metricHelp }}</span>
+        </template>
+      </div>
     </div>
 
     <!-- ══════════ HOJA: SUMA ENTRE EQUIPOS ══════════ -->
@@ -175,7 +224,41 @@
 // NUEVO: prop `sheets` (equipmentsheets) para poblar equipo/variable con los
 // mismos selects que el modo simple (ConditionRow). Si un equipo no tiene
 // ficha, cae a input de texto libre (mismo fallback que ConditionRow).
-import { Select, Option, Input } from 'element-ui';
+import { Select, Option, OptionGroup, Input } from 'element-ui';
+import { METRIC_LABELS, LEAF_METRIC_ORDER } from '@/components/rules/ruleSentence.js';
+
+// spec_reglas_compuestas (K3) — parámetros por defecto al elegir una métrica para una condición.
+const METRIC_DEFAULTS = {
+  slope:        { op: 'gt',  value: 1,   win: 10, min: 3 },
+  projection:   { op: 'lt',  value: 2,   win: 30, min: 3, params: { target: 0 } },
+  acceleration: { op: 'gt',  value: 1,   win: 10, min: 6 },
+  ratio:        { op: 'gt',  value: 1 },
+  divergence:   { op: 'gt',  value: 1 },
+  dutyCycle:    { op: 'gt',  value: 50,  win: 60, min: 2 },
+  cumulativeSince: { op: 'gt', value: 10 },
+  flatline:     { op: 'lte', value: 0.1, win: 30, min: 3 },
+  staleness:    { op: 'gte', value: 10 },
+  variance:     { op: 'gt',  value: 1,   win: 10, min: 3 },
+  accumulator:  { op: 'gte', value: 250 },
+  stepJump:     { op: 'gte', value: 10,  win: 10, min: 2, params: { holdSec: 120 } },
+  baseline:     { op: 'gt',  value: 3,   win: 60, min: 8, params: { holdSec: 120 } },
+};
+const METRIC_HELP = {
+  slope: 'valor = cuánto sube (+) o baja (−) por minuto',
+  projection: 'valor = horas hasta llegar al objetivo',
+  acceleration: 'valor = cambio de la tendencia',
+  ratio: 'valor = esta variable ÷ la segunda',
+  divergence: 'valor = diferencia entre las dos',
+  dutyCycle: 'valor = % del tiempo en uso',
+  cumulativeSince: 'valor = caída acumulada desde la última recarga',
+  flatline: 'valor = tolerancia; la ventana debe ser de al menos 15 min',
+  staleness: 'valor = minutos sin reportar',
+  variance: 'valor = cuánto oscila',
+  accumulator: 'valor = horas acumuladas (se pone en 0 con "Registrar service")',
+  stepJump: 'valor = tamaño mínimo del salto; dentro de la combinada vale los segundos indicados',
+  baseline: 'valor = cuántas σ se aparta de lo habitual; vale los segundos indicados',
+};
+const NO_WINDOW = ['ratio', 'divergence', 'cumulativeSince', 'staleness', 'accumulator'];
 
 const uid = (() => { let n = 0; return () => `k${++n}`; })();
 
@@ -192,15 +275,18 @@ function ensureKey(node) {
 
 export default {
   name: 'cross-expr-node',
-  components: { [Select.name]: Select, [Option.name]: Option, [Input.name]: Input },
+  components: { [Select.name]: Select, [Option.name]: Option, [OptionGroup.name]: OptionGroup, [Input.name]: Input },
   props: {
     value: { type: Object, required: true },
     depth: { type: Number, default: 0 },
     maxDepth: { type: Number, default: 8 },
     isRoot: { type: Boolean, default: false },
     sheets: { type: Array, default: () => [] },
+    // spec_reglas_compuestas — editor de regla combinada (cómo se mide + a qué equipo mira).
+    combined: { type: Boolean, default: false },
+    anchorType: { type: String, default: null },
   },
-  data() { return { OPERATOR_LABELS }; },
+  data() { return { OPERATOR_LABELS, metricLabels: METRIC_LABELS, metricOrder: LEAF_METRIC_ORDER }; },
   computed: {
     nodeType() {
       if (this.value.op === 'AND') return 'AND';
@@ -229,6 +315,19 @@ export default {
     leafSelectedVar() { return this.leafVariables.find(v => v.name === this.value.variable) || null; },
     leafValueType() { return (this.leafSelectedVar && this.leafSelectedVar.type) || 'float'; },
     leafUnit() { return (this.leafSelectedVar && this.leafSelectedVar.unit) || ''; },
+    isAnchorLeaf() { return !!this.anchorType && this.value.deviceType === this.anchorType; },
+    measureKey() { return this.value.measure === 'metric' ? 'm:' + this.value.metric : (this.value.measure || 'value'); },
+    hasWindow() { return this.value.measure === 'metric' && !NO_WINDOW.includes(this.value.metric); },
+    windowMin() { const w = this.value.mWindow; return w && w.durationSec ? Math.round(w.durationSec / 60 * 10) / 10 : ''; },
+    secondInput() { const i = this.value.inputs; return (i && i[1] && i[1].variable) || ''; },
+    metricHelp() { return METRIC_HELP[this.value.metric] || ''; },
+    shownUnit() {
+      if (this.value.measure !== 'metric') return this.leafUnit;
+      const m = this.value.metric;
+      if (m === 'slope') return this.leafUnit ? `${this.leafUnit}/min` : '/min';
+      const u = { projection: 'h', dutyCycle: '%', staleness: 'min', accumulator: 'h', baseline: 'σ', ratio: '' };
+      return Object.prototype.hasOwnProperty.call(u, m) ? u[m] : this.leafUnit;
+    },
     condLimitRef() { return (this.value.condition && this.value.condition.limitRef) || ''; },
     // Límites de ficha de la variable en el sentido del comparador.
     leafDirLimits() {
@@ -278,7 +377,36 @@ export default {
 
     // hoja equipo
     onLeafEquipo(dt) { this.emitUpdate({ ...this.value, deviceType: dt, variable: '' }); },
-    onLeafVariable(v) { this.emitUpdate({ ...this.value, variable: v }); },
+    onLeafVariable(v) {
+      const next = { ...this.value, variable: v };
+      if (Array.isArray(next.inputs)) next.inputs = [{ ...(next.inputs[0] || {}), deviceType: next.deviceType, variable: v }, ...next.inputs.slice(1)];
+      this.emitUpdate(next);
+    },
+    // spec_reglas_compuestas — cambiar la forma de medir limpia los campos de la anterior.
+    setMeasure(key) {
+      const next = { ...this.value };
+      for (const f of ['measure', 'metric', 'mWindow', 'mParams', 'inputs', 'setpointSource', 'fallbackToD']) delete next[f];
+      if (key === 'setpoint') { next.measure = 'setpoint'; next.setpointSource = { variable: '' }; }
+      else if (key.startsWith('m:')) {
+        const m = key.slice(2), d = METRIC_DEFAULTS[m] || {};
+        next.measure = 'metric'; next.metric = m;
+        next.condition = { op: d.op || 'gt', value: d.value != null ? d.value : 0 };
+        if (d.win) next.mWindow = { durationSec: d.win * 60, minSamples: d.min || 3 };
+        if (d.params) next.mParams = { ...d.params };
+        if (m === 'ratio' || m === 'divergence') next.inputs = [{ deviceType: next.deviceType, variable: next.variable }, { deviceType: next.deviceType, variable: '' }];
+      }
+      this.emitUpdate(next);
+    },
+    setWindowMin(v) {
+      const n = Number(v);
+      this.emitUpdate({ ...this.value, mWindow: { ...(this.value.mWindow || {}), durationSec: Number.isFinite(n) ? Math.round(n * 60) : 0 } });
+    },
+    setParam(k, v) { this.emitUpdate({ ...this.value, mParams: { ...(this.value.mParams || {}), [k]: v } }); },
+    setSecondInput(v) {
+      const i = Array.isArray(this.value.inputs) ? this.value.inputs.slice() : [{ deviceType: this.value.deviceType, variable: this.value.variable }];
+      i[1] = { deviceType: this.value.deviceType, variable: v };
+      this.emitUpdate({ ...this.value, inputs: i });
+    },
     updateLeaf(field, value) { this.emitUpdate({ ...this.value, [field]: value }); },
     updateCondition(field, value) {
       const cond = { ...(this.value.condition || {}), [field]: value };
@@ -389,6 +517,13 @@ export { stripEditorKeys };
 .cn-val { width:96px; }
 .cn-unit { font-size:12px; color:var(--muted); }
 .cn-rm { flex-shrink:0; }
+
+/* ── cómo se mide (regla combinada) ── */
+.cn-measure { flex-basis:100%; display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:4px 0 6px 2px; }
+.cn-mlbl { font-size:11.5px; color:var(--muted); font-weight:600; }
+.cn-anchor { font-size:12px; font-weight:600; color:var(--teal-d); background:var(--teal-soft); border-radius:12px; padding:3px 10px; }
+.cn-pick { width:200px; } .cn-mkind { width:230px; } .cn-mini { width:76px; }
+.cn-mhelp { flex-basis:100%; font-size:11px; color:var(--muted); }
 
 /* ── hoja suma ── */
 .cn-sum { border:1px dashed var(--amber); border-radius:10px; padding:10px 12px; background:var(--amber-soft); margin:4px 0; }

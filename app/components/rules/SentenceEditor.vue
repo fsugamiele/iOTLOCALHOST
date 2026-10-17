@@ -161,10 +161,24 @@
         <!-- MODO AVANZADO -->
         <template v-else>
           <div class="se-adv-head">
-            <span><i class="fa fa-sitemap"></i> Condición combinada (grupos anidados Y/O)</span>
+            <span><i class="fa fa-sitemap"></i> Regla combinada</span>
             <base-button size="sm" type="default" @click="toSimple" title="Volver a condiciones simples (se pierde el anidamiento)"><i class="fa fa-arrow-left"></i> modo simple</base-button>
           </div>
-          <cross-expr-node v-if="advCross" :value="advCross" :depth="0" :max-depth="8" :is-root="true" :sheets="sheets" @input="onAdvInput" />
+          <!-- spec_reglas_compuestas (Qh2) — una alarma por equipo del tipo base, o una por sitio. -->
+          <div class="se-scope">
+            <span class="se-scope-l">Se evalúa en</span>
+            <el-radio-group v-model="scopeChoice" size="small">
+              <el-radio-button label="equipo">cada {{ packType }} del sitio</el-radio-button>
+              <el-radio-button label="sitio">el sitio</el-radio-button>
+            </el-radio-group>
+            <small class="text-muted">{{ advScope ? 'Una alarma por cada ' + packType + '; las condiciones de ' + packType + ' miran a ese mismo equipo.' : 'Una sola alarma para el sitio.' }}</small>
+          </div>
+          <cross-expr-node v-if="advCross" :value="advCross" :depth="0" :max-depth="2" :is-root="true" :sheets="sheets"
+            :combined="true" :anchor-type="advScope || null" @input="onAdvInput" />
+          <p class="se-limits" :class="{ 'se-limits--over': overLimits }">
+            {{ leafCount }} de 8 condiciones · {{ metricCount }} de 3 con métrica
+            <span v-if="overLimits"> — sacá condiciones para poder guardar</span>
+          </p>
         </template>
       </div>
     </div>
@@ -246,8 +260,21 @@ import CrossExprNode, { stripEditorKeys } from '@/components/CrossExprNode.vue';
 import {
   SEVERITIES, severityLabel, severityBadge, summarize, inferType, coerceValue,
   sentenceToRule, ruleToSentence, emptySentence, emptyCondition, genRuleId, genInferenceId,
-  describeCross, OPERATORS, OPERATOR_LABELS,
+  describeCross, OPERATORS, OPERATOR_LABELS, ruleToLeaf,
 } from '@/components/rules/ruleSentence.js';
+
+// spec_reglas_compuestas — hojas del árbol (sin grupos) y asignación de leafId estable.
+function treeLeaves(node, out = []) {
+  if (node && Array.isArray(node.children)) { for (const c of node.children) treeLeaves(c, out); } else if (node) out.push(node);
+  return out;
+}
+function assignLeafIds(crossExpr) {
+  const ls = treeLeaves(crossExpr).filter(l => !Array.isArray(l.sum));
+  const used = new Set(ls.map(l => l.leafId).filter(Boolean));
+  let n = 1;
+  for (const l of ls) { if (!l.leafId) { while (used.has('L' + n)) n++; l.leafId = 'L' + n; used.add(l.leafId); } }
+  return crossExpr;
+}
 
 const TYPE_HINT = { D: 'umbral simple', S: 'condición en el tiempo', C: 'contra el valor del equipo', cross: 'condición combinada' };
 function firstLeafVar(node) {
@@ -276,6 +303,7 @@ export default {
       severities: SEVERITIES, s, tick: 0,
       advanced: !!s.nested,
       advCross: s.nested && this.rule ? JSON.parse(JSON.stringify(this.rule.crossExpr)) : null,
+      advScope: (this.rule && this.rule.scope && this.rule.scope.deviceType) || '',
     };
   },
   watch: {
@@ -283,6 +311,7 @@ export default {
       this.s = nv ? ruleToSentence(nv) : emptySentence(this.pack && this.pack.deviceType);
       this.advanced = !!this.s.nested;
       this.advCross = this.s.nested && nv ? JSON.parse(JSON.stringify(nv.crossExpr)) : null;
+      this.advScope = (nv && nv.scope && nv.scope.deviceType) || '';
       this.touch();
     },
   },
@@ -292,6 +321,14 @@ export default {
       const dt = (this.s.conditions[0] && this.s.conditions[0].deviceType) || (this.pack && this.pack.deviceType);
       const sh = this.sheetByType[dt]; return (sh && sh.variables) || [];
     },
+    packType() { return (this.pack && this.pack.deviceType) || ''; },
+    scopeChoice: {
+      get() { return this.advScope ? 'equipo' : 'sitio'; },
+      set(v) { this.advScope = v === 'equipo' ? this.packType : ''; this.touch(); },
+    },
+    leafCount() { this.tick; return treeLeaves(this.advCross).length; },
+    metricCount() { this.tick; return treeLeaves(this.advCross).filter(l => l.measure === 'metric').length; },
+    overLimits() { return this.leafCount > 8 || this.metricCount > 3; },
     sevLabel() { return severityLabel(this.s.severity); },
     badge() { return severityBadge(this.s.severity); },
     trendUnit() { return (this.s.conditions[0] && this.s.conditions[0].unit) || ''; },
@@ -335,7 +372,7 @@ export default {
     naturalText() {
       this.tick;
       const rule = this.buildRule();
-      if (rule.type === 'cross') return describeCross(rule.crossExpr, this.sheets, this.sevLabel);
+      if (rule.type === 'cross') return describeCross(rule.crossExpr, this.sheets, this.sevLabel, this.advanced ? (this.advScope || null) : null);
       return { mode: 'sentence', sentence: `Se disparará una alarma de ${this.sevLabel} cuando ${summarize(rule, { sheets: this.sheets })}.`, lines: [] };
     },
     // E1 · U-01 — el umbral de la ficha solo vale para umbral simple (D) y combinadas.
@@ -350,7 +387,7 @@ export default {
     },
     canSave() {
       if (!this.s.label) return false;
-      if (this.advanced) return !!(this.advCross && Array.isArray(this.advCross.children) && this.advCross.children.length);
+      if (this.advanced) return !!(this.advCross && Array.isArray(this.advCross.children) && this.advCross.children.length) && !this.overLimits;
       const conds = this.s.conditions || [];
       if (!conds.length) return false;
       for (const c of conds) {
@@ -377,6 +414,16 @@ export default {
     // Limpia todos los modificadores (S/C/M) y activa uno solo (garantiza exclusión).
     clearMods() { this.s.temporal = this.s.setpoint = this.s.trend = this.s.projection = this.s.spread = this.s.compare = this.s.dutyCycle = this.s.cumulative = this.s.stepJump = this.s.flatline = this.s.staleness = this.s.variance = null; this.s.mPreset = false; },
     addCondition() {
+      // spec_reglas_compuestas — con una métrica o el setpoint elegidos, agregar otra condición
+      // arma una regla combinada que CONSERVA la primera (antes se perdía el modificador).
+      const keep = this.activeMod && !['temporal', 'spread'].includes(this.activeMod) && this.s.conditions[0] && this.s.conditions[0].variable;
+      if (keep) {
+        const first = ruleToLeaf(sentenceToRule(this.s, this.pack, this.rule, this.editingIndex));
+        const dt = this.packType;
+        this.advCross = { op: 'AND', children: [first, { deviceType: dt, variable: '', condition: { op: 'gt', value: 0 } }] };
+        this.advScope = dt; this.advanced = true; this.touch();
+        return;
+      }
       this.s.conditions.push(emptyCondition((this.pack && this.pack.deviceType) || ''));
       this.clearMods(); this.touch();
     },
@@ -422,7 +469,7 @@ export default {
       if (!this.advanced) return sentenceToRule(this.s, this.pack, this.rule, this.editingIndex);
       const dt = (this.pack && this.pack.deviceType) || '';
       const ex = this.rule;
-      const crossExpr = stripEditorKeys(JSON.parse(JSON.stringify(this.advCross || { op: 'AND', children: [] })));
+      const crossExpr = assignLeafIds(stripEditorKeys(JSON.parse(JSON.stringify(this.advCross || { op: 'AND', children: [] }))));
       // E1 · U-06 — se parte de la regla existente COMPLETA (enabled, unit, correlationParent,
       // cooldownSec 0, deviceType…) y se pisa solo lo que edita esta pantalla.
       const base = ex ? JSON.parse(JSON.stringify(ex)) : {};
@@ -440,6 +487,7 @@ export default {
         cooldownSec: ex && ex.cooldownSec != null ? ex.cooldownSec : 300,
         condition: null, crossExpr,
       });
+      if (this.advScope) rule.scope = { deviceType: this.advScope }; else delete rule.scope;
       delete rule._id;
       return rule;
     },
@@ -468,6 +516,10 @@ export default {
 .se-sev { width: 220px; }
 .se-adv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9rem; }
 .se-warn { color: #b0883a; font-size: 0.75rem; margin-top: 6px; }
+.se-scope { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.se-scope-l { font-size: 0.8rem; font-weight: 600; }
+.se-limits { font-size: 0.75rem; color: #8898aa; margin: 8px 2px 0; }
+.se-limits--over { color: #fd5d93; font-weight: 600; }
 
 /* ── divisor + confirmación ── */
 .se-divider { height: 1px; background: var(--se-line, #e6e9f0); margin: 6px 0 18px; }
