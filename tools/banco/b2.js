@@ -166,7 +166,7 @@ async function b2() {
       async () => { await feed([100, 95, 90, 85, 80, 75], 5); await sleep(GM + 5); }, async () => { await feed([100], 1); await sleep(CM + 10); });
     // stepJump automático: salto ≥ 20 en un paso
     await caso('bM-jump', M('bM-jump', 'Banco M · salto abrupto', 'stepJump', { condition: { op: 'gte', value: 20 }, mWindow: { durationSec: 60, minSamples: 2 } }),
-      async () => { await feed([50, 50 + u], 5); await setVal(dId, V, 80); await sleep(GM + 8); }, async () => { await feed([80 + u, 80, 80 + u], 5); await sleep(CM + 5); });
+      async () => { await feed([50, 50 + u], 5); await setVal(dId, V, 80); await sleep(GM + 8); }, async () => { await feed([80 + u, 80, 80 + u], 5); await sleep(CM + 5); }, { closeFromFire: true });
     // stepJump con cierre manual: tras normalizar espera confirmación (E6)
     {
       const R = 'bM-jumpM';

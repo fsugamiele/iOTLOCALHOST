@@ -139,7 +139,7 @@ Las correcciones **no** se hacen dentro del banco. Cada una va con su propia spe
 ### B2 · re-corrida tras G1e (2026-10-16/17, `0eb6075` → `72e088f`)
 - **T 7/7** (incluye bM-slope-3: serie rala ya no es "Sin datos").
 - **R 9/9** (`72e088f`): bM-div-3 E3→E5 con la alarma abierta · bM-spread-1/2/3 con 2 equipos (historia propia) · **bM-spread-4** con 3 equipos (mediana).
-- **A 18/1** (`0563d5f`): jump, base-1, flat-3 (rechazo API) en verde. bM-base-2 rojo era del banco (ver abajo); pendiente re-corrida.
+- **A 18/1** (`55da091`): bM-base-2 en verde. bM-jump-2 rojo por la misma causa del banco (el salto ya se había cerrado solo dentro de jump-1); corregido con el mismo criterio.
 - **Correcciones del banco (no del motor):**
   - El simulador republica en cada ciclo los valores fijados con `set_sensor`: no hay "report-by-exception" para valores fijados. Se agregó `mute_sensor`/`unmute_sensor` (calla una variable sola) para probar frescura.
   - Los eventos de una muestra (fuera de lo normal) se cierran solos cuando el valor fijado entra al historial: el cierre se cuenta desde el aviso.
