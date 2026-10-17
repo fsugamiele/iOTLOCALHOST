@@ -152,6 +152,14 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
                 const other = fsm.get(k);
                 if (other && other.step !== 'E1') fsm.evaluate(evalRule, k, 'off', { ...ctxM, dId: other.dId }, eventTs);
               }
+              // Un equipo que salió del conjunto (su dato está viejo) con una instancia abierta:
+              // le falta el dato → Sin datos (E5) hasta que vuelva a reportar (GRAFCET: no se cierra a ciegas).
+              const prefix = `${rule.ruleId}:`;
+              for (const [k, inst] of fsm.instances) {
+                if (!k.startsWith(prefix) || keys.includes(k) || inst.step === 'E1' || inst.step === 'E5') continue;
+                const st = siteState.get(inst.dId);
+                if (st && st._siteCode === siteCode) fsm.evaluate(evalRule, k, null, { ...ctxM, value: null, dId: inst.dId }, eventTs);
+              }
               break;
             }
             const targetDId = res.outlierDId || dId;

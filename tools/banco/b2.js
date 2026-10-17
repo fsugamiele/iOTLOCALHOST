@@ -111,6 +111,17 @@ async function b2() {
       const R = 'bM-spread', { t, a, b, v } = grupo;
       log(`   desbalance sobre ${t}: ${a} y ${b} · ${v}`);
       const rule = { ...base(R, 'Banco M · desbalance (spread)', 'M', t), graceSec: GM, resolveGraceSec: CM, variable: v, metric: 'spread', condition: { op: 'gt', value: 20 } };
+      // Otros equipos del mismo tipo en el sitio también entran al conjunto: se silencia su variable
+      // (mute_sensor) y se espera la frescura (180 s) para que la prueba sea de 2 equipos.
+      const otros = (await db.collection('devices').find({ siteId: SITE, deviceType: t, dId: { $nin: [a, b] } }).toArray());
+      const reales = otros.filter((d) => d.firmwareType !== 'wanomi-sim');
+      const terceros = otros.filter((d) => d.firmwareType === 'wanomi-sim').map((d) => d.dId);
+      if (reales.length) log(`   aviso: ${reales.map((d) => d.dId).join(', ')} (no simulado) también es ${t}: si reporta ${v}, entra al conjunto`);
+      if (terceros.length) {
+        log(`   silencio ${v} en ${terceros.join(', ')} y espero 190 s (frescura)`);
+        for (const c of terceros) await mqttCmd(c, 'mute_sensor', { sensor: v });
+        await sleep(190);
+      }
       await setVal(a, v, 50); await setVal(b, v, 52); await sleep(5);
       await putPack(t, [rule]); await sleep(12);
       log('   historia propia de cada equipo (40 s estables) — G1e · Qf4');
@@ -129,6 +140,17 @@ async function b2() {
       const abiertas = [rowA && rowA.alarmOpen ? a : null, rowB2 && rowB2.alarmOpen ? b : null].filter(Boolean);
       result('bM-spread-3', !abiertas.length ? 'VERDE' : 'ROJO', 'sin desbalance: no queda ninguna alarma abierta',
         `${steps(await trans(R, s))} · abiertas: ${abiertas.join(', ') || 'ninguna'}`);
+      // 3 equipos: vuelve el tercero; el culpable se elige por la mediana del grupo.
+      if (terceros.length) {
+        const c = terceros[0];
+        for (const x of terceros) await mqttCmd(x, 'unmute_sensor', { sensor: v });
+        await setVal(c, v, 51); await setVal(a, v, 50); await setVal(b, v, 52); await sleep(CM + 12);
+        s = now(); await setVal(b, v, 90); await sleep(GM + 12);
+        ns = fires(await notifs(R, s));
+        result('bM-spread-4', ns[0] && ns[0].dId === b ? 'VERDE' : 'ROJO', 'desbalance con 3 equipos: señala al más alejado de la mediana',
+          `${ns[0] ? `aviso en ${ns[0].dId} (esperado ${b})` : 'sin aviso'} · ${steps(await trans(R, s))}`);
+        for (const x of terceros) await api('POST', '/simulator/reset', { dId: x });
+      }
       await api('POST', '/simulator/reset', { dId: a }); await api('POST', '/simulator/reset', { dId: b });
     }
     await putPack(DT, []);
