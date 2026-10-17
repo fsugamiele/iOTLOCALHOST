@@ -52,51 +52,69 @@ function groupDepth(node) {
   return 1 + m;
 }
 
+// Nombre en palabras de cada métrica (los mensajes de la API los lee el operador en el editor).
+const METRIC_WORDS = {
+  slope: 'tendencia', projection: 'proyección', acceleration: 'cambio de la tendencia', ratio: 'relación con otra medición',
+  divergence: 'diferencia con otra medición', dutyCycle: '% del tiempo en uso', cumulativeSince: 'caída acumulada',
+  flatline: 'sensor clavado', staleness: 'deja de reportar', variance: 'lecturas inestables', accumulator: 'vida útil',
+  stepJump: 'salto abrupto', baseline: 'fuera de lo normal', spread: 'desbalance entre equipos',
+};
+const NO_WINDOW = ['ratio', 'divergence', 'cumulativeSince', 'staleness', 'accumulator'];
+const human = (v) => String(v || 'la medición').replace(/_/g, ' ');
+
 // Validación de la forma combinada (además de validateCrossTree). validateM se inyecta
-// para no crear un require circular con ruleValidation.js.
+// para no crear un require circular con ruleValidation.js. Mensajes en palabras del operador:
+// el editor los muestra tal cual (spec_reglas_compuestas · UX).
 function validateCombined(rule, validateM) {
   const leaves = leavesOf(rule.crossExpr);
-  if (rule.scope != null) {
-    if (typeof rule.scope !== 'object' || !rule.scope.deviceType || typeof rule.scope.deviceType !== 'string') {
-      return { ok: false, reason: 'regla combinada: scope.deviceType debe ser un tipo de equipo' };
-    }
+  if (rule.scope != null && (typeof rule.scope !== 'object' || !rule.scope.deviceType || typeof rule.scope.deviceType !== 'string')) {
+    return { ok: false, reason: 'Elegí si la regla se evalúa en cada equipo o en el sitio entero.' };
   }
-  if (leaves.length > LIMITS.leaves) return { ok: false, reason: `regla combinada: hasta ${LIMITS.leaves} condiciones (tiene ${leaves.length})` };
-  if (groupDepth(rule.crossExpr) > LIMITS.groupDepth) return { ok: false, reason: `regla combinada: hasta ${LIMITS.groupDepth} niveles de grupo` };
+  if (leaves.length > LIMITS.leaves) return { ok: false, reason: `Una regla combinada admite hasta ${LIMITS.leaves} condiciones (tiene ${leaves.length}).` };
+  if (groupDepth(rule.crossExpr) > LIMITS.groupDepth) return { ok: false, reason: 'Se puede agrupar condiciones un solo nivel (un grupo dentro de la regla).' };
   const ids = new Set();
   let metrics = 0;
   for (const l of leaves) {
     if (isSum(l)) continue;
-    const name = `condición ${l.leafId || `${l.deviceType}/${l.variable}`}`;
+    const m = measureOf(l);
+    const quien = m === 'metric' ? `La condición «${METRIC_WORDS[l.metric] || 'cómo evoluciona'}» sobre ${human(l.variable)}` : `La condición sobre ${human(l.variable)}`;
     if (l.leafId != null) {
-      if (typeof l.leafId !== 'string' || !/^[A-Za-z0-9_-]{1,16}$/.test(l.leafId)) return { ok: false, reason: `${name}: leafId inválido` };
-      if (ids.has(l.leafId)) return { ok: false, reason: `regla combinada: leafId repetido '${l.leafId}'` };
+      if (typeof l.leafId !== 'string' || !/^[A-Za-z0-9_-]{1,16}$/.test(l.leafId) || ids.has(l.leafId)) {
+        return { ok: false, reason: 'Hay condiciones repetidas: volvé a abrir la regla y guardala de nuevo.' };
+      }
       ids.add(l.leafId);
     }
-    const m = measureOf(l);
-    if (!MEASURES.includes(m)) return { ok: false, reason: `${name}: forma de medir inválida '${m}' (value/setpoint/metric)` };
+    if (!MEASURES.includes(m)) return { ok: false, reason: `${quien} tiene una forma de medir desconocida.` };
     if (l.pick != null && !(l.pick === 'any' || l.pick === 'all' || (typeof l.pick === 'string' && l.pick.length > 0))) {
-      return { ok: false, reason: `${name}: pick debe ser 'any', 'all' o un equipo` };
+      return { ok: false, reason: `${quien}: elegí si alcanza con un equipo o tienen que ser todos.` };
     }
-    if (l.freshnessSec != null && !(Number(l.freshnessSec) > 0)) return { ok: false, reason: `${name}: freshnessSec debe ser > 0` };
-    if (m === 'setpoint') {
-      if (!l.setpointSource || !l.setpointSource.variable) return { ok: false, reason: `${name}: "respecto del setpoint" necesita setpointSource.variable` };
-    }
-    if (m === 'metric') {
-      metrics++;
-      if (l.metric === 'spread') return { ok: false, reason: `${name}: el desbalance entre equipos no se combina (queda como regla simple)` };
-      if (!LEAF_METRICS.includes(l.metric)) return { ok: false, reason: `${name}: métrica inválida '${l.metric}'` };
-      const v = validateM({ ...l, type: 'M' });
-      if (!v.ok) return { ok: false, reason: `${name}: ${v.reason.replace(/^typeM: /, '')}` };
-      if (l.metric === 'flatline' && !(l.mWindow && Number(l.mWindow.durationSec) >= 900)) {
-        return { ok: false, reason: `${name}: "sensor clavado" necesita una ventana de al menos 15 min (un sensor clavado no publica cambios: solo llega el latido cada 5 min)` };
-      }
-      if (EVENT_LEAF_METRICS.includes(l.metric) && l.mParams && l.mParams.holdSec != null && !(Number(l.mParams.holdSec) > 0)) {
-        return { ok: false, reason: `${name}: mParams.holdSec debe ser > 0` };
+    if (l.freshnessSec != null && !(Number(l.freshnessSec) > 0)) return { ok: false, reason: `${quien}: el tiempo sin datos tiene que ser mayor que cero.` };
+    if (m === 'setpoint' && !(l.setpointSource && l.setpointSource.variable)) return { ok: false, reason: `${quien}: elegí qué medición del equipo informa el límite.` };
+    if (m !== 'metric') continue;
+    metrics++;
+    if (l.metric === 'spread') return { ok: false, reason: 'El desbalance entre equipos no se puede combinar con otras condiciones: creálo como regla aparte.' };
+    if (!LEAF_METRICS.includes(l.metric)) return { ok: false, reason: `${quien}: esa forma de medir no está disponible.` };
+    const c = l.condition || {};
+    if (c.value === undefined || c.value === null || c.value === '') return { ok: false, reason: `${quien}: cargá el valor de comparación.` };
+    if (!NO_WINDOW.includes(l.metric)) {
+      const w = l.mWindow || {};
+      if (!(Number(w.durationSec) > 0)) return { ok: false, reason: `${quien}: indicá cuántos minutos mirar.` };
+      if (l.metric === 'flatline' && Number(w.durationSec) < 900) {
+        return { ok: false, reason: `${quien}: hay que mirar al menos 15 minutos (un sensor clavado solo manda su lectura cada 5 minutos).` };
       }
     }
+    if (l.metric === 'projection' && !(l.mParams && typeof l.mParams.target === 'number')) return { ok: false, reason: `${quien}: indicá a qué valor tiene que llegar.` };
+    if ((l.metric === 'ratio' || l.metric === 'divergence') && !(Array.isArray(l.inputs) && l.inputs[1] && l.inputs[1].variable)) {
+      return { ok: false, reason: `${quien}: elegí la otra medición.` };
+    }
+    if (EVENT_LEAF_METRICS.includes(l.metric) && l.mParams && l.mParams.holdSec != null && !(Number(l.mParams.holdSec) > 0)) {
+      return { ok: false, reason: `${quien}: los segundos que cuenta como cumplida tienen que ser más que cero.` };
+    }
+    // Red de seguridad: las mismas reglas que una regla simple de ese tipo, con mensaje en palabras.
+    const v = validateM({ ...l, type: 'M' });
+    if (!v.ok) return { ok: false, reason: `${quien} está incompleta. Revisá sus datos.` };
   }
-  if (metrics > LIMITS.metrics) return { ok: false, reason: `regla combinada: hasta ${LIMITS.metrics} condiciones con métrica (tiene ${metrics})` };
+  if (metrics > LIMITS.metrics) return { ok: false, reason: `Una regla combinada admite hasta ${LIMITS.metrics} condiciones que miran cómo evoluciona la medición (tiene ${metrics}).` };
   return { ok: true };
 }
 

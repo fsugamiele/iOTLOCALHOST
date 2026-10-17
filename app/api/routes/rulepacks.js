@@ -75,7 +75,7 @@ function validatePackRules(pack) {
   const warnings = [];
   for (const r of rules) {
     const v = validateRule(r);
-    if (!v.ok) return { ok: false, ruleId: r.ruleId, reason: v.reason };
+    if (!v.ok) return { ok: false, ruleId: r.ruleId, label: r.label, reason: v.reason };
     if (v.warnings && v.warnings.length) {
       for (const w of v.warnings) warnings.push(`[${r.ruleId}] ${w}`);
     }
@@ -154,7 +154,8 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
     if (!v.ok) {
       return res.status(400).json({
         status: "error",
-        error: `regla ${v.ruleId} inválida: ${v.reason}`,
+        // Mensaje para el operador: el nombre de la regla, nunca su id técnico.
+        error: `No se pudo guardar la regla «${v.label || 'sin nombre'}»: ${v.reason}`,
       });
     }
 
@@ -174,7 +175,7 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
         const sinCambio = old && Number(old.mWindow && old.mWindow.durationSec) === w;
         if (!sinCambio) {
           return res.status(400).json({ status: "error", error:
-            `regla ${r.ruleId}: "sensor clavado" necesita una ventana de al menos ${MIN_FLAT_SEC / 60} min. ` +
+            `regla «${r.label || 'sin nombre'}»: "sensor clavado" necesita una ventana de al menos ${MIN_FLAT_SEC / 60} min. ` +
             `Un sensor clavado no publica cambios: solo llegan los latidos del equipo (cada 5 min), y la regla necesita al menos 3.` });
         }
       }
@@ -193,7 +194,7 @@ router.put("/rulepacks/:packId", checkAuth, async (req, res) => {
       for (const r of doc.rules) {
         const { unresolved } = resolveRule(r, byType);
         if (unresolved.length) {
-          return res.status(400).json({ status: "error", error: `regla ${r.ruleId}: umbral de ficha inexistente — ${unresolved.join(', ')}` });
+          return res.status(400).json({ status: "error", error: `regla «${r.label || 'sin nombre'}»: usa un umbral de la ficha que no está definido — ${unresolved.join(', ')}` });
         }
       }
     }

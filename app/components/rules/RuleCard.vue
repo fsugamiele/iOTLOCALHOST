@@ -5,7 +5,7 @@
        on/off quirúrgico (emite `toggle`; el PATCH no pasa por el editor-frase). -->
   <div class="rule-card" :class="['rule-card--' + rule.severity, { 'rule-card--off': !isEnabled }]">
     <div class="rule-card__head">
-      <span class="rule-card__title">{{ labelText || rule.ruleId }}</span>
+      <span class="rule-card__title">{{ labelText || 'Regla sin nombre' }}</span>
       <span class="rule-card__head-right">
         <span v-if="!isEnabled" class="rule-card__off-chip" :title="offTitle">fuera de circulación</span>
         <span class="badge" :class="badge">{{ sevLabel }}</span>
@@ -22,7 +22,7 @@
     </div>
 
     <div class="rule-card__foot">
-      <span class="rule-card__type" :title="'tipo motor: ' + rule.type">{{ typeHint }}</span>
+      <span class="rule-card__type">{{ typeHint }}</span>
       <span class="rule-card__actions">
         <label class="rc-switch" :title="isEnabled ? 'En circulación — clic para sacar de circulación' : 'Fuera de circulación — clic para reactivar'">
           <input type="checkbox" :checked="isEnabled" @change="$emit('toggle', { index, enabled: $event.target.checked })">
@@ -67,11 +67,11 @@ export default {
     // Etiqueta de tipo secundaria (disenso de Motor: trazabilidad, no protagonista).
     typeHint() {
       if (this.rule.type === 'M') {
-        const mm = { slope: 'tendencia', projection: 'proyección', acceleration: 'aceleración', spread: 'desbalance', ratio: 'relación', divergence: 'diferencia', dutyCycle: 'uso %', cumulativeSince: 'acumulado', accumulator: 'acumulador', stepJump: 'salto abrupto', flatline: 'sensor clavado', staleness: 'deja de reportar', variance: 'inestable', baseline: 'fuera de lo normal' };
+        const mm = { slope: 'tendencia', projection: 'proyección', acceleration: 'aceleración', spread: 'desbalance', ratio: 'relación', divergence: 'diferencia', dutyCycle: 'uso %', cumulativeSince: 'caída acumulada', accumulator: 'vida útil', stepJump: 'salto abrupto', flatline: 'sensor clavado', staleness: 'deja de reportar', variance: 'inestable', baseline: 'fuera de lo normal' };
         return mm[this.rule.metric] || 'vigilancia avanzada';
       }
-      const m = { D: 'umbral', cross: 'combinada', C: 'contra setpoint', S: 'en el tiempo' };
-      return m[this.rule.type] || this.rule.type;
+      const m = { D: 'umbral', cross: 'combinada', C: 'contra el límite del equipo', S: 'en el tiempo' };
+      return m[this.rule.type] || 'regla';
     },
   },
 };

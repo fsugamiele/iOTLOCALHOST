@@ -19,6 +19,28 @@ export const OPERATOR_LABELS = {
 };
 export const OPERATORS = ['lt', 'lte', 'gt', 'gte', 'eq', 'neq'];
 
+// spec_reglas_compuestas (K3 · UX) — el usuario nunca ve el código técnico del tipo de equipo.
+// Nombre en palabras: por código conocido; si no, la marca/modelo de la ficha; si no, el código.
+const DEVICE_KIND = {
+  ELTEK: 'Rectificador', GEN: 'Grupo electrógeno', ATS: 'Tablero de transferencia',
+  CUMMINS: 'Controlador del grupo electrógeno', 'cummins-pcc': 'Controlador del grupo electrógeno', SEC: 'Central de seguridad',
+};
+const DOMAIN_KIND = { energia: 'Equipo de energía', grupo: 'Grupo electrógeno', seguridad: 'Equipo de seguridad', infraestructura: 'Equipo de infraestructura' };
+export function deviceTypeName(deviceType, sheets) {
+  if (!deviceType) return 'equipo';
+  if (DEVICE_KIND[deviceType]) return DEVICE_KIND[deviceType];
+  const sh = (sheets || []).find(x => x.deviceType === deviceType);
+  if (sh && (sh.manufacturer || sh.model)) return [DOMAIN_KIND[sh.domain] || 'Equipo', sh.manufacturer, sh.model].filter(Boolean).join(' ');
+  if (sh && DOMAIN_KIND[sh.domain]) return `${DOMAIN_KIND[sh.domain]} (${deviceType})`;
+  return deviceType;
+}
+// Nombre en palabras de una variable: el de la ficha; si no tiene, el técnico sin guiones bajos.
+export function variableName(deviceType, variable, sheets) {
+  const sh = (sheets || []).find(x => x.deviceType === deviceType);
+  const v = sh && (sh.variables || []).find(x => x.name === variable);
+  return (v && v.label) || String(variable || 'la medición').replace(/_/g, ' ');
+}
+
 // spec_cascada_ficha C2 — umbral por referencia a la ficha.
 export const LIMIT_REF_LABELS = { warning: 'umbral de atención de la ficha', trip: 'umbral crítico de la ficha' };
 // Valor efectivo de una condición: el literal, o el límite de la ficha (resuelto con `sheets`).
@@ -81,7 +103,7 @@ export function severityBadge(sev) { const s = SEVERITIES.find(x => x.value === 
 export function summarize(r, opts = {}) {
   if (!r) return '';
   const sheets = opts.sheets || [];
-  const varName = r.variableLabel || r.variable || '';
+  const varName = r.variableLabel || resolveVarLabel(r.deviceType, r.variable, sheets) || '';
   const unit = r.unit ? ` ${r.unit}` : '';
   if (r.type === 'D' && r.condition) {
     if (r.condition.limitRef) return `${varName} ${OPERATOR_LABELS[r.condition.op] || r.condition.op} ${condValueText(r.condition, r.deviceType, r.variable, sheets, r.unit)}`;
@@ -97,6 +119,12 @@ export function summarize(r, opts = {}) {
   }
   if (r.type === 'cross' && r.crossExpr) {
     const ce = r.crossExpr;
+    // spec_reglas_compuestas — combinada: la misma frase en palabras que muestra el editor.
+    const anchor = r.scope && r.scope.deviceType;
+    if (anchor || !isFlatCross(ce) && Array.isArray(ce.children) && ce.children.some(function hasNew(n) { return isNewLeaf(n) || (Array.isArray(n.children) && n.children.some(hasNew)); })) {
+      const p = phraseOf(ce, sheets, true, anchor || null);
+      return anchor ? `En cada equipo «${deviceTypeName(anchor, sheets)}», cuando ${p}` : `Cuando ${p}`;
+    }
     if (Array.isArray(ce.children) && ce.children.every(isLeaf)) {
       const join = ce.op === 'OR' ? ' O ' : ' Y ';
       return ce.children.map(n => leafText(n, sheets)).join(join);
@@ -193,9 +221,10 @@ export function crossDepth(node) {
 
 // spec_reglas_compuestas (K3) — cómo se mide cada condición de una regla combinada.
 export const METRIC_LABELS = {
-  slope: 'tendencia', projection: 'proyección', acceleration: 'aceleración', ratio: 'relación',
-  divergence: 'diferencia', dutyCycle: 'uso %', cumulativeSince: 'caída acumulada', flatline: 'sensor clavado',
-  staleness: 'deja de reportar', variance: 'lecturas inestables', accumulator: 'vida útil',
+  slope: 'tendencia (cuánto sube o baja por minuto)', projection: 'proyección (cuándo llega a un valor)',
+  acceleration: 'cambio de la tendencia', ratio: 'relación con otra medición', divergence: 'diferencia con otra medición',
+  dutyCycle: '% del tiempo en uso', cumulativeSince: 'caída acumulada desde la última recarga', flatline: 'sensor clavado (no cambia)',
+  staleness: 'deja de reportar', variance: 'lecturas inestables', accumulator: 'vida útil (horas de uso)',
   stepJump: 'salto abrupto', baseline: 'fuera de lo normal',
 };
 export const LEAF_METRIC_ORDER = ['slope', 'projection', 'acceleration', 'ratio', 'divergence', 'dutyCycle',
@@ -213,29 +242,73 @@ export function ruleToLeaf(rule) {
 }
 const isNewLeaf = (n) => !!n && !isSum(n) && !!(n.measure || n.pick || n.leafId);
 
+// Frase de una condición de regla combinada, en palabras (sin nombres técnicos).
+function combinedLeafPhrase(node, sheets, anchorType) {
+  const vl = variableName(node.deviceType, node.variable, sheets);
+  const sh = (sheets || []).find(x => x.deviceType === node.deviceType);
+  const vv = sh && (sh.variables || []).find(x => x.name === node.variable);
+  const u = vv && vv.unit ? ` ${vv.unit}` : '';
+  const kind = deviceTypeName(node.deviceType, sheets);
+  let eq;
+  if (anchorType && node.deviceType === anchorType) eq = ' de este equipo';
+  else if (node.pick === 'all') eq = ` en todos los equipos «${kind}» del sitio`;
+  else eq = ` en algún equipo «${kind}» del sitio`;
+  const c = node.condition || {};
+  const cmp = OPERATOR_LABELS[c.op] || c.op;
+  const v = c.value;
+  const w = node.mWindow && node.mWindow.durationSec ? Math.round(node.mWindow.durationSec / 60) : null;
+  const win = w ? ` (mirando los últimos ${w} min)` : '';
+  const hold = (node.mParams && node.mParams.holdSec) || 120;
+  const v2 = Array.isArray(node.inputs) && node.inputs[1] ? variableName(node.deviceType, node.inputs[1].variable, sheets) : 'otra medición';
+  if (node.measure === 'setpoint') return `${vl}${eq} sea ${cmp} el límite configurado en el equipo`;
+  if (node.measure !== 'metric') {
+    if (c.limitRef) return `${vl}${eq} sea ${cmp} ${condValueText(c, node.deviceType, node.variable, sheets, vv && vv.unit)}`;
+    if (vv && vv.type === 'bool') return `${vl}${eq} ${['eq'].includes(c.op) === (Number(v) === 1) ? 'sea «sí»' : 'sea «no»'}`;
+    return `${vl}${eq} sea ${cmp} ${v}${u}`;
+  }
+  switch (node.metric) {
+    case 'slope':
+      if (['lt', 'lte'].includes(c.op) && Number(v) <= 0) return `${vl}${eq} baje más de ${Math.abs(v)}${u} por minuto${win}`;
+      if (['gt', 'gte'].includes(c.op) && Number(v) >= 0) return `${vl}${eq} suba más de ${v}${u} por minuto${win}`;
+      return `el cambio por minuto de ${vl}${eq} sea ${cmp} ${v}${u}${win}`;
+    case 'projection': {
+      const t = node.mParams && node.mParams.target;
+      return `${vl}${eq} vaya a llegar a ${t != null ? t : '?'}${u} en ${['lt', 'lte'].includes(c.op) ? 'menos de' : cmp} ${v} h${win}`;
+    }
+    case 'acceleration': return `la tendencia de ${vl}${eq} cambie ${cmp} ${v}${win}`;
+    case 'ratio': return `${vl} dividido ${v2}${eq} sea ${cmp} ${v}`;
+    case 'divergence': return `la diferencia entre ${vl} y ${v2}${eq} sea ${cmp} ${v}${u}`;
+    case 'dutyCycle': return `${vl}${eq} esté en uso ${cmp} ${v} % del tiempo${win}`;
+    case 'cumulativeSince': return `${vl}${eq} acumule una caída ${cmp} ${v}${u} desde la última recarga`;
+    case 'flatline': return `${vl}${eq} quede clavada (cambia menos de ${v}${u})${win}`;
+    case 'staleness': return `${vl}${eq} lleve más de ${v} min sin reportarse`;
+    case 'variance': return `${vl}${eq} oscile ${cmp} ${v}${u}${win}`;
+    case 'accumulator': return `la vida útil acumulada de ${vl}${eq} llegue a ${v} horas`;
+    case 'stepJump': return `${vl}${eq} dé un salto de ${v}${u} o más (cuenta durante ${hold} s)`;
+    case 'baseline': return `${vl}${eq} se salga de lo habitual (cuenta durante ${hold} s)`;
+    default: return `${vl}${eq} cumpla la condición`;
+  }
+}
+
 function leafPhrase(node, sheets, anchorType) {
+  if (anchorType || isNewLeaf(node)) return combinedLeafPhrase(node, sheets, anchorType);
   const s = (sheets || []);
   if (isSum(node)) {
     const first = node.sum[0] || {};
     const sh = s.find(x => x.deviceType === first.deviceType);
     const v = sh && (sh.variables || []).find(x => x.name === first.variable);
-    const vlabel = (v && v.label) || first.variable || 'medición';
-    const eqs = node.sum.map(t => t.deviceType).filter(Boolean).join(' + ') || 'varios equipos';
+    const vlabel = (v && v.label) || (first.variable ? String(first.variable).replace(/_/g, ' ') : 'medición');
+    const eqs = node.sum.map(t => t.deviceType && deviceTypeName(t.deviceType, s)).filter(Boolean).join(' + ') || 'varios equipos';
     const c = node.condition || {};
     return `la suma de ${vlabel} entre ${eqs} sea ${OPERATOR_LABELS[c.op] || c.op} ${c.value}`;
   }
   const sh = s.find(x => x.deviceType === node.deviceType);
   const v = sh && (sh.variables || []).find(x => x.name === node.variable);
-  const vlabel = (v && v.label) || node.variable || 'la variable';
+  const vlabel = (v && v.label) || (node.variable ? String(node.variable).replace(/_/g, ' ') : 'la variable');
   const unit = (v && v.unit) ? ` ${v.unit}` : '';
-  let eq = node.deviceType ? ` del ${node.deviceType}` : '';
-  if (anchorType && node.deviceType === anchorType) eq = ' de este equipo';
-  else if (node.pick === 'all') eq = ` de todos los ${node.deviceType}`;
-  else if (anchorType || node.pick === 'any') eq = ` de algún ${node.deviceType}`;
+  const eq = node.deviceType ? ` del ${deviceTypeName(node.deviceType, s)}` : '';
   const c = node.condition || {};
   const cmp = OPERATOR_LABELS[c.op] || c.op;
-  if (node.measure === 'metric') return `la ${METRIC_LABELS[node.metric] || node.metric} de ${vlabel}${eq} sea ${cmp} ${c.value}`;
-  if (node.measure === 'setpoint') return `la ${vlabel}${eq} sea ${cmp} su setpoint (${(node.setpointSource && node.setpointSource.variable) || '?'})`;
   if (c.limitRef) return `la ${vlabel}${eq} sea ${cmp} ${condValueText(c, node.deviceType, node.variable, s, v && v.unit)}`;
   return `la ${vlabel}${eq} sea ${cmp} ${c.value}${unit}`;
 }
@@ -264,7 +337,7 @@ function outlineOf(node, sheets, depth, acc, anchorType) {
 // Devuelve { mode: 'sentence'|'outline', sentence, lines }.
 export function describeCross(crossExpr, sheets, sevLabel, anchorType) {
   const sev = sevLabel || 'alarma';
-  const where = anchorType ? ` en cada ${anchorType}` : '';
+  const where = anchorType ? ` en cada equipo «${deviceTypeName(anchorType, sheets)}»` : '';
   if (!isGroup(crossExpr) || !crossExpr.children.length) {
     return { mode: 'sentence', sentence: 'Todavía no hay condiciones cargadas.', lines: [] };
   }
@@ -286,7 +359,7 @@ function isLeaf(node) { return node && node.variable && node.condition && !node.
 function resolveVarLabel(deviceType, variable, sheets) {
   const sh = (sheets || []).find(s => s.deviceType === deviceType);
   const v = sh && (sh.variables || []).find(x => x.name === variable);
-  return (v && v.label) || variable;
+  return (v && v.label) || (variable ? String(variable).replace(/_/g, ' ') : variable);
 }
 function leafText(node, sheets) {
   const c = node.condition || {};

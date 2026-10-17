@@ -5,7 +5,7 @@
         <card>
           <div slot="header" class="d-flex justify-content-between align-items-center">
             <div>
-              <h3 class="card-title mb-1">{{ packId }}</h3>
+              <h3 class="card-title mb-1">{{ pack ? 'Reglas de ' + packKindName : 'Reglas' }}</h3>
               <p class="text-muted mb-0" v-if="pack">
                 {{ pack.description || 'sin descripción' }}
               </p>
@@ -20,22 +20,22 @@
           <template v-else-if="pack">
             <div class="row">
               <div class="col-md-3">
-                <strong>deviceType:</strong> {{ pack.deviceType }}
+                <strong>Tipo de equipo:</strong> {{ packKindName }}
               </div>
               <div class="col-md-2">
-                <strong>version:</strong> {{ pack.version }}
+                <strong>Versión:</strong> {{ pack.version }}
               </div>
               <div class="col-md-2">
-                <strong>canary:</strong>
+                <strong>Estado:</strong>
                 <span
                   class="badge"
                   :class="pack.canary ? 'badge-warning' : 'badge-secondary'"
                 >
-                  {{ pack.canary ? 'canary' : 'prod' }}
+                  {{ pack.canary ? 'en prueba' : 'en uso' }}
                 </span>
               </div>
               <div class="col-md-5">
-                <strong>actualizado:</strong> {{ formatDate(pack.updatedAt) }}
+                <strong>Actualizado:</strong> {{ formatDate(pack.updatedAt) }}
               </div>
             </div>
 
@@ -55,7 +55,7 @@
                 @click="saveWarnings = []"
                 aria-label="Close"
               >×</button>
-              <strong>Advertencias de configuración del pack:</strong>
+              <strong>Advertencias de configuración:</strong>
               <ul class="mb-0 mt-2">
                 <li v-for="(w, i) in saveWarnings" :key="i">{{ w }}</li>
               </ul>
@@ -71,10 +71,10 @@
                   <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
                   <div class="d-flex align-items-center" style="gap:14px">
                     <!-- DEC-REF-121 — kill-switch del pack completo (PATCH quirúrgico). -->
-                    <label class="pack-switch" :title="packEnabled ? 'Pack en circulación — clic para sacar de circulación TODO el pack' : 'Pack fuera de circulación — clic para reactivar'">
+                    <label class="pack-switch" :title="packEnabled ? 'Reglas en circulación — clic para sacar de circulación TODAS las reglas de este equipo' : 'Reglas fuera de circulación — clic para reactivarlas'">
                       <input type="checkbox" :checked="packEnabled" @change="onTogglePack($event.target.checked)">
                       <span class="pack-sl"></span>
-                      <span class="pack-switch__lbl">{{ packEnabled ? 'pack activo' : 'pack fuera de circulación' }}</span>
+                      <span class="pack-switch__lbl">{{ packEnabled ? 'reglas activas' : 'reglas fuera de circulación' }}</span>
                     </label>
                     <base-button v-if="!editorOpen" type="primary" size="sm" @click="openSentenceNew">
                       <i class="tim-icons icon-simple-add"></i> Nueva regla
@@ -131,8 +131,7 @@
       :close-on-click-modal="false"
     >
       <p v-if="deleteRuleTargetRuleId">
-        Borrar regla <code>{{ deleteRuleTargetRuleId }}</code> del pack
-        <code>{{ packId }}</code>? El motor edge recargará al guardar.
+        ¿Borrar la regla <b>{{ deleteRuleTargetLabel }}</b>? Los equipos la dejan de vigilar apenas se guarda.
       </p>
       <div slot="footer">
         <base-button type="secondary" @click="deleteRuleModal = false">Cancelar</base-button>
@@ -153,6 +152,7 @@ import { Dialog } from 'element-ui';
 import { stripEditorKeys } from '@/components/CrossExprNode.vue';
 import RuleCard from '@/components/rules/RuleCard.vue';           // DEC-REF-114 (#83, B1)
 import SentenceEditor from '@/components/rules/SentenceEditor.vue';
+import { deviceTypeName } from '@/components/rules/ruleSentence.js';
 
 // DEC-REF-100 D-7 (F6) — capa de presentación del wizard: mismos labels que
 // OPERATOR_LABELS del backend (api/models/rule_definition.js — la identidad
@@ -267,6 +267,12 @@ export default {
       const r = this.pack.rules[this.deleteRuleTargetIndex];
       return r ? r.ruleId : '';
     },
+    deleteRuleTargetLabel() {
+      const r = this.pack && this.deleteRuleTargetIndex !== null ? this.pack.rules[this.deleteRuleTargetIndex] : null;
+      return (r && r.label) || 'sin nombre';
+    },
+    // Nombre del tipo de equipo en palabras (nunca el código técnico).
+    packKindName() { return this.pack ? deviceTypeName(this.pack.deviceType, this.sheets) : ''; },
     // S6 — índice de fichas por deviceType para el editor de reglas.
     sheetByType() {
       const m = {};

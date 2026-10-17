@@ -71,18 +71,18 @@
         :value="value.deviceType || ''" size="small" filterable class="select-info cn-equipo"
         placeholder="equipo" @change="onLeafEquipo"
       >
-        <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="s.deviceType" />
+        <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="kindName(s.deviceType)" />
       </el-select>
       <el-input v-else :value="value.deviceType || ''" size="small" class="cn-equipo" placeholder="equipo" @input="onLeafEquipo" />
 
       <el-select
         v-if="leafVariables.length"
         :value="value.variable || ''" size="small" filterable class="select-info cn-var"
-        placeholder="variable" @change="onLeafVariable"
+        placeholder="medición" @change="onLeafVariable"
       >
         <el-option v-for="v in leafVariables" :key="v.name" :value="v.name" :label="varLabel(v)" />
       </el-select>
-      <el-input v-else :value="value.variable || ''" size="small" class="cn-var" placeholder="variable técnica" @input="onLeafVariable" />
+      <el-input v-else :value="value.variable || ''" size="small" class="cn-var" placeholder="medición" @input="onLeafVariable" />
 
       <el-select :value="condOp" size="small" class="select-primary cn-op" @change="updateCondition('op', $event)">
         <el-option v-for="(lbl, op) in OPERATOR_LABELS" :key="op" :value="op" :label="lbl" />
@@ -115,27 +115,27 @@
         <span class="cn-mlbl">Equipo</span>
         <span v-if="isAnchorLeaf" class="cn-anchor">este equipo</span>
         <el-select v-else :value="value.pick || 'any'" size="small" class="cn-pick" @change="updateLeaf('pick', $event)">
-          <el-option value="any" :label="'alguno ' + (value.deviceType || '') + ' del sitio'" />
-          <el-option value="all" :label="'todos los ' + (value.deviceType || '') + ' del sitio'" />
+          <el-option value="any" label="alcanza con uno del sitio" />
+          <el-option value="all" label="tienen que ser todos los del sitio" />
         </el-select>
         <span class="cn-mlbl">Cómo se mide</span>
         <el-select :value="measureKey" size="small" class="cn-mkind" @change="setMeasure">
-          <el-option value="value" label="valor actual" />
-          <el-option value="setpoint" label="respecto del setpoint del equipo" />
-          <el-option-group label="métrica">
+          <el-option value="value" label="el valor actual" />
+          <el-option value="setpoint" label="contra el límite configurado en el equipo" />
+          <el-option-group label="cómo evoluciona">
             <el-option v-for="m in metricOrder" :key="m" :value="'m:' + m" :label="metricLabels[m]" />
           </el-option-group>
         </el-select>
         <template v-if="value.measure === 'setpoint'">
-          <span class="cn-mlbl">setpoint</span>
+          <span class="cn-mlbl">límite que informa el equipo</span>
           <el-select v-if="leafVariables.length" :value="(value.setpointSource || {}).variable || ''" size="small" filterable class="cn-var" @change="updateLeaf('setpointSource', { ...(value.setpointSource || {}), variable: $event })">
             <el-option v-for="v in leafVariables" :key="v.name" :value="v.name" :label="varLabel(v)" />
           </el-select>
-          <el-input v-else :value="(value.setpointSource || {}).variable || ''" size="small" class="cn-var" placeholder="variable del setpoint" @input="updateLeaf('setpointSource', { ...(value.setpointSource || {}), variable: $event })" />
+          <el-input v-else :value="(value.setpointSource || {}).variable || ''" size="small" class="cn-var" placeholder="medición del límite" @input="updateLeaf('setpointSource', { ...(value.setpointSource || {}), variable: $event })" />
         </template>
         <template v-if="value.measure === 'metric'">
           <template v-if="hasWindow">
-            <span class="cn-mlbl">ventana</span>
+            <span class="cn-mlbl">mirando los últimos</span>
             <el-input :value="windowMin" size="small" type="number" class="cn-mini" @input="setWindowMin" /><span class="cn-unit">min</span>
           </template>
           <template v-if="value.metric === 'projection'">
@@ -147,13 +147,13 @@
             <el-select v-if="leafVariables.length" :value="secondInput" size="small" filterable class="cn-var" @change="setSecondInput">
               <el-option v-for="v in leafVariables" :key="v.name" :value="v.name" :label="varLabel(v)" />
             </el-select>
-            <el-input v-else :value="secondInput" size="small" class="cn-var" placeholder="segunda variable" @input="setSecondInput" />
+            <el-input v-else :value="secondInput" size="small" class="cn-var" placeholder="otra medición" @input="setSecondInput" />
           </template>
           <template v-if="value.metric === 'stepJump' || value.metric === 'baseline'">
-            <span class="cn-mlbl">vale</span>
+            <span class="cn-mlbl">cuenta durante</span>
             <el-input :value="(value.mParams || {}).holdSec || 120" size="small" type="number" class="cn-mini" @input="setParam('holdSec', numericOrRaw($event))" /><span class="cn-unit">s</span>
           </template>
-          <span class="cn-mhelp">{{ metricHelp }}</span>
+          <span class="cn-mhelp" :class="{ 'cn-mhelp--err': !!leafProblem }">{{ leafProblem || metricHelp }}</span>
         </template>
       </div>
     </div>
@@ -177,18 +177,18 @@
           :value="term.deviceType || ''" size="small" filterable class="select-info cn-equipo"
           placeholder="equipo" @change="onSumTermDevice(i, $event)"
         >
-          <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="s.deviceType" />
+          <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="kindName(s.deviceType)" />
         </el-select>
         <el-input v-else :value="term.deviceType || ''" size="small" class="cn-equipo" placeholder="equipo" @input="updateSumTerm(i, 'deviceType', $event)" />
 
         <el-select
           v-if="variablesFor(term.deviceType).length"
           :value="term.variable || ''" size="small" filterable class="select-info cn-var"
-          placeholder="variable" @change="updateSumTerm(i, 'variable', $event)"
+          placeholder="medición" @change="updateSumTerm(i, 'variable', $event)"
         >
           <el-option v-for="v in variablesFor(term.deviceType)" :key="v.name" :value="v.name" :label="varLabel(v)" />
         </el-select>
-        <el-input v-else :value="term.variable || ''" size="small" class="cn-var" placeholder="variable técnica" @input="updateSumTerm(i, 'variable', $event)" />
+        <el-input v-else :value="term.variable || ''" size="small" class="cn-var" placeholder="medición" @input="updateSumTerm(i, 'variable', $event)" />
 
         <base-button type="danger" size="sm" icon class="cn-rm" :disabled="localSumTerms.length <= 1" @click="removeSumTerm(i)"
           :title="localSumTerms.length <= 1 ? 'Se necesita al menos un equipo' : 'Quitar este equipo de la suma'">
@@ -225,7 +225,7 @@
 // mismos selects que el modo simple (ConditionRow). Si un equipo no tiene
 // ficha, cae a input de texto libre (mismo fallback que ConditionRow).
 import { Select, Option, OptionGroup, Input } from 'element-ui';
-import { METRIC_LABELS, LEAF_METRIC_ORDER } from '@/components/rules/ruleSentence.js';
+import { METRIC_LABELS, LEAF_METRIC_ORDER, deviceTypeName } from '@/components/rules/ruleSentence.js';
 
 // spec_reglas_compuestas (K3) — parámetros por defecto al elegir una métrica para una condición.
 const METRIC_DEFAULTS = {
@@ -244,21 +244,40 @@ const METRIC_DEFAULTS = {
   baseline:     { op: 'gt',  value: 3,   win: 60, min: 8, params: { holdSec: 120 } },
 };
 const METRIC_HELP = {
-  slope: 'valor = cuánto sube (+) o baja (−) por minuto',
-  projection: 'valor = horas hasta llegar al objetivo',
-  acceleration: 'valor = cambio de la tendencia',
-  ratio: 'valor = esta variable ÷ la segunda',
-  divergence: 'valor = diferencia entre las dos',
-  dutyCycle: 'valor = % del tiempo en uso',
-  cumulativeSince: 'valor = caída acumulada desde la última recarga',
-  flatline: 'valor = tolerancia; la ventana debe ser de al menos 15 min',
-  staleness: 'valor = minutos sin reportar',
-  variance: 'valor = cuánto oscila',
-  accumulator: 'valor = horas acumuladas (se pone en 0 con "Registrar service")',
-  stepJump: 'valor = tamaño mínimo del salto; dentro de la combinada vale los segundos indicados',
-  baseline: 'valor = cuántas σ se aparta de lo habitual; vale los segundos indicados',
+  slope: 'El valor es cuánto sube (positivo) o baja (negativo) por minuto. Ej.: menor que −0,5 = baja más de 0,5 por minuto.',
+  projection: 'El valor son las horas que faltan para llegar al número indicado en "llega a".',
+  acceleration: 'El valor es cuánto cambió la tendencia entre la primera y la segunda mitad del período.',
+  ratio: 'El valor es esta medición dividida por la otra.',
+  divergence: 'El valor es la diferencia entre esta medición y la otra.',
+  dutyCycle: 'El valor es el porcentaje del tiempo que estuvo en uso.',
+  cumulativeSince: 'El valor es cuánto bajó en total desde la última recarga (la recarga se detecta sola).',
+  flatline: 'El valor es cuánto puede variar como máximo para considerarlo clavado. Mirá al menos 15 minutos.',
+  staleness: 'El valor son los minutos sin recibir esta medición.',
+  variance: 'El valor es cuánto oscila la medición.',
+  accumulator: 'El valor son las horas de uso acumuladas. Vuelve a cero con "Registrar service".',
+  stepJump: 'El valor es el tamaño mínimo del salto. Como dura un instante, cuenta como cumplido durante los segundos indicados.',
+  baseline: 'El valor es qué tan lejos de lo habitual está (3 = muy fuera de lo normal). Cuenta como cumplido durante los segundos indicados.',
 };
 const NO_WINDOW = ['ratio', 'divergence', 'cumulativeSince', 'staleness', 'accumulator'];
+// Chequeo de una condición de regla combinada antes de guardar (mismos límites que la API,
+// dichos en palabras). Lo usa también el editor para habilitar "Guardar".
+export function leafProblem(leaf) {
+  if (!leaf || Array.isArray(leaf.sum) || Array.isArray(leaf.children)) return null;
+  if (!leaf.deviceType || !leaf.variable) return 'Elegí el equipo y la medición.';
+  const c = leaf.condition || {};
+  const blank = (x) => x === '' || x === null || x === undefined;
+  if (leaf.measure === 'setpoint') return leaf.setpointSource && leaf.setpointSource.variable ? null : 'Elegí qué medición del equipo informa el límite.';
+  if (leaf.measure !== 'metric') return null;
+  if (blank(c.value) && !c.limitRef) return 'Cargá el valor de comparación.';
+  if (!NO_WINDOW.includes(leaf.metric)) {
+    const sec = leaf.mWindow && Number(leaf.mWindow.durationSec);
+    if (!(sec > 0)) return 'Indicá cuántos minutos mirar.';
+    if (leaf.metric === 'flatline' && sec < 900) return 'Para "sensor clavado" hay que mirar al menos 15 minutos: un sensor clavado solo manda su lectura cada 5 minutos.';
+  }
+  if (leaf.metric === 'projection' && blank(leaf.mParams && leaf.mParams.target)) return 'Indicá a qué valor tiene que llegar.';
+  if ((leaf.metric === 'ratio' || leaf.metric === 'divergence') && !(leaf.inputs && leaf.inputs[1] && leaf.inputs[1].variable)) return 'Elegí la otra medición.';
+  return null;
+}
 
 const uid = (() => { let n = 0; return () => `k${++n}`; })();
 
@@ -321,11 +340,13 @@ export default {
     windowMin() { const w = this.value.mWindow; return w && w.durationSec ? Math.round(w.durationSec / 60 * 10) / 10 : ''; },
     secondInput() { const i = this.value.inputs; return (i && i[1] && i[1].variable) || ''; },
     metricHelp() { return METRIC_HELP[this.value.metric] || ''; },
+    // Lo que le falta a la condición para poder guardarse, en palabras (null = completa).
+    leafProblem() { return leafProblem(this.value); },
     shownUnit() {
       if (this.value.measure !== 'metric') return this.leafUnit;
       const m = this.value.metric;
       if (m === 'slope') return this.leafUnit ? `${this.leafUnit}/min` : '/min';
-      const u = { projection: 'h', dutyCycle: '%', staleness: 'min', accumulator: 'h', baseline: 'σ', ratio: '' };
+      const u = { projection: 'h', dutyCycle: '%', staleness: 'min', accumulator: 'h', baseline: '', ratio: '' };
       return Object.prototype.hasOwnProperty.call(u, m) ? u[m] : this.leafUnit;
     },
     condLimitRef() { return (this.value.condition && this.value.condition.limitRef) || ''; },
@@ -347,7 +368,8 @@ export default {
     },
   },
   methods: {
-    varLabel(v) { return (v.label || v.name) + (v.unit ? ` [${v.unit}]` : ''); },
+    varLabel(v) { return (v.label || String(v.name).replace(/_/g, ' ')) + (v.unit ? ` [${v.unit}]` : ''); },
+    kindName(dt) { return deviceTypeName(dt, this.sheets); },
     variablesFor(deviceType) { const s = this.sheetByType[deviceType]; return (s && s.variables) || []; },
 
     emitUpdate(next) { this.$emit('input', ensureKey(next)); },
@@ -524,6 +546,7 @@ export { stripEditorKeys };
 .cn-anchor { font-size:12px; font-weight:600; color:var(--teal-d); background:var(--teal-soft); border-radius:12px; padding:3px 10px; }
 .cn-pick { width:200px; } .cn-mkind { width:230px; } .cn-mini { width:76px; }
 .cn-mhelp { flex-basis:100%; font-size:11px; color:var(--muted); }
+.cn-mhelp--err { color:#d9534f; font-weight:600; }
 
 /* ── hoja suma ── */
 .cn-sum { border:1px dashed var(--amber); border-radius:10px; padding:10px 12px; background:var(--amber-soft); margin:4px 0; }

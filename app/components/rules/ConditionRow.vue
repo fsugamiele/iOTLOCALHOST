@@ -9,17 +9,17 @@
       placeholder="equipo"
       @change="onEquipo"
     >
-      <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="s.deviceType" />
+      <el-option v-for="s in sheets" :key="s.deviceType" :value="s.deviceType" :label="kindName(s.deviceType)" />
     </el-select>
 
     <el-select
       v-if="variables.length"
       v-model="c.variable" size="small" filterable class="select-info cond-var"
-      placeholder="variable" @change="onVariable"
+      placeholder="medición" @change="onVariable"
     >
       <el-option v-for="v in variables" :key="v.name" :value="v.name" :label="varLabel(v)" />
     </el-select>
-    <el-input v-else v-model="c.variable" size="small" class="cond-var" placeholder="variable técnica" />
+    <el-input v-else v-model="c.variable" size="small" class="cond-var" placeholder="medición" />
 
     <el-select v-model="c.op" size="small" class="select-primary cond-op">
       <el-option v-for="op in operators" :key="op" :value="op" :label="opLabels[op]" />
@@ -39,7 +39,7 @@
     </el-select>
     <el-input v-else v-model="c.value" size="small" class="cond-val"
       :type="valueType === 'categorical' || valueType === 'string' ? 'text' : 'number'"
-      :placeholder="c.ref ? 'referencia a otra variable' : (unit ? ('valor (' + unit + ')') : 'valor')" />
+      :placeholder="c.ref ? 'referencia a otra medición' : (unit ? ('valor (' + unit + ')') : 'valor')" />
 
     <base-button v-if="removable" size="sm" type="danger" icon class="cond-rm" @click="$emit('remove')">
       <i class="fa fa-trash"></i>
@@ -49,7 +49,7 @@
 
 <script>
 import { Select, Option, Input } from 'element-ui';
-import { OPERATORS, OPERATOR_LABELS } from '@/components/rules/ruleSentence.js';
+import { OPERATORS, OPERATOR_LABELS, deviceTypeName } from '@/components/rules/ruleSentence.js';
 
 export default {
   name: 'ConditionRow',
@@ -96,7 +96,8 @@ export default {
     },
   },
   methods: {
-    varLabel(v) { return (v.label || v.name) + (v.unit ? ` [${v.unit}]` : ''); },
+    kindName(dt) { return deviceTypeName(dt, this.sheets); },
+    varLabel(v) { return (v.label || String(v.name).replace(/_/g, ' ')) + (v.unit ? ` [${v.unit}]` : ''); },
     onLimitRef() {
       // Con referencia a la ficha el número no se guarda en la regla (lo resuelve el motor).
       if (this.c.limitRef) {

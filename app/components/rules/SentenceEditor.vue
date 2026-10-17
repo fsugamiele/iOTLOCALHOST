@@ -57,9 +57,9 @@
           <div v-if="s.setpoint" class="se-extra">
             … comparado con el valor que reporta el equipo:
             <el-select v-if="variablesOfFirst.length" v-model="s.setpoint.variable" size="small" filterable class="se-sp">
-              <el-option v-for="v in variablesOfFirst" :key="v.name" :value="v.name" :label="v.label || v.name" />
+              <el-option v-for="v in variablesOfFirst" :key="v.name" :value="v.name" :label="v.label || String(v.name).replace(/_/g, ' ')" />
             </el-select>
-            <el-input v-else v-model="s.setpoint.variable" size="small" class="se-sp" placeholder="variable del setpoint" />
+            <el-input v-else v-model="s.setpoint.variable" size="small" class="se-sp" placeholder="medición del límite" />
           </div>
 
           <!-- M · tendencia (slope) -->
@@ -100,9 +100,9 @@
             </el-select>
             con
             <el-select v-if="variablesOfFirst.length" v-model="s.compare.variable2" size="small" filterable class="se-sp">
-              <el-option v-for="v in variablesOfFirst" :key="v.name" :value="v.name" :label="v.label || v.name" />
+              <el-option v-for="v in variablesOfFirst" :key="v.name" :value="v.name" :label="v.label || String(v.name).replace(/_/g, ' ')" />
             </el-select>
-            <el-input v-else v-model="s.compare.variable2" size="small" class="se-sp" placeholder="segunda variable" />
+            <el-input v-else v-model="s.compare.variable2" size="small" class="se-sp" placeholder="otra medición" />
             y el resultado sea
             <el-select v-model="s.compare.op" size="small" class="se-cmp">
               <el-option v-for="op in operators" :key="op" :value="op" :label="opLabels[op]" />
@@ -168,16 +168,17 @@
           <div class="se-scope">
             <span class="se-scope-l">Se evalúa en</span>
             <el-radio-group v-model="scopeChoice" size="small">
-              <el-radio-button label="equipo">cada {{ packType }} del sitio</el-radio-button>
-              <el-radio-button label="sitio">el sitio</el-radio-button>
+              <el-radio-button label="equipo">cada {{ packKind }} del sitio</el-radio-button>
+              <el-radio-button label="sitio">el sitio entero</el-radio-button>
             </el-radio-group>
-            <small class="text-muted">{{ advScope ? 'Una alarma por cada ' + packType + '; las condiciones de ' + packType + ' miran a ese mismo equipo.' : 'Una sola alarma para el sitio.' }}</small>
+            <small class="text-muted">{{ advScope ? 'Una alarma por cada ' + packKind + '. Las condiciones sobre ' + packKind + ' miran a ese mismo equipo.' : 'Una sola alarma para todo el sitio.' }}</small>
           </div>
           <cross-expr-node v-if="advCross" :value="advCross" :depth="0" :max-depth="2" :is-root="true" :sheets="sheets"
             :combined="true" :anchor-type="advScope || null" @input="onAdvInput" />
           <p class="se-limits" :class="{ 'se-limits--over': overLimits }">
-            {{ leafCount }} de 8 condiciones · {{ metricCount }} de 3 con métrica
+            {{ leafCount }} de 8 condiciones · {{ metricCount }} de 3 que miran cómo evoluciona la medición
             <span v-if="overLimits"> — sacá condiciones para poder guardar</span>
+            <span v-else-if="leafIssues"> — {{ leafIssues }}</span>
           </p>
         </template>
       </div>
@@ -256,11 +257,11 @@
 <script>
 import { Select, Option, Input, RadioGroup, RadioButton } from 'element-ui';
 import ConditionRow from '@/components/rules/ConditionRow.vue';
-import CrossExprNode, { stripEditorKeys } from '@/components/CrossExprNode.vue';
+import CrossExprNode, { stripEditorKeys, leafProblem } from '@/components/CrossExprNode.vue';
 import {
   SEVERITIES, severityLabel, severityBadge, summarize, inferType, coerceValue,
   sentenceToRule, ruleToSentence, emptySentence, emptyCondition, genRuleId, genInferenceId,
-  describeCross, OPERATORS, OPERATOR_LABELS, ruleToLeaf,
+  describeCross, OPERATORS, OPERATOR_LABELS, ruleToLeaf, deviceTypeName,
 } from '@/components/rules/ruleSentence.js';
 
 // spec_reglas_compuestas — hojas del árbol (sin grupos) y asignación de leafId estable.
@@ -329,10 +330,12 @@ export default {
     leafCount() { this.tick; return treeLeaves(this.advCross).length; },
     metricCount() { this.tick; return treeLeaves(this.advCross).filter(l => l.measure === 'metric').length; },
     overLimits() { return this.leafCount > 8 || this.metricCount > 3; },
+    packKind() { return deviceTypeName(this.packType, this.sheets).toLowerCase(); },
+    leafIssues() { this.tick; const n = treeLeaves(this.advCross).filter(l => leafProblem(l)).length; return n ? (n === 1 ? 'hay 1 condición incompleta' : `hay ${n} condiciones incompletas`) : ''; },
     sevLabel() { return severityLabel(this.s.severity); },
     badge() { return severityBadge(this.s.severity); },
     trendUnit() { return (this.s.conditions[0] && this.s.conditions[0].unit) || ''; },
-    deviceTypeLabel() { return (this.pack && this.pack.deviceType) || 'equipos'; },
+    deviceTypeLabel() { return this.pack && this.pack.deviceType ? deviceTypeName(this.pack.deviceType, this.sheets) : 'equipos'; },
     operators() { return OPERATORS; },
     opLabels() { return OPERATOR_LABELS; },
     activeMod() {
@@ -387,7 +390,7 @@ export default {
     },
     canSave() {
       if (!this.s.label) return false;
-      if (this.advanced) return !!(this.advCross && Array.isArray(this.advCross.children) && this.advCross.children.length) && !this.overLimits;
+      if (this.advanced) return !!(this.advCross && Array.isArray(this.advCross.children) && this.advCross.children.length) && !this.overLimits && !this.leafIssues;
       const conds = this.s.conditions || [];
       if (!conds.length) return false;
       for (const c of conds) {

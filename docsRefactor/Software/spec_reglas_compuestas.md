@@ -125,3 +125,22 @@ Un "no" en un Y alcanza para cerrar aunque otra hoja esté sin dato. Es el princ
 | bK-10 | Vida útil dentro de un Y + "Registrar service" | cierra y pone en 0 la hoja |
 | bK-11 | Foto del disparo | la notificación trae `leaves[]` con valor, umbral y estado al disparar |
 | bK-12 | Límites | la API rechaza la 9.ª hoja y una 4.ª métrica |
+
+## 6 · Vocabulario de pantalla (Franco, 2026-10-17: "no deben existir términos del backend")
+En el editor, las tarjetas de regla, la frase "En palabras" y los mensajes de error de la API **no aparece ningún nombre técnico**. Fuente única: `ruleSentence.js` (`deviceTypeName`, `variableName`, `METRIC_LABELS`) y los mensajes de `combinedRule.js`.
+
+| Interno | En pantalla |
+|---|---|
+| `ELTEK` · `GEN` · `ATS` · `CUMMINS` · `SEC` | Rectificador · Grupo electrógeno · Tablero de transferencia · Controlador del grupo electrógeno · Central de seguridad (otro tipo: marca y modelo de la ficha) |
+| nombre técnico de variable (`battery_voltage`) | etiqueta de la ficha ("Tensión de batería"); sin etiqueta, el nombre sin guiones bajos |
+| `scope` | "Se evalúa en: cada <equipo> del sitio / el sitio entero" |
+| `pick: any / all` | "alcanza con uno del sitio" / "tienen que ser todos los del sitio" |
+| `measure: value / setpoint / metric` | "el valor actual" / "contra el límite configurado en el equipo" / "cómo evoluciona" |
+| `mWindow.durationSec` | "mirando los últimos N min" |
+| `mParams.holdSec` | "cuenta durante N s" |
+| `baseline` (σ) | "fuera de lo normal (3 = muy fuera de lo normal)" |
+| `canary` / `prod` | "en prueba" / "en uso" |
+| `ruleId` en mensajes | el nombre de la regla |
+| bool `0/1` en la frase | «no» / «sí» |
+
+Pendiente: los mensajes de validación de las reglas **simples** (D/C/S/M) en `ruleValidation.js` todavía tienen la forma técnica ("typeD: condition.value…"); el editor las evita con sus propios chequeos, pero hay que traducirlas.
