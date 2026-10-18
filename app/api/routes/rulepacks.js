@@ -124,6 +124,8 @@ router.get("/rulepacks/:packId/rules/:ruleId/now", checkAuth, async (req, res) =
     const db = require("mongoose").connection.db;
     const rows = await db.collection('rulefsm').find({ ruleId: rule.ruleId }).toArray();
     const ids = [...new Set(rows.map(r => r.dId).filter(Boolean))];
+    const trans = await db.collection('ruletransitions').find({ ruleId: rule.ruleId }).sort({ ts: -1 }).limit(12).toArray();
+    for (const t of trans) if (t.dId && !ids.includes(t.dId)) ids.push(t.dId);
     const names = new Map((await Device.find({ dId: { $in: ids } }, { dId: 1, name: 1 }).lean()).map(d => [d.dId, d.name]));
     return res.json({
       status: "success",
@@ -136,6 +138,8 @@ router.get("/rulepacks/:packId/rules/:ruleId/now", checkAuth, async (req, res) =
           thresholdUsed: r.lastCtx && r.lastCtx.thresholdUsed != null ? r.lastCtx.thresholdUsed : null,
           leaves: (r.lastCtx && Array.isArray(r.lastCtx.leaves)) ? r.lastCtx.leaves : null,
         })),
+        // Últimos cambios de etapa (bitácora del GRAFCET), para "Así lo contó el motor".
+        transitions: trans.map(t => ({ ts: t.ts, dId: t.dId || null, deviceName: names.get(t.dId) || null, from: t.from, to: t.to, action: t.action || null, value: t.value != null ? t.value : null, thresholdUsed: t.thresholdUsed != null ? t.thresholdUsed : null })),
       },
     });
   } catch (error) {

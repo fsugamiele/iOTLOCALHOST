@@ -5,7 +5,12 @@
 **Firmado por Franco (2026-10-18, "aprobado las recomendaciones"):** Qi1–Qi4 como se recomendaron.
 
 ## 0 · CANDADO
-Mockup interactivo publicado (canvas "Wanomi · Regla combinada", tablero "Editor de reglas v2"). **No se programa el editor hasta que Franco valide el mockup** (Qi1).
+Mockup validado por Franco (2026-10-18, "correcto, aprobado, avanza"), con dos agregados: selector **Equipos** con el nombre real del dispositivo (botones con ×) y **gráfico con Play** debajo de cada condición + ciclo de la regla completa, con **datos reales de las últimas 24 h** (de ejemplo solo si no hay historia).
+**IMPLEMENTADO (2026-10-18):**
+- Edge: `ruleLog.js` (Qi3), `pick` como lista de equipos `{mode, dIds}` (`typeCombined.js`, `combinedRule.js`).
+- QA: `qa/lib/simulate.js` + `POST /simulate` (motor real, sin avisar) · API: `POST /api/qa/simulate`, `GET /api/rulepacks/:packId/devices`, `GET /api/rulepacks/:packId/rules/:ruleId/now` (rulefsm + últimas transiciones).
+- Front: `RuleEditorV2.vue` + `ruleModelV2.js` (1 condición sobre este equipo → regla simple D/C/M; si no → combinada), resumen "Ahora" en `RuleCard.vue`, editor anterior como respaldo (Qi4) y para lo que v2 no representa ("N veces en T", desbalance, grupos anidados, sumas).
+- Pruebas: modelo ida y vuelta 11/11 · motor 30/30 · simulación con base simulada · render del editor (SSR) con y sin datos.
 
 ## 1 · Decisiones
 | # | Decisión |

@@ -64,9 +64,9 @@
             <!-- DEC-REF-114 (#83, B1) — página de 3 zonas: lista de cards +
                  editor-frase inline. El "Modo experto" (modal ruleDraft, abajo)
                  se conserva para cross/C/S y parámetros finos. -->
-            <div class="rules-layout">
+            <div class="rules-layout" :class="{ 'rules-layout--v2': editorOpen && useV2 }">
               <!-- Zona izquierda: cards -->
-              <div class="rules-list">
+              <div v-show="!(editorOpen && useV2)" class="rules-list">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
                   <div class="d-flex align-items-center" style="gap:14px">
@@ -88,6 +88,7 @@
                   :rule="row"
                   :index="index"
                   :sheets="sheets"
+                  :ahora="ahoraByRule[row.ruleId] || null"
                   @edit="onCardEdit"
                   @delete="openDeleteRule"
                   @toggle="onToggleRule"
@@ -100,7 +101,23 @@
 
               <!-- Zona derecha: editor-frase inline -->
               <div class="rules-editor">
-                <card v-if="editorOpen">
+                <!-- spec_editor_reglas_v2 — editor v2 (pantalla completa). El anterior queda como
+                     respaldo (Qi4): reglas que v2 no representa ("N veces en T", desbalance, grupos
+                     anidados, sumas) o si se elige "usar el editor anterior". -->
+                <card v-if="editorOpen && useV2">
+                  <rule-editor-v2
+                    :key="'v2-' + (editorIndex === null ? 'nueva' : editorIndex)"
+                    :pack="pack"
+                    :sheets="sheets"
+                    :rule="editorRule"
+                    :editing-index="editorIndex"
+                    :save-fn="saveFromV2"
+                    @cancel="onSentenceCancel"
+                  />
+                  <p class="text-right mb-0 mt-2"><a href="#" class="small text-muted" @click.prevent="editorV1 = true">Usar el editor anterior</a></p>
+                </card>
+                <card v-else-if="editorOpen">
+                  <p v-if="editorRule && !v2Representa" class="small text-muted">Esta regla usa una forma que el editor nuevo todavía no muestra; se edita con el editor anterior.</p>
                   <sentence-editor
                     :pack="pack"
                     :sheets="sheets"
@@ -153,6 +170,8 @@ import { stripEditorKeys } from '@/components/CrossExprNode.vue';
 import RuleCard from '@/components/rules/RuleCard.vue';           // DEC-REF-114 (#83, B1)
 import SentenceEditor from '@/components/rules/SentenceEditor.vue';
 import { deviceTypeName } from '@/components/rules/ruleSentence.js';
+import RuleEditorV2 from '@/components/rules/RuleEditorV2.vue';   // spec_editor_reglas_v2
+import { ruleToModel } from '@/components/rules/ruleModelV2.js';
 
 // DEC-REF-100 D-7 (F6) — capa de presentación del wizard: mismos labels que
 // OPERATOR_LABELS del backend (api/models/rule_definition.js — la identidad
@@ -200,7 +219,7 @@ const WIZ_STEP_NAMES = ['Equipo', 'Variable', 'Condición', 'Aviso'];
 export default {
   middleware: ['authenticated', 'superadmin'],
   name: 'rulepacks-detail',
-  components: { [Dialog.name]: Dialog, RuleCard, SentenceEditor },
+  components: { [Dialog.name]: Dialog, RuleCard, SentenceEditor, RuleEditorV2 },
   data() {
     return {
       loading: true,
@@ -212,6 +231,8 @@ export default {
       saving: false,
       // DEC-REF-114 (#83, B1) — editor-frase inline (type D).
       editorOpen: false,
+      editorV1: false,
+      ahoraByRule: {},      // spec_editor_reglas_v2 (Qi2) — resumen "Ahora" por regla      // spec_editor_reglas_v2 (Qi4) — forzar el editor anterior
       editorRule: null,     // regla D a editar, o null (nueva)
       editorIndex: null,
       // Delete rule modal
@@ -271,6 +292,9 @@ export default {
       const r = this.pack && this.deleteRuleTargetIndex !== null ? this.pack.rules[this.deleteRuleTargetIndex] : null;
       return (r && r.label) || 'sin nombre';
     },
+    // spec_editor_reglas_v2 — ¿la regla abierta se puede editar en v2?
+    v2Representa() { return !this.editorRule || ruleToModel(this.editorRule, this.pack) !== null; },
+    useV2() { return !this.editorV1 && this.v2Representa; },
     // Nombre del tipo de equipo en palabras (nunca el código técnico).
     packKindName() { return this.pack ? deviceTypeName(this.pack.deviceType, this.sheets) : ''; },
     // S6 — índice de fichas por deviceType para el editor de reglas.
@@ -359,7 +383,10 @@ export default {
     if (!ok) return;
     await this.loadPack();
     this.loadSheets();
+    this.cargarAhoraLista();
+    this._ahoraI = setInterval(() => this.cargarAhoraLista(), 15000);
   },
+  beforeDestroy() { clearInterval(this._ahoraI); },
   // keep-alive (layouts/default.vue): al VOLVER a esta pestaña no corre mounted();
   // se recargan los datos para no mostrar valores viejos (ej. ficha editada en otra).
   // El primer activated() viene pegado al mount → se saltea con _kaSeen.
@@ -610,7 +637,41 @@ export default {
       this.editorOpen = false;
       await this.submitRule();
     },
+    // spec_editor_reglas_v2 — guardado desde el editor v2: mismo PUT del pack; devuelve si se guardó
+    // (el editor pasa a mostrar "Ahora").
+    // spec_editor_reglas_v2 (Qi2) — resumen "Ahora" de cada tarjeta (etapa de sus instancias).
+    async cargarAhoraLista() {
+      if (!this.pack || document.hidden) return;
+      const rules = (this.pack.rules || []).slice(0, 40);
+      const out = {};
+      await Promise.all(rules.map(async (r) => {
+        try {
+          const res = await this.$axios.get(`/rulepacks/${encodeURIComponent(this.packId)}/rules/${encodeURIComponent(r.ruleId)}/now`, { headers: { token: this.$store.state.auth.token } });
+          const inst = ((res.data && res.data.data && res.data.data.instances) || []);
+          const n = (steps) => inst.filter(x => steps.includes(x.step)).length;
+          const eq = (k) => (k === 1 ? '1 equipo' : `${k} equipos`);
+          if (n(['E3', 'E4', 'E6'])) out[r.ruleId] = { texto: `En alarma · ${eq(n(['E3', 'E4', 'E6']))}`, cls: 'ala', detalle: 'Hay alarmas abiertas de esta regla' };
+          else if (n(['E2'])) out[r.ruleId] = { texto: `Observando · ${eq(n(['E2']))}`, cls: 'obs', detalle: 'Se cumple; avisa si sigue así el tiempo de espera' };
+          else if (n(['E5'])) out[r.ruleId] = { texto: `Sin datos · ${eq(n(['E5']))}`, cls: 'sin', detalle: 'No llega la medición' };
+          else out[r.ruleId] = { texto: 'Vigilando', cls: 'vig', detalle: 'Ningún equipo cumple las condiciones ahora' };
+        } catch (e) { /* sin dato: la tarjeta no muestra el resumen */ }
+      }));
+      this.ahoraByRule = out;
+    },
+    async saveFromV2(rule, index) {
+      this.saving = true;
+      try {
+        const nextRules = (this.pack.rules || []).slice();
+        if (index !== null && index !== undefined) nextRules[index] = rule; else nextRules.push(rule);
+        await this.savePack(nextRules, index !== null && index !== undefined ? 'edit' : 'add');
+        return true;
+      } catch (e) {
+        this.$notify({ type: 'danger', icon: 'tim-icons icon-alert-circle-exc', message: (e.response && e.response.data && e.response.data.error) || 'No se pudo guardar la regla' });
+        return false;
+      } finally { this.saving = false; }
+    },
     onSentenceCancel() {
+      this.editorV1 = false;
       this.editorOpen = false;
       this.editorRule = null;
       this.editorIndex = null;
@@ -845,7 +906,7 @@ export default {
       this.$notify({
         type: 'success',
         icon: 'tim-icons icon-check-2',
-        message: `${msgs[actionLabel]} (v${res.data.version}). El motor edge recargó (SF-3).`
+        message: `${msgs[actionLabel]}. Los equipos ya la aplican.`
       });
       // Refrescar el pack desde el server.
       await this.loadPack();
@@ -983,6 +1044,7 @@ export default {
 .rules-layout { display: flex; gap: 20px; align-items: flex-start; }
 .rules-list { flex: 1 1 42%; min-width: 0; }
 .rules-editor { flex: 1 1 58%; min-width: 0; }
+.rules-layout--v2 .rules-editor { flex-basis: 100%; }
 .rules-editor__empty {
   border: 1px dashed rgba(0, 0, 0, 0.12); border-radius: 10px;
   padding: 28px; text-align: center;

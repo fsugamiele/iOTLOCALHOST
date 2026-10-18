@@ -8,6 +8,7 @@
       <span class="rule-card__title">{{ labelText || 'Regla sin nombre' }}</span>
       <span class="rule-card__head-right">
         <span v-if="!isEnabled" class="rule-card__off-chip" :title="offTitle">fuera de circulación</span>
+        <span v-if="ahora" class="rule-card__now" :class="'rule-card__now--' + ahora.cls" :title="ahora.detalle">{{ ahora.texto }}</span>
         <span class="badge" :class="badge">{{ sevLabel }}</span>
       </span>
     </div>
@@ -48,6 +49,8 @@ export default {
     rule:  { type: Object, required: true },
     index: { type: Number, required: true },
     sheets: { type: Array, default: () => [] },
+    // spec_editor_reglas_v2 (Qi2) — resumen de "Ahora": { texto, cls, detalle }.
+    ahora: { type: Object, default: null },
   },
   computed: {
     summary()  { return summarize(this.rule, { sheets: this.sheets }); },
@@ -112,5 +115,11 @@ export default {
 .rc-switch input:checked + .rc-sl::before { transform: translateX(17px); }
 
 /* Modo oscuro: el theme por defecto es claro (DEC-REF-112); en dark se invierte. */
+.rule-card__now { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 9px; margin-right: 6px; white-space: nowrap; }
+.rule-card__now--vig { background: rgba(0,0,0,0.05); color: #55706b; }
+.rule-card__now--obs { background: #fbf0d9; color: #a86a00; }
+.rule-card__now--ala { background: #f0727a; color: #2a0b0e; }
+.rule-card__now--sin { background: #fbe3e5; color: #b4232c; }
+body:not(.white-content) .rule-card__now--vig { background: rgba(255,255,255,0.06); color: #b4c6c1; }
 body:not(.white-content) .rule-card { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); }
 </style>
