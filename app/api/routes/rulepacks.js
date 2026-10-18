@@ -29,6 +29,7 @@ const RulePack = require("../models/rule_pack.js");
 // DEC-REF-137 — snapshot canónico ("de fábrica") por ruleId. require sin babel (module.exports).
 const RuleSnapshot = require("../models/rule_snapshot.js");
 import EquipmentSheet from "../models/equipment_sheet.js";
+import Device from "../models/device.js";
 
 // DEC-REF-127 (B8) — variables DERIVADAS que publica el edge (no están en la ficha
 // del equipo pero son targets legítimos de reglas): no deben generar warning de
@@ -92,6 +93,53 @@ router.get("/rulepacks", checkAuth, async (req, res) => {
   } catch (error) {
     console.log("ERROR GETTING RULEPACKS");
     console.log(error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+// spec_editor_reglas_v2 — equipos reales para el selector "Equipos" de cada condición
+// (nombre tal como se ve en el template del sitio). Mismo gate que el pack.
+router.get("/rulepacks/:packId/devices", checkAuth, async (req, res) => {
+  try {
+    const filter = await buildReadFilter(req, 'RulePack');
+    const pack = await RulePack.findOne({ ...filter, packId: req.params.packId }, { packId: 1 }).lean();
+    if (!pack) return res.status(404).json({ status: "error", error: "pack no encontrado" });
+    const dfilter = await buildReadFilter(req, 'Device');
+    const devices = await Device.find(dfilter, { dId: 1, name: 1, deviceType: 1, siteId: 1 }).lean();
+    return res.json({ status: "success", data: devices.filter(d => d.deviceType).map(d => ({ dId: d.dId, name: d.name, deviceType: d.deviceType, siteId: d.siteId || null })) });
+  } catch (error) {
+    console.log("ERROR GETTING RULE DEVICES", error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+// spec_editor_reglas_v2 (Qi2) — "Ahora": etapa del GRAFCET de cada instancia de la regla y el
+// estado de cada condición (lo que el edge persiste en rulefsm). Sin fila = Vigilando, sin alarma.
+router.get("/rulepacks/:packId/rules/:ruleId/now", checkAuth, async (req, res) => {
+  try {
+    const filter = await buildReadFilter(req, 'RulePack');
+    const pack = await RulePack.findOne({ ...filter, packId: req.params.packId }).lean();
+    const rule = pack && (pack.rules || []).find(r => r.ruleId === req.params.ruleId);
+    if (!rule) return res.status(404).json({ status: "error", error: "regla no encontrada" });
+    const db = require("mongoose").connection.db;
+    const rows = await db.collection('rulefsm').find({ ruleId: rule.ruleId }).toArray();
+    const ids = [...new Set(rows.map(r => r.dId).filter(Boolean))];
+    const names = new Map((await Device.find({ dId: { $in: ids } }, { dId: 1, name: 1 }).lean()).map(d => [d.dId, d.name]));
+    return res.json({
+      status: "success",
+      data: {
+        now: Date.now(), graceSec: rule.graceSec || 0, resolveGraceSec: rule.resolveGraceSec || 0,
+        instances: rows.map(r => ({
+          key: r.key, siteId: r.siteId, dId: r.dId || null, deviceName: names.get(r.dId) || null,
+          step: r.step, since: r.since, alarmOpen: !!r.alarmOpen, lastR: r.lastR == null ? null : r.lastR,
+          value: r.lastCtx && r.lastCtx.value != null ? r.lastCtx.value : null,
+          thresholdUsed: r.lastCtx && r.lastCtx.thresholdUsed != null ? r.lastCtx.thresholdUsed : null,
+          leaves: (r.lastCtx && Array.isArray(r.lastCtx.leaves)) ? r.lastCtx.leaves : null,
+        })),
+      },
+    });
+  } catch (error) {
+    console.log("ERROR GETTING RULE NOW", error);
     return res.status(500).json({ status: "error", error: error.message || error });
   }
 });
