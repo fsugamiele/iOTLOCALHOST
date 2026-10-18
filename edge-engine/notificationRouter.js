@@ -342,9 +342,12 @@ function scheduleTelegramRetry(url, attempt, ruleId, kind) {
 
 // ── notify: orquestador principal ────────────────────────────────────────────
 function notify(alarm) {
-  const tag = alarm.severity.toUpperCase().padEnd(8);
-  console.log(`[ALARM] ${tag} | ${alarm.ts} | device:${alarm.deviceId} | rule:${alarm.ruleId} | var:${alarm.variable}=${alarm.value}`);
-  console.log(`        → ${alarm.recommendation}`);
+  // spec_editor_reglas_v2 (Qi3) — el ciclo se cuenta en ruleLog (una línea por cambio de etapa).
+  // Acá solo los cierres que NO salen del ciclo: por edición, confirmación o service.
+  if (alarm.kind === 'resolve' && /^resolve-by-(edit|ack|service)$/.test(alarm.mode || '')) {
+    const why = { 'resolve-by-edit': 'cerrada porque se editó la regla', 'resolve-by-ack': 'cerrada por confirmación', 'resolve-by-service': 'cerrada por service registrado' }[alarm.mode];
+    console.log(`${new Date().toTimeString().slice(0, 8)} «${alarm.label || alarm.ruleId}» ${alarm.deviceName || alarm.deviceId}: ${why}`);
+  }
 
   // Fire-and-forget — el orden no importa, ningún canal bloquea al siguiente
   sendMqttNotif(alarm);

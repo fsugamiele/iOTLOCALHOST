@@ -59,6 +59,7 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
         value: ctx && ctx.value !== undefined ? ctx.value : null,
         thresholdUsed: ctx && ctx.thresholdUsed !== undefined ? ctx.thresholdUsed : null,
         action: action || null, ts: now,
+        leaves: ctx && Array.isArray(ctx.leaves) ? ctx.leaves : undefined,   // combinada: estado de cada condición
       });
     }
   }

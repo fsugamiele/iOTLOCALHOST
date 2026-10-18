@@ -10,6 +10,7 @@ const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
 const { processMessage, processStalenessTick, processSilenceTick, processWindowTick, processCombinedTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
 const { isCombined, leavesOf, measureOf, leafIds, instanceKey } = require('../app/api/services/combinedRule');
+const ruleLog = require('./ruleLog');   // spec_editor_reglas_v2 (Qi3) — log legible del ciclo
 const { createRuleFsm } = require('./ruleFsm');      // spec_grafcet_g1 · G1a (DEC-REF-145)
 const { createFsmStore } = require('./fsmStore');
 const notificationRouter      = require('./notificationRouter');
@@ -82,9 +83,11 @@ const fsm = createRuleFsm({
       : undefined,
     cooldownState, siteState, activeState,
   }),
-  onTransition: (t) => fsmStore.trace(t),
+  onTransition: (t) => { fsmStore.trace(t); ruleLog.logTransition(t, logRules.get(t.ruleId), siteState); },
   onPersist: (inst) => fsmStore.save(inst),
 });
+// Índice de reglas para el log legible (el callback del FSM vive fuera de main()).
+let logRules = new Map();
 const ruleIndex = (packs) => { const m = new Map(); for (const p of packs) for (const r of (p.rules || [])) m.set(r.ruleId, r); return m; };
 
 // DEC-REF-68 (c) — handlers globales de errores no manejados.
@@ -126,11 +129,13 @@ async function start() {
   let autonomyConfigs = await loadAutonomyConfigs(SITE_ID);
   // Auditoría 2026-10-14 (M-07/M-21) — tipos de variable desde la FICHA.
   let variableTypes = await loadVariableTypes(SITE_ID);
+  await ruleLog.loadLabels(SITE_ID);
   // motor M Ola M3 — hidrata los acumuladores persistentes (accumulator/cumulativeSince).
   const nMsoft = await loadMSoftState(SITE_ID, mState);
   // G1a — hidratar el GRAFCET (cierra M-05: sin re-notificar lo abierto, y lo despejado
   // durante la caída se resuelve en la primera evaluación).
   let ruleById = ruleIndex(packs);
+  logRules = ruleById;
   const fsmRows = await fsmStore.load();
   fsm.hydrate(fsmRows.filter(r => ruleById.has(r.ruleId)));
   for (const r of fsmRows) {
@@ -213,6 +218,7 @@ async function start() {
       // autonomía (PUT /equipmentsheet y PUT /device/autonomy publican acá).
       const nextAutonomy = await loadAutonomyConfigs(SITE_ID);
       const nextVarTypes = await loadVariableTypes(SITE_ID);
+      ruleLog.loadLabels(SITE_ID);
       // C3 — PUT /device/refparams publica reload: refrescar los parámetros de instalación.
       await refreshRefParams(SITE_ID, siteState);
       const diff      = diffSnapshots(ruleSnapshot, nextSnap);
@@ -289,6 +295,7 @@ async function start() {
       // Swap sincrónico post-await — no hay await entre estas líneas.
       packs = nextPacks;
       ruleById = ruleIndex(nextPacks);
+      logRules = ruleById;
       ruleSnapshot = nextSnap;
       stateSnapshot = nextStateSnap;
       // Auditoría 2026-10-14 (M-24) — resetear historial SOLO de los equipos cuya
