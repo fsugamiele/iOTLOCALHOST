@@ -125,7 +125,10 @@ function condition(c, isBool) {
   const out = { op, value };
   // Histéresis y umbral de la ficha que ya tenía la condición: se conservan si no cambió el comparador.
   if (ex.deadband != null && ex.op === op) out.deadband = ex.deadband;
+  // Sin número escrito, la condición sigue atada a lo que tenía: el límite de la ficha
+  // (limitRef) o el umbral relativo a otra medición (ref). Escribir un número lo deja fijo.
   if (ex.limitRef && (c.valor === '' || c.valor == null)) { delete out.value; out.limitRef = ex.limitRef; }
+  else if (ex.ref && (c.valor === '' || c.valor == null)) { delete out.value; out.ref = ex.ref; }
   if (ex.scaleRef) out.scaleRef = ex.scaleRef;
   return out;
 }
@@ -208,7 +211,7 @@ export function condProblem(c) {
   if (!c.equipos.length) return 'Elegí al menos un equipo.';
   if (!c.variable) return 'Elegí la medición.';
   if (c.medida === 'limite') return c.limiteVar ? null : 'Elegí qué medición del equipo informa el límite.';
-  if (c.valor === '' || c.valor == null) return (c.extra && c.extra.condition && c.extra.condition.limitRef) ? null : 'Falta el valor.';
+  if (c.valor === '' || c.valor == null) return (c.extra && c.extra.condition && (c.extra.condition.limitRef || c.extra.condition.ref)) ? null : 'Falta el valor.';
   if (!Number.isFinite(Number(String(c.valor).replace(',', '.'))) && c.medida !== 'valor') return 'El valor tiene que ser un número.';
   if (CON_VENTANA.includes(c.medida) && !(Number(String(c.ventana).replace(',', '.')) > 0)) return 'Indicá cuántos minutos mirar.';
   if (c.medida === 'clavado' && Number(c.ventana) < 15) return 'Para "quedó clavada" hay que mirar al menos 15 minutos: un sensor clavado solo manda su lectura cada 5 minutos.';

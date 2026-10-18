@@ -106,7 +106,15 @@ router.get("/rulepacks/:packId/devices", checkAuth, async (req, res) => {
     if (!pack) return res.status(404).json({ status: "error", error: "pack no encontrado" });
     const dfilter = await buildReadFilter(req, 'Device');
     const devices = await Device.find(dfilter, { dId: 1, name: 1, deviceType: 1, siteId: 1 }).lean();
-    return res.json({ status: "success", data: devices.filter(d => d.deviceType).map(d => ({ dId: d.dId, name: d.name, deviceType: d.deviceType, siteId: d.siteId || null })) });
+    // Sitio de cada equipo (site.devices manda; device.siteId de respaldo): el editor los agrupa
+    // por sitio, porque un equipo elegido puntualmente solo existe en su sitio.
+    const sites = await require("mongoose").connection.db.collection('sites').find({}).project({ siteCode: 1, nombre: 1, devices: 1 }).toArray();
+    const siteOf = new Map(), nameOf = new Map();
+    for (const s of sites) { nameOf.set(s.siteCode, s.nombre || s.siteCode); for (const id of (s.devices || [])) siteOf.set(id, s.siteCode); }
+    return res.json({ status: "success", data: devices.filter(d => d.deviceType).map(d => {
+      const sc = siteOf.get(d.dId) || d.siteId || null;
+      return { dId: d.dId, name: d.name, deviceType: d.deviceType, siteId: sc, siteName: sc ? (nameOf.get(sc) || sc) : null };
+    }) });
   } catch (error) {
     console.log("ERROR GETTING RULE DEVICES", error);
     return res.status(500).json({ status: "error", error: error.message || error });

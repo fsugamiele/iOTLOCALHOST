@@ -106,7 +106,7 @@
                      anidados, sumas) o si se elige "usar el editor anterior". -->
                 <card v-if="editorOpen && useV2">
                   <rule-editor-v2
-                    :key="'v2-' + (editorIndex === null ? 'nueva' : editorIndex)"
+                    :key="'v2-' + editorSeq"
                     :pack="pack"
                     :sheets="sheets"
                     :rule="editorRule"
@@ -232,6 +232,7 @@ export default {
       // DEC-REF-114 (#83, B1) — editor-frase inline (type D).
       editorOpen: false,
       editorV1: false,
+      editorSeq: 0,         // clave del editor v2: cambia solo al abrirlo (no al guardar)
       ahoraByRule: {},      // spec_editor_reglas_v2 (Qi2) — resumen "Ahora" por regla      // spec_editor_reglas_v2 (Qi4) — forzar el editor anterior
       editorRule: null,     // regla D a editar, o null (nueva)
       editorIndex: null,
@@ -617,6 +618,7 @@ export default {
     openSentenceNew() {
       this.editorRule = null;
       this.editorIndex = null;
+      this.editorSeq++;
       this.editorOpen = true;
     },
     onCardEdit(index) {
@@ -624,6 +626,7 @@ export default {
       // anidado (CrossExprNode embebido). Ya no hay modal experto.
       this.editorRule = this.pack.rules[index];
       this.editorIndex = index;
+      this.editorSeq++;
       this.editorOpen = true;
     },
     onCardExpert(index) {
@@ -664,6 +667,10 @@ export default {
         const nextRules = (this.pack.rules || []).slice();
         if (index !== null && index !== undefined) nextRules[index] = rule; else nextRules.push(rule);
         await this.savePack(nextRules, index !== null && index !== undefined ? 'edit' : 'add');
+        // El editor sigue abierto ("Ahora" / seguir editando): queda apuntando a la regla recién
+        // guardada, así un segundo guardado la actualiza en vez de agregarla de nuevo.
+        const i = (this.pack.rules || []).findIndex(r => r.ruleId === rule.ruleId);
+        if (i >= 0) { this.editorIndex = i; this.editorRule = this.pack.rules[i]; }
         return true;
       } catch (e) {
         this.$notify({ type: 'danger', icon: 'tim-icons icon-alert-circle-exc', message: (e.response && e.response.data && e.response.data.error) || 'No se pudo guardar la regla' });

@@ -64,9 +64,15 @@
                   <span v-for="e in c.equipos" :key="e" class="rv2-chip">{{ equipoNombre(e) }}<button type="button" class="rv2-x" :aria-label="'Quitar ' + equipoNombre(e)" @click="quitarEquipo(c, e)">×</button></span>
                   <select class="rv2-in rv2-add" value="" aria-label="Agregar equipo" @change="agregarEquipo(c, $event)">
                     <option value="">+ Agregar equipo…</option>
-                    <option v-for="o in opcionesEquipo(c)" :key="o.v" :value="o.v" :disabled="o.dis">{{ o.t }}</option>
+                    <template v-for="g in opcionesEquipo(c)">
+                      <template v-if="!g.label"><option v-for="o in g.opts" :key="o.v" :value="o.v" :disabled="o.dis">{{ o.t }}</option></template>
+                      <optgroup v-else :key="'g-' + g.label" :label="g.label">
+                        <option v-for="o in g.opts" :key="o.v" :value="o.v" :disabled="o.dis">{{ o.t }}</option>
+                      </optgroup>
+                    </template>
                   </select>
                 </div>
+                <span v-if="avisoSitio(c)" class="rv2-warn">{{ avisoSitio(c) }}</span>
                 <div v-if="variosEquipos(c)" class="rv2-union sm">
                   <span class="rv2-hint">Con varios equipos:</span>
                   <div class="rv2-seg" role="group" aria-label="Varios equipos">
@@ -101,7 +107,7 @@
                   <select v-model="c.valor" class="rv2-in"><option v-for="e in enumDe(c)" :key="e.value" :value="e.value">{{ e.label }}</option></select>
                 </div>
                 <div v-else class="rv2-fld w150"><span class="rv2-lab">{{ c.medida === 'limite' ? 'respaldo si el equipo no informa' : (valorLab[c.medida] || unidadDe(c) || 'valor') }}</span>
-                  <input v-model="c.valor" class="rv2-in" inputmode="decimal">
+                  <input v-model="c.valor" class="rv2-in" inputmode="decimal" :placeholder="valorAtado(c) ? valorAtado(c).corto : ''">
                 </div>
                 <div v-if="c.medida === 'limite'" class="rv2-fld w220"><span class="rv2-lab">límite que informa el equipo</span>
                   <select v-model="c.limiteVar" class="rv2-in"><option value="" disabled>Elegí</option><option v-for="v in variablesDe(c.deviceType)" :key="v.name" :value="v.name">{{ varEtiqueta(v) }}</option></select>
@@ -115,6 +121,7 @@
               </div>
 
               <div class="rv2-frase">“{{ frase(c) }}”</div>
+              <span v-if="valorAtado(c)" class="rv2-hint">{{ valorAtado(c).largo }}</span>
               <span v-if="problema(c)" class="rv2-err">{{ problema(c) }}</span>
               <span v-else-if="ayuda[c.medida]" class="rv2-hint">{{ ayuda[c.medida] }}</span>
 
@@ -255,7 +262,7 @@
 </template>
 
 <script>
-import { deviceTypeName } from '@/components/rules/ruleSentence.js';
+import { deviceTypeName, fillThresholdText, resolveCondValue, LIMIT_REF_LABELS } from '@/components/rules/ruleSentence.js';
 import {
   MEDIDAS, CON_VENTANA, SOLO_BOOL, VALOR_LAB, opsFor, emptyCond, emptyModel, ruleToModel, modelToRule, condProblem,
 } from '@/components/rules/ruleModelV2.js';
@@ -285,7 +292,18 @@ export default {
   },
   data() {
     const m = this.rule ? ruleToModel(this.rule, this.pack) : emptyModel(this.pack);
+    // {umbral} en el nombre o la recomendación: en pantalla se ve el valor; al guardar vuelve el
+    // marcador si el texto lo conserva, así sigue al límite de la ficha si cambia.
+    const umb = { txt: '', nombre: null, reco: null };
+    if (m && this.rule) {
+      umb.txt = fillThresholdText('{umbral}', this.rule, this.sheets);
+      for (const [k, f] of [['nombre', 'label'], ['reco', 'recommendation']]) {
+        const orig = this.rule[f];
+        if (typeof orig === 'string' && orig.includes('{umbral}')) { m[k] = fillThresholdText(orig, this.rule, this.sheets); umb[k] = { orig, shown: m[k] }; }
+      }
+    }
     return {
+      umb,
       model: m || emptyModel(this.pack), view: 'editar', saving: false, savedRule: null,
       devices: [], devicesLoaded: false, sim: null, simLoading: false, simError: '', simKey: '', instIdx: 0,
       t: 1, playing: false, nowData: null, nowAt: 0, tickNow: 0,
@@ -298,7 +316,17 @@ export default {
     packKind() { return deviceTypeName(this.packType, this.sheets); },
     packKindLower() { return this.packKind.toLowerCase(); },
     sheetByType() { const m = {}; for (const s of this.sheets) m[s.deviceType] = s; return m; },
-    builtRule() { return modelToRule(this.model, { pack: this.pack, existing: this.rule, editingIndex: this.editingIndex, isBoolVar: (dt, v) => this.tipoVarDe(dt, v) === 'bool' }); },
+    builtRule() {
+      const r = modelToRule(this.model, { pack: this.pack, existing: this.rule, editingIndex: this.editingIndex, isBoolVar: (dt, v) => this.tipoVarDe(dt, v) === 'bool' });
+      const back = (u, txt) => {
+        if (!u || typeof txt !== 'string') return txt;
+        if (txt === u.shown) return u.orig;
+        return this.umb.txt && txt.includes(this.umb.txt) ? txt.replace(this.umb.txt, '{umbral}') : txt;
+      };
+      r.label = back(this.umb.nombre, r.label);
+      r.recommendation = back(this.umb.reco, r.recommendation);
+      return r;
+    },
     leafIdsBuilt() { const r = this.builtRule; return r.type === 'cross' ? r.crossExpr.children.map((l) => l.leafId) : ['L1']; },
     excede() { return this.model.conds.length > 8 || this.nMetricas > 3; },
     nMetricas() { return this.model.conds.filter((c) => !['valor', 'limite'].includes(c.medida)).length; },
@@ -382,7 +410,7 @@ export default {
     // ── equipos ──
     equipoNombre(e) {
       if (e === 'este') return `Este ${this.packKindLower}`;
-      if (e.startsWith('tipo:')) return `Todos los «${deviceTypeName(e.slice(5), this.sheets)}» del sitio`;
+      if (e.startsWith('tipo:')) return `Los «${deviceTypeName(e.slice(5), this.sheets)}» del mismo sitio`;
       const d = this.devices.find((x) => x.dId === e); return d ? d.name : (this.devicesLoaded ? 'Equipo que ya no está en el sitio' : 'cargando equipo…');
     },
     tipoEquipo(e) { if (e === 'este') return this.packType; if (e.startsWith('tipo:')) return e.slice(5); const d = this.devices.find((x) => x.dId === e); return d ? d.deviceType : null; },
@@ -390,12 +418,36 @@ export default {
       const t0 = c.equipos.length ? this.tipoEquipo(c.equipos[0]) : null;
       const tiene = (e) => c.equipos.includes(e);
       const conEste = tiene('este'), conTipo = c.equipos.some((e) => e.startsWith('tipo:'));
-      const out = [];
-      if (this.model.alcance === 'equipo' && !conEste) out.push({ v: 'este', t: `Este ${this.packKindLower}`, dis: !!t0 && (t0 !== this.packType || c.equipos.length > 0) });
+      // Primero lo que vale en cualquier sitio (este equipo / los del mismo sitio); después los
+      // equipos puntuales agrupados por sitio: un equipo elegido solo existe en su sitio.
+      const generales = [];
+      if (this.model.alcance === 'equipo' && !conEste) generales.push({ v: 'este', t: `Este ${this.packKindLower}`, dis: !!t0 && (t0 !== this.packType || c.equipos.length > 0) });
       const tipos = [...new Set(this.devices.map((d) => d.deviceType).concat(this.sheets.map((s) => s.deviceType)))].filter(Boolean);
-      for (const dt of tipos) if (!tiene(`tipo:${dt}`)) out.push({ v: `tipo:${dt}`, t: `Todos los «${deviceTypeName(dt, this.sheets)}» del sitio`, dis: c.equipos.length > 0 });
-      for (const d of this.devices) if (!tiene(d.dId)) out.push({ v: d.dId, t: `${d.name} · ${deviceTypeName(d.deviceType, this.sheets)}`, dis: conEste || conTipo || (!!t0 && d.deviceType !== t0) });
+      for (const dt of tipos) if (!tiene(`tipo:${dt}`)) generales.push({ v: `tipo:${dt}`, t: `Los «${deviceTypeName(dt, this.sheets)}» del mismo sitio`, dis: c.equipos.length > 0 });
+      const out = [{ label: null, opts: generales }];
+      const porSitio = new Map();
+      for (const d of this.devices) {
+        if (tiene(d.dId)) continue;
+        const k = this.sitioDe(d);
+        if (!porSitio.has(k)) porSitio.set(k, []);
+        porSitio.get(k).push({ v: d.dId, t: `${d.name} · ${deviceTypeName(d.deviceType, this.sheets)}`, dis: conEste || conTipo || (!!t0 && d.deviceType !== t0) });
+      }
+      for (const k of [...porSitio.keys()].sort()) out.push({ label: `Solo en ${k}`, opts: porSitio.get(k) });
       return out;
+    },
+    sitioDe(d) { return d.siteId ? (d.siteName && d.siteName !== d.siteId ? `${d.siteId} · ${d.siteName}` : d.siteId) : 'sin sitio asignado'; },
+    // Aviso cuando se eligen equipos puntuales: la regla corre en todos los sitios del tipo, pero
+    // esos equipos están en uno solo; en los otros la condición queda "sin dato".
+    avisoSitio(c) {
+      const elegidos = c.equipos.filter((e) => e !== 'este' && !e.startsWith('tipo:'));
+      if (!elegidos.length) return '';
+      const todos = new Set(this.devices.map((d) => d.siteId || ''));
+      if (todos.size < 2) return '';
+      const sit = [...new Set(elegidos.map((e) => { const d = this.devices.find((x) => x.dId === e); return d ? (d.siteId || 'sin sitio asignado') : null; }).filter(Boolean))];
+      if (!sit.length) return '';
+      return sit.length === 1
+        ? `Esta condición solo aplica en el sitio ${sit[0]}; en los demás sitios va a quedar sin dato.`
+        : `Esta condición solo aplica en los sitios ${sit.join(' y ')} (cada uno con sus equipos); en los demás sitios va a quedar sin dato.`;
     },
     agregarEquipo(c, ev) {
       const v = ev.target.value; ev.target.value = ''; if (!v) return;
@@ -422,6 +474,26 @@ export default {
     opsDe(c) { const b = ['bool', 'categorical', 'string'].includes(this.tipoVar(c)); return opsFor(c.medida, b); },
     setMedida(c, v) { c.medida = v; const ops = this.opsDe(c); if (!ops.some((o) => o.v === c.op)) c.op = ops[0].v; const md = MEDIDAS.find((m) => m.v === v); if (md && md.win && !c.ventana) c.ventana = String(md.win); },
     problema(c) { return condProblem(c); },
+    // Condición sin número propio que sigue al límite de la ficha o a otra medición: qué valor
+    // usa hoy, para mostrarlo en el campo, la frase y el gráfico (nunca se guarda ese número).
+    valorAtado(c) {
+      if (c.valor !== '' && c.valor != null) return null;
+      const ex = (c.extra && c.extra.condition) || {};
+      const u = this.unidadDe(c) ? ` ${this.unidadDe(c)}` : '';
+      if (ex.limitRef) {
+        const val = resolveCondValue({ op: c.op, limitRef: ex.limitRef }, c.deviceType, c.variable, this.sheets);
+        const lab = LIMIT_REF_LABELS[ex.limitRef] || 'límite de la ficha';
+        const num = typeof val === 'number' ? String(val).replace('.', ',') : null;
+        return { valor: typeof val === 'number' ? val : null, corto: num || 'ficha',
+          frase: num ? `${num} (${lab})` : `el ${lab}`,
+          largo: num ? `Usa el ${lab}: ${num}${u}. Si cambia en la ficha, la regla lo sigue. Si escribís un número, queda fijo.` : `Usa el ${lab}, que todavía no tiene valor cargado. Escribí un número o cargalo en la ficha.` };
+      }
+      if (ex.ref) {
+        return { valor: null, corto: 'relativo', frase: 'el valor relativo configurado',
+          largo: 'Se compara contra otra medición (configurado en el editor anterior). Si escribís un número, queda fijo.' };
+      }
+      return null;
+    },
     frase(c) {
       const x = this.varDe(c.deviceType, c.variable);
       const vl = x ? (x.label || String(x.name).replace(/_/g, ' ')) : 'la medición';
@@ -429,7 +501,8 @@ export default {
       const nom = c.equipos.map((e) => (e === 'este' ? `este ${this.packKindLower}` : this.equipoNombre(e)));
       const quien = !nom.length ? 'de [elegí un equipo]' : nom.length === 1 ? `de ${nom[0]}` : c.modo === 'todos' ? `de ${nom.slice(0, -1).join(', ')} y ${nom[nom.length - 1]} (todos)` : `de ${nom.slice(0, -1).join(', ')} o ${nom[nom.length - 1]}`;
       const opT = (this.opsDe(c).find((o) => o.v === c.op) || {}).t || '';
-      const v = c.valor === '' ? '…' : c.valor;
+      const at = this.valorAtado(c);
+      const v = c.valor === '' ? (at ? at.frase : '…') : c.valor;
       const tv = this.tipoVar(c);
       if (c.medida === 'valor' && tv === 'bool') return `${vl} ${quien} ${c.op === 'eq' ? 'sea' : 'no sea'} «${c.valor === '1' ? 'sí' : 'no'}»`;
       if (c.medida === 'valor' && this.enumDe(c).length) { const e = this.enumDe(c).find((z) => String(z.value) === String(c.valor)); return `${vl} ${quien} ${opT} «${e ? e.label : v}»`; }
@@ -507,7 +580,8 @@ export default {
       const sm = (a, b, x) => { const u = Math.min(1, Math.max(0, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
       const series = this.model.conds.map((c, i) => {
         const a = 0.22 + 0.07 * i, b = 0.68 - 0.04 * i; const ins = (x) => sm(a - 0.04, a + 0.04, x) * (1 - sm(b - 0.04, b + 0.04, x));
-        let thr = Number(String(c.valor).replace(',', '.')); if (!Number.isFinite(thr)) thr = 50;
+        const at = this.valorAtado(c);
+        let thr = Number(String(c.valor === '' && at && at.valor != null ? at.valor : c.valor).replace(',', '.')); if (!Number.isFinite(thr)) thr = 50;
         const up = ['gt', 'gte', 'sube', 'neq', 'eq'].includes(c.op) || ['salto', 'anormal', 'vida', 'caida', 'sinreporte'].includes(c.medida);
         if (this.tipoVar(c) === 'bool') { const want = c.op === 'eq' ? Number(c.valor) : 1 - Number(c.valor); const vals = Array.from({ length: N }, (_, j) => (ins(j / (N - 1)) > 0.5 ? want : 1 - want)); return { vals, states: vals.map((v) => (v === want ? 'si' : 'no')), thr: null }; }
         if (c.medida === 'tendencia' && c.op === 'baja') thr = -thr;
@@ -589,6 +663,7 @@ body:not(.white-content) .rv2 { --bg: #0d1917; --card: #13221f; --card2: #0f1d1a
 .rv2-lab { font-size: 12.5px; color: var(--mut); font-weight: 600; }
 .rv2-hint { font-size: 12.5px; color: var(--mut); }
 .rv2-err { font-size: 12.5px; color: var(--sin); font-weight: 600; }
+.rv2-warn { display: block; margin-top: 6px; font-size: 12.5px; color: var(--jun); background: var(--junb); border-radius: 6px; padding: 6px 9px; }
 .rv2-fld { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .rv2-in { font: inherit; font-size: 14.5px; color: var(--ink); background: var(--card2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; min-height: 42px; width: 100%; box-sizing: border-box; }
 .rv2-in:focus { outline: 2px solid var(--accb); outline-offset: 1px; }
