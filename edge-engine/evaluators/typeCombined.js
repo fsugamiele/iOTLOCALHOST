@@ -42,7 +42,13 @@ function devicesOfType(siteState, deviceType, siteCode) {
 
 // Qh2 — a qué equipos mira la hoja: el ancla (si es de su tipo), un equipo puntual, o todos
 // los de su tipo en el sitio (que luego se combinan con 'any'/'all').
+// spec_editor_reglas_v2 — `pick` también puede ser una LISTA de equipos elegidos:
+// { mode: 'any'|'all', dIds: [...] } (basta con uno / tienen que ser todos).
+const pickList = (leaf) => (leaf.pick && typeof leaf.pick === 'object' && Array.isArray(leaf.pick.dIds) ? leaf.pick : null);
+const pickMode = (leaf) => { const pl = pickList(leaf); return pl ? (pl.mode === 'all' ? 'all' : 'any') : (leaf.pick === 'all' ? 'all' : 'any'); };
 function leafDevices(rule, leaf, siteState, siteCode, anchorDId) {
+  const pl = pickList(leaf);
+  if (pl) return pl.dIds.filter((id) => { const st = siteState.get(id); return st && st._siteCode === siteCode && st._deviceType === leaf.deviceType; });
   if (anchorType(rule) && leaf.deviceType === anchorType(rule)) return anchorDId ? [anchorDId] : [];
   if (leaf.pick && leaf.pick !== 'any' && leaf.pick !== 'all') {
     const st = siteState.get(leaf.pick);
@@ -147,8 +153,9 @@ function feed(rule, ctx) {
     if (leaf.metric === 'staleness' && !msg) ids = devicesOfType(siteState, leaf.deviceType, siteCode);
     else if (msg && msg.dId) {
       const st = siteState.get(msg.dId);
+      const pl = pickList(leaf);
       ids = st && st._deviceType === leaf.deviceType && st._siteCode === siteCode
-        && (!leaf.pick || leaf.pick === 'any' || leaf.pick === 'all' || leaf.pick === msg.dId) ? [msg.dId] : [];
+        && (pl ? pl.dIds.includes(msg.dId) : (!leaf.pick || leaf.pick === 'any' || leaf.pick === 'all' || leaf.pick === msg.dId)) ? [msg.dId] : [];
     } else ids = [];
     for (const id of ids) feedMetricLeaf(rule, leaf, id, ctx);
   }
@@ -169,13 +176,13 @@ function evaluate(rule, ctx, anchorDId) {
     const m = measureOf(node);
     const devs = leafDevices(rule, node, ctx.siteState, ctx.siteCode, anchorDId);
     const per = devs.map((d) => ({ dId: d, ...(m === 'metric' ? metricLeaf(rule, node, d, ctx) : m === 'setpoint' ? setpointLeaf(rule, node, d, ctx) : valueLeaf(rule, node, d, ctx)) }));
-    const op = node.pick === 'all' ? 'AND' : 'OR';
+    const op = pickMode(node) === 'all' ? 'AND' : 'OR';
     const state = combine(op, per.map((p) => p.state));
     // Representante para la foto: el equipo que decidió (el primero con ese estado).
     const rep = per.find((p) => p.state === state) || per[0] || { dId: null, value: null, threshold: null };
     snap.push({
       leafId: ids.get(node), deviceType: node.deviceType, variable: node.variable, measure: m,
-      metric: m === 'metric' ? node.metric : undefined, pick: node.pick || undefined,
+      metric: m === 'metric' ? node.metric : undefined, pick: node.pick || undefined, devices: devs,
       dId: rep.dId, state, value: rep.value ?? null, threshold: rep.threshold ?? null,
     });
     return state;

@@ -85,7 +85,9 @@ function validateCombined(rule, validateM) {
       ids.add(l.leafId);
     }
     if (!MEASURES.includes(m)) return { ok: false, reason: `${quien} tiene una forma de medir desconocida.` };
-    if (l.pick != null && !(l.pick === 'any' || l.pick === 'all' || (typeof l.pick === 'string' && l.pick.length > 0))) {
+    const pickOk = l.pick == null || l.pick === 'any' || l.pick === 'all' || (typeof l.pick === 'string' && l.pick.length > 0)
+      || (typeof l.pick === 'object' && Array.isArray(l.pick.dIds) && l.pick.dIds.length > 0 && l.pick.dIds.every((x) => typeof x === 'string' && x) && (l.pick.mode == null || ['any', 'all'].includes(l.pick.mode)));
+    if (!pickOk) {
       return { ok: false, reason: `${quien}: elegí si alcanza con un equipo o tienen que ser todos.` };
     }
     if (l.freshnessSec != null && !(Number(l.freshnessSec) > 0)) return { ok: false, reason: `${quien}: el tiempo sin datos tiene que ser mayor que cero.` };
