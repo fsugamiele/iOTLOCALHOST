@@ -398,6 +398,19 @@ router.post("/qa/backtest", checkAuth, async (req, res) => {
   }
 });
 
+// spec_editor_reglas_v2 — POST /api/qa/simulate {rule, hours?}: la regla (guardada o en
+// edición) corrida con el motor real sobre los datos del sitio. Proxy al worker, como backtest.
+router.post("/qa/simulate", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  try {
+    const upstream = await axios.post(`http://${QA_HOST}:${QA_HTTP_PORT}/simulate`, req.body || {}, { timeout: 90000, validateStatus: () => true });
+    return res.status(upstream.status).json(upstream.data);
+  } catch (error) {
+    const esTimeout = error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '');
+    return res.status(esTimeout ? 504 : 502).json({ status: "error", error: esTimeout ? "la prueba tardó demasiado: probá con menos horas" : "no se pudo contactar al servicio de pruebas" });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/qa/rule/:ruleId/timeline?dId=<opt>&hours=<opt, default 24> — línea de
 // tiempo de la ficha de hallazgo (UI 141): eventos fire/resolve de notifications +
