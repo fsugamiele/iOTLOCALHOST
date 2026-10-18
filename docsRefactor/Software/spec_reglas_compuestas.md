@@ -143,4 +143,4 @@ En el editor, las tarjetas de regla, la frase "En palabras" y los mensajes de er
 | `ruleId` en mensajes | el nombre de la regla |
 | bool `0/1` en la frase | «no» / «sí» |
 
-Pendiente: los mensajes de validación de las reglas **simples** (D/C/S/M) en `ruleValidation.js` todavía tienen la forma técnica ("typeD: condition.value…"); el editor las evita con sus propios chequeos, pero hay que traducirlas.
+Los mensajes de validación de **todas** las reglas (simples y combinadas, `ruleValidation.js`) y las advertencias al guardar están en palabras del operador y citan la regla por su nombre (2026-10-18).

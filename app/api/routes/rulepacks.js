@@ -77,7 +77,7 @@ function validatePackRules(pack) {
     const v = validateRule(r);
     if (!v.ok) return { ok: false, ruleId: r.ruleId, label: r.label, reason: v.reason };
     if (v.warnings && v.warnings.length) {
-      for (const w of v.warnings) warnings.push(`[${r.ruleId}] ${w}`);
+      for (const w of v.warnings) warnings.push(`«${r.label || 'regla sin nombre'}»: ${w}`);
     }
   }
   return { ok: true, warnings };
