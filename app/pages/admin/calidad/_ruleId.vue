@@ -281,8 +281,11 @@ export default {
     };
   },
   computed: {
+    // keep-alive: esta instancia es de UNA ruta; queda fija aunque la ruta global cambie
+    // (si no, en segundo plano consulta con el parámetro de otra página → 404 / datos ajenos).
     ruleId() {
-      return this.$route.params.ruleId;
+      if (this._paramFijo === undefined) this._paramFijo = this.$route.params.ruleId;
+      return this._paramFijo;
     },
     // Hallazgo de mayor prioridad: la API ya ordena por prioridad/lastSeen, así
     // que el primero del array alcanza (el badge del detail ya es el de mayor

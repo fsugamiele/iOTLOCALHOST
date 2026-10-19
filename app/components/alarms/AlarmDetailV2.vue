@@ -373,19 +373,27 @@ export default {
       return t;
     },
   },
-  watch: { '$route.params.id'() { this.serieIdx = 0; this.cargar(); } },
-  mounted() {
-    this.cargar();
-    this._t = setInterval(() => { this.nowMs = Date.now(); }, 1000);
-    this._p = setInterval(() => { if (this.abierta && !document.hidden) this.cargar(true); }, 15000);
-  },
-  beforeDestroy() { clearInterval(this._t); clearInterval(this._p); },
+  // keep-alive (layouts/default.vue): cada alarma es su propia instancia en caché. El id se fija al
+  // crearla y los relojes se frenan al salir de la página: nunca se consulta con la ruta de OTRA
+  // página (ese era el /alarms/undefined/detail).
+  created() { this.alarmId = this.$route.params.id; },
+  mounted() { this.cargar(); this.arrancar(); },
+  activated() { if (this._yaActiva) { this.arrancar(); this.cargar(true); } this._yaActiva = true; },
+  deactivated() { this.frenar(); },
+  beforeDestroy() { this.frenar(); },
   methods: {
     hdr() { return { headers: { token: this.$store.state.auth.token } }; },
+    arrancar() {
+      this.frenar();
+      this._t = setInterval(() => { this.nowMs = Date.now(); }, 1000);
+      this._p = setInterval(() => { if (this.abierta && !document.hidden) this.cargar(true); }, 15000);
+    },
+    frenar() { clearInterval(this._t); clearInterval(this._p); this._t = this._p = null; },
     async cargar(silencioso) {
       if (!silencioso) { this.loading = true; this.error = false; this.notFound = false; }
       try {
-        const res = await this.$axios.get(`/alarms/${encodeURIComponent(this.$route.params.id)}/detail`, this.hdr());
+        if (!this.alarmId) return;
+        const res = await this.$axios.get(`/alarms/${encodeURIComponent(this.alarmId)}/detail`, this.hdr());
         if (res.data.status === 'success') { this.detail = res.data.data; this.nowMs = Date.now(); this.packId = (this.detail.v2 && this.detail.v2.packId) || null; } else if (!silencioso) this.error = true;
       } catch (e) {
         if (!silencioso) { this.error = true; this.notFound = !!(e.response && e.response.status === 404); }
@@ -410,7 +418,7 @@ export default {
     async tildar(i, done) {
       this.pasoBusy = i;
       try {
-        const r = await this.$axios.post(`/alarms/${encodeURIComponent(this.$route.params.id)}/steps`, { i, done }, this.hdr());
+        const r = await this.$axios.post(`/alarms/${encodeURIComponent(this.alarmId)}/steps`, { i, done }, this.hdr());
         if (r.data && r.data.data) this.$set(this.detail.v2, 'stepsDone', r.data.data.stepsDone);
       } catch (e) { this.$notify({ type: 'danger', message: 'No se pudo registrar el paso.' }); } finally { this.pasoBusy = null; }
     },

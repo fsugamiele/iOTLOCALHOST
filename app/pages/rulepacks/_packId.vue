@@ -276,8 +276,11 @@ export default {
     };
   },
   computed: {
+    // keep-alive: esta instancia es de UNA ruta; queda fija aunque la ruta global cambie
+    // (si no, en segundo plano consulta con el parámetro de otra página → 404 / datos ajenos).
     packId() {
-      return this.$route.params.packId;
+      if (this._paramFijo === undefined) this._paramFijo = this.$route.params.packId;
+      return this._paramFijo;
     },
     // DEC-REF-121 — enabled !== false (pack histórico sin el campo = en circulación).
     packEnabled() {

@@ -337,6 +337,9 @@ export default {
         : 'No se pudo cargar el detalle de la alarma.';
     },
   },
+  created() { this.alarmId = this.$route.params.id; },
+  activated() { this._inactiva = false; },
+  deactivated() { this._inactiva = true; },
   mounted() {
     if (typeof document !== 'undefined') {
       this.isLight = document.body.classList.contains('white-content');
@@ -346,7 +349,8 @@ export default {
       this.themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     }
     this.fetchDetail();
-    this._notifHandler = () => this.fetchDetail();
+    // keep-alive: solo refresca si esta página es la que se está mirando (y con SU id).
+    this._notifHandler = () => { if (!this._inactiva && this.alarmId) this.fetchDetail(); };
     this.$nuxt.$on('wanomi:notif', this._notifHandler);
   },
   beforeDestroy() {
@@ -385,7 +389,7 @@ export default {
       this.notFound = false;
       try {
         const res = await this.$axios.get(
-          `/alarms/${encodeURIComponent(this.$route.params.id)}/detail`,
+          `/alarms/${encodeURIComponent(this.alarmId)}/detail`,
           this.headers()
         );
         if (res.data.status === 'success') {

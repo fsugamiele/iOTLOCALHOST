@@ -19,6 +19,8 @@ export default {
   name: 'AlarmaDetalle',
   middleware: 'authenticated',
   components: { AlarmDetailV1, AlarmDetailV2 },
-  computed: { anterior() { return this.$route.query.vista === 'anterior'; } },
+  // keep-alive: solo se mira la ruta cuando es la de ESTA alarma (en segundo plano no cambia nada).
+  data() { return { miPath: this.$route.path, anterior: this.$route.query.vista === 'anterior' }; },
+  watch: { $route(to) { if (to.path === this.miPath) this.anterior = to.query.vista === 'anterior'; } },
 };
 </script>

@@ -380,8 +380,11 @@ export default {
   },
 
   computed: {
+    // keep-alive: esta instancia es de UNA ruta; queda fija aunque la ruta global cambie
+    // (si no, en segundo plano consulta con el parámetro de otra página → 404 / datos ajenos).
     siteCode() {
-      return this.$route.params.siteCode;
+      if (this._paramFijo === undefined) this._paramFijo = this.$route.params.siteCode;
+      return this._paramFijo;
     },
     hasCoords() {
       return this.site && this.site.lat != null && this.site.lng != null;
