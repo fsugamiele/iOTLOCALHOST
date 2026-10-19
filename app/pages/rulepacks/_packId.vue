@@ -384,15 +384,18 @@ export default {
     if (!ok) return;
     await this.loadPack();
     this.loadSheets();
-    this.cargarAhoraLista();
-    this._ahoraI = setInterval(() => this.cargarAhoraLista(), 15000);
+    this.iniciarAhora();
   },
   beforeDestroy() { clearInterval(this._ahoraI); },
+  // keep-alive: una pestaña de pack que queda en segundo plano deja de consultar "Ahora".
+  // (Antes seguía consultando con el packId de la ruta actual y las reglas de SU pack → 404.)
+  deactivated() { clearInterval(this._ahoraI); this._ahoraI = null; },
   // keep-alive (layouts/default.vue): al VOLVER a esta pestaña no corre mounted();
   // se recargan los datos para no mostrar valores viejos (ej. ficha editada en otra).
   // El primer activated() viene pegado al mount → se saltea con _kaSeen.
   activated() {
     if (!this._kaSeen) { this._kaSeen = true; return; }
+    this.iniciarAhora();
     if (this.editorOpen || this.ruleModal || this.wizardOpen || this.saving) return;
     this.loadPack();
     this.loadSheets();
@@ -643,13 +646,20 @@ export default {
     // spec_editor_reglas_v2 — guardado desde el editor v2: mismo PUT del pack; devuelve si se guardó
     // (el editor pasa a mostrar "Ahora").
     // spec_editor_reglas_v2 (Qi2) — resumen "Ahora" de cada tarjeta (etapa de sus instancias).
+    iniciarAhora() {
+      clearInterval(this._ahoraI);
+      this.cargarAhoraLista();
+      this._ahoraI = setInterval(() => this.cargarAhoraLista(), 15000);
+    },
     async cargarAhoraLista() {
-      if (!this.pack || document.hidden) return;
+      // Se consulta con el packId del pack cargado (no el de la ruta): reglas y pack siempre coinciden.
+      if (!this.pack || document.hidden || this.pack.packId !== this.packId) return;
+      const packId = this.pack.packId;
       const rules = (this.pack.rules || []).slice(0, 40);
       const out = {};
       await Promise.all(rules.map(async (r) => {
         try {
-          const res = await this.$axios.get(`/rulepacks/${encodeURIComponent(this.packId)}/rules/${encodeURIComponent(r.ruleId)}/now`, { headers: { token: this.$store.state.auth.token } });
+          const res = await this.$axios.get(`/rulepacks/${encodeURIComponent(packId)}/rules/${encodeURIComponent(r.ruleId)}/now`, { headers: { token: this.$store.state.auth.token } });
           const inst = ((res.data && res.data.data && res.data.data.instances) || []);
           const n = (steps) => inst.filter(x => steps.includes(x.step)).length;
           const eq = (k) => (k === 1 ? '1 equipo' : `${k} equipos`);
