@@ -212,6 +212,14 @@
             <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-rec">Qué tiene que hacer el operador</label>
               <textarea id="rv2-rec" v-model="model.reco" class="rv2-in" rows="3" placeholder="Ej.: Despachar técnico con grupo portátil y verificar el arranque del grupo"></textarea>
             </div>
+            <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-sig">Qué significa esta alarma <span class="rv2-hint">(opcional)</span></label>
+              <input id="rv2-sig" v-model="model.significa" class="rv2-in" maxlength="200" placeholder="Ej.: El sitio está con baterías y el grupo electrógeno no arrancó.">
+              <span class="rv2-hint">Es la primera frase que lee el operador en el detalle de la alarma. Si la dejás vacía, se usa el nombre de la regla.</span>
+            </div>
+            <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-pasos">Pasos a seguir <span class="rv2-hint">(opcional · uno por renglón)</span></label>
+              <textarea id="rv2-pasos" v-model="model.pasos" class="rv2-in" rows="4" placeholder="Llamar al técnico de guardia de la zona&#10;Confirmar con el NOC si el corte es de la distribuidora&#10;Revisar el grupo e intentar arranque manual"></textarea>
+              <span class="rv2-hint">En el detalle de la alarma se muestran como una lista para ir tildando; queda registrado quién hizo cada paso.</span>
+            </div>
           </div></div>
         </div>
       </section>

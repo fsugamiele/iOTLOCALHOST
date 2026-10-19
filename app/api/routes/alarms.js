@@ -3,7 +3,7 @@ const router = express.Router();
 const axios = require("axios");
 const mongoose = require("mongoose");
 const { checkAuth } = require("../middlewares/authentication.js");
-const { buildReadFilter } = require("../middlewares/scope.js");
+const { buildReadFilter, buildWriteFilter } = require("../middlewares/scope.js");
 const colors = require("colors");
 const { hasAccumulatorLeaf, instanceKey } = require("../services/combinedRule.js");   // spec_reglas_compuestas
 
@@ -13,6 +13,7 @@ import Site from "../models/site.js";
 import Data from "../models/data.js";
 import Device from "../models/device.js";
 import Template from "../models/template.js";
+import User from "../models/user.js";
 import { query as historyQuery } from "../services/historyProvider.js";
 const RulePack = require("../models/rule_pack.js");
 
@@ -450,7 +451,13 @@ router.get("/alarms/:id/detail", checkAuth, async (req, res) => {
     const children = await buildChildren(notifFilter, ruleId, notif.siteId);
 
     // ── G1b — cómo cierra la regla y en qué etapa está su GRAFCET ahora.
-    const { rule, fsm } = await buildRuleState(ruleId, dId, notif.siteId);
+    const { rule, fsm, ruleRaw, fsmRow } = await buildRuleState(ruleId, dId, notif.siteId);
+
+    // ── spec_detalle_alarma_v2 — qué pasa · por qué · cómo se soluciona · contexto.
+    // Si algo de esto falla, el detalle igual responde (el detalle anterior no lo necesita).
+    let v2 = null;
+    try { v2 = await buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, firedAt, resolvedAt, state, now, ruleRaw, fsmRow }); }
+    catch (e) { console.log("ERROR BUILDING ALARM DETAIL V2", e && (e.stack || e.message)); }
 
     return res.json({
       status: "success",
@@ -468,7 +475,8 @@ router.get("/alarms/:id/detail", checkAuth, async (req, res) => {
         autonomy,
         children,
         rule,
-        fsm
+        fsm,
+        v2
       }
     });
   } catch (error) {
@@ -1030,8 +1038,9 @@ async function buildChildren(notifFilter, ruleId, siteId) {
 // G1b — regla (tipo de cierre) + etapa vigente del GRAFCET de la instancia (colección
 // rulefsm que escribe el edge; sin fila = Vigilando sin alarma abierta, reposo).
 async function buildRuleState(ruleId, dId, siteId) {
-  const pack = await RulePack.findOne({ 'rules.ruleId': ruleId }, { 'rules.$': 1 }).lean();
-  const r = pack && pack.rules && pack.rules[0];
+  const pack = await RulePack.findOne({ 'rules.ruleId': ruleId }, { packId: 1, 'rules.$': 1 }).lean();
+  const r0 = pack && pack.rules && pack.rules[0];
+  const r = r0 ? { ...r0, _packId: pack.packId } : r0;
   const rule = r ? {
     type: r.type, metric: r.metric || null,
     resetBehavior: r.reset_behavior || 'auto',
@@ -1044,8 +1053,219 @@ async function buildRuleState(ruleId, dId, siteId) {
     const step = row ? row.step : 'E1';
     fsm = { step, stepName: FSM_STEP_NAMES[step] || step, since: row ? row.since : null,
             alarmOpen: row ? !!row.alarmOpen : false, acked: row ? !!row.acked : false, ackedBy: row ? row.ackedBy || null : null };
+    return { rule, fsm, ruleRaw: r || null, fsmRow: row || null };
   }
-  return { rule, fsm };
+  return { rule, fsm, ruleRaw: r || null, fsmRow: null };
 }
+
+// ═════════ spec_detalle_alarma_v2 ═════════
+const V2_PRE_MS = 90 * 60000;          // gráfico: 1 h 30 antes del aviso…
+const V2_POST_MS = 30 * 60000;         // …y 30 min después del cierre (o hasta ahora)
+const V2_BUCKET_MS = 60000;            // 1 punto por minuto
+const V2_MAX_SERIES = 4;
+const V2_CONTEXT_PRE_MS = HOUR_MS;     // "Cómo empezó": la hora previa al aviso
+const V2_REPORTING_MS = 10 * 60000;    // equipo "reporta" si mandó algo en 10 min (frescura del motor)
+
+const leafList = (node, out = []) => {
+  if (!node) return out;
+  if (Array.isArray(node.children)) node.children.forEach(c => leafList(c, out));
+  else if (!Array.isArray(node.sum)) out.push(node);
+  return out;
+};
+
+// Último valor de cada (dId, variable) pedido.
+async function lastValues(pairs) {
+  const out = {};
+  await Promise.all(pairs.map(async ({ dId, variable }) => {
+    const d = await Data.findOne({ dId, variable }, { value: 1, time: 1, _id: 0 }).sort({ time: -1 }).lean();
+    out[dId + '|' + variable] = d ? { value: d.value, time: d.time } : null;
+  }));
+  return out;
+}
+
+async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, firedAt, resolvedAt, state, now, ruleRaw, fsmRow }) {
+  const db = mongoose.connection.db;
+  const siteId = notif.siteId || null;
+  const fire = fireEvent || notif;
+  const fireAt = firedAt != null ? firedAt : notif.time;
+
+  // Regla: solo lo que la pantalla necesita (los textos y cómo cierra).
+  const r = ruleRaw || {};
+  const rule = ruleRaw ? {
+    label: r.label, meaning: r.meaning || '', steps: Array.isArray(r.steps) ? r.steps.filter(Boolean) : [],
+    recommendation: r.recommendation || '', severity: r.severity, type: r.type, metric: r.metric || null,
+    deviceType: r.deviceType, variable: r.variable, unit: r.unit || null, condition: r.condition || null,
+    crossExpr: r.crossExpr || null, scope: r.scope || null, window: r.window || null, mParams: r.mParams || null,
+    mWindow: r.mWindow || null, graceSec: r.graceSec || 0, resolveGraceSec: r.resolveGraceSec || 0,
+    resetBehavior: r.reset_behavior || 'auto',
+  } : null;
+
+  // Equipos del sitio y fichas (nombres, mediciones, medición principal).
+  const site = siteId ? await Site.findOne({ siteCode: siteId }, { siteCode: 1, nombre: 1, devices: 1, _id: 0 }).lean() : null;
+  const siteDIds = (site && site.devices) || (notif.dId ? [notif.dId] : []);
+  const devs = await Device.find({ dId: { $in: siteDIds } }, { dId: 1, name: 1, deviceType: 1, _id: 0 }).lean();
+  const devBy = new Map(devs.map(d => [d.dId, d]));
+  const types = [...new Set(devs.map(d => d.deviceType).filter(Boolean))];
+  const sheets = types.length ? await db.collection('equipmentsheets').find({ deviceType: { $in: types } })
+    .project({ deviceType: 1, manufacturer: 1, model: 1, primaryVariable: 1, variables: 1 }).toArray() : [];
+  const sheetBy = new Map(sheets.map(s => [s.deviceType, s]));
+  const varMeta = (dt, v) => {
+    const s = sheetBy.get(dt); const x = s && (s.variables || []).find(z => z.name === v);
+    return x ? { label: x.label || null, unit: x.unit || null, type: x.type || null, enumValues: x.enumValues || null } : { label: null, unit: null, type: null, enumValues: null };
+  };
+
+  // Condiciones: la foto del disparo (leaves) o, en una regla simple, su única medición.
+  const leaves = Array.isArray(fire.leaves) && fire.leaves.length ? fire.leaves : null;
+  const nowLeaves = fsmRow && fsmRow.lastCtx && Array.isArray(fsmRow.lastCtx.leaves) ? fsmRow.lastCtx.leaves : null;
+  const pairs = [];
+  const addPair = (dId, variable) => { if (dId && variable && !pairs.some(p => p.dId === dId && p.variable === variable)) pairs.push({ dId, variable }); };
+  let conditions;
+  if (leaves) {
+    conditions = leaves.map((l) => {
+      const ids = l.dId ? [l.dId] : (Array.isArray(l.devices) ? l.devices.map(x => (typeof x === 'string' ? x : x && x.dId)).filter(Boolean) : []);
+      const ids2 = ids.length ? ids : (notif.dId && l.deviceType === (devBy.get(notif.dId) || {}).deviceType ? [notif.dId] : []);
+      ids2.slice(0, 3).forEach(id => addPair(id, l.variable));
+      const n = nowLeaves && nowLeaves.find(x => x.leafId === l.leafId);
+      return { leafId: l.leafId, deviceType: l.deviceType, variable: l.variable, measure: l.measure || 'value', metric: l.metric || null,
+        dIds: ids2, atFire: { state: l.state, value: l.value, threshold: l.threshold },
+        now: n ? { state: n.state, value: n.value, threshold: n.threshold } : null,
+        meta: varMeta(l.deviceType, l.variable) };
+    });
+  } else {
+    const dt = (devBy.get(notif.dId) || {}).deviceType || (rule && rule.deviceType);
+    addPair(notif.dId, notif.variable);
+    const c = fsmRow && fsmRow.lastCtx;
+    conditions = [{ leafId: 'L1', deviceType: dt, variable: notif.variable, measure: rule && rule.type === 'C' ? 'setpoint' : rule && rule.type === 'M' ? 'metric' : 'value',
+      metric: rule && rule.metric, dIds: notif.dId ? [notif.dId] : [],
+      atFire: { state: 'si', value: fire.value, threshold: fire.thresholdUsed },
+      now: c ? { state: fsmRow.lastR === 'off' ? 'no' : fsmRow.lastR == null ? 'sin' : 'si', value: c.value, threshold: c.thresholdUsed } : null,
+      meta: varMeta(dt, notif.variable) }];
+  }
+
+  // Valores en vivo de las mediciones de la regla.
+  const lv = await lastValues(pairs);
+  const live = pairs.map(p => {
+    const d = devBy.get(p.dId) || {};
+    const v = lv[p.dId + '|' + p.variable];
+    return { dId: p.dId, deviceName: d.name || p.dId, deviceType: d.deviceType || null, variable: p.variable,
+      value: v ? v.value : null, time: v ? v.time : null, ...varMeta(d.deviceType, p.variable) };
+  });
+
+  // Series del gráfico (hasta 4 mediciones), 1 punto por minuto.
+  const from = fireAt - V2_PRE_MS;
+  const until = state === 'resolved' && resolvedAt != null ? Math.min(now, resolvedAt + V2_POST_MS) : now;
+  const series = [];
+  for (const p of pairs.slice(0, V2_MAX_SERIES)) {
+    const docs = await Data.find({ dId: p.dId, variable: p.variable, time: { $gte: from, $lte: until } }, { time: 1, value: 1, _id: 0 }).sort({ time: 1 }).lean();
+    const pts = docs.filter(d => typeof d.value === 'number' && Number.isFinite(d.value)).map(d => ({ time: d.time, value: d.value }));
+    const cond = conditions.find(c => c.variable === p.variable && c.dIds.includes(p.dId));
+    const d = devBy.get(p.dId) || {};
+    series.push({ dId: p.dId, deviceName: d.name || p.dId, variable: p.variable, ...varMeta(d.deviceType, p.variable),
+      threshold: cond && typeof cond.atFire.threshold === 'number' ? cond.atFire.threshold : null, points: bucketizar(pts, V2_BUCKET_MS) });
+  }
+
+  // Contexto 1 — cómo empezó: avisos y cierres de TODO el sitio en la hora previa (+10 min después).
+  let timeline = [];
+  if (siteId) {
+    const evs = await Notification.find({ ...notifFilter, siteId, ruleId: { $ne: null }, time: { $gte: fireAt - V2_CONTEXT_PRE_MS, $lte: fireAt + 10 * 60000 } },
+      { time: 1, kind: 1, label: 1, severity: 1, dId: 1, deviceName: 1, ruleId: 1, mode: 1 }).sort({ time: 1 }).limit(40).lean();
+    timeline = evs.map(e => ({ ts: e.time, kind: e.kind || 'fire', label: e.label || null, severity: e.severity || 'info', mode: e.mode || null,
+      dId: e.dId, deviceName: (devBy.get(e.dId) || {}).name || e.deviceName || e.dId, actual: String(e._id) === String(fire._id) || (e.ruleId === notif.ruleId && e.time === fireAt) }));
+    // Entradas en "Sin datos" del sitio en esa ventana (un equipo que dejó de reportar es contexto).
+    try {
+      const tr = await db.collection('ruletransitions').find({ siteId, to: 'E5', ts: { $gte: new Date(fireAt - V2_CONTEXT_PRE_MS), $lte: new Date(fireAt + 10 * 60000) } })
+        .project({ ts: 1, dId: 1, ruleId: 1 }).sort({ ts: 1 }).limit(10).toArray();
+      for (const t of tr) timeline.push({ ts: new Date(t.ts).getTime(), kind: 'sindatos', label: null, severity: 'info', dId: t.dId, deviceName: (devBy.get(t.dId) || {}).name || t.dId, actual: false });
+      timeline.sort((a, b) => a.ts - b.ts);
+    } catch (e) { /* sin bitácora: queda solo lo de las alarmas */ }
+  }
+
+  // Contexto 2 — equipos del sitio ahora (medición principal de su ficha, Qj4).
+  const lastSeen = siteDIds.length ? await Data.aggregate([
+    { $match: { dId: { $in: siteDIds }, time: { $gte: now - DAY_MS } } },
+    { $group: { _id: '$dId', t: { $max: '$time' } } },
+  ]) : [];
+  const seenBy = new Map(lastSeen.map(x => [x._id, x.t]));
+  const primPairs = devs.map(d => ({ dId: d.dId, variable: (sheetBy.get(d.deviceType) || {}).primaryVariable })).filter(p => p.variable);
+  const pv = await lastValues(primPairs);
+  const equipos = devs.map(d => {
+    const sh = sheetBy.get(d.deviceType) || {};
+    const pvar = sh.primaryVariable || null;
+    const val = pvar ? pv[d.dId + '|' + pvar] : null;
+    const t = seenBy.get(d.dId) || null;
+    return { dId: d.dId, name: d.name || d.dId, deviceType: d.deviceType, model: [sh.manufacturer, sh.model].filter(Boolean).join(' ') || null,
+      lastSeen: t, reporting: t != null && now - t <= V2_REPORTING_MS, esEste: d.dId === notif.dId,
+      primary: pvar ? { variable: pvar, value: val ? val.value : null, time: val ? val.time : null, ...varMeta(d.deviceType, pvar) } : null };
+  });
+
+  // Contexto 3 — otras alarmas abiertas del sitio (7 días).
+  let abiertas = [];
+  if (siteId) {
+    const groups = await Notification.aggregate([
+      { $match: { ...notifFilter, siteId, ruleId: { $ne: null }, time: { $gte: now - 7 * DAY_MS } } },
+      { $sort: { time: -1 } },
+      { $group: { _id: { ruleId: '$ruleId', dId: '$dId' }, kind: { $first: { $ifNull: ['$kind', 'fire'] } }, time: { $first: '$time' }, id: { $first: '$_id' }, label: { $first: '$label' }, severity: { $first: '$severity' } } },
+      { $match: { kind: { $ne: 'resolve' } } },
+      { $sort: { time: -1 } }, { $limit: 12 },
+    ]);
+    abiertas = groups.filter(g => !(g._id.ruleId === notif.ruleId && g._id.dId === notif.dId))
+      .map(g => ({ notificationId: g.id, label: g.label, severity: g.severity || 'info', firedAt: g.time, dId: g._id.dId, deviceName: (devBy.get(g._id.dId) || {}).name || g._id.dId }));
+  }
+
+  // Contexto 4 — antecedentes: la última vez que saltó (misma regla y equipo) y cómo se cerró.
+  let anterior = null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (kindOf(e) === 'resolve' || e.time >= fireAt) continue;
+    const nx = events[i + 1];
+    anterior = { firedAt: e.time, resolvedAt: nx && kindOf(nx) === 'resolve' ? nx.time : null, closeMode: nx && kindOf(nx) === 'resolve' ? (nx.mode || null) : null, ackBy: e.acknowledgedBy || null };
+    break;
+  }
+
+  // Cómo se cerró este episodio (mode del evento de cierre).
+  let closeMode = null;
+  if (state === 'resolved' && resolvedAt != null) {
+    const rv = events.find(e => kindOf(e) === 'resolve' && e.time === resolvedAt);
+    closeMode = rv ? (rv.mode || null) : null;
+  }
+
+  return {
+    fireId: String(fire._id), packId: (ruleRaw && ruleRaw._packId) || null, closeMode, rule, conditions, live, series, from, until,
+    stepsDone: Array.isArray(fire.stepsDone) ? fire.stepsDone : [],
+    ackBy: fire.acknowledgedBy || null, ackAt: fire.ackAt || null,
+    site: site ? { siteCode: site.siteCode, nombre: site.nombre } : (siteId ? { siteCode: siteId, nombre: siteId } : null),
+    perSite: !!(ruleRaw && ruleRaw.type === 'cross' && !(ruleRaw.scope && ruleRaw.scope.deviceType)),
+    context: { timeline, equipos, abiertas, anterior },
+  };
+}
+
+// spec_detalle_alarma_v2 (Qj3) — tildar / destildar un paso de la regla en la alarma.
+// Se guarda en el aviso (fire) del episodio: { i, by, at }.
+router.post("/alarms/:id/steps", checkAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(404).json({ status: "error", error: "Alarm not found" });
+    const notifFilter = await buildWriteFilter(req, 'Notification');   // escribir exige alcance de escritura (DEC-REF-37)
+    let doc = await Notification.findOne({ ...notifFilter, _id: id }).lean();
+    if (!doc || !doc.ruleId) return res.status(404).json({ status: "error", error: "Alarm not found" });
+    if ((doc.kind || 'fire') === 'resolve') {
+      doc = await Notification.findOne({ ...notifFilter, ruleId: doc.ruleId, dId: doc.dId, kind: { $ne: 'resolve' }, time: { $lte: doc.time } }).sort({ time: -1 }).lean();
+      if (!doc) return res.status(404).json({ status: "error", error: "Alarm not found" });
+    }
+    const i = Number(req.body && req.body.i);
+    const done = !!(req.body && req.body.done);
+    if (!Number.isInteger(i) || i < 0 || i > 50) return res.status(400).json({ status: "error", error: "paso inválido" });
+    const actor = await User.findById(req.userData._id).select('name email').lean();
+    const by = (actor && (actor.name || actor.email)) || String(req.userData._id);
+    const list = (Array.isArray(doc.stepsDone) ? doc.stepsDone : []).filter(x => x.i !== i);
+    if (done) list.push({ i, by, at: Date.now() });
+    list.sort((a, b) => a.i - b.i);
+    await Notification.updateOne({ _id: doc._id }, { $set: { stepsDone: list } });
+    return res.json({ status: "success", data: { stepsDone: list } });
+  } catch (error) {
+    console.log("ERROR SAVING ALARM STEP", error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
 
 module.exports = router;

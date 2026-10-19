@@ -136,6 +136,15 @@
             <option value="infraestructura">Infraestructura</option>
           </select>
         </div>
+        <div class="col-md-6 form-group">
+          <!-- spec_detalle_alarma_v2 (Qj4): resume el estado del equipo en el detalle de una alarma. -->
+          <label>Medición principal</label>
+          <select v-model="newSheet.primaryVariable" class="form-control">
+            <option value="">— Ninguna (solo muestra si reporta) —</option>
+            <option v-for="v in newSheet.variables.filter(x => x.name)" :key="v.name" :value="v.name">{{ (v.label || v.name) + (v.unit ? ' (' + v.unit + ')' : '') }}</option>
+          </select>
+          <small class="text-muted">Se muestra en el detalle de una alarma, en "Equipos del sitio ahora".</small>
+        </div>
       </div>
 
       <!-- DEC-REF-115 (#85) — parámetros del cálculo de autonomía de LA
@@ -489,7 +498,7 @@ export default {
     },
     emptySheet() {
       return {
-        deviceType: '', manufacturer: '', model: '', origin: 'own', domain: '', variables: [],
+        deviceType: '', manufacturer: '', model: '', origin: 'own', domain: '', primaryVariable: '', variables: [],
         // DEC-REF-115 (#85): parámetros del cálculo de autonomía (vacío = sin cálculo).
         autonomy: { fuelVariable: '', tankCapacity: '', consumptionLph: '', runningVariable: '', runningThreshold: '', windowHours: '', minRunMinutes: '' },
       };
@@ -522,6 +531,7 @@ export default {
         model: c.model || '',
         origin: c.origin || 'own',
         domain: c.domain || '',
+        primaryVariable: c.primaryVariable || '',
         // DEC-REF-115 (#85): config de autonomía (vacía si la ficha no tiene).
         // Auditoría 2026-10-14 (F-04): se conservan TODOS los campos del bloque
         // (flowVariable, flowScale, …) aunque el form no los muestre.
@@ -649,6 +659,7 @@ export default {
           model: this.newSheet.model || undefined,
           origin: this.newSheet.origin,
           domain: this.newSheet.domain || '',
+          primaryVariable: this.newSheet.primaryVariable || '',
           // DEC-REF-115 (#85): con variable de combustible → bloque completo;
           // sin ella → null (limpia; la plataforma no calcula a medias).
           autonomy: this.newSheet.autonomy.fuelVariable

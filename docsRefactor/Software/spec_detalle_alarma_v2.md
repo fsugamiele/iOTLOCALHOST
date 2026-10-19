@@ -7,7 +7,8 @@
 ## 0 · CANDADO
 - Una sola pantalla para **todas** las alarmas de **todos** los equipos; se arma con datos de la regla, la ficha y el sitio. Sin términos del backend en pantalla (L1, E3, deviceType, ruleId).
 - La traducción a palabras es **solo de UI**: lo guardado y lo que lee el motor no cambia.
-- Pendiente de implementar. Pregunta que esta spec no contesta ⇒ se frena y vuelve a diseño (DEC-PROC-6).
+- Pregunta que esta spec no contesta ⇒ se frena y vuelve a diseño (DEC-PROC-6).
+- **IMPLEMENTADO (2026-10-19):** `rule.meaning` / `rule.steps` (editor v2, paso 4; el edge no los cuenta como edición de la regla: `reloadState.hashRule` los ignora), `sheet.primaryVariable` (fichas), `notification.stepsDone`; API: bloque `v2` en `GET /api/alarms/:id/detail` (`buildDetailV2`, a prueba de fallos) + `POST /api/alarms/:id/steps` (alcance de escritura); front: `components/alarms/AlarmDetailV2.vue` en `/alarmas/:id`; el detalle anterior queda en `?vista=anterior` (`AlarmDetailV1.vue`). Pruebas: render SSR de 3 casos (combinada abierta, simple cerrada, sin bloque v2). Falta: banco con datos reales (un caso por variante de §3).
 
 ## 1 · Decisiones
 | # | Decisión |

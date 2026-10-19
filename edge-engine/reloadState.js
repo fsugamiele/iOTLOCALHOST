@@ -16,8 +16,12 @@ const crypto = require('crypto');
 // de keys, pero Node/V8 lo emiten en orden de inserción — estable para el
 // mismo objeto en la misma máquina. Un pack releído de Mongo entre dos
 // reloads produce el mismo shape porque mongoose usa el mismo schema.
+// spec_detalle_alarma_v2 — "Qué significa" y "Pasos a seguir" son textos del detalle de la
+// alarma: el motor no los lee, así que editarlos no cuenta como cambio de la regla (no cierra
+// alarmas abiertas por edición).
+const DISPLAY_ONLY = new Set(['meaning', 'steps']);
 function hashRule(rule) {
-  return crypto.createHash('sha256').update(JSON.stringify(rule)).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify(rule, (k, v) => (DISPLAY_ONLY.has(k) ? undefined : v))).digest('hex');
 }
 
 // buildSnapshot(packs) — Map<ruleId, hash>. ruleId es único ACROSS packs

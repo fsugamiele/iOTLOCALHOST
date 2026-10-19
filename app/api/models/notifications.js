@@ -47,6 +47,8 @@ const notificationSchema = new Schema({
     // Notifs preexistentes quedan con ambos null (sin migración).
     acknowledgedBy: { type: String, default: null },
     ackAt:          { type: Number, default: null },
+    // spec_detalle_alarma_v2 (Qj3) — pasos de la regla tildados por el operador (índice, quién, cuándo).
+    stepsDone:      { type: [{ _id: false, i: Number, by: String, at: Number }], default: undefined },
 
 });
 

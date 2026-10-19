@@ -45,6 +45,9 @@ const RuleDefinitionSchema = new Schema({
 
   severity:          { type: String, enum: ['info', 'warning', 'critical'], required: true },
   recommendation:    { type: String, default: '' },
+  // spec_detalle_alarma_v2 (Qj2/Qj3) — textos del detalle de la alarma (solo pantalla; el motor no los lee).
+  meaning:           { type: String, default: '' },            // "Qué significa esta alarma"
+  steps:             { type: [String], default: undefined },  // "Pasos a seguir", uno por renglón
   correlationParent: { type: String, default: null },
   cooldownSec:       { type: Number, default: 300 },
   escalateAfterMinutes: { type: Number, default: null }, // EDGE-2: minutos sin setpoint antes de escalar INFO→warning. null = sin escalada (opt-in). Calibrable en producción.

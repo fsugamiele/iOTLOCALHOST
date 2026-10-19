@@ -181,6 +181,7 @@ router.put("/equipmentsheet/:deviceType", checkAuth, async (req, res) => {
     if ('model' in upd) sheet.model = upd.model;
     if ('origin' in upd) sheet.origin = upd.origin;
     if ('domain' in upd) sheet.domain = upd.domain || '';   // DEC-REF-108 F2 (#80): dominio → tabs del sitio
+    if ('primaryVariable' in upd) sheet.primaryVariable = typeof upd.primaryVariable === 'string' ? upd.primaryVariable : '';   // spec_detalle_alarma_v2 Qj4
     if (Array.isArray(upd.variables)) {
       const oldVars = new Map(sheet.variables.map(v => [v.name, v]));
       const newVars = new Map(upd.variables.map(v => [v.name, v]));

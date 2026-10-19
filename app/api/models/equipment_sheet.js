@@ -72,6 +72,8 @@ const equipmentSheetSchema = new Schema({
   version:      { type: Number, default: 1 },                    // reservado sin fijación (Fork III de -92)
   manual:       { type: Schema.Types.ObjectId, default: null },  // ref nullable; modelo Manual no existe aún (fuera de -91)
   variables:    { type: [VariableSchema], default: [] },
+  // spec_detalle_alarma_v2 (Qj4) — medición que resume el estado del equipo en el detalle de alarma.
+  primaryVariable: { type: String, default: '' },
   // DEC-REF-115 (#85): parámetros del cálculo de autonomía de la plataforma.
   autonomy:     { type: AutonomySchema, default: undefined },
   createdTime:  { type: Number },                                // convención de la casa (operator.js:12, zone.js:14) — declarado

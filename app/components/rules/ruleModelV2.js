@@ -56,7 +56,7 @@ export function emptyCond(alcance, packType) {
 export function emptyModel(pack) {
   const dt = (pack && pack.deviceType) || '';
   return { nombre: '', alcance: 'equipo', union: 'todas', conds: [emptyCond('equipo', dt)], espera: '60', cierre: '120',
-    cierreModo: 'auto', gravedad: 'warning', reco: '', packType: dt };
+    cierreModo: 'auto', gravedad: 'warning', reco: '', significa: '', pasos: '', packType: dt };
 }
 
 // ── regla → modelo ─────────────────────────────────────────────────────────
@@ -68,6 +68,8 @@ export function ruleToModel(rule, pack) {
     nombre: rule.label || '', union: 'todas', espera: String(rule.graceSec != null ? rule.graceSec : 60),
     cierre: String(rule.resolveGraceSec != null ? rule.resolveGraceSec : 120), cierreModo: rule.reset_behavior === 'manual' ? 'manual' : 'auto',
     gravedad: rule.severity || 'warning', reco: rule.recommendation || '', packType: (pack && pack.deviceType) || dt,
+    // spec_detalle_alarma_v2 (Qj2/Qj3) — textos del detalle de la alarma.
+    significa: rule.meaning || '', pasos: Array.isArray(rule.steps) ? rule.steps.join('\n') : '',
   };
   if (rule.type === 'S') return null;
   if (rule.type === 'M' && rule.metric === 'spread') return null;
@@ -157,6 +159,8 @@ export function modelToRule(model, { pack, existing, editingIndex, isBoolVar }) 
     ruleId: existing ? existing.ruleId : genRuleId(pack, packType, model.nombre, editingIndex),
     inferenceId: existing ? existing.inferenceId : genInferenceId(pack, model.nombre, editingIndex),
     label: model.nombre, severity: model.gravedad, recommendation: model.reco || '',
+    meaning: (model.significa || '').trim(),
+    steps: String(model.pasos || '').split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 12),
     graceSec: Number(model.espera) || 0, resolveGraceSec: Number(model.cierre) || 0,
     reset_behavior: model.cierreModo === 'manual' ? 'manual' : 'auto',
     cooldownSec: existing && existing.cooldownSec != null ? existing.cooldownSec : 300,
