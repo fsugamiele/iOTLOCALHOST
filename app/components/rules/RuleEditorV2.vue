@@ -5,7 +5,6 @@
   <div class="rv2">
     <div class="rv2-head">
       <div>
-        <div class="rv2-crumb">Reglas › {{ packKind }}</div>
         <div class="rv2-title">{{ view === 'guardada' ? (model.nombre || 'Regla') + ' · guardada' : (model.nombre || (rule ? 'Editar regla' : 'Nueva regla')) }}</div>
       </div>
       <div class="rv2-actions">
@@ -415,6 +414,7 @@ export default {
   watch: {
     model: { deep: true, handler() { this.programarSim(); } },
   },
+  created() { this.marcarSinCambios(); },
   async mounted() {
     await this.cargarEquipos();
     this.programarSim(0);
@@ -422,6 +422,12 @@ export default {
   beforeDestroy() { this.parar(); clearTimeout(this._simT); clearInterval(this._nowI); clearInterval(this._ageI); },
   methods: {
     hdr() { return { headers: { token: this.$store.state.auth.token } }; },
+    // La página pregunta antes de salir si hay cambios sin guardar.
+    marcarSinCambios() { try { this._base = JSON.stringify(this.builtRule); } catch (e) { this._base = null; } },
+    hayCambios() {
+      if (this.view !== 'editar') return false;
+      try { return JSON.stringify(this.builtRule) !== this._base; } catch (e) { return false; }
+    },
     async cargarEquipos() {
       try { const r = await this.$axios.get(`/rulepacks/${encodeURIComponent(this.pack.packId)}/devices`, this.hdr()); this.devices = (r.data && r.data.data) || []; }
       catch (e) { this.devices = []; }
@@ -635,7 +641,7 @@ export default {
       try {
         const rule = this.builtRule;
         const ok = await this.saveFn(rule, this.editingIndex);
-        if (ok) { this.savedRule = rule; this.view = 'guardada'; this.cargarAhora(); clearInterval(this._nowI); this._nowI = setInterval(this.cargarAhora, 5000); clearInterval(this._ageI); this._ageI = setInterval(() => { this.tickNow++; }, 1000); }
+        if (ok) { this.savedRule = rule; this.view = 'guardada'; this._base = JSON.stringify(rule); this.cargarAhora(); clearInterval(this._nowI); this._nowI = setInterval(this.cargarAhora, 5000); clearInterval(this._ageI); this._ageI = setInterval(() => { this.tickNow++; }, 1000); }
       } finally { this.saving = false; }
     },
     async cargarAhora() {

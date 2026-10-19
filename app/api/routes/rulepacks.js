@@ -121,6 +121,34 @@ router.get("/rulepacks/:packId/devices", checkAuth, async (req, res) => {
   }
 });
 
+// Pantalla de tarjetas (propuesta aprobada 2026-10-19): último aviso de cada regla (30 días) y
+// en cuántos sitios hay equipos del tipo del pack. Lectura liviana; el editor no la usa.
+router.get("/rulepacks/:packId/summary", checkAuth, async (req, res) => {
+  try {
+    const filter = await buildReadFilter(req, 'RulePack');
+    const pack = await RulePack.findOne({ ...filter, packId: req.params.packId }, { packId: 1, deviceType: 1, 'rules.ruleId': 1 }).lean();
+    if (!pack) return res.status(404).json({ status: "error", error: "pack no encontrado" });
+    const db = require("mongoose").connection.db;
+    const ids = (pack.rules || []).map(r => r.ruleId).filter(Boolean);
+    const desde = Date.now() - 30 * 86400000;
+    const last = ids.length ? await db.collection('notifications').aggregate([
+      { $match: { ruleId: { $in: ids }, time: { $gte: desde }, kind: { $ne: 'resolve' } } },
+      { $group: { _id: '$ruleId', ts: { $max: '$time' }, n: { $sum: 1 } } },
+    ]).toArray() : [];
+    const dfilter = await buildReadFilter(req, 'Device');
+    const devs = await Device.find({ ...dfilter, deviceType: pack.deviceType }, { dId: 1 }).lean();
+    const dset = new Set(devs.map(d => d.dId));
+    const sites = await db.collection('sites').find({}).project({ siteCode: 1, devices: 1 }).toArray();
+    const sitios = sites.filter(s => (s.devices || []).some(id => dset.has(id))).length;
+    const ultimo = {};
+    for (const x of last) ultimo[x._id] = { ts: x.ts, n30: x.n };
+    return res.json({ status: "success", data: { sitios, ultimo, desde } });
+  } catch (error) {
+    console.log("ERROR GETTING RULEPACK SUMMARY", error);
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
 // spec_editor_reglas_v2 (Qi2) — "Ahora": etapa del GRAFCET de cada instancia de la regla y el
 // estado de cada condición (lo que el edge persiste en rulefsm). Sin fila = Vigilando, sin alarma.
 router.get("/rulepacks/:packId/rules/:ruleId/now", checkAuth, async (req, res) => {

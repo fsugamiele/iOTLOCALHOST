@@ -3,51 +3,50 @@
     <div class="row">
       <div class="col-12">
         <card>
-          <div slot="header" class="d-flex justify-content-between align-items-center">
-            <div>
-              <h3 class="card-title mb-1">{{ pack ? 'Reglas de ' + packKindName : 'Reglas' }}</h3>
-              <p class="text-muted mb-0" v-if="pack">
-                {{ pack.description || 'sin descripción' }}
+          <!-- Pantalla de tarjetas y pantalla del editor (propuesta aprobada 2026-10-19):
+               "Volver a las reglas" sale del editor a las tarjetas; "Volver a los equipos"
+               sale de las tarjetas a la lista de packs. El editor se refleja en ?regla=
+               (el botón Atrás del navegador también vuelve a las tarjetas). -->
+          <div slot="header" class="rp-head">
+            <div class="rp-head__l">
+              <nav class="rp-crumb" aria-label="Ubicación">
+                <a href="#" @click.prevent="goBack">Reglas</a>
+                <template v-if="pack"> › <a v-if="editorOpen" href="#" @click.prevent="volverAReglas">{{ packKindName }}</a><span v-else>{{ packKindName }}</span></template>
+                <template v-if="editorOpen"> › {{ editorTitulo }}</template>
+              </nav>
+              <h3 class="card-title mb-0">{{ editorOpen ? editorTitulo : (pack ? 'Reglas de ' + packKindName : 'Reglas') }}</h3>
+              <p v-if="pack && !editorOpen" class="rp-meta mb-0">
+                Versión {{ pack.version }} ·
+                <span class="badge" :class="pack.canary ? 'badge-warning' : 'badge-secondary'">{{ pack.canary ? 'en prueba' : 'en uso' }}</span>
+                · actualizado {{ formatDate(pack.updatedAt) }}
+                <template v-if="resumen.sitios != null"> · se aplica en {{ resumen.sitios === 1 ? '1 sitio' : resumen.sitios + ' sitios' }}</template>
+                <template v-if="pack.description"> · {{ pack.description }}</template>
               </p>
             </div>
-            <base-button type="secondary" size="sm" @click="goBack">
-              <i class="tim-icons icon-minimal-left"></i> Volver
-            </base-button>
+            <div class="rp-head__r">
+              <template v-if="!editorOpen">
+                <label v-if="pack" class="pack-switch" :title="packEnabled ? 'Reglas en circulación — clic para sacar de circulación TODAS las reglas de este equipo' : 'Reglas fuera de circulación — clic para reactivarlas'">
+                  <input type="checkbox" :checked="packEnabled" @change="onTogglePack($event.target.checked)">
+                  <span class="pack-sl"></span>
+                  <span class="pack-switch__lbl">{{ packEnabled ? 'reglas activas' : 'reglas fuera de circulación' }}</span>
+                </label>
+                <base-button type="secondary" size="sm" @click="goBack">
+                  <i class="tim-icons icon-minimal-left"></i> Volver a los equipos
+                </base-button>
+                <base-button v-if="pack" type="primary" size="sm" @click="openSentenceNew">
+                  <i class="tim-icons icon-simple-add"></i> Nueva regla
+                </base-button>
+              </template>
+              <base-button v-else type="secondary" size="sm" @click="volverAReglas">
+                <i class="tim-icons icon-minimal-left"></i> Volver a las reglas
+              </base-button>
+            </div>
           </div>
 
           <p v-if="loading" class="text-muted">Cargando...</p>
 
           <template v-else-if="pack">
-            <div class="row">
-              <div class="col-md-3">
-                <strong>Tipo de equipo:</strong> {{ packKindName }}
-              </div>
-              <div class="col-md-2">
-                <strong>Versión:</strong> {{ pack.version }}
-              </div>
-              <div class="col-md-2">
-                <strong>Estado:</strong>
-                <span
-                  class="badge"
-                  :class="pack.canary ? 'badge-warning' : 'badge-secondary'"
-                >
-                  {{ pack.canary ? 'en prueba' : 'en uso' }}
-                </span>
-              </div>
-              <div class="col-md-5">
-                <strong>Actualizado:</strong> {{ formatDate(pack.updatedAt) }}
-              </div>
-            </div>
-
-            <hr />
-
-            <!-- SF-7 parte 2 · DEC-REF-66 — banner ámbar a nivel de página
-                 con las warnings devueltas por el 200 del último PUT
-                 (config semánticamente muerta detectada por validateC).
-                 Sobrevive al cierre del modal y refleja el estado actual
-                 del pack: el save handler lo re-asigna en cada PUT
-                 (limpio → banner vacío; con avisos → banner actualizado).
-                 La × permite descartar manualmente. -->
+            <!-- SF-7 parte 2 · DEC-REF-66 — banner ámbar con las warnings del último PUT. -->
             <div v-if="saveWarnings.length" class="alert alert-warning">
               <button
                 type="button"
@@ -61,78 +60,79 @@
               </ul>
             </div>
 
-            <!-- DEC-REF-114 (#83, B1) — página de 3 zonas: lista de cards +
-                 editor-frase inline. El "Modo experto" (modal ruleDraft, abajo)
-                 se conserva para cross/C/S y parámetros finos. -->
-            <div class="rules-layout" :class="{ 'rules-layout--v2': editorOpen && useV2 }">
-              <!-- Zona izquierda: cards -->
-              <div v-show="!(editorOpen && useV2)" class="rules-list">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <h4 class="mb-0">Reglas ({{ (pack.rules || []).length }})</h4>
-                  <div class="d-flex align-items-center" style="gap:14px">
-                    <!-- DEC-REF-121 — kill-switch del pack completo (PATCH quirúrgico). -->
-                    <label class="pack-switch" :title="packEnabled ? 'Reglas en circulación — clic para sacar de circulación TODAS las reglas de este equipo' : 'Reglas fuera de circulación — clic para reactivarlas'">
-                      <input type="checkbox" :checked="packEnabled" @change="onTogglePack($event.target.checked)">
-                      <span class="pack-sl"></span>
-                      <span class="pack-switch__lbl">{{ packEnabled ? 'reglas activas' : 'reglas fuera de circulación' }}</span>
-                    </label>
-                    <base-button v-if="!editorOpen" type="primary" size="sm" @click="openSentenceNew">
-                      <i class="tim-icons icon-simple-add"></i> Nueva regla
-                    </base-button>
+            <!-- ═══ TARJETAS (pantalla completa) ═══ -->
+            <div v-if="!editorOpen">
+              <section class="rp-tiles" aria-label="Estado ahora">
+                <button v-for="t in tiles" :key="t.k" type="button" class="rp-tile" :class="{ on: filtroEstado === t.k }" @click="filtroEstado = t.k">
+                  <span class="rp-tile__lab"><i :class="'rp-dot rp-dot--' + t.k"></i>{{ t.lab }}</span>
+                  <span class="rp-tile__n">{{ t.n }}</span>
+                </button>
+              </section>
+
+              <div class="rp-tools">
+                <div class="rp-tools__l">
+                  <label for="rp-q" class="sr-only">Buscar regla</label>
+                  <input id="rp-q" v-model="busqueda" class="form-control rp-q" placeholder="Buscar por nombre o medición">
+                  <div class="rp-seg" role="group" aria-label="Gravedad">
+                    <button v-for="g in GRAVEDADES" :key="g.v" type="button" :class="['sev-' + g.v, { on: filtroGrav === g.v }]" @click="filtroGrav = g.v">{{ g.t }}</button>
                   </div>
                 </div>
+                <span class="text-muted small">{{ tarjetas.length }} de {{ (pack.rules || []).length }} reglas</span>
+              </div>
 
+              <div class="rp-grid">
                 <rule-card
-                  v-for="(row, index) in (pack.rules || [])"
-                  :key="row.ruleId + '-' + index"
-                  :rule="row"
-                  :index="index"
+                  v-for="t in tarjetas"
+                  :key="t.rule.ruleId + '-' + t.index"
+                  :rule="t.rule"
+                  :index="t.index"
                   :sheets="sheets"
-                  :ahora="ahoraByRule[row.ruleId] || null"
+                  :ahora="estadoDe(t.rule) === 'off' ? null : (ahoraByRule[t.rule.ruleId] || null)"
+                  :ultima="ultimaDe(t.rule)"
                   @edit="onCardEdit"
                   @delete="openDeleteRule"
                   @toggle="onToggleRule"
                 />
-
-                <p v-if="!(pack.rules || []).length" class="text-muted">
-                  Este pack no tiene reglas todavía. Usá "Nueva regla" para empezar.
-                </p>
               </div>
 
-              <!-- Zona derecha: editor-frase inline -->
-              <div class="rules-editor">
-                <!-- spec_editor_reglas_v2 — editor v2 (pantalla completa). El anterior queda como
-                     respaldo (Qi4): reglas que v2 no representa ("N veces en T", desbalance, grupos
-                     anidados, sumas) o si se elige "usar el editor anterior". -->
-                <card v-if="editorOpen && useV2">
-                  <rule-editor-v2
-                    :key="'v2-' + editorSeq"
-                    :pack="pack"
-                    :sheets="sheets"
-                    :rule="editorRule"
-                    :editing-index="editorIndex"
-                    :save-fn="saveFromV2"
-                    @cancel="onSentenceCancel"
-                  />
-                  <p class="text-right mb-0 mt-2"><a href="#" class="small text-muted" @click.prevent="editorV1 = true">Usar el editor anterior</a></p>
-                </card>
-                <card v-else-if="editorOpen">
-                  <p v-if="editorRule && !v2Representa" class="small text-muted">Esta regla usa una forma que el editor nuevo todavía no muestra; se edita con el editor anterior.</p>
-                  <sentence-editor
-                    :pack="pack"
-                    :sheets="sheets"
-                    :rule="editorRule"
-                    :editing-index="editorIndex"
-                    @save="onSentenceSave"
-                    @cancel="onSentenceCancel"
-                  />
-                </card>
-                <div v-else class="rules-editor__empty text-muted">
-                  <i class="tim-icons icon-bulb-63" style="font-size:1.6rem"></i>
-                  <p class="mt-2">Elegí <b>Nueva regla</b> o editá una para configurarla acá.</p>
-                </div>
-              </div>
+              <p v-if="!(pack.rules || []).length" class="text-muted text-center py-4">
+                Este equipo no tiene reglas todavía. Usá "Nueva regla" para empezar.
+              </p>
+              <p v-else-if="!tarjetas.length" class="text-muted text-center py-4">
+                Ninguna regla coincide con el filtro. <a href="#" @click.prevent="limpiarFiltros">Ver todas</a>
+              </p>
             </div>
+
+            <!-- ═══ EDITOR (pantalla completa) ═══ -->
+            <template v-else>
+              <!-- spec_editor_reglas_v2 — editor v2. El anterior queda como respaldo (Qi4): reglas
+                   que v2 no representa ("N veces en T", desbalance, grupos anidados, sumas) o si se
+                   elige "usar el editor anterior". -->
+              <div v-if="useV2">
+                <rule-editor-v2
+                  ref="editorV2"
+                  :key="'v2-' + editorSeq"
+                  :pack="pack"
+                  :sheets="sheets"
+                  :rule="editorRule"
+                  :editing-index="editorIndex"
+                  :save-fn="saveFromV2"
+                  @cancel="volverAReglas"
+                />
+                <p class="text-right mb-0 mt-2"><a href="#" class="small text-muted" @click.prevent="editorV1 = true">Usar el editor anterior</a></p>
+              </div>
+              <div v-else>
+                <p v-if="editorRule && !v2Representa" class="small text-muted">Esta regla usa una forma que el editor nuevo todavía no muestra; se edita con el editor anterior.</p>
+                <sentence-editor
+                  :pack="pack"
+                  :sheets="sheets"
+                  :rule="editorRule"
+                  :editing-index="editorIndex"
+                  @save="onSentenceSave"
+                  @cancel="volverAReglas"
+                />
+              </div>
+            </template>
           </template>
         </card>
       </div>
@@ -169,7 +169,7 @@ import { Dialog } from 'element-ui';
 import { stripEditorKeys } from '@/components/CrossExprNode.vue';
 import RuleCard from '@/components/rules/RuleCard.vue';           // DEC-REF-114 (#83, B1)
 import SentenceEditor from '@/components/rules/SentenceEditor.vue';
-import { deviceTypeName } from '@/components/rules/ruleSentence.js';
+import { deviceTypeName, summarize, fillThresholdText } from '@/components/rules/ruleSentence.js';
 import RuleEditorV2 from '@/components/rules/RuleEditorV2.vue';   // spec_editor_reglas_v2
 import { ruleToModel } from '@/components/rules/ruleModelV2.js';
 
@@ -232,7 +232,11 @@ export default {
       // DEC-REF-114 (#83, B1) — editor-frase inline (type D).
       editorOpen: false,
       editorV1: false,
-      editorSeq: 0,         // clave del editor v2: cambia solo al abrirlo (no al guardar)
+      editorSeq: 0,
+      // Pantalla de tarjetas: filtros y datos del resumen (último aviso, sitios).
+      filtroEstado: 'todas', filtroGrav: 'todas', busqueda: '',
+      resumen: { sitios: null, ultimo: null },
+      GRAVEDADES: [{ v: 'todas', t: 'Todas' }, { v: 'critical', t: 'Crítica' }, { v: 'warning', t: 'Advertencia' }, { v: 'info', t: 'Informativa' }],         // clave del editor v2: cambia solo al abrirlo (no al guardar)
       ahoraByRule: {},      // spec_editor_reglas_v2 (Qi2) — resumen "Ahora" por regla      // spec_editor_reglas_v2 (Qi4) — forzar el editor anterior
       editorRule: null,     // regla D a editar, o null (nueva)
       editorIndex: null,
@@ -298,6 +302,30 @@ export default {
     useV2() { return !this.editorV1 && this.v2Representa; },
     // Nombre del tipo de equipo en palabras (nunca el código técnico).
     packKindName() { return this.pack ? deviceTypeName(this.pack.deviceType, this.sheets) : ''; },
+    editorTitulo() {
+      if (!this.editorRule) return 'Nueva regla';
+      return `Editar «${fillThresholdText(this.editorRule.label, this.editorRule, this.sheets) || 'regla sin nombre'}»`;
+    },
+    tiles() {
+      const rules = (this.pack && this.pack.rules) || [];
+      const n = (k) => rules.filter(r => this.estadoDe(r) === k).length;
+      return [
+        { k: 'todas', lab: 'Todas', n: rules.length }, { k: 'ala', lab: 'En alarma', n: n('ala') },
+        { k: 'obs', lab: 'Observando', n: n('obs') }, { k: 'sin', lab: 'Sin datos', n: n('sin') },
+        { k: 'vig', lab: 'Vigilando', n: n('vig') }, { k: 'off', lab: 'Apagadas', n: n('off') },
+      ];
+    },
+    // Tarjetas filtradas y ordenadas: primero lo que necesita atención.
+    tarjetas() {
+      const ORD = { ala: 0, obs: 1, sin: 2, vig: 3, off: 4 };
+      const q = this.busqueda.trim().toLowerCase();
+      return ((this.pack && this.pack.rules) || [])
+        .map((rule, index) => ({ rule, index, e: this.estadoDe(rule) }))
+        .filter(t => (this.filtroEstado === 'todas' || t.e === this.filtroEstado)
+          && (this.filtroGrav === 'todas' || t.rule.severity === this.filtroGrav)
+          && (!q || this.textoBusqueda(t.rule).includes(q)))
+        .sort((a, b) => (ORD[a.e] - ORD[b.e]) || (a.index - b.index));
+    },
     // S6 — índice de fichas por deviceType para el editor de reglas.
     sheetByType() {
       const m = {};
@@ -385,6 +413,17 @@ export default {
     await this.loadPack();
     this.loadSheets();
     this.iniciarAhora();
+    this.abrirDesdeRuta();
+  },
+  // Atrás del navegador / "Volver a las reglas": si el editor tiene cambios sin guardar, pregunta.
+  beforeRouteUpdate(to, from, next) {
+    if (from.query.regla && !to.query.regla) {
+      if (this.hayCambiosSinGuardar() && !window.confirm('Hay cambios sin guardar en la regla. ¿Salir igual?')) return next(false);
+      this._editorPush = false;
+      this.onSentenceCancel();
+    }
+    next();
+    this.$nextTick(() => this.abrirDesdeRuta());
   },
   beforeDestroy() { clearInterval(this._ahoraI); },
   // keep-alive: una pestaña de pack que queda en segundo plano deja de consultar "Ahora".
@@ -618,22 +657,27 @@ export default {
       };
     },
     // ── DEC-REF-114 (#83, B1): editor-frase (type D) ──────────────────
-    openSentenceNew() {
+    openSentenceNew(desdeRuta) {
       this.editorRule = null;
       this.editorIndex = null;
       this.editorSeq++;
+      this.editorV1 = false;
       this.editorOpen = true;
+      if (desdeRuta !== true) this.abrirEditorEnRuta(null);
     },
-    onCardEdit(index) {
+    onCardEdit(index, desdeRuta) {
       // B2 (todo inline): el editor-frase maneja D/S/C/cross-plano Y cross
       // anidado (CrossExprNode embebido). Ya no hay modal experto.
       this.editorRule = this.pack.rules[index];
       this.editorIndex = index;
       this.editorSeq++;
+      this.editorV1 = false;
       this.editorOpen = true;
+      if (desdeRuta !== true) this.abrirEditorEnRuta(index);
     },
     onCardExpert(index) {
       this.editorOpen = false;
+      this.limpiarRutaEditor();
       this.openEditRule(index);   // form experto existente (ruleDraft)
     },
     async onSentenceSave({ rule, index }) {
@@ -641,6 +685,7 @@ export default {
       this.ruleDraft = rule;
       this.editingIndex = index;
       this.editorOpen = false;
+      this.limpiarRutaEditor();
       await this.submitRule();
     },
     // spec_editor_reglas_v2 — guardado desde el editor v2: mismo PUT del pack; devuelve si se guardó
@@ -649,7 +694,66 @@ export default {
     iniciarAhora() {
       clearInterval(this._ahoraI);
       this.cargarAhoraLista();
-      this._ahoraI = setInterval(() => this.cargarAhoraLista(), 15000);
+      this.cargarResumen();
+      let n = 0;
+      this._ahoraI = setInterval(() => { this.cargarAhoraLista(); if (++n % 4 === 0) this.cargarResumen(); }, 15000);
+    },
+    async cargarResumen() {
+      if (!this.pack || document.hidden || this.pack.packId !== this.packId) return;
+      try {
+        const res = await this.$axios.get(`/rulepacks/${encodeURIComponent(this.pack.packId)}/summary`, { headers: { token: this.$store.state.auth.token } });
+        const d = (res.data && res.data.data) || {};
+        this.resumen = { sitios: d.sitios != null ? d.sitios : null, ultimo: d.ultimo || {} };
+      } catch (e) { /* sin dato: las tarjetas no muestran el último aviso */ }
+    },
+    estadoDe(r) {
+      if (r.enabled === false || !this.packEnabled) return 'off';
+      const a = this.ahoraByRule[r.ruleId];
+      return a && ['ala', 'obs', 'sin'].includes(a.cls) ? a.cls : 'vig';
+    },
+    ultimaDe(r) {
+      if (!this.resumen.ultimo) return null;
+      const u = this.resumen.ultimo[r.ruleId];
+      if (!u) return 'sin avisos en 30 días';
+      const s = Math.max(0, Math.round((Date.now() - u.ts) / 1000));
+      const hace = s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} días`;
+      return `último aviso hace ${hace}`;
+    },
+    textoBusqueda(r) {
+      let sum = '';
+      try { sum = summarize(r, { sheets: this.sheets }) || ''; } catch (e) { /* sin resumen */ }
+      return `${fillThresholdText(r.label, r, this.sheets) || ''} ${r.variable || ''} ${sum}`.toLowerCase();
+    },
+    limpiarFiltros() { this.filtroEstado = 'todas'; this.filtroGrav = 'todas'; this.busqueda = ''; },
+    // ── navegación tarjetas ⇄ editor (?regla=<índice>|nueva) ──
+    abrirEditorEnRuta(index) {
+      const regla = index === null || index === undefined ? 'nueva' : String(index);
+      if (this.$route.query.regla === regla) return;
+      this._editorPush = true;
+      this.$router.push({ query: { ...this.$route.query, regla } }).catch(() => {});
+    },
+    hayCambiosSinGuardar() {
+      const ed = this.$refs.editorV2;
+      return !!(this.editorOpen && ed && typeof ed.hayCambios === 'function' && ed.hayCambios());
+    },
+    volverAReglas() {
+      if (this.$route.query.regla) {
+        // Si el editor se abrió desde las tarjetas, Atrás vuelve a esa misma entrada del historial.
+        if (this._editorPush) { this.$router.back(); return; }
+        const q = { ...this.$route.query }; delete q.regla;
+        this.$router.replace({ query: q }).catch(() => {});
+        return;
+      }
+      if (this.hayCambiosSinGuardar() && !window.confirm('Hay cambios sin guardar en la regla. ¿Salir igual?')) return;
+      this.onSentenceCancel();
+    },
+    abrirDesdeRuta() {
+      const r = this.$route.query.regla;
+      if (!r || !this.pack) return;
+      if (r === 'nueva') { if (!this.editorOpen) this.openSentenceNew(true); return; }
+      const i = Number(r);
+      if (Number.isInteger(i) && this.pack.rules && this.pack.rules[i]) { if (!this.editorOpen || this.editorIndex !== i) this.onCardEdit(i, true); }
+      else { const q = { ...this.$route.query }; delete q.regla; this.$router.replace({ query: q }).catch(() => {}); }
     },
     async cargarAhoraLista() {
       // Se consulta con el packId del pack cargado (no el de la ruta): reglas y pack siempre coinciden.
@@ -687,6 +791,13 @@ export default {
         return false;
       } finally { this.saving = false; }
     },
+    // El editor se cerró por otro camino (guardado v1, modo experto): saca ?regla de la URL.
+    limpiarRutaEditor() {
+      if (!this.$route.query.regla) return;
+      this._editorPush = false;
+      const q = { ...this.$route.query }; delete q.regla;
+      this.$router.replace({ query: q }).catch(() => {});
+    },
     onSentenceCancel() {
       this.editorV1 = false;
       this.editorOpen = false;
@@ -700,6 +811,7 @@ export default {
       this.ensureShapeForType(rule.type || 'D');
       this.advancedOpen = true;
       this.editorOpen = false;
+      this.limpiarRutaEditor();
       this.ruleModal = true;
     },
     openNewRule() {
@@ -1058,16 +1170,35 @@ export default {
 .white-content .wiz-sentence { background: rgba(0, 0, 0, 0.03); }
 
 /* DEC-REF-114 (#83, B1) — página de 3 zonas (cards | editor) */
-.rules-layout { display: flex; gap: 20px; align-items: flex-start; }
-.rules-list { flex: 1 1 42%; min-width: 0; }
-.rules-editor { flex: 1 1 58%; min-width: 0; }
-.rules-layout--v2 .rules-editor { flex-basis: 100%; }
-.rules-editor__empty {
-  border: 1px dashed rgba(0, 0, 0, 0.12); border-radius: 10px;
-  padding: 28px; text-align: center;
-}
-body:not(.white-content) .rules-editor__empty { border-color: rgba(255, 255, 255, 0.12); }
-@media (max-width: 991px) { .rules-layout { flex-direction: column; } .rules-list, .rules-editor { flex-basis: auto; width: 100%; } }
+/* Pantalla de tarjetas (propuesta aprobada 2026-10-19) */
+.rp-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.rp-head__l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rp-head__r { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.rp-head__r .btn { margin: 0; }
+.rp-crumb { font-size: .78rem; opacity: .75; }
+.rp-crumb a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.rp-meta { font-size: .82rem; opacity: .75; }
+.rp-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rp-tile { font: inherit; text-align: left; cursor: pointer; border: 1px solid rgba(0,0,0,.1); border-radius: 12px; padding: 10px 14px; background: transparent; color: inherit; display: flex; flex-direction: column; gap: 2px; min-height: 68px; }
+.rp-tile.on { border-color: #00bf9a; box-shadow: 0 0 0 1px #00bf9a inset; }
+.rp-tile__lab { display: flex; align-items: center; gap: 8px; font-size: .8rem; font-weight: 600; opacity: .8; }
+.rp-tile__n { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+.rp-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: #9aa5a2; }
+.rp-dot--ala { background: #d93a46; } .rp-dot--obs { background: #e8b730; } .rp-dot--sin { background: #9aa5a2; }
+.rp-dot--vig { background: #1f8a5b; } .rp-dot--off { background: #c3ccd6; } .rp-dot--todas { background: #00bf9a; }
+.rp-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.rp-tools__l { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.rp-q { width: 280px; max-width: 100%; }
+.rp-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid rgba(0,0,0,.15); border-radius: 999px; overflow: hidden; }
+.rp-seg button { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border: 0; background: transparent; color: inherit; opacity: .8; min-height: 38px; cursor: pointer; }
+.rp-seg button.on { opacity: 1; background: #00bf9a; color: #062019; }
+.rp-seg button.on.sev-info { background: #3b82c4; color: #fff; }
+.rp-seg button.on.sev-warning { background: #e8b730; color: #2a1f00; }
+.rp-seg button.on.sev-critical { background: #d93a46; color: #fff; }
+.rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+@media (max-width: 480px) { .rp-grid { grid-template-columns: minmax(0, 1fr); } }
+body:not(.white-content) .rp-tile { border-color: rgba(255,255,255,.12); }
+body:not(.white-content) .rp-seg { border-color: rgba(255,255,255,.18); }
 
 /* DEC-REF-121 — kill-switch del pack */
 .pack-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; }
