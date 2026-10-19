@@ -164,14 +164,16 @@
                   <button type="button" class="rv2-btn sec sm" @click="playFromStart">Desde el principio</button>
                 </div>
               </div>
-              <svg :viewBox="'0 0 ' + W + ' 78'" width="100%" role="img" aria-label="Etapas de la regla en el tiempo">
+              <svg :viewBox="'0 0 ' + W + ' ' + (64 + marcas.filas * 12)" width="100%" role="img" aria-label="Etapas de la regla en el tiempo">
                 <path v-for="b in ciclo.bandas" :key="b.e" :d="b.d" :class="'b-' + b.e"></path>
-                <g v-for="(x, k) in ciclo.avisos" :key="'a' + k"><line :x1="x" y1="4" :x2="x" y2="52" class="m-aviso"></line><text :x="x" y="63" text-anchor="middle" class="m-aviso-t">avisa</text></g>
-                <g v-for="(x, k) in ciclo.cierres" :key="'c' + k"><line :x1="x" y1="4" :x2="x" y2="52" class="m-cierre"></line><text :x="x" y="63" text-anchor="middle" class="m-cierre-t">se cierra</text></g>
+                <g v-for="(m, k) in marcas.lista" :key="'m' + k">
+                  <line :x1="m.x" y1="4" :x2="m.x" :y2="m.y - 9" :class="m.cls"></line>
+                  <text v-if="m.txt" :x="m.x" :y="m.y" :text-anchor="m.anchor" :class="m.cls + '-t'">{{ m.txt }}</text>
+                </g>
                 <line :x1="cx" y1="4" :x2="cx" y2="52" class="g-cursor"></line>
-                <text :x="PL" y="75" class="g-txt">{{ ejeX[0] }}</text>
-                <text :x="(PL + W - PR) / 2" y="75" text-anchor="middle" class="g-txt">{{ ejeX[1] }}</text>
-                <text :x="W - PR" y="75" text-anchor="end" class="g-txt">{{ ejeX[2] }}</text>
+                <text :x="PL" :y="64 + marcas.filas * 12 - 2" class="g-txt">{{ ejeX[0] }}</text>
+                <text :x="(PL + W - PR) / 2" :y="64 + marcas.filas * 12 - 2" text-anchor="middle" class="g-txt">{{ ejeX[1] }}</text>
+                <text :x="W - PR" :y="64 + marcas.filas * 12 - 2" text-anchor="end" class="g-txt">{{ ejeX[2] }}</text>
               </svg>
               <div class="rv2-legend">
                 <span><i class="b-E1"></i> Vigilando</span><span><i class="b-E2"></i> Observando (cuenta la espera)</span><span><i class="b-E3"></i> Alarma</span>
@@ -190,7 +192,7 @@
               <div class="rv2-fld"><label class="rv2-lab" for="rv2-esp">Avisar si sigue así durante (s)</label><input id="rv2-esp" v-model="model.espera" class="rv2-in" inputmode="numeric"></div>
               <div class="rv2-fld"><label class="rv2-lab" for="rv2-cie">Cerrar si se normaliza durante (s)</label><input id="rv2-cie" v-model="model.cierre" class="rv2-in" inputmode="numeric"></div>
               <div class="rv2-fld"><span class="rv2-lab">Al normalizarse</span>
-                <div class="rv2-seg" role="group" aria-label="Cierre">
+                <div class="rv2-seg rv2-seg-sm" role="group" aria-label="Cierre">
                   <button type="button" :class="{ on: model.cierreModo === 'auto' }" @click="model.cierreModo = 'auto'">se cierra sola</button>
                   <button type="button" :class="{ on: model.cierreModo === 'manual' }" @click="model.cierreModo = 'manual'">espera confirmación</button>
                 </div>
@@ -204,9 +206,9 @@
             <div class="rv2-st">¿Qué tan grave es y qué hay que hacer?</div>
             <p class="rv2-sh">La recomendación es lo que lee el técnico de guardia cuando llega el aviso.</p>
             <div class="rv2-seg" role="group" aria-label="Gravedad">
-              <button type="button" :class="{ on: model.gravedad === 'info' }" @click="model.gravedad = 'info'">Informativa</button>
-              <button type="button" :class="{ on: model.gravedad === 'warning' }" @click="model.gravedad = 'warning'">Advertencia</button>
-              <button type="button" :class="{ on: model.gravedad === 'critical', crit: model.gravedad === 'critical' }" @click="model.gravedad = 'critical'">Crítica</button>
+              <button type="button" class="sev-info" :class="{ on: model.gravedad === 'info' }" @click="model.gravedad = 'info'">Informativa</button>
+              <button type="button" class="sev-warning" :class="{ on: model.gravedad === 'warning' }" @click="model.gravedad = 'warning'">Advertencia</button>
+              <button type="button" class="sev-critical" :class="{ on: model.gravedad === 'critical' }" @click="model.gravedad = 'critical'">Crítica</button>
             </div>
             <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-rec">Qué tiene que hacer el operador</label>
               <textarea id="rv2-rec" v-model="model.reco" class="rv2-in" rows="3" placeholder="Ej.: Despachar técnico con grupo portátil y verificar el arranque del grupo"></textarea>
@@ -369,6 +371,24 @@ export default {
         : (nA ? 'Con estos datos de ejemplo avisa y después se cierra.' : 'Con estos datos de ejemplo no llegaría a avisar: revisá la espera o las condiciones.');
       const ahora = this.simInst ? this.momento(k) : this.fmtSeg(k * this.ejemplo.dt);
       return { bandas, avisos, cierres, resumen, ahora: `${ahora} · ${STEP[steps[k]] || ''}` };
+    },
+    // Marcas "avisa" / "se cierra" sin pisarse: si una etiqueta cae encima de otra baja a la fila
+    // siguiente (hasta 3); si igual no entra, queda solo la línea (la leyenda la explica).
+    marcas() {
+      const ANCHO = { avisa: 34, 'se cierra': 52 }, GAP = 6, FILAS = 3;
+      const xs = [...this.ciclo.avisos.map((x) => ({ x, txt: 'avisa', cls: 'm-aviso' })), ...this.ciclo.cierres.map((x) => ({ x, txt: 'se cierra', cls: 'm-cierre' }))].sort((a, b) => a.x - b.x);
+      const fin = Array(FILAS).fill(-Infinity);
+      let usadas = 1;
+      for (const m of xs) {
+        const w = ANCHO[m.txt];
+        let x0 = m.x - w / 2, anchor = 'middle';
+        if (x0 < this.PL) { x0 = m.x; anchor = 'start'; } else if (m.x + w / 2 > this.W - this.PR) { x0 = m.x - w; anchor = 'end'; }
+        const f = fin.findIndex((e) => x0 >= e + GAP);
+        if (f < 0) { m.txt = ''; m.y = 52 + 9; continue; }
+        fin[f] = x0 + w; usadas = Math.max(usadas, f + 1);
+        m.y = 63 + f * 12; m.anchor = anchor;
+      }
+      return { lista: xs, filas: usadas };
     },
     faltanteTxt() {
       const f = this.simInst && this.simInst.faltante; if (!f) return '';
@@ -682,6 +702,11 @@ body:not(.white-content) .rv2 { --bg: #0d1917; --card: #13221f; --card2: #0f1d1a
 .rv2-seg button { font: inherit; font-size: 13.5px; font-weight: 600; padding: 8px 15px; border: 0; background: transparent; color: var(--mut); min-height: 40px; cursor: pointer; }
 .rv2-seg button.on { background: var(--accb); color: #062019; }
 .rv2-seg button.on.crit { background: #f0727a; color: #2a0b0e; }
+.rv2-seg-sm { flex-wrap: nowrap; max-width: 100%; }
+.rv2-seg-sm button { font-size: 12px; padding: 6px 10px; min-height: 42px; white-space: nowrap; flex: 1 1 auto; }
+.rv2-seg button.on.sev-info { background: #3b82c4; color: #fff; }
+.rv2-seg button.on.sev-warning { background: #e8b730; color: #2a1f00; }
+.rv2-seg button.on.sev-critical { background: #d93a46; color: #fff; }
 .rv2-union { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-weight: 600; }
 .rv2-union.sm { font-weight: 400; margin-top: 4px; }
 .rv2-cond { background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -709,7 +734,8 @@ body:not(.white-content) .rv2 { --bg: #0d1917; --card: #13221f; --card2: #0f1d1a
 body:not(.white-content) .b-E1 { fill: #2a3b37; background: #2a3b37; }
 .m-aviso { stroke: #c0303c; stroke-width: 2; } .m-aviso-t { fill: #c0303c; font-size: 11px; }
 .m-cierre { stroke: #1f8a5b; stroke-width: 2; } .m-cierre-t { fill: #1f8a5b; font-size: 11px; }
-.rv2-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; color: var(--mut); margin-top: 4px; }
+.rv2-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--mut); margin-top: 4px; }
+.rv2-legend span { white-space: nowrap; }
 .rv2-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
 .rv2-cycle-txt { margin: 8px 0 0; font-size: 14px; }
 .rv2-resumen { margin: 6px 0 0; font-size: 15px; line-height: 1.6; }
