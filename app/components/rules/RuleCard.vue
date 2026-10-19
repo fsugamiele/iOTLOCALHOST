@@ -135,11 +135,11 @@ export default {
 
 /* Modo oscuro: el theme por defecto es claro (DEC-REF-112); en dark se invierte. */
 .rule-card__now { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 9px; margin-right: 6px; white-space: nowrap; }
-.rule-card__now--vig { background: rgba(0,0,0,0.05); color: #55706b; }
+.rule-card__now--vig { background: rgba(0,0,0,0.05); color: #5f6478; }
 .rule-card__now--obs { background: #fbf0d9; color: #a86a00; }
 .rule-card__now--ala { background: #f0727a; color: #2a0b0e; }
 .rule-card__now--sin { background: #fbe3e5; color: #b4232c; }
-body:not(.white-content) .rule-card__now--vig { background: rgba(255,255,255,0.06); color: #b4c6c1; }
+body:not(.white-content) .rule-card__now--vig { background: rgba(255,255,255,0.06); color: #c3c5d4; }
 body:not(.white-content) .rule-card { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); }
 body:not(.white-content) .rule-card__foot { border-top-color: rgba(255,255,255,0.08); }
 </style>
