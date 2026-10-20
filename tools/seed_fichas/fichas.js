@@ -142,6 +142,8 @@ const FICHAS = [
     V('fuel_rate', 'Caudal de combustible', 'float', 'L/h', 0.2, '0-10'),        // decisión Franco 2026-10-14 — confirmar con placa
     V('genset_power_kw', 'Potencia del grupo', 'float', 'kW', 0.3, '0-20'),      // coherente con ATS load_kw 0-20 — confirmar con placa
     AUTONOMY_HOURS(SRC_FRANCO),
+    // spec_sim_cascada_energia §5 — Wanomi Sense sobre el grupo (sin límites: los decide Franco).
+    ...require('../device_simulator/lib/sense_gen_vars.js').SENSE_GEN_SHEET_VARS,
   ], autonomy: { fuelVariable: 'fuel_level', tankCapacity: 250, consumptionLph: 3.46, flowVariable: 'fuel_rate', flowScale: 1,
                  runningVariable: 'genset_running', ...AUTONOMY_ESTIMATOR } },
 ];
@@ -155,7 +157,8 @@ const CADENCE_30S = {
   ATS: ['transfer_state', 'gen_status'],
   ELTEK: [],
   SEC: ['door_shelter', 'door_front', 'door_rear', 'door_battery_cabinet', 'pir_motion', 'fence_vibration', 'copper_field_anomaly'],
-  GEN: ['fuel_rate', 'genset_power_kw', 'genset_running', 'crank_current', 'crank_attempts_failed'],
+  GEN: ['fuel_rate', 'genset_power_kw', 'genset_running', 'crank_current', 'crank_attempts_failed',
+        'vib_rms', 'vib_firing', 'fuel_supply_pressure', 'fuel_return_rate', 'water_in_fuel'],
 };
 const CADENCE_120S = { SEC: ['shelter_temp'] };
 for (const f of FICHAS) {

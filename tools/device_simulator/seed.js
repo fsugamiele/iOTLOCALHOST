@@ -70,6 +70,9 @@ const GEN_TEMPLATE = {
     { variable: 'battery_voltage',        variableFullName: 'Tensión batería arranque (V)',   variableType: 'float',       variableSendFreq: 60 },
     { variable: 'crank_attempts_failed',  variableFullName: 'Intentos fallidos consecutivos', variableType: 'int',         variableSendFreq: 30 },
     { variable: 'mains_voltage',          variableFullName: 'Tensión red eléctrica (V)',      variableType: 'float',       variableSendFreq: 60 },
+    // spec_sim_cascada_energia §5 — Wanomi Sense sobre el grupo (lo que la controladora no mide).
+    // Las mismas definiciones las lleva a la base tools/sync_sense_gen.js.
+    ...require('./lib/sense_gen_vars.js').SENSE_GEN_WIDGETS,
   ],
 };
 

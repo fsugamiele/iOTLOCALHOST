@@ -57,6 +57,11 @@ class SimulatedDevice {
     // limpia: antes quedaban pegadas hasta reiniciar el proceso (p. ej. un sifoneo que seguía
     // vaciando los tanques del sitio con el motor apagado).
     this._sharedKeys = new Set();
+    // spec_sim_cascada_energia (Qk4 · M1) — los timers de un escenario van aparte de los de
+    // publicación: correr un escenario ya NO apaga las demás mediciones del equipo. Solo
+    // congela (no evoluciona) las variables que el escenario fija, mientras dura.
+    this._scenarioTimers = [];
+    this._scenarioHold = new Set();
     // P2 (#79) — report-by-exception. deadband por variable (numéricas);
     // _lastPublished guarda el último valor EFECTIVAMENTE publicado.
     this._deadbandByVar = new Map();
@@ -210,6 +215,8 @@ class SimulatedDevice {
     // Variable PINEADA (pico inyectado a mano desde la UI del panel): retiene el
     // valor y lo republica cada tick — persiste hasta que se cambie o se resetee.
     if (this._pinned && this._pinned.has(varName)) { this._publish(varName); return; }
+    // Variable que fija el escenario en curso: retiene su valor hasta que el escenario termina.
+    if (this._scenarioHold && this._scenarioHold.has(varName)) { this._publish(varName); return; }
     // Default: evolución REALISTA (ruido de sensor de campo) + comportamiento
     // contextual (grupo en marcha, rectificador con carga, etc.) — vía evolve.
     this._syncGenTransition();
@@ -323,6 +330,8 @@ class SimulatedDevice {
       for (const k of this._sharedKeys) delete this._sharedState[k];
       if (this._sharedKeys.size) console.log(`${this.tag} reset: estado del sitio limpiado (${[...this._sharedKeys].join(', ')})`);
       this._sharedKeys.clear();
+      // El reset del Cummins (quien integra el tanque real) vuelve el tanque al nivel inicial.
+      if (this._role === 'CUMMINS') delete this._sharedState.tank_pct;
       // S7 — el ATS es quien pone en marcha al grupo del sitio: su reset lo detiene.
       if (this._state.gen_status !== undefined) this._syncSharedState();
       for (const v of this._variables) {
@@ -363,13 +372,26 @@ class SimulatedDevice {
     }
     this._state[varName] = value;
     if (varName === 'gen_status') this._syncSharedState();
+    // spec §5 — mismo tanque: fijar el nivel (escenario o a mano) mueve el tanque REAL del sitio.
+    if (varName === 'fuel_level' && this._sharedState.tank_pct != null && typeof value === 'number') {
+      const off = this._role === 'CUMMINS' ? (Number(this._sharedState.factory_fuel_offset) || 0) : 0;
+      this._sharedState.tank_pct = Math.max(0, Math.min(100, value - off));
+    }
     this._publish(varName);
   }
 
   _cancelActiveTimers() {
     for (const t of this._timers) clearTimeout(t);
     this._timers = [];
+    this._cancelScenario();
+  }
+
+  // Corta SOLO el escenario en curso (sus pasos, su hold y el congelamiento de sus variables).
+  _cancelScenario() {
+    for (const t of this._scenarioTimers || []) clearTimeout(t);
+    this._scenarioTimers = [];
     this._holdVars = null;   // M4 — corta un hold (sensor_muerto) en curso
+    if (this._scenarioHold) this._scenarioHold.clear();
   }
 
   _runScenario(name) {
@@ -390,10 +412,15 @@ class SimulatedDevice {
       if (step.set) for (const v of Object.keys(step.set)) allVars.add(v);
     }
     const missing = [...allVars].filter(v => this._state[v] === undefined);
-    if (missing.length > 0) {
+    // spec_sim_cascada_energia — un escenario de SITIO (ej. mains_restore en ATS o GEN) fija
+    // las variables que el equipo tiene y omite las que no. Se aborta solo si no tiene NINGUNA
+    // (escenario de otro tipo de equipo) y además no toca el estado del sitio.
+    const tocaSitio = scenario.steps.some(st => st.sharedSet);
+    if (allVars.size > 0 && missing.length === allVars.size && !tocaSitio) {
       console.warn(`${this.tag} scenario "${name}" aborted — variables not in device: ${missing.join(', ')}`);
       return;
     }
+    if (missing.length) console.log(`${this.tag} scenario "${name}": se omiten variables que este equipo no tiene: ${missing.join(', ')}`);
     // M4 sensor_muerto — validar las variables a congelar (holdVars).
     if (Array.isArray(scenario.holdVars)) {
       const missingHold = scenario.holdVars.filter(v => this._state[v] === undefined);
@@ -403,8 +430,9 @@ class SimulatedDevice {
       }
     }
 
-    // Cancelar timers activos (escenario previo o trigger pendiente)
-    this._cancelActiveTimers();
+    // Cancelar SOLO el escenario previo: la publicación periódica sigue (Qk4 · M1).
+    this._cancelScenario();
+    for (const v of allVars) if (!missing.includes(v)) this._scenarioHold.add(v);
 
     // M4 sensor_muerto — hold: las variables quedan CONGELADAS (el step las fija y
     // nada las evoluciona, porque _cancelActiveTimers apagó los _tick) y un interval
@@ -420,7 +448,7 @@ class SimulatedDevice {
           if (this._state[v] !== undefined) this._publish(v);
         }
       }, 3000);
-      this._timers.push(holdTimer);
+      this._scenarioTimers.push(holdTimer);
     }
 
     const flags = [];
@@ -439,18 +467,18 @@ class SimulatedDevice {
       const t = setTimeout(() => {
         if (step.set) {
           for (const [varName, val] of Object.entries(step.set)) {
-            this._set(varName, val);
+            if (this._state[varName] !== undefined) this._set(varName, val);
           }
         }
         if (step.sharedSet) {
           for (const [k, v] of Object.entries(step.sharedSet)) {
-            this._sharedState[k] = v;
+            if (v === null) delete this._sharedState[k]; else this._sharedState[k] = v;
             this._sharedKeys.add(k);   // S1 — el reset de este equipo la limpia
           }
           console.log(`${this.tag} sharedSet: ${JSON.stringify(step.sharedSet)}`);
         }
       }, step.at);
-      this._timers.push(t);
+      this._scenarioTimers.push(t);
     }
 
     // Banco de pruebas manual (Franco): TODO escenario PERSISTE hasta un `reset`
@@ -458,10 +486,10 @@ class SimulatedDevice {
     // publicación periódica del estado retenido (los valores que dejó el escenario).
     const endLog = setTimeout(() => {
       this._holdVars = null;   // M4 — fin del hold (sensor_muerto)
+      this._scenarioHold.clear();   // las variables del escenario vuelven a evolucionar desde donde quedaron
       console.log(`${this.tag} scenario "${name}" complete — estado PRESERVADO (persiste hasta reset)`);
-      this.startPublishing();
     }, scenario.duration_ms);
-    this._timers.push(endLog);
+    this._scenarioTimers.push(endLog);
   }
 
   // Snapshot para que el panel Vue (Sim-3) pueda leer el estado actual
@@ -473,6 +501,7 @@ class SimulatedDevice {
     return new Promise(resolve => {
       this._timers.forEach(t => clearTimeout(t));
       this._timers = [];
+      this._cancelScenario();
       if (this._client && this._connected) {
         this._client.end(false, {}, resolve);
       } else {
