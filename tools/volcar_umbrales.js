@@ -29,7 +29,7 @@ const leaf = (l) => `${l.deviceType || ''}.${l.variable || ''}${l.measure === 'm
     const rr = refs.get(r.ruleId) || [];
     const ls = r.type === 'cross' ? leaves(r.crossExpr) : [r];
     const conds = ls.map((l, i) => leaf({ ...l, deviceType: l.deviceType || r.deviceType, _limitRef: rr[i] })).join(` ${r.crossExpr ? r.crossExpr.op : ''} `);
-    const vent = r.mWindow ? `${r.mWindow.durationSec}s/${r.mWindow.minSamples}` : r.window ? `${r.window.count}x/${r.window.durationSec}s` : '';
+    const vent = r.mWindow ? `${r.mWindow.durationSec}s/${r.mWindow.minSamples}` : r.window && r.window.count ? `${r.window.count}x/${r.window.durationSec}s` : '';
     console.log([p.packId, r.ruleId, r.label, (r.enabled === false || p.enabled === false) ? 'NO' : 'si', r.severity || '', r.type + (r.metric ? ':' + r.metric : ''), conds + (r._limitRefUnresolved ? ' ⚠SIN RESOLVER' : ''), [r.graceSec != null ? 'g' + r.graceSec : '', r.resolveGraceSec ? 'r' + r.resolveGraceSec : ''].filter(Boolean).join(' '), vent, (r.sites || []).join(',') || 'todos'].join('\t'));
   }
   console.log(`\n${n} reglas.\n\nLÍMITES DE FICHA`);

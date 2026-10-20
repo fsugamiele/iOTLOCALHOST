@@ -43,5 +43,31 @@
 | P7 | Corriente del rectificador absoluta | Pasarla a % de la capacidad instalada (nº de módulos × corriente nominal), dato de la ficha del equipo. |
 | P8 | Refrigerante frío (calefactor de bloque) | Regla nueva con el dato del fabricante: < 21 °C con el motor detenido → aviso (el grupo arrancaría frío). |
 
-## 4 · Cierre pendiente: las 71 reglas de la base
-`docker exec -i node node - < tools/volcar_umbrales.js > umbrales.txt` (solo lectura). Lista cada regla con el umbral **resuelto** que usa el motor, la espera y la ventana, y al final todos los límites de ficha con su fuente. Con eso se contrastan las reglas creadas por UI y los presets (cat-GE-07/08, CB-05/06, baselines) que no están en las semillas.
+## 4 · Las 70 reglas de la base (volcado de Franco, 2026-10-20)
+`tools/volcar_umbrales.js` (solo lectura). Las fichas en la base coinciden con la semilla (§2).
+
+### 4.1 · Defectos (la regla no hace lo que dice)
+| # | Regla | En la base | Debería | Efecto |
+|---|---|---|---|---|
+| R1 | cat-eltek-A1 · bus DC baja | `lt -52` (número fijo) | `gt` [ficha:warning] = −52 (semilla y spec_signo_bus_dc firmada) | En flote (−54) **siempre cumple**: alarma permanente o, peor, nunca se resuelve. |
+| R2 | cat-eltek-A2 · bus DC crítica | `lt -48` (número fijo) | `gt` [ficha:trip] = −48 | Ídem, crítica permanente. |
+| R3 | cat-TR-09 · cascada completa | hoja ELTEK `lt -48` | `gt -50` (spec_signo_bus_dc) | Salta apenas hay corte sin grupo, **sin esperar a que caigan las baterías**: no mide la cascada. |
+| R4 | eltek-accel-dc-bus-voltage | `slope lt -2` | descarga = el valor sube → `slope gt` | Mira la sobrecarga, no la descarga. La spec la dejaba retirada. |
+| R5 | cummins-pcc-oil-life · cambio de aceite | acumula **coolant_temp** ≥ 250 | acumular **horas de marcha** ≥ 250 h (NFPA / GEF §4) | Suma grados, no horas: salta en ~3 lecturas. |
+| R6 | banco-conformidad · «BATERIA EN DESSCARGA» | salto de aceite ≥ 8 | — | Ya reportada (auditoría del simulador): salta en cada arranque. |
+
+**R1–R4 contradicen la spec firmada** (DEC-REF-123). Para saber si las cambió el editor o una mano, `tools/deriva_reglas.js` (solo lectura) compara cada regla con su foto original (rule_snapshots).
+
+### 4.2 · Umbrales a revisar contra fabricante
+| # | Regla | Hoy | Referencia | Propuesta |
+|---|---|---|---|---|
+| R7 | cummins-M1 «Pérdida de AC» (crítica) y cummins-C1 «corte sostenido sin arranque» | red < 198 V | 198 V es **subtensión** (F1a ya la avisa). El ComAp arranca el grupo recién con su *Mains <V trip* | Usar < 100 V (como TR-03 y TR-09), o el setpoint del ATS (P4). Hoy un bajón de tensión da "corte de energía" crítico. |
+| R8 | cummins-GA1 autonomía baja | < 24 h fijo | ficha 48 h (el GEN la usa) | Pasar a [ficha:warning]: dos grupos con criterios distintos. |
+| R9 | cat-GE-04 «Sobretemperatura (parada)» | > 105 °C | PC2100 corta a **110 °C** | Valor bien (anticipa); cambiar el nombre a "antes de la parada" y atarlo a [ficha:trip]. |
+| R10 | cat-DC-09 rectificador caliente | > 60 °C | ficha ELTEK 35/45 (PROVISORIO) | Misma medición con dos criterios; definir cuál (P6). |
+| R11 | cat-SG-04 frecuencia del grupo | solo < 48,5 Hz | falta el lado alto | Sumar > 51,5 Hz (±3 %). |
+| R12 | gen-batt-warn 11,8 · cat-AR-04 9,6 · cat-AR-06 12 · cat-AR-07 14,8 | números fijos de 12 V | ficha relativa a la tensión nominal; sobrecarga ficha = 15 V | Atarlas a la ficha (escala a 24 V) y alinear AR-07 (14,8) con la ficha (15). |
+| R13 | A0, GE-07, F1a/F1b/F2a/F2b | números fijos iguales a la ficha | — | Atarlas a la ficha: hoy cambiar la ficha no las mueve (DEC-PROC-3). |
+| R14 | cat-GE-08 marcha inestable | pendiente de rpm ±15 | — | Ya pendiente (auditoría del simulador). |
+
+Sin observaciones: D4 (3 arranques = fabricante), G2 / gen-fuel (15 %, decisión), A1 Cummins (100 kPa = corte del fabricante), DC-05 (−57 V = ejemplo Eltek), AR-08 ejercicio semanal, staleness 15 min.
