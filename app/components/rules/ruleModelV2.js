@@ -66,7 +66,9 @@ export function ruleToModel(rule, pack) {
   if (!rule) return emptyModel(pack);
   const dt = rule.deviceType || (pack && pack.deviceType) || '';
   const base = {
-    nombre: rule.label || '', union: 'todas', espera: String(rule.graceSec != null ? rule.graceSec : 60),
+    nombre: rule.label || '', union: 'todas', // Regla existente sin graceSec = el motor no espera (0). Mostrar 60 y guardarlo cambiaba la
+    // regla sin que nadie lo pidiera (auditoría de umbrales 2026-10-20). Las nuevas siguen con 60.
+    espera: String(rule.graceSec != null ? rule.graceSec : 0),
     cierre: String(rule.resolveGraceSec != null ? rule.resolveGraceSec : 120), cierreModo: rule.reset_behavior === 'manual' ? 'manual' : 'auto',
     gravedad: rule.severity || 'warning', reco: rule.recommendation || '', packType: (pack && pack.deviceType) || dt,
     // spec_detalle_alarma_v2 (Qj2/Qj3) — textos del detalle de la alarma.

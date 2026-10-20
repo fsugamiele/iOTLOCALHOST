@@ -53,10 +53,28 @@
 | R2 | cat-eltek-A2 · bus DC crítica | `lt -48` (número fijo) | `gt` [ficha:trip] = −48 | Ídem, crítica permanente. |
 | R3 | cat-TR-09 · cascada completa | hoja ELTEK `lt -48` | `gt -50` (spec_signo_bus_dc) | Salta apenas hay corte sin grupo, **sin esperar a que caigan las baterías**: no mide la cascada. |
 | R4 | eltek-accel-dc-bus-voltage | `slope lt -2` | descarga = el valor sube → `slope gt` | Mira la sobrecarga, no la descarga. La spec la dejaba retirada. |
-| R5 | cummins-pcc-oil-life · cambio de aceite | acumula **coolant_temp** ≥ 250 | acumular **horas de marcha** ≥ 250 h (NFPA / GEF §4) | Suma grados, no horas: salta en ~3 lecturas. |
+| R5 | cummins-pcc-oil-life · cambio de aceite | `accumulator` sobre coolant_temp ≥ 250 | 250 h de marcha (GEF §4) | **Corregido tras leer el motor:** el accumulator suma **horas** ponderadas por la temperatura (no grados). Queda a verificar que no sume con el motor detenido y con qué `mParams` (no salen en el volcado). |
 | R6 | banco-conformidad · «BATERIA EN DESSCARGA» | salto de aceite ≥ 8 | — | Ya reportada (auditoría del simulador): salta en cada arranque. |
 
-**R1–R4 contradicen la spec firmada** (DEC-REF-123). Para saber si las cambió el editor o una mano, `tools/deriva_reglas.js` (solo lectura) compara cada regla con su foto original (rule_snapshots).
+**R1–R4 contradicen la spec firmada** (DEC-REF-123).
+
+### 4.1 bis · Deriva contra la foto original (`tools/deriva_reglas.js`, 41 de 70 cambiaron)
+La mayoría son cambios buscados (atar a la ficha, sentido de "fuera de lo habitual", decisiones de Franco). Los que **invierten o anulan** la regla:
+
+| Clave | Regla | Antes → hoy | Efecto |
+|---|---|---|---|
+| A1 / A2 | bus DC baja / crítica | `gt −52` / `gt −48` → `lt` | alarma permanente en flote |
+| TR09 | cascada completa | ELTEK `gt −50` → `lt −48` | no espera a las baterías |
+| AR08 | grupo sin ejercicio semanal | dutyCycle `lt 0,1 %` → `gt 0,1 %` | avisa cuando **sí** hizo ejercicio (la métrica está en %) |
+| ACCEL | tensión DC empeora más rápido | `acceleration` → `slope lt −2` | mira la sobrecarga; la spec la dejaba retirada |
+| M1C1 | pérdida de AC / corte sin arranque | red `< 100` → `< [ficha:warning]` 198 | un bajón de tensión = "corte" crítico |
+| AR04 | batería degradada en el arranque | espera 0 → 60 s | el arranque dura ~15 s: no dispara nunca |
+
+**Causa encontrada en el editor:** al abrir una regla sin espera, el editor mostraba 60 s y al guardar la escribía (20 reglas pasaron de "sin espera" a 60 s). Corregido en `ruleModelV2.js`: una regla existente sin espera se abre con 0 (las nuevas siguen en 60). Las inversiones de `gt`/`lt` no tienen causa en el código del editor: son ediciones.
+
+Otros cambios a mirar (no invierten): Cummins GA1 48 → 24 h; AR-06 cargador caído 12,9 V / 30 min → 12 V / 60 s (detecta mucho más tarde); tres reglas casi iguales para el mismo sifoneo (gen-sifoneo-divergencia, cat-CB-05, GEN-sifoneo-motor-apagado) → una pérdida dispara tres alarmas; las dos "divergencia" (caudalímetro vs nivel) pasaron a "fuera de lo habitual" y ya no comparan el caudalímetro.
+
+Corrección: `tools/fix_umbrales_auditoria.js` (por la API, solo las claves pasadas; probada contra una API falsa: aplica las 8 y una segunda corrida da "ya está bien").
 
 ### 4.2 · Umbrales a revisar contra fabricante
 | # | Regla | Hoy | Referencia | Propuesta |
