@@ -119,7 +119,10 @@ function simulate(rule) {
     const sim = await simulate(r);
     if (sim.error) log(`  simulación: ${sim.error}`);
     else {
-      const avisos = (sim.instances || []).reduce((a, x) => a + (x.avisos || []).length, 0);
+      // La simulación arranca "en frío" (no sabe qué estaba abierto antes de la ventana): un aviso en
+      // los primeros 15 min suele ser una alarma que ya venía abierta. No se cuenta para comparar.
+      const ARRANQUE = 15 * 60000;
+      const avisos = (sim.instances || []).reduce((a, x) => a + (x.avisos || []).filter((ts) => ts - sim.from > ARRANQUE).length, 0);
       log(`  simulación ${sim.hours} h (${sim.rows} lecturas${sim.truncated ? ', TRUNCADO' : ''}): ${avisos} aviso(s)`);
       for (const x of (sim.instances || [])) {
         const cnt = {}; (x.steps || []).forEach((s) => { cnt[s] = (cnt[s] || 0) + 1; });
@@ -130,7 +133,7 @@ function simulate(rule) {
       }
       if (!(sim.instances || []).length) probs.push('la simulación no creó ninguna instancia: el motor nunca la evaluó con estos datos');
       // ¿El motor en vivo hizo lo mismo que la simulación en esa ventana?
-      const reales = await db.collection('notifications').countDocuments({ ruleId: r.ruleId, kind: { $ne: 'resolve' }, time: { $gte: sim.from } });
+      const reales = await db.collection('notifications').countDocuments({ ruleId: r.ruleId, kind: { $ne: 'resolve' }, time: { $gte: sim.from + 15 * 60000 } });
       r._sim = avisos; r._reales = reales;
       if (avisos > 0 && reales === 0) probs.push(`la simulación avisa ${avisos} vez/veces y el motor en vivo NO avisó en ese período`);
       if (avisos === 0 && reales > 0) probs.push(`el motor en vivo avisó ${reales} vez/veces y la simulación no (revisar datos derivados que no se guardan)`);
