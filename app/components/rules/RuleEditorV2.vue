@@ -283,7 +283,7 @@ const AYUDA = {
   limite: 'Usa el límite que el propio equipo tiene configurado; si el equipo no lo informa, usa el valor de respaldo.',
   clavado: 'Mirá al menos 15 minutos: un sensor clavado solo manda su lectura cada 5 minutos.',
   salto: 'Un salto dura un instante: para combinarlo con otras condiciones, cuenta como cumplido durante los segundos indicados.',
-  anormal: 'Compara con lo que viene midiendo este equipo. 3 = muy fuera de lo normal.',
+  anormal: 'Compara con lo que viene midiendo este equipo en la última hora. Elegí el sentido: una pérdida o descarga es "baje"; una recarga o un pico es "suba". 3 = muy fuera de lo normal.',
   vida: 'Vuelve a cero cuando se registra el service desde el detalle de la alarma.',
   tendencia: 'Cuánto cambia por minuto, mirando el período indicado.',
   proyeccion: 'Las horas que faltan para llegar al valor indicado, según cómo viene.',
@@ -548,6 +548,7 @@ export default {
         case 'relacion': case 'diferencia': { const o = this.varDe(c.deviceType, c.otra); return `la ${c.medida} entre ${vl.toLowerCase()} y ${o ? (o.label || o.name).toLowerCase() : 'otra medición'} ${quien} ${opT} ${v}`; }
         case 'sinreporte': return `${vl} ${quien} lleve más de ${v} min sin reportarse`;
         case 'salto': return `${vl} ${quien} dé un salto de más de ${v}${u} (cuenta ${c.cuenta} s)`;
+        case 'anormal': return `${vl} ${quien} ${c.op === 'baja' ? 'baje' : 'suba'} más de lo habitual (${v} veces lo normal, última ${Number(c.ventana) >= 60 ? Math.round(Number(c.ventana) / 60 * 10) / 10 + ' h' : c.ventana + ' min'})`;
         case 'vida': return `${vl} ${quien} acumule más de ${v} horas de uso`;
         default: { const md = MEDIDAS.find((m) => m.v === c.medida); return `${vl} ${quien}: ${md ? md.t : ''} — ${opT} ${v}${VALOR_LAB[c.medida] ? ' ' + VALOR_LAB[c.medida] : u}`; }
       }
@@ -616,12 +617,12 @@ export default {
         const a = 0.22 + 0.07 * i, b = 0.68 - 0.04 * i; const ins = (x) => sm(a - 0.04, a + 0.04, x) * (1 - sm(b - 0.04, b + 0.04, x));
         const at = this.valorAtado(c);
         let thr = Number(String(c.valor === '' && at && at.valor != null ? at.valor : c.valor).replace(',', '.')); if (!Number.isFinite(thr)) thr = 50;
-        const up = ['gt', 'gte', 'sube', 'neq', 'eq'].includes(c.op) || ['salto', 'anormal', 'vida', 'caida', 'sinreporte'].includes(c.medida);
+        const up = c.op !== 'baja' && (['gt', 'gte', 'sube', 'neq', 'eq'].includes(c.op) || ['salto', 'anormal', 'vida', 'caida', 'sinreporte'].includes(c.medida));
         if (this.tipoVar(c) === 'bool') { const want = c.op === 'eq' ? Number(c.valor) : 1 - Number(c.valor); const vals = Array.from({ length: N }, (_, j) => (ins(j / (N - 1)) > 0.5 ? want : 1 - want)); return { vals, states: vals.map((v) => (v === want ? 'si' : 'no')), thr: null }; }
-        if (c.medida === 'tendencia' && c.op === 'baja') thr = -thr;
+        if ((c.medida === 'tendencia' || c.medida === 'anormal') && c.op === 'baja') thr = -thr;
         const b0 = up ? thr * 0.85 : thr * 1.15, p0 = up ? thr * 1.12 : thr * 0.88;
         const vals = Array.from({ length: N }, (_, j) => b0 + (p0 - b0) * ins(j / (N - 1)) + Math.sin(j * 1.7 + i) * 0.015 * Math.abs(thr || 1));
-        return { vals, states: vals.map((v) => ((c.medida === 'tendencia' && c.op === 'baja') || !up ? v < thr : v > thr) ? 'si' : 'no'), thr };
+        return { vals, states: vals.map((v) => (!up ? v < thr : v > thr) ? 'si' : 'no'), thr };
       });
       const comb = Array.from({ length: N }, (_, j) => (this.model.union === 'todas' ? series.every((s) => s.states[j] === 'si') : series.some((s) => s.states[j] === 'si')));
       const steps = []; let e = 'E1', desde = 0; const avisos = [], cierres = [];

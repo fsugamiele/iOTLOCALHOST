@@ -38,7 +38,8 @@ export const OPS = {
   proyeccion: [{ v: 'lt', t: 'llegue en menos de' }],
   sinreporte: [{ v: 'gte', t: 'lleve sin reportarse más de' }],
   salto: [{ v: 'gte', t: 'salte más de' }],
-  anormal: [{ v: 'gt', t: 'se aparte de lo habitual más de' }],
+  // Franco 2026-10-19 (A): el motor compara el desvío CON SIGNO (arriba +, abajo −): hay que elegir el sentido.
+  anormal: [{ v: 'baja', t: 'baje más de lo habitual, más de' }, { v: 'sube', t: 'suba más de lo habitual, más de' }],
   vida: [{ v: 'gte', t: 'acumule más de' }],
   caida: [{ v: 'gt', t: 'baje en total más de' }],
   clavado: [{ v: 'lte', t: 'cambie menos de' }],
@@ -106,7 +107,7 @@ function leafToCond(l, alcance, anchorType) {
   else {
     const md = BY_METRIC[l.metric]; c.medida = md ? md.v : 'valor';
     const v = Number(cond.value);
-    if (c.medida === 'tendencia') { c.op = cond.op === 'lt' || cond.op === 'lte' ? 'baja' : 'sube'; c.valor = Number.isFinite(v) ? String(Math.abs(v)) : ''; }
+    if (c.medida === 'tendencia' || c.medida === 'anormal') { c.op = cond.op === 'lt' || cond.op === 'lte' ? 'baja' : 'sube'; c.valor = Number.isFinite(v) ? String(Math.abs(v)) : ''; }
     else { c.op = cond.op || 'gt'; c.valor = cond.value != null ? String(cond.value) : ''; }
     if (l.mWindow && l.mWindow.durationSec) c.ventana = String(Math.round(l.mWindow.durationSec / 60 * 10) / 10);
     if (l.mParams && l.mParams.target != null) c.objetivo = String(l.mParams.target);
@@ -123,7 +124,7 @@ const toNum = (x) => { const n = Number(String(x).replace(',', '.')); return Num
 function condition(c, isBool) {
   const ex = (c.extra && c.extra.condition) || {};
   let op = c.op, value = c.valor === '' ? '' : (isBool ? Number(c.valor) : toNum(c.valor));
-  if (c.medida === 'tendencia') { op = c.op === 'baja' ? 'lt' : 'gt'; value = c.op === 'baja' ? -Math.abs(Number(value)) : Math.abs(Number(value)); }
+  if (c.medida === 'tendencia' || c.medida === 'anormal') { op = c.op === 'baja' ? 'lt' : 'gt'; value = c.op === 'baja' ? -Math.abs(Number(value)) : Math.abs(Number(value)); }
   const out = { op, value };
   // Histéresis y umbral de la ficha que ya tenía la condición: se conservan si no cambió el comparador.
   if (ex.deadband != null && ex.op === op) out.deadband = ex.deadband;

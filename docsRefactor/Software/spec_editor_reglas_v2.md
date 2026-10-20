@@ -19,6 +19,7 @@ Mockup validado por Franco (2026-10-18, "correcto, aprobado, avanza"), con dos a
 | Qi2 | Panel **Ahora** (etapa de la regla por equipo + estado de cada condición, en vivo) en el editor de la regla guardada y un resumen en la tarjeta de la lista. |
 | Qi3 | El log del edge **reemplaza** las líneas `[ALARM]` por una línea por cambio de etapa, con el nombre de la regla, el equipo y el porqué. |
 | Qi4 | El editor viejo queda como respaldo oculto una versión, hasta que el nuevo pase su banco. |
+| Qi5 | (Franco 2026-10-19, opción A) "Fuera de lo habitual" (baseline) se elige con sentido: **baje** más de lo habitual (`lt −v`) o **suba** más de lo habitual (`gt v`). El motor no cambia: el desvío ya era con signo y «mayor que» solo detectaba subidas (las reglas de pérdida de combustible solo veían recargas). `tools/fix_baseline_direccion.js` corrige cat-CB-05, GEN-sifoneo-motor-apagado y cummins-pcc-sifoneo-divergencia. |
 
 ## 2 · Editor v2 (una sola pantalla, cuatro pasos)
 1. **¿Qué vas a vigilar?** nombre + "una alarma por: cada <equipo> / todo el sitio".

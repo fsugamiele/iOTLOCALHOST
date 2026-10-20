@@ -445,6 +445,7 @@ export default {
       if (med === 'sinreporte') return `${n} min`;
       if (med === 'vida') return `${n} h`;
       if (med === 'uso') return `${n} %`;
+      if (med === 'anormal') return `${n} veces lo normal`;
       return `${n}${m.unit ? ' ' + m.unit : ''}`;
     },
     liveDe(c) {
@@ -474,6 +475,7 @@ export default {
           case 'sinreporte': return `${v}${quien} lleve sin reportarse más de ${mc.valor} min`;
           case 'clavado': return `${v}${quien} quedó clavada (cambió menos de ${mc.valor}${u} en ${mc.ventana} min)`;
           case 'vida': return `${v}${quien} acumule más de ${mc.valor} h de uso`;
+          case 'anormal': return `${v}${quien} ${mc.op === 'baja' ? 'baje' : 'suba'} más de lo habitual (${mc.valor} veces lo normal)`;
           default: return `${v}${quien} · ${(MEDIDA_TXT[mc.medida] || 'cómo evoluciona')} ${op} ${mc.valor}`;
         }
       }
