@@ -35,6 +35,9 @@ export const REASON_LABELS = {
   'cross-tree-cleared':              'Condición compuesta normalizada',
   // index.js — hot-reload de pack cierra episodios abiertos
   'rule-edited-or-removed':          'Regla editada o eliminada',
+  // API — cierres desde la plataforma
+  'orphan-closed':                   'Cerrada por el operador',
+  'cleanup-closed':                  'Cerrada por limpieza',
 };
 
 // F1.b · severidad en el badge (texto exacto por diseño cerrado):

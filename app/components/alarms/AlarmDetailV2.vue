@@ -175,7 +175,7 @@ const SEV = { info: 'Informativa', warning: 'Advertencia', critical: 'Crítica' 
 const ESTADO = { si: ['se cumple', 'mal'], no: ['no se cumple', 'ok'], jun: ['juntando lecturas', 'gris'], sin: ['sin dato', 'gris'] };
 const CIERRE = {
   'resolve-by-condition': 'sola, al normalizarse', 'resolve-by-setpoint-recovered': 'sola, al volver el límite del equipo',
-  'resolve-by-ack': 'con la confirmación del operador', 'resolve-by-service': 'al registrar el service', 'resolve-by-edit': 'al editar la regla',
+  'resolve-by-ack': 'con la confirmación del operador', 'resolve-by-service': 'al registrar el service', 'resolve-by-edit': 'al editar la regla', 'resolve-by-cleanup': 'por limpieza manual (llevaba muchas horas abierta)',
 };
 const ETAPA = { E2: 'Observando', E3: 'En alarma', E4: 'Recuperándose', E5: 'Sin datos', E6: 'Esperando confirmación' };
 const METRICA = {
