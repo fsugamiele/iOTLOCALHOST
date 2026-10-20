@@ -8,6 +8,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env.edge') })
 const mqtt     = require('mqtt');
 const mongoose = require('mongoose');
 const { loadPacks, hydrateSiteState, refreshRefParams } = require('./siteState');
+const hb = { msgs: 0, devs: new Set(), last: 0 };   // latido: lecturas desde el último aviso de vida
 const { processMessage, processStalenessTick, processSilenceTick, processWindowTick, processCombinedTick, reevaluateRules, fireAlarm, fireResolve } = require('./ruleEngine');
 const { isCombined, leavesOf, measureOf, leafIds, instanceKey } = require('../app/api/services/combinedRule');
 const ruleLog = require('./ruleLog');   // spec_editor_reglas_v2 (Qi3) — log legible del ciclo
@@ -202,6 +203,24 @@ async function start() {
     }
     catch (e) { console.error('[edge-engine] fsm tick error:', e.message); }
   }, FSM_TICK_SEC * 1000);
+
+  // Latido del motor (Franco 2026-10-19: "en los logs no veo ningún movimiento"). El log legible
+  // solo escribe CAMBIOS de etapa; con todo estable queda mudo. Cada EDGE_HEARTBEAT_MIN minutos
+  // una línea confirma que el motor recibe lecturas y cuántas reglas está mirando, y en qué etapa.
+  const HEARTBEAT_MIN = Math.max(1, parseInt(process.env.EDGE_HEARTBEAT_MIN || '5', 10));
+  setInterval(() => {
+    try {
+      const n = hb.msgs, eqs = hb.devs.size, last = hb.last;
+      hb.msgs = 0; hb.devs = new Set();
+      const reglas = packs.filter(p => p.enabled !== false).reduce((a, p) => a + (p.rules || []).filter(r => r.enabled !== false).length, 0);
+      const cnt = { E2: 0, E3: 0, E4: 0, E5: 0, E6: 0 };
+      for (const i of fsm.instances.values()) if (cnt[i.step] != null) cnt[i.step]++;
+      const hora = new Date().toLocaleTimeString('es-AR', { hour12: false, timeZone: process.env.TZ_LOG || 'America/Argentina/Buenos_Aires' }).slice(0, 8);
+      const ahora = `${cnt.E2} observando · ${cnt.E3 + cnt.E4} en alarma · ${cnt.E6} esperando confirmación · ${cnt.E5} sin datos`;
+      if (!n) console.log(`${hora} ⚠ motor activo pero SIN LECTURAS en ${HEARTBEAT_MIN} min (última ${last ? 'hace ' + Math.round((Date.now() - last) / 60000) + ' min' : 'nunca'}) · ${reglas} reglas · ${ahora}`);
+      else console.log(`${hora} ♥ motor vigilando · ${n} lecturas de ${eqs} equipos en ${HEARTBEAT_MIN} min · ${reglas} reglas activas · ${ahora}`);
+    } catch (e) { console.error('[edge-engine] latido error:', e.message); }
+  }, HEARTBEAT_MIN * 60000);
 
   // reloadPacks — handler del canal de control SF-3 (DEC-REF-58 + DEC-REF-61).
   // Payload ignorado (DEC-REF-61.c "recargar todo"). Errores no dejan al motor
@@ -454,6 +473,7 @@ async function start() {
     const effUserId = (autonomyConfigs.get(dId) || {}).userId || userId;
     maybeComputeEfficiency({ client, userId: effUserId, dId, variable, deviceState, eventTs });
 
+    hb.msgs++; hb.devs.add(dId); hb.last = Date.now();
     processMessage({ dId, variable, value, siteState, packs, cooldownState, windowState, activeState, mState, eventTs, fsm });
   });
 

@@ -8,6 +8,7 @@
 //
 //   docker exec -i node node - combustible < tools/diagnostico_reglas.js
 //   docker exec -i node node - fuel --horas 12 < tools/diagnostico_reglas.js
+//   docker exec -i node node - todas --resumen < tools/diagnostico_reglas.js   → una línea por regla
 const NM = '/home/node/app/node_modules/';
 require(NM + 'dotenv').config({ path: '/home/node/app/.env' });
 const mongoose = require(NM + 'mongoose');
@@ -16,6 +17,7 @@ const e = process.env;
 const args = process.argv.slice(2);
 const hi = args.indexOf('--horas');
 const HORAS = hi >= 0 ? Number(args[hi + 1]) : 24;
+const RESUMEN = args.includes('--resumen');
 const TERM = (args.filter((a, i) => !a.startsWith('--') && !(hi >= 0 && i === hi + 1))[0] || 'combustible');
 const SITE = e.SITE_ID || 'CR00061';
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -63,14 +65,16 @@ function simulate(rule) {
   const hits = [];
   for (const p of packs) for (const r of (p.rules || [])) {
     const txt = norm([r.ruleId, r.label, r.variable, r.variableLabel, r.recommendation, ...varsOf(r).map((x) => x.v)].join(' '));
-    if (txt.includes(q)) hits.push({ p, r });
+    if (q === 'todas' || txt.includes(q)) hits.push({ p, r });
   }
   console.log(`Sitio ${SITE} · ${siteDevs.length} equipos · buscando «${TERM}» → ${hits.length} regla(s) · simulación ${HORAS} h\n`);
 
+  const tabla = [];
+  const log = (...a) => { if (!RESUMEN) console.log(...a); };
   for (const { p, r } of hits) {
-    console.log('═'.repeat(90));
-    console.log(`${r.label}  [${r.ruleId}] · pack ${p.packId} (${p.deviceType})`);
-    console.log(`  tipo ${r.type} · ${cond(r)} · espera ${r.graceSec || 0}s · cierre ${r.resolveGraceSec || 0}s · ${r.reset_behavior || 'auto'} · gravedad ${r.severity}`);
+    log('═'.repeat(90));
+    log(`${r.label}  [${r.ruleId}] · pack ${p.packId} (${p.deviceType})`);
+    log(`  tipo ${r.type} · ${cond(r)} · espera ${r.graceSec || 0}s · cierre ${r.resolveGraceSec || 0}s · ${r.reset_behavior || 'auto'} · gravedad ${r.severity}`);
     const probs = [];
     if (p.enabled === false) probs.push('EL PACK ESTÁ FUERA DE CIRCULACIÓN');
     if (r.enabled === false) probs.push('LA REGLA ESTÁ APAGADA');
@@ -82,7 +86,7 @@ function simulate(rule) {
       const dir = ['lt', 'lte'].includes(x.c.op) ? ['lt', 'lte'] : ['gt', 'gte'];
       const lim = vv && (vv.limits || []).find((l) => l.kind === x.c.limitRef && dir.includes(l.op));
       if (!lim) probs.push(`límite de ficha «${x.c.limitRef}» SIN VALOR para ${x.dt}.${x.v} → el edge no la evalúa`);
-      else console.log(`  límite de ficha ${x.dt}.${x.v} «${x.c.limitRef}» = ${lim.value}`);
+      else log(`  límite de ficha ${x.dt}.${x.v} «${x.c.limitRef}» = ${lim.value}`);
     }
     // Equipos y lecturas.
     const vars = varsOf(r);
@@ -99,34 +103,54 @@ function simulate(rule) {
           if (!last) probs.push(`${d.name || d.dId} nunca guardó ${x.v}`);
           else if (Date.now() - last.time > 600000) probs.push(`${d.name || d.dId}: ${x.v} sin lecturas hace ${hace(last.time)} (frescura 10 min → "Sin datos")`);
         }
-        console.log(`  equipo ${d.name || d.dId} [${d.dId}] · ${vs.join(' · ')}`);
+        log(`  equipo ${d.name || d.dId} [${d.dId}] · ${vs.join(' · ')}`);
       }
     }
     // Edge: etapa actual y bitácora.
     const rows = await db.collection('rulefsm').find({ ruleId: r.ruleId }).toArray();
-    if (rows.length) rows.forEach((x) => console.log(`  edge ahora: ${x.key} → ${x.step} desde ${t(x.since)}${x.alarmOpen ? ' · ALARMA ABIERTA' : ''}`));
-    else console.log('  edge ahora: en reposo (Vigilando, sin alarma)');
+    if (rows.length) rows.forEach((x) => log(`  edge ahora: ${x.key} → ${x.step} desde ${t(x.since)}${x.alarmOpen ? ' · ALARMA ABIERTA' : ''}`));
+    else log('  edge ahora: en reposo (Vigilando, sin alarma)');
     const tr = await db.collection('ruletransitions').find({ ruleId: r.ruleId }).sort({ ts: -1 }).limit(6).toArray();
-    if (tr.length) tr.reverse().forEach((x) => console.log(`    ${t(new Date(x.ts).getTime())}  ${x.from}→${x.to}  ${x.transition || ''}  valor ${JSON.stringify(x.value)}  umbral ${JSON.stringify(x.thresholdUsed)}`));
-    else console.log('    sin cambios de etapa registrados (30 días)');
+    if (tr.length) tr.reverse().forEach((x) => log(`    ${t(new Date(x.ts).getTime())}  ${x.from}→${x.to}  ${x.transition || ''}  valor ${JSON.stringify(x.value)}  umbral ${JSON.stringify(x.thresholdUsed)}`));
+    else log('    sin cambios de etapa registrados (30 días)');
     const nt = await db.collection('notifications').find({ ruleId: r.ruleId }).sort({ time: -1 }).limit(3).toArray();
-    console.log(`  últimos avisos: ${nt.length ? nt.map((x) => `${t(x.time)} ${x.kind || 'fire'}${x.mode ? ' (' + x.mode + ')' : ''}`).join(' · ') : 'ninguno'}`);
+    log(`  últimos avisos: ${nt.length ? nt.map((x) => `${t(x.time)} ${x.kind || 'fire'}${x.mode ? ' (' + x.mode + ')' : ''}`).join(' · ') : 'ninguno'}`);
     // Simulación con el motor real.
     const sim = await simulate(r);
-    if (sim.error) console.log(`  simulación: ${sim.error}`);
+    if (sim.error) log(`  simulación: ${sim.error}`);
     else {
       const avisos = (sim.instances || []).reduce((a, x) => a + (x.avisos || []).length, 0);
-      console.log(`  simulación ${sim.hours} h (${sim.rows} lecturas${sim.truncated ? ', TRUNCADO' : ''}): ${avisos} aviso(s)`);
+      log(`  simulación ${sim.hours} h (${sim.rows} lecturas${sim.truncated ? ', TRUNCADO' : ''}): ${avisos} aviso(s)`);
       for (const x of (sim.instances || [])) {
         const cnt = {}; (x.steps || []).forEach((s) => { cnt[s] = (cnt[s] || 0) + 1; });
         const leafSt = (x.leaves || []).map((l) => { const c = {}; (l.states || []).forEach((s) => { if (s) c[s] = (c[s] || 0) + 1; }); const vals = (l.values || []).filter((v) => typeof v === 'number'); return `${l.leafId}: ${JSON.stringify(c)}${vals.length ? ` · valor ${Math.min(...vals).toFixed(3)}…${Math.max(...vals).toFixed(3)}` : ''}`; });
-        console.log(`    ${x.deviceName}: etapas ${JSON.stringify(cnt)} · avisos ${(x.avisos || []).map(t).join(', ') || 'ninguno'}`);
-        leafSt.forEach((s) => console.log(`      ${s}`));
-        if (x.faltante) console.log(`      lo que más faltó: ${x.faltante.leafId} (${x.faltante.veces} muestras)`);
+        log(`    ${x.deviceName}: etapas ${JSON.stringify(cnt)} · avisos ${(x.avisos || []).map(t).join(', ') || 'ninguno'}`);
+        leafSt.forEach((s) => log(`      ${s}`));
+        if (x.faltante) log(`      lo que más faltó: ${x.faltante.leafId} (${x.faltante.veces} muestras)`);
       }
       if (!(sim.instances || []).length) probs.push('la simulación no creó ninguna instancia: el motor nunca la evaluó con estos datos');
+      // ¿El motor en vivo hizo lo mismo que la simulación en esa ventana?
+      const reales = await db.collection('notifications').countDocuments({ ruleId: r.ruleId, kind: { $ne: 'resolve' }, time: { $gte: sim.from } });
+      r._sim = avisos; r._reales = reales;
+      if (avisos > 0 && reales === 0) probs.push(`la simulación avisa ${avisos} vez/veces y el motor en vivo NO avisó en ese período`);
+      if (avisos === 0 && reales > 0) probs.push(`el motor en vivo avisó ${reales} vez/veces y la simulación no (revisar datos derivados que no se guardan)`);
     }
-    console.log(probs.length ? `  ⚠ ${probs.join('\n  ⚠ ')}` : '  ✓ sin problemas de configuración a la vista');
+    // Reglas que, por cómo están escritas, no pueden detectar lo que su nombre dice.
+    const leafs = r.type === 'cross' ? leaves(r.crossExpr).map((l) => ({ metric: l.measure === 'metric' ? l.metric : null, c: l.condition || {}, v: l.variable })) : [{ metric: r.type === 'M' ? r.metric : null, c: r.condition || {}, v: r.variable }];
+    const nombre = norm(r.label + ' ' + (r.recommendation || ''));
+    for (const l of leafs) {
+      if (l.metric === 'baseline' && ['gt', 'gte'].includes(l.c.op) && /perdida|sifon|robo|baja|descarga|caida/.test(nombre)) probs.push(`"fuera de lo habitual" con «mayor que» solo detecta SUBIDAS de ${l.v}; una pérdida/caída da valor negativo y nunca la dispara`);
+      if (l.metric === 'baseline' && ['lt', 'lte'].includes(l.c.op) && Number(l.c.value) > 0) probs.push(`"fuera de lo habitual" con «menor que» ${l.c.value} positivo: se cumple casi siempre (z normal ≈ 0)`);
+      if (l.metric === 'slope' && /perdida|baja|descarga|caida/.test(nombre) && ['gt', 'gte'].includes(l.c.op) && Number(l.c.value) >= 0) probs.push(`"tendencia" con «mayor que» ${l.c.value} detecta subidas, no caídas`);
+    }
+    log(probs.length ? `  ⚠ ${probs.join('\n  ⚠ ')}` : '  ✓ sin problemas de configuración a la vista');
+    tabla.push({ label: r.label, ruleId: r.ruleId, sim: r._sim, reales: r._reales, probs });
+  }
+  if (RESUMEN) {
+    console.log(`${'regla'.padEnd(48)} sim  real  observaciones`);
+    for (const x of tabla) console.log(`${String(x.label).slice(0, 47).padEnd(48)} ${String(x.sim ?? '—').padStart(3)}  ${String(x.reales ?? '—').padStart(4)}  ${x.probs.length ? '⚠ ' + x.probs.join(' | ') : '✓'}`);
+    const conProb = tabla.filter((x) => x.probs.length).length;
+    console.log(`\n${tabla.length} reglas · ${conProb} con observaciones · sim = avisos de la simulación · real = avisos del motor en el mismo período`);
   }
   process.exit(0);
 })().catch((err) => { console.error('ERROR:', err.stack || err.message); process.exit(1); });
