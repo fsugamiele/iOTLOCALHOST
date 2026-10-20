@@ -89,3 +89,13 @@ Corrección: `tools/fix_umbrales_auditoria.js` (por la API, solo las claves pasa
 | R14 | cat-GE-08 marcha inestable | pendiente de rpm ±15 | — | Ya pendiente (auditoría del simulador). |
 
 Sin observaciones: D4 (3 arranques = fabricante), G2 / gen-fuel (15 %, decisión), A1 Cummins (100 kPa = corte del fabricante), DC-05 (−57 V = ejemplo Eltek), AR-08 ejercicio semanal, staleness 15 min.
+
+## 5 · Firmado y aplicado (Franco 2026-10-20: "aplica las recomendaciones")
+`docker exec -i node node - --apply A1,A2,TR09,AR08,ACCEL,M1C1,AR04,GA1,AR06,SG04,FICHA < tools/fix_umbrales_auditoria.js`
+- **A1, A2, TR09, ACCEL** → vuelven a la spec firmada (convención negativa). **AR08, M1C1** → versión original. **AR04** → espera 0 s.
+- **GA1** → autonomía baja del Cummins atada a la ficha (48 h, igual que el GEN). **AR06** → cargador caído vuelve a < 12,9 V durante 30 min.
+- **SG04** → frecuencia del grupo vigila los dos lados (< 48,5 o > 51,5 Hz).
+- **FICHA** → A0, GE-07, GE-04 (renombrada "antes de la parada"), F1a/F1b/F2a/F2b, gen-batt-warn y AR-07 leen el límite de la ficha; AR-07 pasa de 14,8 a 15 V (ficha).
+- Editor: una regla sin espera ya no se guarda con 60 s (rebuild del front).
+
+Quedan abiertos: P1 (alternador relativo), P2 (`battery_nominal_v` = 24 en los Cummins), P3 (aceite en ralentí), P4/P6/P7, P5/P8 (reglas nuevas), R10 (DC-09 60 °C vs ficha 45), R5 (vida de aceite con el motor detenido), sifoneo triplicado, y AR-04 9,6 V / AR-06 sin escala a 24 V.

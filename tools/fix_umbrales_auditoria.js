@@ -40,6 +40,32 @@ const FIXES = {
     fix: (r) => { const set = (c) => (c.limitRef || c.value !== 100 ? { ...sinValor(c), op: 'lt', value: 100, limitRef: undefined } : null);
       if (r.type === 'cross') { let cambio = false; const crossExpr = mapLeaves(r.crossExpr, (l) => { if (l.variable !== 'mains_voltage') return l; const c = set(l.condition || {}); if (!c) return l; cambio = true; delete c.limitRef; return { ...l, condition: c }; }); return cambio ? { ...r, crossExpr } : null; }
       const c = set(r.condition || {}); if (!c) return null; delete c.limitRef; return { ...r, condition: c }; } },
+  // ── Recomendaciones aprobadas por Franco 2026-10-20 ("aplica las recomendaciones") ──
+  GA1: { ruleId: 'cummins-GA1-autonomy-warn', motivo: 'autonomía baja Cummins: < 24 h fijo → < [ficha:warning] (48 h, igual que el GEN)',
+    fix: (r) => { let cambio = false; const crossExpr = mapLeaves(r.crossExpr, (l) => { if (l.variable !== 'autonomy_hours') return l; const c = l.condition || {}; if (c.limitRef === 'warning') return l; cambio = true; return { ...l, condition: { ...sinValor(c), op: 'lt', limitRef: 'warning' } }; }); return cambio ? { ...r, crossExpr } : null; } },
+  AR06: { ruleId: 'cat-AR-06', motivo: 'cargador caído: batería < 12 V / 60 s → < 12,9 V / 1800 s (versión original: con red y motor detenido el cargador debe flotar > 13 V)',
+    fix: (r) => { let cambio = r.graceSec !== 1800; const crossExpr = mapLeaves(r.crossExpr, (l) => { if (l.variable !== 'battery_voltage') return l; const c = l.condition || {}; if (c.op === 'lt' && c.value === 12.9) return l; cambio = true; return { ...l, condition: { ...c, op: 'lt', value: 12.9 } }; }); return cambio ? { ...r, crossExpr, graceSec: 1800 } : null; } },
+  SG04: { ruleId: 'cat-SG-04', motivo: 'frecuencia del grupo: solo < 48,5 Hz → < 48,5 O > 51,5 Hz (±3 %)',
+    fix: (r) => { let cambio = false; const crossExpr = mapLeaves(r.crossExpr, (l) => { if (l.variable !== 'gen_freq' || !l.condition || l.condition.op !== 'lt') return l; cambio = true;
+      return { op: 'OR', children: [l, { ...l, leafId: undefined, condition: { ...l.condition, op: 'gt', value: 51.5 } }] }; });
+      if (JSON.stringify(r.crossExpr).includes('51.5')) return null; return cambio ? { ...r, crossExpr: JSON.parse(JSON.stringify(crossExpr)) } : null; } },
+  // Atar a la ficha los números fijos que repiten la ficha (DEC-PROC-3): mismo valor, pero cambiar la ficha ahora las mueve.
+  FICHA: { ruleId: ['cummins-A0-oil-pressure-low', 'cat-GE-07', 'cat-GE-04', 'cat-CR00061-F1a', 'cat-CR00061-F1b', 'cat-CR00061-F2a', 'cat-CR00061-F2b', 'gen-batt-warn', 'cat-AR-07'],
+    motivo: 'número fijo → límite de ficha (GE-04 además: "antes de la parada", el PC2100 corta a 110 °C; AR-07: 14,8 → ficha 15 V)',
+    fix: (r) => {
+      const MAP = { // ruleId → [variable, op, limitRef]
+        'cummins-A0-oil-pressure-low': ['oil_pressure', 'lt', 'warning'], 'cat-GE-07': ['rpm', 'gt', 'trip'], 'cat-GE-04': ['coolant_temp', 'gt', 'trip'],
+        'cat-CR00061-F1a': ['mains_voltage', 'lt', 'warning'], 'cat-CR00061-F1b': ['mains_voltage', 'gt', 'warning'], 'cat-CR00061-F2a': ['mains_freq', 'lt', 'warning'],
+        'cat-CR00061-F2b': ['mains_freq', 'gt', 'warning'], 'gen-batt-warn': ['battery_voltage', 'lt', 'warning'], 'cat-AR-07': ['battery_voltage', 'gt', 'warning'] };
+      const [v, op, ref] = MAP[r.ruleId];
+      const atar = (c) => (c && c.op === op && c.limitRef !== ref ? { ...sinValor(c), op, limitRef: ref } : null);
+      let out = null;
+      if (r.type === 'cross') { let cambio = false; const crossExpr = mapLeaves(r.crossExpr, (l) => { if (l.variable !== v) return l; const c = atar(l.condition); if (!c) return l; cambio = true; return { ...l, condition: c }; }); if (cambio) out = { ...r, crossExpr }; }
+      else if (r.variable === v) { const c = atar(r.condition); if (c) out = { ...r, condition: c }; }
+      const label = 'Sobretemperatura de motor (antes de la parada)';
+      if (r.ruleId === 'cat-GE-04' && r.label !== label) out = { ...(out || r), label };
+      return out;
+    } },
   AR04: { ruleId: 'cat-AR-04', motivo: 'batería degradada en el arranque: espera 60 s > duración del arranque (~15 s) → nunca dispara; volver a 0 s',
     fix: (r) => (r.graceSec === 0 ? null : { ...r, graceSec: 0 }) },
 };
