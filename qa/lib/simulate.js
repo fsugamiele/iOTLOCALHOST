@@ -37,8 +37,13 @@ async function simulate({ rule, hours = 24 } = {}) {
   const SITE = process.env.SITE_ID || 'CR00061';
   let H = Number(hours); if (!(H > 0)) H = 24; if (H > MAX_HOURS) H = MAX_HOURS;
   const db = mongoose.connection.db;
-  const r = JSON.parse(JSON.stringify(rule));
-  await require('../../app/api/services/limitRef').resolvePacksForRead([{ rules: [r] }], db);
+  // Umbrales de ficha (limitRef) resueltos igual que el motor. resolvePacksForRead REEMPLAZA los
+  // objetos de pack.rules: hay que tomar la regla resuelta del pack, no la copia original (si no,
+  // la condición queda sin número y la simulación nunca avisa).
+  const holder = { rules: [JSON.parse(JSON.stringify(rule))] };
+  await require('../../app/api/services/limitRef').resolvePacksForRead([holder], db);
+  const r = holder.rules[0];
+  if (r._limitRefUnresolved) return { error: 'la regla usa un límite de la ficha que no tiene valor cargado' };
 
   const site = await db.collection('sites').findOne({ siteCode: SITE });
   const dIds = (site && site.devices) || [];
