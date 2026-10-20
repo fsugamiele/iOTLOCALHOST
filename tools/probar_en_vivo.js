@@ -1,6 +1,6 @@
 // Prueba EN VIVO de una regla (Franco 2026-10-19): fija un valor en un equipo del simulador,
 // espera, y muestra qué hizo el motor (etapa en rulefsm + cambios de etapa + avisos). Al final
-// suelta el valor (reset del equipo simulado). Va por la API (/api/simulator/*), camino productivo.
+// suelta el valor (solo esa variable: /simulator/release). Va por la API (/api/simulator/*), camino productivo.
 //
 //   docker exec -i node node - <dId> <variable> <valor> [segundos] < tools/probar_en_vivo.js
 //   ej.: docker exec -i node node - Z5tKK1rN fuel_level 10 90 < tools/probar_en_vivo.js
@@ -50,7 +50,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     tr.forEach((x) => console.log(`    ${t(new Date(x.ts).getTime())} ${x.from}→${x.to} valor ${JSON.stringify(x.value)} umbral ${JSON.stringify(x.thresholdUsed)}`));
     if (!tr.length) console.log('    (el motor no cambió de etapa)');
   }
-  const rs = await api('POST', '/api/simulator/reset', { dId });
-  console.log(rs.status === 200 ? `\nValor liberado: ${dev.name || dId} vuelve a su simulación normal.` : `\n⚠ no se pudo liberar el valor (${rs.status}): hacé reset del equipo desde el simulador.`);
+  // Suelta SOLO esta variable (no reset del equipo: el reset vuelve el tanque a 75 % de golpe,
+  // que el motor lee como una recarga).
+  const rs = await api('POST', '/api/simulator/release', { dId, sensor: variable });
+  console.log(rs.status === 200 ? `\nValor liberado: ${variable} vuelve a evolucionar desde ${JSON.stringify(value)}.` : `\n⚠ no se pudo liberar el valor (${rs.status}): hacé reset del equipo desde el simulador.`);
   process.exit(0);
-})().catch(async (err) => { console.error('ERROR:', err.message); try { await api('POST', '/api/simulator/reset', { dId }); } catch (_) {} process.exit(1); });
+})().catch(async (err) => { console.error('ERROR:', err.message); try { await api('POST', '/api/simulator/release', { dId, sensor: variable }); } catch (_) {} process.exit(1); });

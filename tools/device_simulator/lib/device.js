@@ -52,6 +52,11 @@ class SimulatedDevice {
     // Banco de conformidad: variables SILENCIADAS (mute_sensor) — el equipo sigue
     // publicando el resto; simula una sola entrada que deja de llegar.
     this._muted = new Set();
+    // Auditoría simulador 2026-10-20 (S1) — claves del estado COMPARTIDO del sitio que
+    // fijaron los escenarios de ESTE equipo (siphon_lph, eltek_load_high, …). El reset las
+    // limpia: antes quedaban pegadas hasta reiniciar el proceso (p. ej. un sifoneo que seguía
+    // vaciando los tanques del sitio con el motor apagado).
+    this._sharedKeys = new Set();
     // P2 (#79) — report-by-exception. deadband por variable (numéricas);
     // _lastPublished guarda el último valor EFECTIVAMENTE publicado.
     this._deadbandByVar = new Map();
@@ -230,12 +235,14 @@ class SimulatedDevice {
     if (this._lastGenRunning === undefined) { this._lastGenRunning = running; return; }
     if (running === this._lastGenRunning) return;
     this._lastGenRunning = running;
+    // S5 — un valor FIJADO a mano no lo pisa la transición de marcha.
+    const setIfFree = (v, val) => { if (!this._pinned.has(v)) this._set(v, val); };
     if (running) {
-      this._set('rpm', 1500);
-      this._set('oil_pressure', 40);
+      setIfFree('rpm', 1500);
+      setIfFree('oil_pressure', 40);
     } else {
-      this._set('rpm', 0);
-      this._set('oil_pressure', 0);
+      setIfFree('rpm', 0);
+      setIfFree('oil_pressure', 0);
     }
   }
 
@@ -312,6 +319,12 @@ class SimulatedDevice {
       this._state = this._initialState(this._role);
       this._muted.clear();
       this._pinned.clear();   // reset suelta los valores fijados → vuelven a evolucionar
+      // S1 — también se limpian las claves del sitio que fijaron los escenarios de este equipo.
+      for (const k of this._sharedKeys) delete this._sharedState[k];
+      if (this._sharedKeys.size) console.log(`${this.tag} reset: estado del sitio limpiado (${[...this._sharedKeys].join(', ')})`);
+      this._sharedKeys.clear();
+      // S7 — el ATS es quien pone en marcha al grupo del sitio: su reset lo detiene.
+      if (this._state.gen_status !== undefined) this._syncSharedState();
       for (const v of this._variables) {
         this._publish(v.variable);
       }
@@ -323,6 +336,11 @@ class SimulatedDevice {
       // Reactivar con `resume_publishing` o `reset`.
       this._cancelActiveTimers();
       console.log(`${this.tag} publishing STOPPED (frescura test)`);
+    } else if (command === 'release_sensor') {
+      // S6 — suelta UN valor fijado: vuelve a evolucionar desde donde está (sin saltar al
+      // valor inicial como hace reset, que en el tanque parece una recarga).
+      this._pinned.delete(sensor);
+      console.log(`${this.tag} sensor ${sensor} RELEASED`);
     } else if (command === 'mute_sensor') {
       this._muted.add(sensor);
       console.log(`${this.tag} sensor ${sensor} MUTED`);
@@ -427,6 +445,7 @@ class SimulatedDevice {
         if (step.sharedSet) {
           for (const [k, v] of Object.entries(step.sharedSet)) {
             this._sharedState[k] = v;
+            this._sharedKeys.add(k);   // S1 — el reset de este equipo la limpia
           }
           console.log(`${this.tag} sharedSet: ${JSON.stringify(step.sharedSet)}`);
         }

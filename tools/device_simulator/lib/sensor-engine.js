@@ -230,7 +230,10 @@ function evolve(variable, currentValue, deviceState, sharedState) {
 
     case 'coolant_temp':
       if (sharedState.gen_running) {
-        return clamp(currentValue + jitter(1), 75, 95);
+        // S4 — régimen normal 75-90 °C. Antes el tope era 95 y el setpoint de alarma (HET)
+        // oscila 94,5-95,5: con el motor caliente cruzaba el setpoint sin falla (falsa alarma
+        // de "refrigerante alta"). La sobretemperatura real se ejercita con falla_sobretemperatura.
+        return clamp(currentValue + jitter(1), 75, 90);
       }
       return clamp(currentValue - 1, 30, currentValue);
 
@@ -317,7 +320,12 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       // V/tick llega a régimen en 2-3 min (dentro del ejercicio de 5 min).
       // Sistema 24V (regla de alarma <22/<20): reposo/float ~26,4 V; con el grupo
       // en marcha el alternador carga → ~27,6 V. El reposo NO dispara la alarma.
-      const target = sharedState.gen_running ? 14.1 : 12.6;
+      // S2 — cada grupo carga SU batería: el Cummins sigue al ATS (sharedState.gen_running);
+      // el GEN, a su propio genset_running. Antes el GEN miraba al ATS: en marcha propia
+      // (generador_marcha) su batería no cargaba → falsas alarmas de cargador / batería baja.
+      const enMarcha = (deviceState && deviceState.deviceType === 'CUMMINS')
+        ? !!sharedState.gen_running : !!(deviceState && deviceState.genset_running);
+      const target = enMarcha ? 14.1 : 12.6;
       const step   = Math.sign(target - currentValue) * Math.min(Math.abs(target - currentValue), 1.0);
       return clamp(currentValue + step + jitter(0.1), 11.8, 14.6);
     }

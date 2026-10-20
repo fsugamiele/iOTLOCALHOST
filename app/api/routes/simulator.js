@@ -384,6 +384,25 @@ router.post('/simulator/snapshot', checkAuth, async (req, res) => {
   }
 });
 
+// ────────── POST /release ────────────────────────────────────────
+// Body: { dId, sensor } — suelta UN valor fijado con /set: la variable vuelve a evolucionar
+// desde su valor actual (auditoría simulador 2026-10-20, S6). A diferencia de /reset no
+// vuelve todo el equipo al estado inicial (en el tanque eso parece una recarga).
+router.post('/simulator/release', checkAuth, async (req, res) => {
+  if (!isApiEnabled()) return notFound(res);
+  try {
+    const { dId, sensor } = req.body || {};
+    if (!isValidDId(dId)) return badRequest(res, 'Invalid or missing dId');
+    if (!isValidSensorName(sensor)) return badRequest(res, 'Invalid or missing sensor name');
+    await resolveDeviceAndTemplate(req, dId);
+    await publishCommand(dId, { command: 'release_sensor', sensor });
+    return res.json({ status: 'success', dId, sensor });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ status: 'error', error: error.message });
+    return internalError(res, error);
+  }
+});
+
 // ────────── POST /reset ──────────────────────────────────────────
 // Body: { dId }
 // Resetea TODOS los sensores del device a su initialState.
