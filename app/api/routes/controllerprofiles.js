@@ -12,6 +12,9 @@ const ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 const KINDS = ['warning', 'trip'];
 const OPS = ['lt', 'lte', 'gt', 'gte'];
 
+// El catálogo de perfiles es global, como las fichas: escribe solo superadmin (D-1 de fichas).
+const esSuperadmin = (req) => (req.userData.grants || []).some((g) => g.role === 'superadmin');
+
 function publishEdgeReload(context) {
   if (!global.mqttClient || !global.mqttClient.connected) return;
   global.mqttClient.publish('wanomi/edge/all/reload', '{}', { qos: 1 }, (err) => {
@@ -65,6 +68,7 @@ router.get("/controllerprofiles/:profileId", checkAuth, async (req, res) => {
 // PUT /controllerprofiles/:profileId — crea o reemplaza. Body: { profile: {...} }
 router.put("/controllerprofiles/:profileId", checkAuth, async (req, res) => {
   try {
+    if (!esSuperadmin(req)) return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
     const profileId = req.params.profileId;
     const p = (req.body && req.body.profile) || null;
     if (!ID_RE.test(profileId)) return res.status(400).json({ status: "error", error: "profileId inválido (minúsculas, números y guiones)" });
@@ -85,6 +89,7 @@ router.put("/controllerprofiles/:profileId", checkAuth, async (req, res) => {
 
 router.delete("/controllerprofiles/:profileId", checkAuth, async (req, res) => {
   try {
+    if (!esSuperadmin(req)) return res.status(403).json({ status: "error", error: "forbidden: superadmin only" });
     const n = await Device.countDocuments({ profileId: req.params.profileId });
     if (n) return res.status(409).json({ status: "error", error: `el perfil está asignado a ${n} equipo(s): quitalo de los equipos primero` });
     await ControllerProfile.deleteOne({ profileId: req.params.profileId });

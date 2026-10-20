@@ -21,6 +21,11 @@
   - Pruebas: cascada de umbrales 11/11 (ficha, perfil, equipo pisa perfil, escala 24 V intacta, hoja cross con perfil / sin perfil / no aplicable); seed contra API falsa (simulación, aplicación, re-ejecución idempotente); simulador 13/13 + 22/22.
   - **Límite declarado:** la simulación de reglas del QA (`/simulate`) sigue usando el umbral de la ficha (no conoce el perfil del equipo).
 
+- **Segunda tanda (Franco 2026-10-20):**
+  - Pantalla **Fichas → Controladoras** (`components/fichas/ControllerProfiles.vue`): lista de modelos por ficha con umbrales, mediciones que no tiene, códigos de falla y equipos que la usan; alta / edición / borrado solo superadmin (la API también lo exige); importación de códigos de falla desde JSON.
+  - Editor de reglas — decisión de Franco **"Permitir y avisar"**: el campo muestra el valor de la ficha (no un texto gris) con la marca "● de la ficha" y, debajo, el valor por controladora y por equipo. Escribir otro número muestra el aviso "Estás reemplazando un valor predefinido" con botón **Volver a la ficha**; al guardar pide confirmación explícita. Escribir el mismo número de la ficha no desata la regla.
+  - Perfiles del ATS (ComAp InteliATS NT PWR) y del rectificador (Eltek Smartpack S) — `tools/seed_perfiles/seed_energia.js`: **sin umbrales** (los manuales no traen valores por defecto; no se inventan), con requisitos de instalación y notas del driver.
+
 ## 1 · Principio
 **La regla no cambia por controladora; cambian los números, las mediciones disponibles y el significado de los códigos.** "Presión de aceite baja" es la misma regla para un PCC 1302 y un PC2100; cada equipo trae su propio umbral.
 

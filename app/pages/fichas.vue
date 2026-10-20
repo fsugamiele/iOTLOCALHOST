@@ -56,6 +56,10 @@
                 <base-button type="info" size="sm" @click="openDetailModal(row)" title="Ver detalle">
                   <i class="tim-icons icon-notes"></i>
                 </base-button>
+                <!-- spec_perfiles_controladora — modelos concretos de controladora de esta ficha -->
+                <base-button type="success" size="sm" @click="openControladoras(row)" title="Controladoras (modelos)">
+                  <i class="tim-icons icon-settings"></i>
+                </base-button>
                 <base-button
                   v-if="isSuperadmin"
                   type="warning"
@@ -361,6 +365,17 @@
       </div>
     </el-dialog>
 
+    <!-- spec_perfiles_controladora — CONTROLADORAS de la ficha (modelos concretos). -->
+    <el-dialog
+      :title="ctrlSheet ? `Controladoras · ${ctrlSheet.manufacturer || ''} ${ctrlSheet.model || ''} (${ctrlSheet.deviceType})` : ''"
+      :visible.sync="ctrlModal"
+      width="860px"
+      append-to-body
+      @closed="ctrlSheet = null"
+    >
+      <controller-profiles v-if="ctrlSheet" :key="ctrlSheet.deviceType" :sheet="ctrlSheet" :is-superadmin="isSuperadmin" />
+    </el-dialog>
+
     <!-- BORRAR — fricción de escritura (patrón rulepacks/index.vue). El backend
          rechaza con 409 si la ficha está referenciada por templates o packs. -->
     <el-dialog
@@ -391,6 +406,7 @@
 
 <script>
 import { Dialog, Select, Option } from 'element-ui';
+import ControllerProfiles from '@/components/fichas/ControllerProfiles.vue';   // spec_perfiles_controladora
 
 // Enums de UI espejo del backend (fuente única: app/api/models/rule_definition.js
 // D-3). La pantalla en idioma de usuario completa queda en BACKLOG-UI-13.
@@ -408,6 +424,7 @@ export default {
     [Dialog.name]: Dialog,
     [Select.name]: Select,
     [Option.name]: Option,
+    ControllerProfiles,
   },
   data() {
     return {
@@ -421,6 +438,8 @@ export default {
       newSheet: this.emptySheet(),
       detailModal: false,
       detailSheet: null,
+      ctrlModal: false,
+      ctrlSheet: null,
       deleteModal: false,
       deleteTarget: '',
       deleteConfirmInput: '',
@@ -458,6 +477,7 @@ export default {
     this.loadSheets();
   },
   methods: {
+    openControladoras(row) { this.ctrlSheet = row; this.ctrlModal = true; },
     // Auditoría 2026-10-14 (F-04) — arma el bloque autonomy conservando los campos
     // que el form no edita (flowVariable/flowScale/minDropPct). Vacío → no se envía.
     buildAutonomyPayload(a) {

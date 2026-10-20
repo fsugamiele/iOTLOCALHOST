@@ -10,12 +10,24 @@
       <div class="rv2-actions">
         <template v-if="view === 'editar'">
           <button type="button" class="rv2-btn sec" @click="$emit('cancel')">Cancelar</button>
-          <button type="button" class="rv2-btn pri" :disabled="!canSave || saving" @click="save">{{ saving ? 'Guardando…' : 'Guardar regla' }}</button>
+          <button type="button" class="rv2-btn pri" :disabled="!canSave || saving" @click="pedirGuardar">{{ saving ? 'Guardando…' : 'Guardar regla' }}</button>
         </template>
         <template v-else>
           <button type="button" class="rv2-btn sec" @click="view = 'editar'">Editar</button>
           <button type="button" class="rv2-btn sec" @click="$emit('cancel')">Cerrar</button>
         </template>
+      </div>
+    </div>
+
+    <!-- Franco 2026-10-20 (Permitir y avisar): guardar una regla que reemplaza valores predefinidos
+         de la ficha / perfil de controladora pide confirmación explícita. -->
+    <div v-if="confirmar" class="rv2-confirma" role="alertdialog" aria-live="assertive">
+      <b>Esta regla deja de usar valores predefinidos</b>
+      <ul><li v-for="(x, i) in reemplazos" :key="i">{{ x }}</li></ul>
+      <span class="rv2-hint">Con un número fijo, la regla ya no sigue a la ficha, a los perfiles de controladora ni a los valores propios de cada equipo.</span>
+      <div class="rv2-actions">
+        <button type="button" class="rv2-btn sec" @click="confirmar = false">Cancelar</button>
+        <button type="button" class="rv2-btn pri" :disabled="saving" @click="confirmar = false; save()">Guardar igual</button>
       </div>
     </div>
 
@@ -106,7 +118,8 @@
                   <select v-model="c.valor" class="rv2-in"><option v-for="e in enumDe(c)" :key="e.value" :value="e.value">{{ e.label }}</option></select>
                 </div>
                 <div v-else class="rv2-fld w150"><span class="rv2-lab">{{ c.medida === 'limite' ? 'respaldo si el equipo no informa' : (valorLab[c.medida] || unidadDe(c) || 'valor') }}</span>
-                  <input v-model="c.valor" class="rv2-in" inputmode="decimal" :placeholder="valorAtado(c) ? valorAtado(c).corto : ''">
+                  <input :value="valorCampo(c)" class="rv2-in" :class="{ 'rv2-in--atado': !!valorAtado(c) && valorAtado(c).valor != null, 'rv2-in--propio': !!reemplazo(c) }" inputmode="decimal" @input="escribirValor(c, $event.target.value)">
+                  <span v-if="valorAtado(c) && valorAtado(c).valor != null" class="rv2-origen">● {{ valorAtado(c).origen }}</span>
                 </div>
                 <div v-if="c.medida === 'limite'" class="rv2-fld w220"><span class="rv2-lab">límite que informa el equipo</span>
                   <select v-model="c.limiteVar" class="rv2-in"><option value="" disabled>Elegí</option><option v-for="v in variablesDe(c.deviceType)" :key="v.name" :value="v.name">{{ varEtiqueta(v) }}</option></select>
@@ -121,6 +134,13 @@
 
               <div class="rv2-frase">“{{ frase(c) }}”</div>
               <span v-if="valorAtado(c)" class="rv2-hint">{{ valorAtado(c).largo }}</span>
+              <span v-if="variantesTxt(c)" class="rv2-hint">{{ variantesTxt(c) }}</span>
+              <div v-if="reemplazo(c)" class="rv2-aviso">
+                <b>⚠ Estás reemplazando un valor predefinido</b>
+                <span>{{ reemplazo(c) }}</span>
+                <span>Con un número fijo, la regla deja de seguirlos.</span>
+                <button type="button" class="rv2-btn sec rv2-btn--sm" @click="c.valor = ''">Volver a la ficha</button>
+              </div>
               <span v-if="problema(c)" class="rv2-err">{{ problema(c) }}</span>
               <span v-else-if="ayuda[c.medida]" class="rv2-hint">{{ ayuda[c.medida] }}</span>
 
@@ -314,7 +334,7 @@ export default {
     return {
       umb,
       model: m || emptyModel(this.pack), view: 'editar', saving: false, savedRule: null,
-      devices: [], devicesLoaded: false, sim: null, simLoading: false, simError: '', simKey: '', instIdx: 0,
+      devices: [], devicesLoaded: false, perfiles: [], confirmar: false, sim: null, simLoading: false, simError: '', simKey: '', instIdx: 0,
       t: 1, playing: false, nowData: null, nowAt: 0, tickNow: 0,
       W: 640, H: 150, PL: 52, PR: 12, PT: 12, PB: 26,
       conVentana: CON_VENTANA, valorLab: VALOR_LAB, ayuda: AYUDA,
@@ -322,6 +342,10 @@ export default {
   },
   computed: {
     packType() { return this.model.packType || this.pack.deviceType; },
+    // Lista legible de las condiciones que reemplazan un valor predefinido (para confirmar al guardar).
+    reemplazos() {
+      return this.model.conds.map((c, i) => { const r = this.reemplazo(c); return r ? `Condición ${i + 1} · ${this.frase(c)} — ${r}` : null; }).filter(Boolean);
+    },
     packKind() { return deviceTypeName(this.packType, this.sheets); },
     packKindLower() { return this.packKind.toLowerCase(); },
     sheetByType() { const m = {}; for (const s of this.sheets) m[s.deviceType] = s; return m; },
@@ -425,6 +449,7 @@ export default {
   created() { this.marcarSinCambios(); },
   async mounted() {
     await this.cargarEquipos();
+    this.cargarPerfiles();
     this.programarSim(0);
   },
   beforeDestroy() { this.parar(); clearTimeout(this._simT); clearInterval(this._nowI); clearInterval(this._ageI); },
@@ -440,6 +465,65 @@ export default {
       try { const r = await this.$axios.get(`/rulepacks/${encodeURIComponent(this.pack.packId)}/devices`, this.hdr()); this.devices = (r.data && r.data.data) || []; }
       catch (e) { this.devices = []; }
       this.devicesLoaded = true;
+    },
+    // spec_perfiles_controladora — perfiles de controladora (con sus límites) para mostrar el valor
+    // que usa cada modelo / equipo en las condiciones atadas a la ficha.
+    async cargarPerfiles() {
+      try { const r = await this.$axios.get('/controllerprofiles', this.hdr()); this.perfiles = (r.data && r.data.data) || []; }
+      catch (e) { this.perfiles = []; }
+    },
+    // El campo muestra el valor de la ficha cuando la condición está atada (no un texto gris).
+    valorCampo(c) {
+      if (c.valor !== '' && c.valor != null) return c.valor;
+      const at = this.valorAtado(c);
+      return at && at.valor != null ? String(at.valor).replace('.', ',') : '';
+    },
+    // Escribir el mismo número de la ficha no la desata; otro número la reemplaza (con aviso).
+    escribirValor(c, txt) {
+      const ex = (c.extra && c.extra.condition) || {};
+      if (ex.limitRef) {
+        const fv = resolveCondValue({ op: c.op, limitRef: ex.limitRef }, c.deviceType, c.variable, this.sheets);
+        const n = Number(String(txt).replace(',', '.'));
+        if (txt === '' || (typeof fv === 'number' && n === fv)) { c.valor = ''; return; }
+      }
+      c.valor = txt;
+    },
+    // Valores que la regla usa además de la ficha: por modelo de controladora y propios de equipos.
+    variantes(c) {
+      const ex = (c.extra && c.extra.condition) || {};
+      if (!ex.limitRef || !c.deviceType || !c.variable) return [];
+      const dir = ['lt', 'lte'].includes(c.op) ? 'lt' : ['gt', 'gte'].includes(c.op) ? 'gt' : null;
+      if (!dir) return [];
+      const match = (l) => l.variable === c.variable && l.kind === ex.limitRef && (['lt', 'lte'].includes(l.op) ? 'lt' : 'gt') === dir;
+      const u = this.unidadDe(c) ? ` ${this.unidadDe(c)}` : '';
+      const out = [];
+      for (const p of this.perfiles) {
+        if (p.deviceType !== c.deviceType) continue;
+        const l = (p.limits || []).find(match);
+        if (l) out.push(`perfil ${p.model}: ${String(l.value).replace('.', ',')}${u}`);
+      }
+      for (const d of this.devices) {
+        if (d.deviceType !== c.deviceType) continue;
+        const l = (d.limitOverrides || []).find(match);
+        if (l) out.push(`${d.name}: ${String(l.value).replace('.', ',')}${u} (propio del equipo)`);
+      }
+      return out;
+    },
+    variantesTxt(c) { const v = this.variantes(c); return v.length ? `Por equipo: ${v.join(' · ')}. Cada equipo usa el suyo.` : ''; },
+    // Condición que estaba atada a la ficha y ahora tiene un número escrito.
+    reemplazo(c) {
+      const ex = (c.extra && c.extra.condition) || {};
+      if (!ex.limitRef || c.valor === '' || c.valor == null) return null;
+      const fv = resolveCondValue({ op: c.op, limitRef: ex.limitRef }, c.deviceType, c.variable, this.sheets);
+      const u = this.unidadDe(c) ? ` ${this.unidadDe(c)}` : '';
+      const partes = [];
+      if (typeof fv === 'number') partes.push(`ficha ${String(fv).replace('.', ',')}${u}`);
+      partes.push(...this.variantes(c));
+      return `${c.valor}${u} reemplaza a: ${partes.join(' · ') || 'el límite de la ficha'}.`;
+    },
+    pedirGuardar() {
+      if (this.reemplazos.length) { this.confirmar = true; return; }
+      this.save();
     },
     // ── equipos ──
     equipoNombre(e) {
@@ -518,9 +602,9 @@ export default {
         const val = resolveCondValue({ op: c.op, limitRef: ex.limitRef }, c.deviceType, c.variable, this.sheets);
         const lab = LIMIT_REF_LABELS[ex.limitRef] || 'límite de la ficha';
         const num = typeof val === 'number' ? String(val).replace('.', ',') : null;
-        return { valor: typeof val === 'number' ? val : null, corto: num || 'ficha',
+        return { valor: typeof val === 'number' ? val : null, corto: num || 'ficha', origen: 'de la ficha',
           frase: num ? `${num} (${lab})` : `el ${lab}`,
-          largo: num ? `Usa el ${lab}: ${num}${u}. Si cambia en la ficha, la regla lo sigue. Si escribís un número, queda fijo.` : `Usa el ${lab}, que todavía no tiene valor cargado. Escribí un número o cargalo en la ficha.` };
+          largo: num ? `Usa el ${lab}: ${num}${u}. Si cambia en la ficha, la regla lo sigue.` : `Usa el ${lab}, que todavía no tiene valor cargado. Escribí un número o cargalo en la ficha.` };
       }
       if (ex.ref) {
         return { valor: null, corto: 'relativo', frase: 'el valor relativo configurado',
@@ -677,6 +761,14 @@ export default {
 </script>
 
 <style scoped>
+.rv2-in--atado { border-color: #00bf9a !important; }
+.rv2-in--propio { border-color: #e8b730 !important; }
+.rv2-origen { font-size: 11.5px; color: #00bf9a; font-weight: 600; margin-top: 2px; }
+.rv2-aviso { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; border: 1px solid #e8b730; background: rgba(232, 183, 48, .12); font-size: 13px; }
+.rv2-aviso .rv2-btn--sm { align-self: flex-start; }
+.rv2-btn--sm { font-size: 12.5px; padding: 5px 12px; min-height: 32px; }
+.rv2-confirma { margin: 10px 0; padding: 14px 16px; border-radius: 12px; border: 1px solid #e8b730; background: rgba(232, 183, 48, .12); display: flex; flex-direction: column; gap: 6px; }
+.rv2-confirma ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
 /* Paleta de la plataforma (black-dashboard): claro #f5f6fa/#fff · oscuro #1e1e2f/#27293d. */
 .rv2 { --bg: #f5f6fa; --card: #fff; --card2: #f5f6fa; --ink: #1d253b; --mut: #5f6478; --line: #e3e4ec; --acc: #00866f; --accb: #00bf9a;
   --si: #1f8a5b; --sib: #e3f4ea; --no: #5f6478; --nob: #eef0f5; --jun: #a86a00; --junb: #fbf0d9; --sin: #b4232c; --sinb: #fbe3e5;
