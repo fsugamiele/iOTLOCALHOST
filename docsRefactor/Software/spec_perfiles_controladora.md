@@ -24,6 +24,7 @@
 - **Segunda tanda (Franco 2026-10-20):**
   - Pantalla **Fichas → Controladoras** (`components/fichas/ControllerProfiles.vue`): lista de modelos por ficha con umbrales, mediciones que no tiene, códigos de falla y equipos que la usan; alta / edición / borrado solo superadmin (la API también lo exige); importación de códigos de falla desde JSON.
   - Editor de reglas — decisión de Franco **"Permitir y avisar"**: el campo muestra el valor de la ficha (no un texto gris) con la marca "● de la ficha" y, debajo, el valor por controladora y por equipo. Escribir otro número muestra el aviso "Estás reemplazando un valor predefinido" con botón **Volver a la ficha**; al guardar pide confirmación explícita. Escribir el mismo número de la ficha no desata la regla.
+  - Editor: una condición con número fijo sobre una medición que tiene límite en la ficha ofrece **"Usar el umbral de atención / crítico de la ficha (valor)"**: la vuelve a atar (limitRef), y desde ahí sigue a la ficha, la controladora y cada equipo (Franco: "sí, sumalo").
   - Perfiles del ATS (ComAp InteliATS NT PWR) y del rectificador (Eltek Smartpack S) — `tools/seed_perfiles/seed_energia.js`: **sin umbrales** (los manuales no traen valores por defecto; no se inventan), con requisitos de instalación y notas del driver.
 
 ## 1 · Principio

@@ -135,6 +135,13 @@
               <div class="rv2-frase">“{{ frase(c) }}”</div>
               <span v-if="valorAtado(c)" class="rv2-hint">{{ valorAtado(c).largo }}</span>
               <span v-if="variantesTxt(c)" class="rv2-hint">{{ variantesTxt(c) }}</span>
+              <!-- Franco 2026-10-20 — número fijo en una medición que tiene límite en la ficha: ofrecer atarla. -->
+              <div v-if="limitesFicha(c).length" class="rv2-atar">
+                <span class="rv2-hint">La ficha tiene {{ limitesFicha(c).length === 1 ? 'un umbral' : 'umbrales' }} para esta medición. Atada a la ficha, la regla sigue a la ficha, a la controladora y a cada equipo.</span>
+                <span class="rv2-atar__b">
+                  <button v-for="l in limitesFicha(c)" :key="l.kind" type="button" class="rv2-btn sec rv2-btn--sm" @click="atarFicha(c, l.kind)">Usar {{ l.etiqueta }} de la ficha ({{ l.txt }})</button>
+                </span>
+              </div>
               <div v-if="reemplazo(c)" class="rv2-aviso">
                 <b>⚠ Estás reemplazando un valor predefinido</b>
                 <span>{{ reemplazo(c) }}</span>
@@ -521,6 +528,27 @@ export default {
       partes.push(...this.variantes(c));
       return `${c.valor}${u} reemplaza a: ${partes.join(' · ') || 'el límite de la ficha'}.`;
     },
+    // Límites de la ficha en el mismo sentido que la condición, para una condición con número fijo
+    // (no atada a la ficha ni relativa a otra medición).
+    limitesFicha(c) {
+      if (c.medida !== 'valor' || !c.deviceType || !c.variable || c.valor === '' || c.valor == null) return [];
+      const ex = (c.extra && c.extra.condition) || {};
+      if (ex.limitRef || ex.ref) return [];
+      const dir = ['lt', 'lte'].includes(c.op) ? ['lt', 'lte'] : ['gt', 'gte'].includes(c.op) ? ['gt', 'gte'] : null;
+      const x = this.varDe(c.deviceType, c.variable);
+      if (!dir || !x) return [];
+      const u = x.unit ? ` ${x.unit}` : '';
+      const ET = { warning: 'el umbral de atención', trip: 'el umbral crítico' };
+      return (x.limits || []).filter((l) => dir.includes(l.op) && typeof l.value === 'number' && ET[l.kind])
+        .map((l) => ({ kind: l.kind, etiqueta: ET[l.kind], txt: `${String(l.value).replace('.', ',')}${u}` }));
+    },
+    atarFicha(c, kind) {
+      const ex = (c.extra && c.extra.condition) || {};
+      const cond = { ...ex, op: c.op, limitRef: kind };
+      delete cond.value;
+      if (c.extra) this.$set(c.extra, 'condition', cond); else this.$set(c, 'extra', { condition: cond });
+      c.valor = '';
+    },
     pedirGuardar() {
       if (this.reemplazos.length) { this.confirmar = true; return; }
       this.save();
@@ -765,7 +793,9 @@ export default {
 .rv2-in--propio { border-color: #e8b730 !important; }
 .rv2-origen { font-size: 11.5px; color: #00bf9a; font-weight: 600; margin-top: 2px; }
 .rv2-aviso { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; border: 1px solid #e8b730; background: rgba(232, 183, 48, .12); font-size: 13px; }
-.rv2-aviso .rv2-btn--sm { align-self: flex-start; }
+.rv2-aviso .rv2-atar { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-radius: 10px; border: 1px dashed #00bf9a; }
+.rv2-atar__b { display: flex; flex-wrap: wrap; gap: 6px; }
+.rv2-btn--sm { align-self: flex-start; }
 .rv2-btn--sm { font-size: 12.5px; padding: 5px 12px; min-height: 32px; }
 .rv2-confirma { margin: 10px 0; padding: 14px 16px; border-radius: 12px; border: 1px solid #e8b730; background: rgba(232, 183, 48, .12); display: flex; flex-direction: column; gap: 6px; }
 .rv2-confirma ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
