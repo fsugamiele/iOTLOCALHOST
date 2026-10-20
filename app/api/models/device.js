@@ -35,6 +35,11 @@ const deviceSchema = new Schema({
     // de la ficha con relativeTo y las reglas con condition.ref / setpointSource
     // los usan. Ausente = defaults de la ficha (ej. batería 12 V).
     refParams: { type: Object, default: undefined },
+    // spec_perfiles_controladora — modelo de controladora (Qp6: asignación manual hasta que
+    // el CORE la detecte) y umbrales PROPIOS del equipo (leídos de la controladora o
+    // cargados por el instalador). Cascada: equipo > perfil > ficha.
+    profileId: { type: String, default: undefined },
+    limitOverrides: { type: [{ _id: false, variable: String, kind: String, op: String, value: Number, source: String }], default: undefined },
 });
 
 // Validator

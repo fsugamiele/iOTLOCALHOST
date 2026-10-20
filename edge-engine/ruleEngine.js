@@ -108,8 +108,12 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
         const isSetpointMsg = rule.type === 'C' && rule.setpointSource && rule.setpointSource.variable === variable && rule.variable !== variable;
         if (rule.variable !== variable && !isSetpointMsg) continue;
         if (isSetpointMsg && (deviceState[rule.variable] === undefined || deviceState[rule.variable] === null)) continue;
+        // spec_perfiles_controladora (Qp4) — la controladora de este equipo no tiene la
+        // medición: la regla NO aplica acá (ni dispara ni da "sin datos").
+        if (deviceState._unavailable && deviceState._unavailable.includes(rule.variable)) continue;
         // spec_cascada_ficha C3 — umbral relativo a la instalación (ej. batería 24 V).
-        if (rule.condition && rule.condition.scaleRef) {
+        // spec_perfiles_controladora — o límite propio del equipo (perfil / valor del equipo).
+        if (rule.condition && (rule.condition.scaleRef || (rule.condition.resolvedFrom && deviceState._limits))) {
           rule = { ...rule, condition: effectiveCondition(rule.condition, deviceState) };
         }
 

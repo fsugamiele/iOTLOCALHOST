@@ -10,6 +10,9 @@
 
 const SAME_DIR = { lt: ['lt', 'lte'], lte: ['lt', 'lte'], gt: ['gt', 'gte'], gte: ['gt', 'gte'], eq: ['eq'], neq: ['neq'] };
 const LIMIT_KINDS = ['warning', 'trip'];
+// Sentido de un límite (lt/lte → 'lt', gt/gte → 'gt'): clave del mapa de límites por equipo.
+const limitDir = (op) => (op === 'lt' || op === 'lte' ? 'lt' : op === 'gt' || op === 'gte' ? 'gt' : op);
+const limitKey = (variable, kind, dir) => `${variable}|${kind}|${dir}`;
 
 const plain = (x) => (x && typeof x.toObject === 'function' ? x.toObject() : x);
 
@@ -62,7 +65,10 @@ function resolveRule(rule0, sheetsByType) {
     else if (rule._umbral === undefined) rule._umbral = lim.value;
     cond.op = lim.op;
     cond.value = lim.value;
-    cond.resolvedFrom = { deviceType, variable, kind: cond.limitRef };
+    // spec_perfiles_controladora — `dir` permite al motor buscar el límite PROPIO del equipo
+    // (perfil de controladora o valor del equipo) para esta misma condición: cascada
+    // equipo > perfil > ficha, por equipo, en effectiveCondition (typeD.js).
+    cond.resolvedFrom = { deviceType, variable, kind: cond.limitRef, dir: limitDir(lim.op) };
     // C3 — límite relativo a un parámetro de la instalación: el motor lo escala por equipo.
     if (lim.relativeTo && lim.relativeTo.param && Number(lim.relativeTo.base) > 0) {
       cond.scaleRef = { param: lim.relativeTo.param, base: Number(lim.relativeTo.base) };
@@ -151,4 +157,4 @@ async function resolvePacksForRead(packs, db) {
   return packs;
 }
 
-module.exports = { LIMIT_KINDS, findLimit, forEachRef, resolveRule, refsToLimit, resolvePacksForRead, fillThreshold };
+module.exports = { limitDir, limitKey, LIMIT_KINDS, findLimit, forEachRef, resolveRule, refsToLimit, resolvePacksForRead, fillThreshold };

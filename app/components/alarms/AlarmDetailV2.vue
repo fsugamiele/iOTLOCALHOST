@@ -64,6 +64,13 @@
               </span>
             </li>
           </ul>
+          <!-- spec_perfiles_controladora (Qp5) — el código de falla con su significado (perfil de la controladora). -->
+          <div v-for="f in codigosFalla" :key="'fc' + f.dId + f.code" class="ad2-fc">
+            <b>Código {{ f.code }}<template v-if="f.known"> · {{ f.name }}</template></b>
+            <span class="ad2-hint">{{ f.deviceName }}<template v-if="f.model"> · {{ f.model }}</template><template v-if="f.tipo"> · {{ f.tipo }}</template></span>
+            <span v-if="f.logic" class="ad2-hint">Según el fabricante: {{ f.logic }}</span>
+            <span v-if="!f.known" class="ad2-hint">El código no está en el diccionario de esta controladora.</span>
+          </div>
 
           <template v-if="series.length">
             <div class="ad2-charth">
@@ -112,6 +119,10 @@
           </template>
           <p v-else-if="regla && regla.recommendation" class="mb-0">{{ recomendacion }}</p>
           <p v-else class="ad2-hint mb-0">Esta regla no tiene recomendación cargada. Se puede agregar desde el editor de reglas.</p>
+          <div v-for="f in codigosFalla.filter(x => x.causes.length)" :key="'fcc' + f.dId + f.code" class="ad2-fc">
+            <b>Causas posibles del código {{ f.code }} (manual del fabricante)</b>
+            <ol class="ad2-fc__l"><li v-for="(c, i) in f.causes.slice(0, 8)" :key="i">{{ c }}</li></ol>
+          </div>
           <div class="ad2-cierra">
             <b>{{ abierta ? 'Cuándo se cierra' : 'Cómo se cerró' }}</b>
             <span>{{ cierreTxt }}</span>
@@ -247,6 +258,10 @@ export default {
     },
     ultimaLectura() { const ts = (this.v2.live || []).map(l => l.time).filter(Boolean); return ts.length ? Math.max(...ts) : null; },
 
+    codigosFalla() {
+      const T = { warning: 'advertencia', shutdown: 'parada', event: 'evento', configurable: 'advertencia o parada (configurable)' };
+      return ((this.v2 && this.v2.faultCodes) || []).map(f => ({ ...f, causes: f.causes || [], tipo: f.type ? T[f.type] || f.type : null }));
+    },
     // ── 2 · Por qué saltó ──
     porQueTitulo() {
       const n = this.condiciones.length, esp = (this.regla && this.regla.graceSec) || 0;
@@ -545,6 +560,8 @@ body:not(.white-content) .ad2 { --card: #27293d; --card2: #1e1e2f; --ink: #e8e8e
 .g-cierre { stroke: #1f8a5b; stroke-width: 2; } .g-cierre-t { fill: var(--ok); font-size: 11.5px; }
 .g-txt { fill: var(--mut); font-size: 11px; }
 
+.ad2-fc { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--card2); border: 1px solid var(--line); }
+.ad2-fc__l { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
 .ad2-paso { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--card2); border: 1px solid var(--line); cursor: pointer; margin: 0; }
 .ad2-paso input { width: 20px; height: 20px; margin-top: 2px; flex: 0 0 auto; accent-color: #00bf9a; }
 .ad2-paso.hecho > span { color: var(--mut); text-decoration: line-through; }

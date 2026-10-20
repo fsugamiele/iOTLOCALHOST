@@ -150,6 +150,8 @@ function evaluateNode(node, siteState, siteCode, eventTs, ruleId) {
   }
   const devState = findDeviceByType(siteState, node.deviceType, siteCode);
   if (!devState) return { val: false, total: null, thresholdUsed: null };
+  // spec_perfiles_controladora (Qp4) — medición que la controladora no tiene: hoja no evaluable.
+  if (devState._unavailable && devState._unavailable.includes(node.variable)) return { val: null, total: null, thresholdUsed: null };
   const value = devState[node.variable];
   let cond = effectiveCondition(node.condition, devState);   // C3: relativo a la instalación
   // spec_umbral_por_referencia — condition.ref: el umbral es una variable/parámetro

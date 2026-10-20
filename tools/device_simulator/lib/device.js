@@ -246,7 +246,10 @@ class SimulatedDevice {
     const setIfFree = (v, val) => { if (!this._pinned.has(v)) this._set(v, val); };
     if (running) {
       setIfFree('rpm', 1500);
-      setIfFree('oil_pressure', 40);
+      // spec_perfiles_controladora (Qp3) — las reglas de aceite esperan 10 s (el PCC 1302 para a
+      // los 10 s). En un motor sano la presión llega a régimen en segundos: arrancar en 40 kPa
+      // hasta el próximo tick de la variable daba una crítica falsa en cada arranque.
+      setIfFree('oil_pressure', 250);
     } else {
       setIfFree('rpm', 0);
       setIfFree('oil_pressure', 0);

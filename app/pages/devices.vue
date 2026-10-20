@@ -294,6 +294,29 @@
             <base-input v-model="refForm.rated_kw" placeholder="ej. 20" type="number" />
           </div>
         </div>
+        <!-- spec_perfiles_controladora (Qp6) — modelo de controladora y umbrales propios del equipo. -->
+        <div class="form-group">
+          <label>Controladora</label>
+          <select v-model="refForm.profileId" class="form-control" @change="cargarPerfil(refForm.profileId)">
+            <option value="">Sin perfil (umbrales genéricos de la ficha)</option>
+            <option v-for="p in perfiles" :key="p.profileId" :value="p.profileId">{{ p.manufacturer }} {{ p.model }}</option>
+          </select>
+          <small v-if="!perfiles.length" class="text-muted">No hay perfiles cargados para este tipo de equipo.</small>
+        </div>
+        <template v-if="perfil">
+          <p class="text-muted" style="font-size:12px;margin-bottom:6px">
+            Umbrales del fabricante para este modelo. Si la controladora de <b>este</b> equipo está configurada distinta
+            (menú de la controladora), cargá el valor y manda ese.
+          </p>
+          <div v-for="l in refForm.limites" :key="l.k" class="row" style="align-items:center;margin-bottom:6px">
+            <div class="col-7" style="font-size:13px">{{ l.etiqueta }} · fabricante {{ l.fabricante }} {{ l.unit }}</div>
+            <div class="col-5"><base-input v-model="l.propio" :placeholder="'propio (' + l.unit + ')'" type="number" /></div>
+          </div>
+          <div v-if="perfil.install && perfil.install.length" style="font-size:12px">
+            <b>Requisitos de instalación</b>
+            <ul style="padding-left:18px;margin:4px 0 0"><li v-for="(x, i) in perfil.install" :key="i">{{ x }}</li></ul>
+          </div>
+        </template>
       </div>
       <span slot="footer">
         <base-button type="secondary" @click="refModal = false">Cancelar</base-button>
@@ -399,7 +422,9 @@ export default {
       // spec_cascada_ficha C3 — parámetros de instalación
       refModal: false,
       refDevice: null,
-      refForm: { battery_nominal_v: "", rated_kw: "" },
+      refForm: { battery_nominal_v: "", rated_kw: "", profileId: "", limites: [] },
+      perfiles: [],
+      perfil: null,
       refLoading: false
     };
   },
@@ -465,8 +490,38 @@ export default {
       this.refForm = {
         battery_nominal_v: r.battery_nominal_v != null ? r.battery_nominal_v : "",
         rated_kw: r.rated_kw != null ? r.rated_kw : "",
+        profileId: device.profileId || "",
+        limites: [],
       };
+      this.perfiles = []; this.perfil = null;
       this.refModal = true;
+      this.cargarPerfiles(device);
+    },
+
+    // spec_perfiles_controladora (Qp6) — perfiles del tipo del equipo y límites del elegido.
+    async cargarPerfiles(device) {
+      const h = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const r = await this.$axios.get(`/controllerprofiles?deviceType=${encodeURIComponent(device.deviceType || "")}`, h);
+        this.perfiles = (r.data && r.data.data) || [];
+      } catch (e) { this.perfiles = []; }
+      if (this.refForm.profileId) this.cargarPerfil(this.refForm.profileId);
+    },
+    async cargarPerfil(pid) {
+      this.perfil = null; this.refForm.limites = [];
+      if (!pid) return;
+      try {
+        const r = await this.$axios.get(`/controllerprofiles/${encodeURIComponent(pid)}`, { headers: { token: this.$store.state.auth.token } });
+        const p = (r.data && r.data.data) || null;
+        this.perfil = p;
+        const own = (this.refDevice && this.refDevice.limitOverrides) || [];
+        const KIND = { warning: "aviso", trip: "parada" };
+        this.refForm.limites = ((p && p.limits) || []).map((l) => {
+          const o = own.find((x) => x.variable === l.variable && x.kind === l.kind);
+          return { k: `${l.variable}|${l.kind}|${l.op}`, variable: l.variable, kind: l.kind, op: l.op, unit: l.unit || "",
+            etiqueta: `${l.variable} (${KIND[l.kind] || l.kind})`, fabricante: l.value, propio: o ? o.value : "" };
+        });
+      } catch (e) { this.perfil = null; }
     },
 
     async saveRefParams() {
@@ -485,7 +540,15 @@ export default {
         if (res.data.status == "success") {
           const p = res.data.refParams || {};
           const txt = Object.keys(p).length ? Object.entries(p).map(([k, v]) => `${k}=${v}`).join(", ") : "valores de la ficha";
-          this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId}: parámetros de instalación — ${txt}` });
+          // spec_perfiles_controladora — controladora + umbrales propios del equipo.
+          const limitOverrides = this.refForm.limites.filter((l) => l.propio !== "" && l.propio !== null && l.propio !== undefined)
+            .map((l) => ({ variable: l.variable, kind: l.kind, op: l.op, value: Number(l.propio), source: "cargado por el instalador (configuración de la controladora del equipo)" }));
+          const cambioPerfil = (this.refForm.profileId || "") !== (this.refDevice.profileId || "");
+          const tenia = (this.refDevice.limitOverrides || []).length;
+          if (cambioPerfil || limitOverrides.length || tenia) {
+            await this.$axios.put("/device/profile", { dId, profileId: this.refForm.profileId || null, limitOverrides: limitOverrides.length ? limitOverrides : null }, axiosHeaders);
+          }
+          this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId}: parámetros de instalación — ${txt}${this.refForm.profileId ? " · controladora " + this.refForm.profileId : ""}` });
           this.refModal = false;
           this.$store.dispatch("getDevices");
         }

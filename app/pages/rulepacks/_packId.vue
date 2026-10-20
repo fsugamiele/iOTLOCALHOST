@@ -235,7 +235,7 @@ export default {
       editorSeq: 0,
       // Pantalla de tarjetas: filtros y datos del resumen (último aviso, sitios).
       filtroEstado: 'todas', filtroGrav: 'todas', busqueda: '',
-      resumen: { sitios: null, ultimo: null },
+      resumen: { sitios: null, ultimo: null, noAplica: {} },
       GRAVEDADES: [{ v: 'todas', t: 'Todas' }, { v: 'critical', t: 'Crítica' }, { v: 'warning', t: 'Advertencia' }, { v: 'info', t: 'Informativa' }],         // clave del editor v2: cambia solo al abrirlo (no al guardar)
       ahoraByRule: {},      // spec_editor_reglas_v2 (Qi2) — resumen "Ahora" por regla      // spec_editor_reglas_v2 (Qi4) — forzar el editor anterior
       editorRule: null,     // regla D a editar, o null (nueva)
@@ -706,7 +706,7 @@ export default {
       try {
         const res = await this.$axios.get(`/rulepacks/${encodeURIComponent(this.pack.packId)}/summary`, { headers: { token: this.$store.state.auth.token } });
         const d = (res.data && res.data.data) || {};
-        this.resumen = { sitios: d.sitios != null ? d.sitios : null, ultimo: d.ultimo || {} };
+        this.resumen = { sitios: d.sitios != null ? d.sitios : null, ultimo: d.ultimo || {}, noAplica: d.noAplica || {} };
       } catch (e) { /* sin dato: las tarjetas no muestran el último aviso */ }
     },
     estadoDe(r) {
@@ -717,10 +717,17 @@ export default {
     ultimaDe(r) {
       if (!this.resumen.ultimo) return null;
       const u = this.resumen.ultimo[r.ruleId];
-      if (!u) return 'sin avisos en 30 días';
-      const s = Math.max(0, Math.round((Date.now() - u.ts) / 1000));
-      const hace = s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} días`;
-      return `último aviso hace ${hace}`;
+      let txt;
+      if (!u) txt = 'sin avisos en 30 días';
+      else {
+        const s = Math.max(0, Math.round((Date.now() - u.ts) / 1000));
+        const hace = s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} días`;
+        txt = `último aviso hace ${hace}`;
+      }
+      // spec_perfiles_controladora (Qp4) — equipos cuya controladora no tiene la medición.
+      const na = (this.resumen.noAplica || {})[r.ruleId];
+      if (na && na.length) txt += ` · no aplica en ${na.length === 1 ? na[0].name || na[0].dId : na.length + ' equipos'} (su controladora no mide ${[...new Set(na.map(x => x.variable))].join(', ')})`;
+      return txt;
     },
     textoBusqueda(r) {
       let sum = '';

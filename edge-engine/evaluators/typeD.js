@@ -71,8 +71,22 @@ function resolveClears(rule, value) {
 // valor efectivo = value × (deviceState[param] || base) / base. Sin el parámetro
 // cargado en el equipo se usa `base` (decisión Franco 2026-10-14: batería 12 V por
 // defecto). Escala también el deadband. Sin scaleRef → la condición tal cual.
+// spec_perfiles_controladora — cascada por EQUIPO: si el equipo tiene un límite propio para
+// esta condición (deviceState._limits, armado por siteState desde device.limitOverrides y el
+// perfil de su controladora), manda ese valor ABSOLUTO (no se escala: ya es del equipo).
+// Sin límite propio → la ficha, con su escala C3 si la tiene. Cero cambio sin perfil.
 function effectiveCondition(cond, deviceState) {
-  if (!cond || !cond.scaleRef) return cond;
+  if (!cond) return cond;
+  const rf = cond.resolvedFrom;
+  if (rf && rf.dir && deviceState && deviceState._limits) {
+    const own = deviceState._limits[`${rf.variable}|${rf.kind}|${rf.dir}`];
+    if (own && Number.isFinite(own.value)) {
+      const out = { ...cond, op: own.op || cond.op, value: own.value, limitSource: own.from };
+      delete out.scaleRef;
+      return out;
+    }
+  }
+  if (!cond.scaleRef) return cond;
   const base = Number(cond.scaleRef.base);
   if (!(base > 0)) return cond;
   const p = deviceState && Number(deviceState[cond.scaleRef.param]);

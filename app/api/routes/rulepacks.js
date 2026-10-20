@@ -126,7 +126,7 @@ router.get("/rulepacks/:packId/devices", checkAuth, async (req, res) => {
 router.get("/rulepacks/:packId/summary", checkAuth, async (req, res) => {
   try {
     const filter = await buildReadFilter(req, 'RulePack');
-    const pack = await RulePack.findOne({ ...filter, packId: req.params.packId }, { packId: 1, deviceType: 1, 'rules.ruleId': 1 }).lean();
+    const pack = await RulePack.findOne({ ...filter, packId: req.params.packId }).lean();
     if (!pack) return res.status(404).json({ status: "error", error: "pack no encontrado" });
     const db = require("mongoose").connection.db;
     const ids = (pack.rules || []).map(r => r.ruleId).filter(Boolean);
@@ -142,7 +142,23 @@ router.get("/rulepacks/:packId/summary", checkAuth, async (req, res) => {
     const sitios = sites.filter(s => (s.devices || []).some(id => dset.has(id))).length;
     const ultimo = {};
     for (const x of last) ultimo[x._id] = { ts: x.ts, n30: x.n };
-    return res.json({ status: "success", data: { sitios, ultimo, desde } });
+    // spec_perfiles_controladora (Qp4) — equipos donde la regla NO aplica: su controladora no
+    // tiene alguna medición que la regla usa (profile.unavailable).
+    const noAplica = {};
+    const conPerfil = await Device.find({ ...dfilter, profileId: { $exists: true, $ne: null } }, { dId: 1, name: 1, deviceType: 1, profileId: 1 }).lean();
+    if (conPerfil.length) {
+      const profs = new Map((await db.collection('controllerprofiles').find({ profileId: { $in: [...new Set(conPerfil.map(d => d.profileId))] } }).project({ profileId: 1, unavailable: 1 }).toArray()).map(p => [p.profileId, new Set(p.unavailable || [])]));
+      for (const ref of collectRuleRefs(pack)) {
+        for (const d of conPerfil) {
+          if (d.deviceType !== ref.deviceType) continue;
+          const un = profs.get(d.profileId);
+          if (!un || !un.has(ref.variable)) continue;
+          const arr = noAplica[ref.ruleId] = noAplica[ref.ruleId] || [];
+          if (!arr.some(x => x.dId === d.dId)) arr.push({ dId: d.dId, name: d.name, variable: ref.variable });
+        }
+      }
+    }
+    return res.json({ status: "success", data: { sitios, ultimo, desde, noAplica } });
   } catch (error) {
     console.log("ERROR GETTING RULEPACK SUMMARY", error);
     return res.status(500).json({ status: "error", error: error.message || error });

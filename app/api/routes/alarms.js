@@ -1103,7 +1103,7 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
   // Equipos del sitio y fichas (nombres, mediciones, medición principal).
   const site = siteId ? await Site.findOne({ siteCode: siteId }, { siteCode: 1, nombre: 1, devices: 1, _id: 0 }).lean() : null;
   const siteDIds = (site && site.devices) || (notif.dId ? [notif.dId] : []);
-  const devs = await Device.find({ dId: { $in: siteDIds } }, { dId: 1, name: 1, deviceType: 1, _id: 0 }).lean();
+  const devs = await Device.find({ dId: { $in: siteDIds } }, { dId: 1, name: 1, deviceType: 1, profileId: 1, _id: 0 }).lean();
   const devBy = new Map(devs.map(d => [d.dId, d]));
   const types = [...new Set(devs.map(d => d.deviceType).filter(Boolean))];
   const sheets = types.length ? await db.collection('equipmentsheets').find({ deviceType: { $in: types } })
@@ -1150,6 +1150,31 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
     return { dId: p.dId, deviceName: d.name || p.dId, deviceType: d.deviceType || null, variable: p.variable,
       value: v ? v.value : null, time: v ? v.time : null, ...varMeta(d.deviceType, p.variable) };
   });
+
+  // spec_perfiles_controladora (Qp5) — código de falla con significado: nombre, tipo, condición
+  // del fabricante y causas posibles, del perfil de la controladora del equipo.
+  let faultCodes = [];
+  try {
+    const fcs = [];
+    for (const c of conditions) {
+      if (c.variable !== 'fault_code') continue;
+      for (const id of c.dIds) {
+        const lvv = live.find(x => x.dId === id && x.variable === 'fault_code');
+        const code = Number(c.atFire && c.atFire.value != null ? c.atFire.value : lvv && lvv.value);
+        const prof = (devBy.get(id) || {}).profileId;
+        if (Number.isFinite(code) && code !== 0 && prof) fcs.push({ dId: id, code, profileId: prof });
+      }
+    }
+    if (fcs.length) {
+      const profs = await db.collection('controllerprofiles').find({ profileId: { $in: [...new Set(fcs.map(f => f.profileId))] } }).project({ profileId: 1, model: 1, faultCodes: 1 }).toArray();
+      const pBy = new Map(profs.map(p => [p.profileId, p]));
+      faultCodes = fcs.map(f => {
+        const p = pBy.get(f.profileId); const fc = p && (p.faultCodes || []).find(x => x.code === f.code);
+        return { dId: f.dId, deviceName: (devBy.get(f.dId) || {}).name || f.dId, code: f.code, model: p ? p.model : null,
+          known: !!fc, name: fc ? fc.name : null, type: fc ? fc.type : null, logic: fc ? fc.logic || null : null, causes: fc ? fc.causes || [] : [] };
+      });
+    }
+  } catch (e) { faultCodes = []; }
 
   // Series del gráfico (hasta 4 mediciones), 1 punto por minuto.
   const from = fireAt - V2_PRE_MS;
@@ -1231,7 +1256,7 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
 
   return {
     fireId: String(fire._id), packId: (ruleRaw && ruleRaw._packId) || null, closeMode, rule, conditions, live, series, from, until,
-    stepsDone: Array.isArray(fire.stepsDone) ? fire.stepsDone : [],
+    stepsDone: Array.isArray(fire.stepsDone) ? fire.stepsDone : [], faultCodes,
     ackBy: fire.acknowledgedBy || null, ackAt: fire.ackAt || null,
     site: site ? { siteCode: site.siteCode, nombre: site.nombre } : (siteId ? { siteCode: siteId, nombre: siteId } : null),
     perSite: !!(ruleRaw && ruleRaw.type === 'cross' && !(ruleRaw.scope && ruleRaw.scope.deviceType)),

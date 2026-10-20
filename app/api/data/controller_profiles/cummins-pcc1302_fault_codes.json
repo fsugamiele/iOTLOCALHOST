@@ -1,0 +1,983 @@
+[
+ {
+  "code": 118,
+  "name": "Presión de combustible FDR alta",
+  "type": "warning",
+  "logic": "La señal del sensor de presión del combustible está fuera de rango (cortocircuito en alta tensión).",
+  "causes": [
+   "Conexiones defectuosas del sensor de presión de combustible",
+   "Sensor de presión de combustible defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso",
+   "Verificar las calibraciones en el ECM y en los controles de PowerCommand"
+  ]
+ },
+ {
+  "code": 119,
+  "name": "Sensor de presión de combustible FDR bajo",
+  "type": "warning",
+  "logic": "La señal del sensor de presión de combustible está fuera de gama (cortocircuito en alta tensión).",
+  "causes": [
+   "Conexiones defectuosas del sensor de presión de combustible",
+   "Sensor de presión de combustible defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso",
+   "Verificar las calibraciones en el ECM y en los controles de PowerCommand"
+  ]
+ },
+ {
+  "code": 121,
+  "name": "Detección de pérdida de velocidad",
+  "type": "shutdown",
+  "logic": "No se detecta ninguna señal de velocidad en una de estas dos señales: velocidad del cigüeñal del motor o posición del árbol de levas.",
+  "causes": [
+   "Conexiones defectuosas del sensor de velocidad del cigüeñal",
+   "Sensor de velocidad del cigüeñal defectuoso",
+   "Conexiones defectuosas del sensor de posición del árbol de levas",
+   "Sensor de posición del árbol de levas defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso",
+   "Volante de destino del cigüeñal dañado",
+   "Verificar las calibraciones en el ECM y en los controles de PowerCommand"
+  ]
+ },
+ {
+  "code": 135,
+  "name": "Sensor de presión de aceite FDR - alto",
+  "type": "warning",
+  "logic": "El sensor de presión de aceite del motor está fuera de rango (cortocircuito en alta tensión). El mensaje \"OIL PRESSURE SENSOR OOR\" (Sensor de presión de aceite fuera de rango) se visualiza si la condición de falla se detecta durante más de 10 segundos.",
+  "causes": [
+   "Falla en las conexiones del sensor de presión de aceite",
+   "Falla en el sensor de presión de aceite",
+   "Falla en el arnés del motor",
+   "Falla en el arnés de extensión",
+   "Verificar las calibraciones en el ECM y en los controles de PowerCommand"
+  ]
+ },
+ {
+  "code": 141,
+  "name": "Sensor de presión de aceite FDR - bajo",
+  "type": "warning",
+  "logic": "El sensor de presión de aceite está fuera de rango (cortocircuito en baja tensión). Aparece una advertencia \"OIL PRESSURE SENSOR OOR\" (Sensor de presión de aceite fuera de rango) después de que se detecta la condición de falla durante 10 segundos.",
+  "causes": [
+   "Falla en las conexiones del sensor de presión de aceite",
+   "Falla en el sensor de presión de aceite",
+   "Falla en el arnés del motor",
+   "Falla en el arnés de extensión",
+   "Verificar las calibraciones en el ECM y en los controles de PowerCommand"
+  ]
+ },
+ {
+  "code": 143,
+  "name": "Presión de aceite del motor baja",
+  "type": "warning",
+  "logic": "La presión de aceite del motor está por debajo del umbral de advertencia de baja presión de aceite.",
+  "causes": [
+   "El novel de aceite de lubricación está bajo",
+   "Fuga externa",
+   "El aceite de lubricación no cumple con las especificaciones",
+   "El aceite de lubricación está contaminado con refrigerante o combustible",
+   "La oblicuidad del motor durante la operación excede la especificación",
+   "La temperatura del refrigerante está sobre la especificación",
+   "La tubería del filtro de aceite de lubricación no está correctamente enrutada",
+   "El regulador principal de presión de aceite está defectuoso",
+   "La tubería de succión o transferencia del aceite de lubricación está suelta o rota",
+   "la bomba de aceite de lubricación está defectuosa",
+   "Se instaló el refrigerante del aceite de lubricación incorrecto",
+   "El refrigerante del aceite de lubricación está conectado"
+  ]
+ },
+ {
+  "code": 144,
+  "name": "Temperatura de refrigerante del motor FDR alto",
+  "type": "warning",
+  "logic": "El voltaje de la señal de temperatura del refrigerante del motor está fuera de gama (cortocircuito en alta tensión).",
+  "causes": [
+   "La función de simulación de fallas está habilitada",
+   "Conexiones del sensor de temperatura del refrigerante defectuosas",
+   "Sensor de temperatura del refrigerante defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso",
+   "Verificar las calibraciones del controlador"
+  ]
+ },
+ {
+  "code": 146,
+  "name": "Temperatura del refrigerante del motor superior a la normal",
+  "type": "warning",
+  "logic": "La temperatura del refrigerante del motor excedió 225° F (107,2° C) durante más de 5 segundos.",
+  "causes": [
+   "Alta temperatura ambiental",
+   "Radiador bloqueado",
+   "Persianas cerradas o dañadas",
+   "Las aletas del enfriador de carga de aire o las aletas del radiador están dañadas u obstruidas",
+   "El nivel de refrigerante es inferior a la especificación",
+   "La mezcla de agua y anticongelante no es correcta",
+   "El carenado del ventilador está dañado o los deflectores de recirculación de aire están dañados",
+   "La correa del ventilador está rota o suelta",
+   "El mando de ventilador o los controles del ventilador tienen fallas",
+   "La tapa del radiador no está defectuosa",
+   "El termostato está defectuoso",
+   "La manguera del sistema de refrigeración está colapsada, obstruida o con fugas"
+  ]
+ },
+ {
+  "code": 151,
+  "name": "Temperatura del refrigerante del motor alta",
+  "type": "shutdown",
+  "logic": "La temperatura del refrigerante del motor ha excedido el umbral de (parada) alarma de la temperatura del refrigerante.",
+  "causes": [
+   "Alta temperatura ambiental",
+   "Radiador bloqueado",
+   "Persianas cerradas o dañadas",
+   "Las aletas del enfriador de carga de aire o las aletas del radiador están dañadas u obstruidas",
+   "El nivel de refrigerante es inferior a la especificación",
+   "La mezcla de agua y anticongelante no es correcta",
+   "El carenado del ventilador está dañado o los deflectores de recirculación de aire están dañados",
+   "La correa del ventilador está rota o suelta",
+   "El mando de ventilador o los controles del ventilador tienen fallas",
+   "La tapa del radiador no está defectuosa",
+   "El termostato está defectuoso",
+   "La manguera del sistema de refrigeración está colapsada, obstruida o con fugas"
+  ]
+ },
+ {
+  "code": 153,
+  "name": "Temperatura del múltiple de admisión FDR alta",
+  "type": "warning",
+  "logic": "La señal del sensor de temperatura del múltiple de admisión está fuera de rango (cortocircuito en alta tensión).",
+  "causes": [
+   "Conexiones del sensor de temperatura del múltiple de admisión defectuosas",
+   "Sensor de temperatura del múltiple de admisión defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso NOTA:       Número de pieza 3822758: cable de prueba Deutsch/AMP/Metri-Pack macho Número de pieza 3822917: cable de prueba Deutsch/AMP/Metri-Pack hembra"
+  ]
+ },
+ {
+  "code": 154,
+  "name": "Temperatura del múltiple de admisión FDR baja",
+  "type": "warning",
+  "logic": "La señal del sensor de temperatura del múltiple de admisión del motor está fuera de rango (cortocircuito en baja tensión).",
+  "causes": [
+   "Conexiones del sensor de temperatura del múltiple de admisión defectuosas",
+   "Sensor de temperatura del múltiple de admisión defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso NOTA:       Número de pieza 3822758: cable de prueba Deutsch/AMP/Metri-Pack macho Número de pieza 3822917: cable de prueba Deutsch/AMP/Metri-Pack hembra"
+  ]
+ },
+ {
+  "code": 155,
+  "name": "Temperatura del múltiple de admisión alta",
+  "type": "shutdown",
+  "logic": "La temperatura del múltiple de entrada del motor excedió 203° F (95° C) durante más de 10 segundos.",
+  "causes": [
+   "Alta temperatura ambiental",
+   "Radiador bloqueado",
+   "Persianas cerradas o dañadas",
+   "Las aletas del enfriador de carga de aire o las aletas del radiador están dañadas u obstruidas",
+   "La correa del ventilador está rota o suelta",
+   "El mando de ventilador o los controles del ventilador tienen fallas",
+   "Sensor de temperatura del refrigerante impreciso",
+   "La función de simulación de fallas está habilitada",
+   "Configuración incorrecta del umbral"
+  ]
+ },
+ {
+  "code": 195,
+  "name": "Sensor de nivel del refrigerante FDR alto",
+  "type": "warning",
+  "logic": "La señal del sensor de nivel del refrigerante está fuera de rango (cortocircuito en alta tensión).",
+  "causes": [
+   "Conexiones del sensor de nivel del refrigerante defectuosas",
+   "Sensor de nivel del refrigerante defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso NOTA:        Número de pieza 3822758: cable de prueba Deutsch/AMP/Metri-Pack macho Número de pieza 3822917: cable de prueba Deutsch/AMP/Metri-Pack hembra"
+  ]
+ },
+ {
+  "code": 196,
+  "name": "Sensor de nivel del refrigerante FDR bajo",
+  "type": "warning",
+  "logic": "La señal del sensor de nivel del refrigerante está fuera de rango (cortocircuito en alta tensión).",
+  "causes": [
+   "Conexiones del sensor de nivel del refrigerante defectuosas",
+   "Sensor de nivel del refrigerante defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso NOTA:        Número de pieza 3822758: cable de prueba Deutsch/AMP/Metri-Pack macho Número de pieza 3822917: cable de prueba Deutsch/AMP/Metri-Pack hembra"
+  ]
+ },
+ {
+  "code": 197,
+  "name": "Bajo nivel del refrigerante",
+  "type": "warning",
+  "logic": "La señal del sensor de nivel del refrigerante muestra un bajo nivel del refrigerante durante más de 10 segundos.",
+  "causes": [
+   "Bajo nivel del refrigerante",
+   "Sensor de nivel del refrigerante defectuoso"
+  ]
+ },
+ {
+  "code": 234,
+  "name": "Alta velocidad del motor",
+  "type": "shutdown",
+  "logic": "Las señales de velocidad del motor indican que funciona a una velocidad superior al umbral de parada.",
+  "causes": [
+   "La función de simulación de fallas está habilitada",
+   "Configuración incorrecta del umbral",
+   "Configuración incorrecta del tipo de combustible",
+   "Conexiones del sensor de velocidad del motor defectuosas",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso",
+   "Sensor de posición/velocidad del motor defectuoso"
+  ]
+ },
+ {
+  "code": 415,
+  "name": "Presión de aceite del motor baja",
+  "type": "shutdown",
+  "logic": "La presión de aceite del motor es menor a 26 psig (180 kpa) durante más de 10 segundos.",
+  "causes": [
+   "El novel de aceite de lubricación está bajo",
+   "Fuga externa",
+   "El aceite de lubricación no cumple con las especificaciones",
+   "El aceite de lubricación está contaminado con refrigerante o combustible",
+   "La oblicuidad del motor durante la operación excede la especificación",
+   "La temperatura del refrigerante está sobre la especificación",
+   "La tubería del filtro de aceite de lubricación no está correctamente enrutada",
+   "El regulador principal de presión de aceite está defectuoso",
+   "La tubería de succión o transferencia del aceite de lubricación está suelta o rota",
+   "La bomba de aceite de lubricación está defectuosa",
+   "Se instaló el refrigerante del aceite de lubricación incorrecto",
+   "El refrigerante del aceite de lubricación está conectado"
+  ]
+ },
+ {
+  "code": 418,
+  "name": "Agua en el combustible",
+  "type": "warning",
+  "logic": "Código de evento para salidas del cliente (sensor de agua en el separador).",
+  "causes": []
+ },
+ {
+  "code": 421,
+  "name": "Alta temperatura del aceite del motor",
+  "type": "warning",
+  "logic": "El control detectó que la temperatura del aceite del motor excedió el umbral de advertencia.",
+  "causes": [
+   "Alta temperatura ambiental",
+   "Radiador bloqueado",
+   "Persianas cerradas o dañadas",
+   "Las aletas del enfriador de carga de aire o las aletas del radiador están dañadas u obstruidas",
+   "El nivel de refrigerante es inferior a la especificación",
+   "El carenado del ventilador está dañado o los deflectores de recirculación de aire están dañados",
+   "La correa del ventilador está rota o suelta",
+   "El mando de ventilador o los controles del ventilador tienen fallas",
+   "El termostato está defectuoso",
+   "La manguera del sistema de refrigeración está colapsada, obstruida o con fugas",
+   "La temperatura del aire del múltiple de entrada está sobre la especificación",
+   "La bomba de agua no está funcionando bien"
+  ]
+ },
+ {
+  "code": 426,
+  "name": "El enlace de datos J1939 no puede transmitir",
+  "type": "warning",
+  "logic": "Se perdió la comunicación entre el ECM y otro dispositivo en el enlace de datos SAE J1939.",
+  "causes": [
+   "Error de comunicación",
+   "Arnés del motor defectuoso"
+  ]
+ },
+ {
+  "code": 427,
+  "name": "Enlace de datos CAN degradado",
+  "type": "warning",
+  "logic": "La comunicación entre el módulo de control del motor (ECM) y el control del grupo electrógeno está cortada.",
+  "causes": [
+   "El ECM del motor perdió la energía o falló",
+   "El enlace de datos de CAN falló"
+  ]
+ },
+ {
+  "code": 436,
+  "name": "Temperatura del múltiple de admisión FDR AUX 101",
+  "type": "warning",
+  "logic": "El voltaje del sensor de temperatura del múltiple de admisión está fuera de rango.",
+  "causes": [
+   "Conexiones del sensor de temperatura del múltiple de admisión defectuosas",
+   "Sensor de temperatura del múltiple de admisión defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso",
+   "Verificar las calibraciones del controlador"
+  ]
+ },
+ {
+  "code": 441,
+  "name": "Bajo voltaje de la batería",
+  "type": "warning",
+  "logic": "Bajo voltaje de la batería.",
+  "causes": [
+   "Conexiones dañadas de los cables de la batería",
+   "Bajo voltaje de la batería",
+   "Mala conexión a tierra de la batería",
+   "Cableado de los accesorios dañado en B+",
+   "Arnés de la batería del OEM dañado",
+   "Arnés del motor dañado",
+   "Batería descargada o defectuosa",
+   "El alternador no funciona correctamente",
+   "Configuración incorrecta de la batería NOTA:       Número de pieza 3822758: cable de prueba Deutsch/AMP/Metri-Pack macho Número de pieza 3822917: cable de prueba Deutsch/AMP/Metri-Pack hembra"
+  ]
+ },
+ {
+  "code": 442,
+  "name": "Alto voltaje de la batería",
+  "type": "warning",
+  "logic": "Alto voltaje de la batería.",
+  "causes": [
+   "Configuración incorrecta del voltaje de la batería",
+   "El voltaje de la batería está por encima del umbral de voltaje alto de la batería",
+   "El cargador de baterías está sobrecargando la batería",
+   "Alternador de CC del motor defectuoso NOTA:       Número de pieza 3822758: cable de prueba Deutsch/AMP/Metri-Pack macho Número de pieza 3822917: cable de prueba Deutsch/AMP/Metri-Pack hembra"
+  ]
+ },
+ {
+  "code": 488,
+  "name": "Alta temperatura del múltiple de admisión",
+  "type": "warning",
+  "logic": "La temperatura del múltiple de admisión superó los 185° F (85° C) durante más de 90 segundos.",
+  "causes": [
+   "Alta temperatura ambiental",
+   "Radiador bloqueado",
+   "Persianas cerradas o dañadas",
+   "Las aletas del enfriador de carga de aire o las aletas del radiador están dañadas u obstruidas",
+   "La correa del ventilador está rota o suelta",
+   "El mando de ventilador o los controles del ventilador tienen fallas",
+   "Sensor de temperatura del refrigerante impreciso",
+   "La función de simulación de fallas está habilitada",
+   "Configuración incorrecta del umbral"
+  ]
+ },
+ {
+  "code": 781,
+  "name": "Falló el enlace de datos de CAN del ECM",
+  "type": "warning",
+  "logic": "La comunicación entre el módulo de control del motor (ECM) y el control del grupo electrógeno está cortada.",
+  "causes": [
+   "El ECM del motor perdió la energía o falló",
+   "El enlace de datos de CAN falló"
+  ]
+ },
+ {
+  "code": 1117,
+  "name": "Pérdida de energía del ECM",
+  "type": "warning",
+  "logic": "Indica que NO se apagó el ‘Interruptor con llave’ del ECM 30 segundos antes de quitarle la alimentación de batería al ECM (es decir, antes de quitar los conectores o el cable de la batería).",
+  "causes": []
+ },
+ {
+  "code": 1123,
+  "name": "Parada después de derivación",
+  "type": "shutdown",
+  "logic": "Se desactivó el modo en derivación después de una parada anulada.",
+  "causes": []
+ },
+ {
+  "code": 1131,
+  "name": "Modo en derivación (battle short) activo",
+  "type": "warning",
+  "logic": "Las paradas por falla están anuladas salvo sobrevelocidad, pérdida de velocidad, falla de excitación y paradas de emergencia. Supervisar el grupo.",
+  "causes": []
+ },
+ {
+  "code": 1244,
+  "name": "Parada normal del motor",
+  "type": "warning",
+  "logic": "El motor recibió una solicitud de parada normal y no hay ninguna parada activa con falla de enfriamiento en el PCC (LBNG).",
+  "causes": []
+ },
+ {
+  "code": 1245,
+  "name": "Falla de parada de motor",
+  "type": "shutdown",
+  "logic": "Se produjo una falla de parada de motor en el ECM del motor y no hay otras fallas de parada activas en el PCC.",
+  "causes": [
+   "Falla de parada de motor"
+  ]
+ },
+ {
+  "code": 1248,
+  "name": "Advertencia de motor",
+  "type": "warning",
+  "logic": "Se produjo una falla de advertencia del motor en el ECM del motor y no hay fallas de advertencia activas en el PCC.",
+  "causes": [
+   "Se activó una falla de advertencia del motor"
+  ]
+ },
+ {
+  "code": 1311,
+  "name": "Entrada #1 del cliente (ej. bandeja de rupturas)",
+  "type": "configurable",
+  "logic": "Esta falla se usa cuando se instala un conmutador opcional de bandeja de rupturas. La naturaleza del fallo es una selección opcional del cliente. La función de falla se puede programar (usando la herramienta de servicio InPower) de la siguiente manera: · Habilitar o inhabilitar entrada (predeterminado: habilitar)",
+  "causes": []
+ },
+ {
+  "code": 1312,
+  "name": "Entrada #2 del cliente",
+  "type": "configurable",
+  "logic": "Entrada de falla configurable por el cliente (ej. agua en combustible, tanque diario bajo, falla a tierra).",
+  "causes": []
+ },
+ {
+  "code": 1317,
+  "name": "Nivel de refrigerante bajo",
+  "type": "configurable",
+  "logic": "Esta falla se usa cuando está instalado un sensor opcional de nivel de refrigerante. La naturaleza del fallo es una selección opcional del cliente. La función de falla se puede programar (usando la herramienta de servicio InPower) de la manera siguiente: · Habilitar o inhabilitar entrada (predeterminado: habilitar)",
+  "causes": [
+   "LOW COOLANT",
+   "No es una falla real, problema del alambrado externo"
+  ]
+ },
+ {
+  "code": 1318,
+  "name": "Combustible bajo",
+  "type": "configurable",
+  "logic": "Esta falla se usa cuando está instalado un sensor opcional de nivel de combustible bajo. La naturaleza del fallo es una selección opcional del cliente. La función de falla puede se programar (usando la herramienta de servicio InPower) de la manera siguiente: · Habilitar o inhabilitar entrada (predeterminado: habilitar)",
+  "causes": [
+   "Nivel de combustible bajo",
+   "No es una falla real, problema del alambrado externo"
+  ]
+ },
+ {
+  "code": 1416,
+  "name": "Falla de parada anulada por derivación",
+  "type": "warning",
+  "logic": "Ocurrió una falla de parada pero el grupo sigue en marcha porque el modo en derivación está activo.",
+  "causes": []
+ },
+ {
+  "code": 1417,
+  "name": "Falla de apagado",
+  "type": "warning",
+  "logic": "El PCC no pudo ingresar al modo inactivo.",
+  "causes": [
+   "Tarjeta de circuitos básicos averiada"
+  ]
+ },
+ {
+  "code": 1433,
+  "name": "Parada de emergencia local",
+  "type": "shutdown",
+  "logic": "Se ha activado la parada de emergencia local.",
+  "causes": [
+   "Se activó el botón de parada de emergencia local",
+   "Conexión o interruptor de parada de emergencia defectuosos"
+  ]
+ },
+ {
+  "code": 1434,
+  "name": "Parada de emergencia remota",
+  "type": "shutdown",
+  "logic": "Se ha activado una parada de emergencia remota.",
+  "causes": [
+   "Se activó el botón de parada de emergencia remota",
+   "Conexión o interruptor de parada de emergencia defectuosos"
+  ]
+ },
+ {
+  "code": 1435,
+  "name": "Baja temperatura del refrigerante",
+  "type": "warning",
+  "logic": "Refrigerante bajo el umbral LCT (ajustable −17,8…37,8 °C) durante 1 minuto: el grupo arrancaría frío (calefactor de bloque).",
+  "causes": []
+ },
+ {
+  "code": 1438,
+  "name": "Falla de arranque",
+  "type": "shutdown",
+  "logic": "El motor no arranca después de que el control del generador recibe una señal de partida.",
+  "causes": [
+   "Batería descargada o débil",
+   "Fusible de alimentación de 20 Amp quemado",
+   "Partidor defectuoso",
+   "Solenoide del partidor defectuoso",
+   "Relé del partidor defectuoso",
+   "El motor o el rotor están bloqueados o atascados",
+   "Conmutador o alambrado de parada de emergencia defectuoso"
+  ]
+ },
+ {
+  "code": 1442,
+  "name": "Batería débil",
+  "type": "warning",
+  "logic": "Tensión de batería bajo el umbral de batería débil durante el arranque (6–10 V en 12 V · 12–16 V en 24 V; retardo 1–5 s).",
+  "causes": []
+ },
+ {
+  "code": 1446,
+  "name": "Alto voltaje de CA",
+  "type": "shutdown",
+  "logic": "Tensión del alternador sobre el umbral (105–125 % del nominal) durante el retardo (1–10 s).",
+  "causes": []
+ },
+ {
+  "code": 1447,
+  "name": "Voltaje de CA bajo",
+  "type": "shutdown",
+  "logic": "El voltaje de una o más de las fases cayó a menos del 85% del valor nominal durante más de 10 segundos.",
+  "causes": [
+   "La función de simulación de fallas está habilitada",
+   "Configuración del umbral o de AVR incorrectas",
+   "Sobrecarga",
+   "Conexiones incorrectas en los terminales de salida del generador",
+   "El sensor de voltaje o la configuración del alambrado de conexión pueden ser incorrectos",
+   "Regulador de voltaje dañado",
+   "Conjunto del rectificador rotatorio (diodos CR1 a CR6) defectuoso"
+  ]
+ },
+ {
+  "code": 1448,
+  "name": "Subfrecuencia",
+  "type": "shutdown",
+  "logic": "Frecuencia bajo el nominal menos el umbral (2–10 Hz) durante el retardo.",
+  "causes": []
+ },
+ {
+  "code": 1449,
+  "name": "Sobrefrecuencia",
+  "type": "shutdown",
+  "logic": "Frecuencia sobre el nominal más el umbral (2–10 Hz) durante el retardo.",
+  "causes": []
+ },
+ {
+  "code": 1463,
+  "name": "No en automático",
+  "type": "warning",
+  "logic": "El control no está en modo Auto: el grupo NO arrancará con la señal remota (corte de red).",
+  "causes": []
+ },
+ {
+  "code": 1468,
+  "name": "Listo para cargar",
+  "type": "event",
+  "logic": "El grupo alcanzó el 90 % de la velocidad y tensión nominales.",
+  "causes": []
+ },
+ {
+  "code": 1469,
+  "name": "No coinciden velocidad y frecuencia",
+  "type": "shutdown",
+  "logic": "Diferencia entre velocidad y frecuencia sobre el umbral (0,1–20 Hz) durante 0,2–10 s.",
+  "causes": []
+ },
+ {
+  "code": 1471,
+  "name": "Corriente CA alta",
+  "type": "warning",
+  "logic": "La salida de corriente del generador excedió por lo menos el 110% del valor nominal durante más de 60 segundos.",
+  "causes": [
+   "Cortocircuito o sobrecarga",
+   "Transformadores de corriente (CT) incorrectos, conexiones de CT o configuración de CT incorrecta",
+   "Conexiones del arnés de CT",
+   "Configuración de capacidad nominal incorrecta"
+  ]
+ },
+ {
+  "code": 1472,
+  "name": "Corriente CA alta",
+  "type": "shutdown",
+  "logic": "La corriente de salida del generador excedió por lo menos el 150% de la corriente nominal.",
+  "causes": [
+   "Cortocircuito o sobrecarga",
+   "Transformadores de corriente (CT) incorrectos, conexiones de CT o configuración de CT incorrecta",
+   "Conexiones del arnés de CT",
+   "Configuración de capacidad nominal incorrecta"
+  ]
+ },
+ {
+  "code": 1483,
+  "name": "Alarma común",
+  "type": "event",
+  "logic": "Hay al menos una alarma activa.",
+  "causes": []
+ },
+ {
+  "code": 1540,
+  "name": "Advertencia común",
+  "type": "event",
+  "logic": "Hay al menos una advertencia activa.",
+  "causes": []
+ },
+ {
+  "code": 1541,
+  "name": "Parada común",
+  "type": "event",
+  "logic": "Hay al menos una parada activa.",
+  "causes": []
+ },
+ {
+  "code": 1667,
+  "name": "Temperatura de escape del AUX 101 FDR",
+  "type": "warning",
+  "logic": "La señal del sensor de temperatura de gases de escape está fuera de rango (cortocircuito en alta tensión).",
+  "causes": [
+   "Conexiones del sensor de temperatura de gases de escape defectuosas",
+   "Sensor de temperatura de gases de escape defectuoso",
+   "Arnés del motor defectuoso",
+   "Arnés de extensión defectuoso",
+   "Verificar las calibraciones en el ECM y en el control PCC"
+  ]
+ },
+ {
+  "code": 1847,
+  "name": "Alta temperatura del refrigerante (parada con enfriamiento)",
+  "type": "shutdown",
+  "logic": "Temperatura del refrigerante sobre el umbral: el grupo para con enfriamiento. (El texto de lógica del manual repite por error el del sensor de escape.)",
+  "causes": [
+   "Sensor de temperatura del motor impreciso",
+   "La función de simulación de fallas está habilitada",
+   "La configuración del umbral es demasiado baja"
+  ]
+ },
+ {
+  "code": 1853,
+  "name": "Falla 1 del anunciador",
+  "type": "warning",
+  "logic": "Falla #1 del anunciador del cliente.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada #1 del anunciador\" está activa",
+   "Configuración incorrecta o problema de alambrado",
+   "Anunciador defectuoso"
+  ]
+ },
+ {
+  "code": 1854,
+  "name": "Falla 2 del anunciador",
+  "type": "warning",
+  "logic": "Falla #2 del anunciador del cliente.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada #2 del anunciador\" está activa",
+   "Configuración incorrecta o problema de alambrado",
+   "Anunciador defectuoso"
+  ]
+ },
+ {
+  "code": 1855,
+  "name": "Falla 3 del anunciador",
+  "type": "warning",
+  "logic": "Falla #3 del anunciador del cliente.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada #3 del anunciador\" está activa",
+   "Configuración incorrecta o problema de alambrado",
+   "Anunciador defectuoso"
+  ]
+ },
+ {
+  "code": 1944,
+  "name": "Error de configuración de la salida del anunciador",
+  "type": "warning",
+  "logic": "Más de una fuente está activando los relés de salida del anunciador.",
+  "causes": [
+   "Más de una fuente está activando al mismo tiempo los relés de salida del anunciador",
+   "Anunciador defectuoso"
+  ]
+ },
+ {
+  "code": 1992,
+  "name": "La velocidad del cigüeñal del motor está sobre la velocidad nominal",
+  "type": "shutdown",
+  "logic": "Velocidad del motor 15 % sobre la nominal.",
+  "causes": [
+   "La función de simulación de fallas está habilitada",
+   "Configuración incorrecta del umbral",
+   "Configuración incorrecta del tipo de combustible",
+   "Conexiones del sensor de velocidad del motor defectuosas",
+   "Arnés del motor defectuoso",
+   "Sensor de posición/velocidad del motor defectuoso"
+  ]
+ },
+ {
+  "code": 2112,
+  "name": "Temperatura de entrada del refrigerante AUX 101 FDR",
+  "type": "warning",
+  "logic": "El voltaje del sensor de temperatura del refrigerante está fuera de rango.",
+  "causes": [
+   "Conexiones del sensor de temperatura del refrigerante defectuosas",
+   "Sensor de temperatura del refrigerante defectuoso",
+   "Alambrado incorrecto",
+   "Verificar las calibraciones del controlador"
+  ]
+ },
+ {
+  "code": 2224,
+  "name": "Nivel de combustible AUX 101 FDR",
+  "type": "warning",
+  "logic": "El voltaje del sensor de combustible está fuera de rango.",
+  "causes": [
+   "Conexiones del sensor de nivel del combustible defectuosas",
+   "Sensor de nivel del combustible defectuoso",
+   "Alambrado incorrecto",
+   "Verificar las calibraciones del controlador"
+  ]
+ },
+ {
+  "code": 2398,
+  "name": "Temperatura ambiental AUX 101 FDR",
+  "type": "warning",
+  "logic": "El voltaje del sensor de temperatura ambiental está fuera de rango.",
+  "causes": [
+   "Conexiones del sensor de temperatura ambiental defectuosas",
+   "Sensor de temperatura ambiental defectuoso",
+   "Alambrado incorrecto",
+   "Verificar las calibraciones del controlador"
+  ]
+ },
+ {
+  "code": 2542,
+  "name": "Compensación de voltaje AUX 101 FDR",
+  "type": "warning",
+  "logic": "El voltaje del sensor de combustible está fuera de rango.",
+  "causes": [
+   "Conexiones del sensor de nivel del combustible defectuosas",
+   "Sensor de nivel del combustible defectuoso",
+   "Alambrado incorrecto",
+   "Verificar las calibraciones del controlador"
+  ]
+ },
+ {
+  "code": 2545,
+  "name": "Se requiere reposición del interruptor con llave",
+  "type": "warning",
+  "logic": "Se perdió la comunicación del enlace de datos de CAN entre el control del grupo electrógeno y el ECM; por lo tanto, el código de evento/falla 2545 se activa si el código de evento/falla 781 \"Falla de enlace de datos de CAN\" también está activo en el ECM.",
+  "causes": [
+   "Falla de enlace de datos de CAN",
+   "ECM defectuoso"
+  ]
+ },
+ {
+  "code": 2619,
+  "name": "Entrada #1 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #1 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #1\" está activa",
+   "El parámetro \"Analog Input #1 Active State Selection\" (Selección de estado de la entrada analógica #1) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2621,
+  "name": "Entrada #2 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #2 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #2\" está activa",
+   "El parámetro \"Analog Input #2 Active State Selection\" (Selección de estado de la entrada analógica #1) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2622,
+  "name": "Entrada #3 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #3 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #3\" está activa",
+   "El parámetro \"Analog Input #3 Active State Selection\" (Selección de estado de la entrada analógica #3) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2623,
+  "name": "Entrada #4 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #4 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #4\" está activa",
+   "El parámetro \"Analog Input #4 Active State Selection\" (Selección de estado de la entrada analógica #4) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2624,
+  "name": "Entrada #5 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #5 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #5\" está activa",
+   "El parámetro \"Analog Input #5 Active State Selection\" (Selección de estado de la entrada analógica #5) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2625,
+  "name": "Entrada #6 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #6 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #6\" está activa",
+   "El parámetro \"Analog Input #6 Active State Selection\" (Selección de estado de la entrada analógica #6) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2626,
+  "name": "Entrada #7 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #7 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #7\" está activa",
+   "El parámetro \"Analog Input #7 Active State Selection\" (Selección de estado de la entrada analógica #7) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2627,
+  "name": "Entrada #8 de falla AUX 101",
+  "type": "warning",
+  "logic": "La entrada analógica #8 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada analógica #8\" está activa",
+   "El parámetro \"Analog Input #8 Active State Selection\" (Selección de estado de la entrada analógica #8) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2628,
+  "name": "Entrada #1 de falla AUX 102",
+  "type": "warning",
+  "logic": "La entrada discreta #1 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada discreta #1\" está activa",
+   "El parámetro \"Discrete Input #1 Active State Selection\" (Selección de estado de la entrada discreta #1) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2629,
+  "name": "Entrada #2 de falla AUX 102",
+  "type": "warning",
+  "logic": "La entrada discreta #2 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada discreta #2\" está activa",
+   "El parámetro \"Discrete Input #2 Active State Selection\" (Selección de estado de la entrada discreta #2) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2631,
+  "name": "Entrada #3 de falla AUX 102",
+  "type": "warning",
+  "logic": "La entrada discreta #3 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada discreta #3\" está activa",
+   "El parámetro \"Discrete Input #3 Active State Selection\" (Selección de estado de la entrada discreta #3) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2632,
+  "name": "Entrada #4 de falla AUX 102",
+  "type": "warning",
+  "logic": "La entrada discreta #4 de falla está activa.",
+  "causes": [
+   "La condición para la cual se configuró la \"Entrada discreta #4\" está activa",
+   "El parámetro \"Discrete Input #4 Active State Selection\" (Selección de estado de la entrada discreta #4) no está correctamente configurado",
+   "No está alambrado correctamente o hay un circuito abierto o cortocircuito en el alambrado"
+  ]
+ },
+ {
+  "code": 2678,
+  "name": "Falla del cargador (alternador de carga)",
+  "type": "warning",
+  "logic": "Tensión del alternador de carga fuera de los umbrales alto/bajo durante el retardo (2–300 s).",
+  "causes": []
+ },
+ {
+  "code": 2693,
+  "name": "Compensación de velocidad FDR",
+  "type": "warning",
+  "logic": "Indica que la salida del circuito de compensación de velocidad está fuera de rango, alto o bajo.",
+  "causes": [
+   "El sensor/alambrado está defectuoso"
+  ]
+ },
+ {
+  "code": 2694,
+  "name": "RTD del alternador FDR",
+  "type": "warning",
+  "logic": "Indica que la salida del circuito de RTD está fuera de rango, alto o bajo.",
+  "causes": [
+   "El sensor/alambrado está defectuoso"
+  ]
+ },
+ {
+  "code": 2696,
+  "name": "Alta temperatura del RTD del alternador",
+  "type": "shutdown",
+  "logic": "Indica que la temperatura del alternador está sobre lo normal y alcanzó el punto de activación de parada.",
+  "causes": [
+   "El sensor/alambrado está defectuoso"
+  ]
+ },
+ {
+  "code": 2729,
+  "name": "Pérdida de módulo de E/S",
+  "type": "warning",
+  "logic": "Indica un enlace de datos intermitente entre el módulo de E/S y el control de PCC (opción del módulo de E/S Aux 101) y no se ajustaron niveles de entrada de falla para la parada.",
+  "causes": [
+   "Alambrado incorrecto",
+   "Ajustes de E/S mal configurados"
+  ]
+ },
+ {
+  "code": 2731,
+  "name": "Pérdida de módulo de E/S",
+  "type": "shutdown",
+  "logic": "Indica un enlace de datos intermitente entre el módulo de E/S y el control de PCC (opción del módulo de E/S Aux 101) y a lo menos se ajustó un nivel de entrada de falla para la parada.",
+  "causes": [
+   "Alambrado incorrecto",
+   "Ajustes de E/S mal configurados"
+  ]
+ },
+ {
+  "code": 2897,
+  "name": "Bloque de memoria de fábrica dañado",
+  "type": "warning",
+  "logic": "El control detectó un bloque de memoria dañado.",
+  "causes": []
+ },
+ {
+  "code": 2898,
+  "name": "Bloque de memoria periódico o de fallas dañado",
+  "type": "warning",
+  "logic": "El control detectó un bloque de memoria dañado.",
+  "causes": [
+   "Bloque de memoria defectuoso"
+  ]
+ },
+ {
+  "code": 2899,
+  "name": "Bloque de memoria del usuario dañado",
+  "type": "warning",
+  "logic": "El control detectó un bloque de memoria dañado.",
+  "causes": []
+ },
+ {
+  "code": 2911,
+  "name": "Bloque de memoria de ajuste fino dañado",
+  "type": "warning",
+  "logic": "El control detectó un bloque de memoria dañado.",
+  "causes": []
+ },
+ {
+  "code": 2972,
+  "name": "Sobrecarga de campo",
+  "type": "warning",
+  "logic": "Si el tiempo en el que el ciclo de trabajo del AVR de campo está funcionando en salida máxima es superior al tiempo del parámetro “Max Field Time” (Tiempo máximo de campo), se activa el código de evento/falla 2972.",
+  "causes": [
+   "El retardo del tiempo máximo de campo está ajustado demasiado bajo",
+   "El voltaje detectado en la tarjeta de circuitos básicos es demasiado bajo o hay un circuito abierto o cortocircuito",
+   "Problema de la aplicación"
+  ]
+ }
+]

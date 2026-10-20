@@ -1,4 +1,4 @@
-# SPEC — Perfiles de controladora: reglas genéricas, umbrales por equipo · 2026-10-20 · PARA FIRMAR
+# SPEC — Perfiles de controladora: reglas genéricas, umbrales por equipo · 2026-10-20 · FIRMADA (Qp1–Qp6 aprobadas por Franco: "aprobado, avanza")
 
 **Origen:** Franco 2026-10-20: "cómo haremos dinámicas las reglas cuando tengamos el hardware funcionando para que el firmware del core detecte cada controladora diferente de cada sitio y podamos aplicarles las reglas correspondientes". Dato de campo (Franco): **los grupos Cummins de Claro tienen en su mayoría PowerCommand HMI211 + PCC 1302** → el primer perfil real es el del manual A040D969 (`_biblioteca_campo/cummins_pcc1302_manual_servicio.md`).
 **Encadena con:** BACKLOG-ONBOARD-1 (autodescubrimiento), DEC-INTEGRATION-1 (Connect multi-driver), spec_cascada_ficha (límites de ficha, `relativeTo`/`refParams`).
@@ -7,6 +7,19 @@
 - Esta spec cubre **solo la parte de software**, que se puede construir y probar hoy. La detección en el CORE (firmware) queda para cuando haya fierro instalado: probarla contra nuestro simulador no prueba nada (nota anti-demo de BACKLOG-ONBOARD-1).
 - Read-only estricto con las controladoras (decisión de seguridad del MVP): se leen setpoints, nunca se escriben.
 - Umbrales: solo valores citados del manual o leídos del equipo. Lo que el manual da como **rango ajustable** no se convierte en un número inventado.
+
+- **IMPLEMENTADO (2026-10-20):**
+  - Modelo `controller_profile.js` (colección `controllerprofiles`) + `device.profileId` / `device.limitOverrides`.
+  - API `routes/controllerprofiles.js`: GET/PUT/DELETE `/controllerprofiles[/:id]` (límites con fuente obligatoria, variables validadas contra la ficha, borrado bloqueado si hay equipos asignados) y PUT `/device/profile`. Cada cambio publica reload al edge.
+  - Motor: `siteState.applyDeviceProfile` arma por equipo `_limits` (equipo > perfil) y `_unavailable`; `effectiveCondition` (typeD) toma el límite propio del equipo para toda condición resuelta desde la ficha (D, hojas cross y combinadas); sin perfil = ficha, con su escala 12/24 V. Medición no disponible: la regla no evalúa en ese equipo (D/M) y la hoja cross queda no evaluable.
+  - `limitRef.resolveRule` deja `resolvedFrom.dir` para la búsqueda por equipo.
+  - Tarjetas de reglas: "no aplica en N equipos (su controladora no mide X)" (`/rulepacks/:id/summary` → `noAplica`).
+  - Detalle de alarma v2: código de falla con nombre, tipo, condición del fabricante y causas posibles.
+  - Equipos → "Parámetros de instalación": selector **Controladora**, umbrales propios del equipo y requisitos de instalación del perfil.
+  - Perfil `cummins-pcc1302` (`tools/seed_perfiles/seed_pcc1302.js` + `app/api/data/controller_profiles/cummins-pcc1302_fault_codes.json`, 90 códigos): aceite parada 180 kPa (código 415, ECM) y aviso 198 kPa (Qp3); asigna el perfil a los Cummins sin perfil; A0/A1 con espera 10 s.
+  - Simulador: al arrancar el grupo la presión de aceite entra en 250 kPa (antes 40 kPa hasta el próximo tick: con espera 10 s daba crítica falsa en cada arranque).
+  - Pruebas: cascada de umbrales 11/11 (ficha, perfil, equipo pisa perfil, escala 24 V intacta, hoja cross con perfil / sin perfil / no aplicable); seed contra API falsa (simulación, aplicación, re-ejecución idempotente); simulador 13/13 + 22/22.
+  - **Límite declarado:** la simulación de reglas del QA (`/simulate`) sigue usando el umbral de la ficha (no conoce el perfil del equipo).
 
 ## 1 · Principio
 **La regla no cambia por controladora; cambian los números, las mediciones disponibles y el significado de los códigos.** "Presión de aceite baja" es la misma regla para un PCC 1302 y un PC2100; cada equipo trae su propio umbral.

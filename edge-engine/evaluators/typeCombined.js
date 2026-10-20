@@ -77,6 +77,8 @@ function valueLeaf(rule, leaf, dId, ctx) {
   const { siteState, siteCode, mState, eventTs } = ctx;
   const st = siteState.get(dId);
   const v = st ? st[leaf.variable] : undefined;
+  // spec_perfiles_controladora (Qp4) — la controladora del equipo no tiene esta medición.
+  if (st && st._unavailable && st._unavailable.includes(leaf.variable)) return { state: 'sin', value: null, threshold: null, noAplica: true };
   if (v === undefined || v === null || !isFresh(st, leaf.variable, eventTs, freshMs(leaf))) return { state: 'sin', value: null, threshold: null };
   let cond = effectiveCondition(leaf.condition, st);
   if (cond && cond.ref) {
@@ -100,6 +102,8 @@ function setpointLeaf(rule, leaf, dId, ctx) {
   const { siteState, eventTs } = ctx;
   const st = siteState.get(dId);
   const v = st ? st[leaf.variable] : undefined;
+  // spec_perfiles_controladora (Qp4) — la controladora del equipo no tiene esta medición.
+  if (st && st._unavailable && st._unavailable.includes(leaf.variable)) return { state: 'sin', value: null, threshold: null, noAplica: true };
   if (v === undefined || v === null || !isFresh(st, leaf.variable, eventTs, freshMs(leaf))) return { state: 'sin', value: null, threshold: null };
   const res = evaluateC({
     ruleId: leafKey(rule, leaf), condition: leaf.condition, setpointSource: leaf.setpointSource,
