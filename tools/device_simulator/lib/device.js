@@ -263,6 +263,12 @@ class SimulatedDevice {
   _publish(varName, { force = false } = {}) {
     if (!this._connected) return;
     if (this._muted && this._muted.has(varName)) return;
+    // Sitio caído (LVD abierto): el controlador está apagado y no reporta.
+    if (engine.equipoSinEnergia(this._state)) {
+      if (!this._avisoSinEnergia) { this._avisoSinEnergia = true; console.log(`${this.tag} LVD abierto: sitio caído, el equipo deja de reportar`); }
+      return;
+    }
+    if (this._avisoSinEnergia) { this._avisoSinEnergia = false; console.log(`${this.tag} LVD reconectado: el equipo vuelve a reportar`); }
     const value = this._state[varName];
     // Defensa: nunca publicar undefined.
     // null se permite EXPLÍCITAMENTE para variables que matchean /setpoint/i —

@@ -26,6 +26,13 @@ const GENSET_POWER_KW_NOMINAL        = 10.0;
 // grupo, el bus DC va de flote (−54 V) al LVD (−43,2 V) en SIM_DC_DISCHARGE_MIN minutos
 // (real: horas). Recarga con red o grupo a 0,5 V/min hasta el flote.
 const DC_FLOAT_V = -54.0, DC_LVD_V = -43.2;
+// Franco 2026-10-20 — física de la planta −48 V (PROVISORIO hasta el doc Eltek 350020.073):
+//   · al perderse la red (sin grupo) las baterías toman la carga sin corte: el bus pasa EN EL
+//     ACTO del flote a la tensión de descarga (~−51 V ≈ 2,12 V/celda × 24) y desde ahí baja
+//     despacio hasta el LVD;
+//   · en el LVD se abre el contactor: el sitio cae y el controlador (alimentado del mismo bus)
+//     deja de reportar. Vuelve con la red o el grupo (reconexión), recargando desde el LVD.
+const DC_BATT_V = -51.0;
 const DC_DISCHARGE_MIN = Number(process.env.SIM_DC_DISCHARGE_MIN) > 0 ? Number(process.env.SIM_DC_DISCHARGE_MIN) : 20;
 const DC_RECHARGE_V_PER_MIN = 0.5;
 
@@ -478,9 +485,17 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       const min = minutosDesde(deviceState, 'dc_bus_voltage');
       const descarga = sharedState.eltek_discharge || (!redPresente(sharedState) && !grupoEnMarcha(sharedState));
       if (descarga) {
-        const tasa = (DC_LVD_V - DC_FLOAT_V) / DC_DISCHARGE_MIN;   // V/min (positiva: sube hacia el LVD)
-        return clamp(currentValue + tasa * min + jitter(0.03), -54.5, DC_LVD_V + 0.2);
+        // Escalón al entrar en descarga: del flote a la tensión de baterías, sin pasar por el medio.
+        if (!deviceState._dcDescarga) { deviceState._dcDescarga = true; if (currentValue < DC_BATT_V) return DC_BATT_V + jitter(0.05); }
+        if (deviceState._lvdAbierto) return DC_LVD_V;               // sitio caído: no hay bus que medir
+        const tasa = (DC_LVD_V - DC_BATT_V) / DC_DISCHARGE_MIN;     // V/min (positiva: sube hacia el LVD)
+        const v = currentValue + tasa * min + jitter(0.03);
+        if (v >= DC_LVD_V) { deviceState._lvdAbierto = true; return DC_LVD_V; }   // abre el LVD → el equipo se apaga
+        return clamp(v, -54.5, DC_LVD_V);
       }
+      // Volvió la red o el grupo: reconecta el LVD (el controlador vuelve a reportar) y recarga.
+      deviceState._dcDescarga = false;
+      deviceState._lvdAbierto = false;
       if (currentValue > -53.5) return Math.min(currentValue, Math.max(DC_FLOAT_V, currentValue - DC_RECHARGE_V_PER_MIN * Math.max(min, 0.5)));
       return clamp(currentValue + jitter(0.15), -54.5, -53.5);
     }
@@ -1122,7 +1137,12 @@ const SCENARIOS = {
 
 };
 
+// Franco 2026-10-20 — equipo sin energía: el rectificador con el LVD abierto (sitio caído) no
+// publica nada (su controlador se alimenta del mismo bus). device.js lo consulta en _publish.
+function equipoSinEnergia(deviceState) { return !!(deviceState && deviceState._lvdAbierto); }
+
 module.exports = {
+  equipoSinEnergia,
   initialSecState,
   initialGenState,
   initialAtsState,

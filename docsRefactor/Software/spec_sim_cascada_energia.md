@@ -11,6 +11,8 @@
 - Umbrales (límites de ficha) de las variables nuevas: NO se inventan — quedan sin límite hasta que Franco los decida; las reglas de anomalías son un bloque aparte.
 - **IMPLEMENTADO (2026-10-20):** `sensor-engine.js` (hechos del sitio `mains_ok` / `gen_running` / `gen_crank_failures`, tanque compartido `tank_pct`, descarga DC por tiempo real `SIM_DC_DISCHARGE_MIN`=20 y recarga 0,5 V/min, temperatura ELTEK, sensores Sense, firma de vibración derivada, 8 escenarios nuevos y los de red ampliados), `device.js` (Qk4: los escenarios no cortan la publicación; escenarios de sitio en equipos que no tienen todas las variables), `lib/sense_gen_vars.js` (fuente única de las variables Sense), `tools/sync_sense_gen.js` (ficha + plantillas GEN vía API). Pruebas de comportamiento: 22/22 (cascada y anomalías) + 13/13 (auditoría).
 
+- **Ajuste (Franco 2026-10-20, "realiza los dos cambios"):** (1) `genset_no_start` y `battery_degraded` detienen el grupo del sitio (antes, tras una transferencia, los rectificadores seguían en flote) y el ATS deja de informar RUNNING; (2) al perderse red y grupo el bus pasa **en el acto** del flote a la tensión de baterías (−51 V) y baja hasta el LVD en `SIM_DC_DISCHARGE_MIN`; (3) en el LVD (−43,2 V) se abre el contactor: el rectificador **deja de reportar** (sitio caído; su controlador se alimenta del bus) y vuelve con la red o el grupo, recargando desde el LVD. Valores PROVISORIOS hasta el doc Eltek 350020.073. Pruebas 27/27 + 13/13.
+
 ## 1 · Modelo propuesto (física del sitio en el estado compartido)
 Tres hechos del sitio, que cada equipo LEE en cada lectura (no los fija un escenario equipo por equipo):
 
