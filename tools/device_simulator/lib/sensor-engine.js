@@ -462,6 +462,12 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       return 0;  // siempre 0 fuera de eventos de arranque
 
     // ── Eltek Smartpack S (SF-6 · DEC-REF-65.c) ──────────────────────
+    case 'gen_status':
+      // El ATS no puede seguir diciendo RUNNING si un escenario del sitio detuvo el grupo
+      // (genset_no_start / battery_degraded sobre el GEN después de una transferencia).
+      if (currentValue === 'RUNNING' && sharedState.gen_running === false) return 'STOPPED';
+      return currentValue;
+
     case 'dc_bus_voltage': {
       // DEC-REF-123 — planta -48 VDC telco, NEGATIVA. Flote (sano) ~-54 V; en
       // descarga la MAGNITUD cae → el valor SUBE (menos negativo) hacia el LVD
@@ -592,7 +598,9 @@ const SCENARIOS = {
     duration_ms: 45000,
     steps: [
       // spec_sim_cascada_energia — el corte es del SITIO (ATS, GEN y rectificadores lo ven).
-      { at: 0,     set: { mains_voltage: 0 }, sharedSet: { mains_ok: false, gen_crank_failures: 0 } },
+      // El grupo NO arranca: si quedó en marcha de un escenario anterior, se detiene (si no, los
+      // rectificadores seguían en flote "alimentados" por un grupo que no arrancó).
+      { at: 0,     set: { mains_voltage: 0, genset_running: 0 }, sharedSet: { mains_ok: false, gen_crank_failures: 0, gen_running: false } },
       { at: 3000,  set: { battery_voltage: 12.4 } },
       { at: 3500,  set: { crank_current: 230 } },
       { at: 4500,  set: { crank_current: 0, crank_attempts_failed: 1 }, sharedSet: { gen_crank_failures: 1 } },
@@ -625,7 +633,7 @@ const SCENARIOS = {
     roles: ['GEN'],
     duration_ms: 20000,
     steps: [
-      { at: 0,     set: { mains_voltage: 0 }, sharedSet: { mains_ok: false } },
+      { at: 0,     set: { mains_voltage: 0, genset_running: 0 }, sharedSet: { mains_ok: false, gen_running: false } },
       { at: 3000,  set: { battery_voltage: 11.2 } },
       { at: 3500,  set: { crank_current: 150 } },
       { at: 4500,  set: { battery_voltage: 9.8 } },
