@@ -1060,13 +1060,35 @@ const SCENARIOS = {
     ],
   },
   falla_codigo_filtro_aire: {
-    description: 'Código de falla 488 — filtro de aire (ejercita GE-12 eq 488 + GE-17 neq 0)',
+    // Manual PCC 1302: el 488 es temperatura del múltiple de admisión alta (> 85 °C / 90 s), no filtro de aire.
+    description: 'Código de falla 488 — temperatura de admisión alta (ejercita GE-12 eq 488 + GE-17 neq 0)',
     roles: ['CUMMINS'],
     duration_ms: 90000,
     holdVars: ['fault_code'],
     steps: [
       { at: 0,     set: { fault_code: 488 } },
       { at: 75000, set: { fault_code: 0 } },        // limpia → GE-12/17 resuelven
+    ],
+  },
+  // Franco 2026-10-21 — reglas nuevas del PCC 1302 (manual A040D969).
+  grupo_no_en_automatico: {
+    description: 'Código 1463 — el control del grupo quedó fuera de Auto (ejercita GE-1463 + GE-17). Combinar con un corte de red: el grupo no arranca',
+    roles: ['CUMMINS'],
+    duration_ms: 90000,
+    holdVars: ['fault_code'],
+    steps: [
+      { at: 0,     set: { fault_code: 1463 } },
+      { at: 75000, set: { fault_code: 0 } },
+    ],
+  },
+  modo_derivacion_activo: {
+    description: 'Código 1131 — modo derivación (battle short): protecciones anuladas (ejercita GE-1131 + GE-17)',
+    roles: ['CUMMINS'],
+    duration_ms: 90000,
+    holdVars: ['fault_code'],
+    steps: [
+      { at: 0,     set: { fault_code: 1131 } },
+      { at: 75000, set: { fault_code: 0 } },
     ],
   },
   falla_enlace_ecu: {
