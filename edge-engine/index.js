@@ -139,6 +139,22 @@ async function start() {
   logRules = ruleById;
   const fsmRows = await fsmStore.load();
   fsm.hydrate(fsmRows.filter(r => ruleById.has(r.ruleId)));
+  // Franco 2026-10-22 — combinadas abiertas ANTES de fijar el equipo del episodio: el equipo
+  // persistido pudo cambiar después del aviso. Se toma el del último aviso abierto, para que el
+  // cierre vaya al mismo equipo (QA I1).
+  try {
+    const ndb = require('mongoose').connection.db;
+    for (const r of fsmRows) {
+      const rule = ruleById.get(r.ruleId);
+      const inst = fsm.instances.get(r.key);
+      if (!r.alarmOpen || !rule || rule.type !== 'cross' || !inst || !ndb) continue;
+      const last = (await ndb.collection('notifications').find({ ruleId: r.ruleId, siteId: SITE_ID }).sort({ time: -1 }).limit(1).toArray())[0];
+      if (last && (last.kind || 'fire') !== 'resolve' && last.dId && last.dId !== inst.dId) {
+        console.log(`[edge] ${r.ruleId}: alarma abierta en ${last.dId} (estado decía ${inst.dId}) — el cierre irá a ${last.dId}`);
+        inst.dId = last.dId; fsmStore.save(inst);
+      }
+    }
+  } catch (e) { console.warn(`[edge] no se pudo alinear el equipo de las alarmas combinadas abiertas: ${e.message}`); }
   for (const r of fsmRows) {
     if (ruleById.has(r.ruleId)) {
       if (r.alarmOpen) { activeState.set(r.key, r.firedAt || Date.now()); cooldownState.set(r.key, r.firedAt || Date.now()); }

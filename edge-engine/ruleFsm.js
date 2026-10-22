@@ -114,7 +114,13 @@ function createRuleFsm({ onNotify, onResolve, onTransition, onPersist } = {}) {
     // Caso raro #17 — el reloj de la instancia no retrocede (mensaje atrasado).
     const now = Math.max(Number(nowIn) || 0, inst.since || 0);
     inst.ruleType = rule.type;
-    if (ctx && ctx.dId) inst.dId = ctx.dId;
+    // Franco 2026-10-22 (QA I1 «la alarma se cierra en el equipo equivocado») — mientras la
+    // alarma está abierta, el equipo del episodio queda FIJO: el cierre sale con el mismo equipo
+    // que el aviso (en una combinada el mensaje que la reevalúa puede venir de otro equipo).
+    if (ctx && ctx.dId) {
+      if (inst.alarmOpen && inst.dId) { if (ctx.dId !== inst.dId) ctx = { ...ctx, dId: inst.dId }; }
+      else inst.dId = ctx.dId;
+    }
     inst.lastR = r;
     if (ctx) inst.lastCtx = ctx;
     let changed = false;
