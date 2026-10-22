@@ -282,7 +282,8 @@ export default {
       });
     },
     series() {
-      return (this.v2.series || []).map((s, i) => ({ ...s, k: s.dId + s.variable + i, tab: this.varNombre(s) + ((this.v2.series || []).length > 1 && (this.v2.series || []).some((x, j) => j !== i && x.variable === s.variable) ? ' · ' + s.deviceName : '') }));
+      // Solo mediciones con lecturas en la ventana: sin puntos la escala quedaba en ±Infinity.
+      return (this.v2.series || []).filter((s) => Array.isArray(s.points) && s.points.length).map((s, i) => ({ ...s, k: s.dId + s.variable + i, tab: this.varNombre(s) + ((this.v2.series || []).length > 1 && (this.v2.series || []).some((x, j) => j !== i && x.variable === s.variable) ? ' · ' + s.deviceName : '') }));
     },
     ventanaTxt() { const h = ((this.v2.until || 0) - (this.v2.from || 0)) / 3600000; return `${this.abierta ? 'Últimas' : 'Las'} ${h >= 1.5 ? Math.round(h) + ' horas' : Math.round(h * 60) + ' min'}${this.abierta ? '' : ' alrededor de la alarma'}`; },
     grafico() {

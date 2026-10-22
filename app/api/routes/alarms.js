@@ -1131,6 +1131,23 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
         now: n ? { state: n.state, value: n.value, threshold: n.threshold } : null,
         meta: varMeta(l.deviceType, l.variable) };
     });
+  } else if (ruleRaw && ruleRaw.type === 'cross' && ruleRaw.crossExpr) {
+    // Franco 2026-10-22 — combinada simple avisada ANTES de que el motor guardara el estado de cada
+    // condición: se arman las condiciones desde la regla, cada una con el equipo de su tipo en el
+    // sitio (la notificación vieja traía el equipo del último mensaje, a veces otro equipo).
+    const walk = (n, out = []) => { if (!n) return out; if (Array.isArray(n.children)) n.children.forEach((c) => walk(c, out)); else if (!Array.isArray(n.sum)) out.push(n); return out; };
+    const c = fsmRow && fsmRow.lastCtx;
+    conditions = walk(ruleRaw.crossExpr).map((l, i) => {
+      const dev = devs.find((d) => d.deviceType === l.deviceType);
+      const ids2 = dev ? [dev.dId] : [];
+      ids2.forEach((id) => addPair(id, l.variable));
+      const n = nowLeaves && nowLeaves.find((x) => x.leafId === (l.leafId || `L${i + 1}`));
+      const cond = l.condition || {};
+      return { leafId: l.leafId || `L${i + 1}`, deviceType: l.deviceType, variable: l.variable, measure: l.measure || 'value', metric: l.metric || null,
+        dIds: ids2, atFire: { state: 'si', value: null, threshold: typeof cond.value === 'number' ? cond.value : null },
+        now: n ? { state: n.state, value: n.value, threshold: n.threshold } : (c && fsmRow.lastR != null ? { state: fsmRow.lastR === 'off' ? 'no' : 'si', value: null, threshold: null } : null),
+        meta: varMeta(l.deviceType, l.variable) };
+    });
   } else {
     const dt = (devBy.get(notif.dId) || {}).deviceType || (rule && rule.deviceType);
     addPair(notif.dId, notif.variable);

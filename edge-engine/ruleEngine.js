@@ -1,11 +1,11 @@
 const { evaluateD, resolveClears, effectiveCondition } = require('./evaluators/typeD');
 const { evaluateC } = require('./evaluators/typeC');
 const { evaluateS, evaluateSWindow } = require('./evaluators/typeS');
-const { evaluateCrossTree } = require('./evaluators/typeCross');
+const { evaluateCrossTree, ownerDId, snapshotLeaves } = require('./evaluators/typeCross');
 const { evaluateM, EVENT_METRICS } = require('./evaluators/typeM');
 const { notify }    = require('./notificationRouter');
 const combined = require('./evaluators/typeCombined');
-const { isCombined } = require('../app/api/services/combinedRule');
+const { isCombined, leafIds } = require('../app/api/services/combinedRule');
 
 // DEC-REF-130 (A13) — cadencia del INFO "setpoint no disponible" (aviso de config de
 // baja prioridad): constante EXPLÍCITA. Antes se leía `rule.cooldownMinutes`, un campo
@@ -95,8 +95,12 @@ function processMessage({ dId, variable, value, siteState, packs, cooldownState,
           const ck = `${rule.ruleId}:${siteCode}`;
           const res = evaluateCrossTree(rule, siteState, eventTs, siteCode);
           // DEC-REF-65-A — sumTotal + thresholdUsed viajan a la notificación (hoja sum).
+          // Franco 2026-10-22 — equipo estable de la regla (no el del último mensaje) y estado
+          // de cada condición, para que el detalle de la alarma muestre las mediciones correctas.
+          const owner = ownerDId(rule, siteState, siteCode) || dId;
           fsm.evaluate(rule, ck, toR(res.val), {
-            dId, value: res.total ?? null, thresholdUsed: res.thresholdUsed ?? null,
+            dId: owner, value: res.total ?? null, thresholdUsed: res.thresholdUsed ?? null,
+            leaves: snapshotLeaves(rule, siteState, siteCode, leafIds(rule)),
             reason: 'cross-tree-fired', mode: 'cross', resolveReason: 'cross-tree-cleared',
           }, eventTs);
           continue;

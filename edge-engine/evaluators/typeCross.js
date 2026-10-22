@@ -255,4 +255,41 @@ function evaluateCrossTree(rule, siteState, eventTs, siteCode) {
   return evaluateNode(rule.crossExpr, siteState, siteCode, eventTs, rule.ruleId);
 }
 
-module.exports = { evaluateCross, evaluateCrossTree, validateCrossTree };
+// Franco 2026-10-22 — el detalle de la alarma de una regla combinada simple (solo hojas de valor)
+// mostraba la medición en un equipo equivocado y "sin lectura": la notificación llevaba el equipo
+// que mandó el ÚLTIMO mensaje (cualquiera del sitio) y no traía el estado de cada condición.
+//   · ownerDId: equipo estable de la regla = el de la primera hoja (mismo criterio que la evaluación).
+//   · snapshotLeaves: estado de cada hoja (equipo, valor, umbral efectivo, sí/no/sin), con los
+//     mismos ids que usa el editor (combinedRule.leafIds).
+function leafNodes(n, out = []) {
+  if (!n) return out;
+  if (Array.isArray(n.children)) { n.children.forEach((c) => leafNodes(c, out)); return out; }
+  if (!Array.isArray(n.sum)) out.push(n);
+  return out;
+}
+function deviceIdByType(siteState, deviceType, siteCode) {
+  for (const [dId, st] of siteState) if (st && st._deviceType === deviceType && st._siteCode === siteCode) return dId;
+  return null;
+}
+function ownerDId(rule, siteState, siteCode) {
+  const first = leafNodes(rule.crossExpr)[0];
+  return first ? deviceIdByType(siteState, first.deviceType, siteCode) : null;
+}
+function snapshotLeaves(rule, siteState, siteCode, leafIdOf) {
+  return leafNodes(rule.crossExpr).map((node, i) => {
+    const dId = deviceIdByType(siteState, node.deviceType, siteCode);
+    const st = dId ? siteState.get(dId) : null;
+    const leafId = (leafIdOf && leafIdOf.get(node)) || node.leafId || `L${i + 1}`;
+    const base = { leafId, deviceType: node.deviceType, variable: node.variable, measure: 'value', dId };
+    if (!st) return { ...base, state: 'sin', value: null, threshold: null };
+    if (st._unavailable && st._unavailable.includes(node.variable)) return { ...base, state: 'sin', value: null, threshold: null };
+    const value = st[node.variable];
+    const cond = effectiveCondition(node.condition, st);
+    const thr = cond && typeof cond.value === 'number' ? cond.value : (cond ? cond.value : null);
+    if (value === undefined || value === null) return { ...base, state: 'sin', value: null, threshold: thr };
+    const r = evaluateD({ ruleId: `${node.deviceType}/${node.variable}`, condition: cond }, value);
+    return { ...base, state: r === null ? 'sin' : (r ? 'si' : 'no'), value, threshold: thr };
+  });
+}
+
+module.exports = { evaluateCross, evaluateCrossTree, validateCrossTree, ownerDId, snapshotLeaves };

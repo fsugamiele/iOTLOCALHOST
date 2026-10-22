@@ -68,7 +68,7 @@ const leaves = (n, out = []) => { if (!n) return out; if (Array.isArray(n.childr
           const cadSeg = tv.get(v) || 60;
           let cumple = '';
           if (ult && !l.metric && typeof c.value !== 'undefined' && OPS[c.op] && v === l.variable) cumple = OPS[c.op](ult.value, c.value) ? ' · CUMPLE' : ' · no cumple';
-          console.log(`  · ${d.name || d.dId} ${dt}.${v} ${v === l.variable ? condTxt : '(entrada)'} — última ${ult ? `${JSON.stringify(ult.value)} hace ${hace(ult.time)}` : 'NUNCA'}${cumple}${enFicha ? '' : ' · NO está en la ficha'}${tv.has(v) || DERIVADAS.includes(v) ? '' : ' · la plantilla NO la publica'}`);
+          console.log(`  · ${d.name || d.dId} ${dt}.${v} ${v === l.variable ? condTxt : '(entrada)'} — última ${ult ? `${JSON.stringify(ult.value)} hace ${hace(ult.time)}` : 'NUNCA'}${cumple}${enFicha || DERIVADAS.includes(v) ? '' : ' · NO está en la ficha'}${tv.has(v) || DERIVADAS.includes(v) ? '' : ' · la plantilla NO la publica'}`);
           if (LECTURAS && last.length > 1) console.log(`      ${last.map((x) => `${typeof x.value === 'number' ? x.value.toFixed(1) : x.value}@${new Date(x.time).toLocaleTimeString('es-AR', { hour12: false, timeZone: 'America/Argentina/Buenos_Aires' })}`).reverse().join('  ')}`);
           if (DERIVADAS.includes(v)) continue;
           if (!tv.has(v)) obs.push(`${r.ruleId}: ${d.name || d.dId} no publica ${v} (plantilla)`);
