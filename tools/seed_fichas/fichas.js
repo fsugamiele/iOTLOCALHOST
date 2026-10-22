@@ -131,8 +131,10 @@ const FICHAS = [
     // Solo con el motor EN MARCHA (`when`): parado, el borne mide la batería (~12,6 V).
     // El widget no puede evaluar `when` → no colorea; lo usan las reglas (cascada C2).
     V('alternator_voltage', 'Tensión alternador', 'float', 'V', 0.1, '12-15', [
-      { ...L('warning', 'lt', 13.0, 'V', 'decisión Franco 2026-10-14 — carga baja, a confirmar con regulador'), when: RUNNING_GEN },
-      { ...L('warning', 'gt', 14.8, 'V', 'decisión Franco 2026-10-14 — sobrecarga, a confirmar con regulador'), when: RUNNING_GEN }]),
+      // Franco 2026-10-22 (auditoría de umbrales P1) — relativo a la tensión nominal de batería,
+      // como la batería: en un grupo de 24 V → 26,0 / 29,6 V (el PCC 1302 da rangos 12/24 V).
+      { ...L('warning', 'lt', 13.0, 'V', 'decisión Franco 2026-10-14 — carga baja, a confirmar con regulador'), when: RUNNING_GEN, relativeTo: BATT_REL },
+      { ...L('warning', 'gt', 14.8, 'V', 'decisión Franco 2026-10-14 — sobrecarga, a confirmar con regulador'), when: RUNNING_GEN, relativeTo: BATT_REL }]),
     V('battery_voltage', 'Tensión arranque batería', 'float', 'V', 0.3, '10-16', BATTERY_12V),
     V('crank_attempts_failed', 'Arranques fallidos', 'int', 'u', null, '0-10', [
       L('trip', 'gte', 3, '', `${SRC_GEF} b8 — regla cat-CR00061-D4`)]),

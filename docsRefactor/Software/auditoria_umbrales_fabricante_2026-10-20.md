@@ -99,3 +99,13 @@ Sin observaciones: D4 (3 arranques = fabricante), G2 / gen-fuel (15 %, decisión
 - Editor: una regla sin espera ya no se guarda con 60 s (rebuild del front).
 
 Quedan abiertos: P1 (alternador relativo), P2 (`battery_nominal_v` = 24 en los Cummins), P3 (aceite en ralentí), P4/P6/P7, P5/P8 (reglas nuevas), R10 (DC-09 60 °C vs ficha 45), R5 (vida de aceite con el motor detenido), sifoneo triplicado, y AR-04 9,6 V / AR-06 sin escala a 24 V.
+
+## 6 · Segunda tanda — firmada por Franco 2026-10-22
+`docker exec -i node node - --apply ALT,DC09,ACEITE,SIFON < tools/fix_umbrales_auditoria2.js`
+- **ALT (P1)** → ficha GEN: tensión del alternador relativa a la tensión nominal de batería (24 V → 26,0 / 29,6 V). También en `tools/seed_fichas/fichas.js`.
+- **DC09 (R10)** → «Rectificador caliente» atada al límite crítico de la ficha ELTEK (45 °C, PROVISORIO).
+- **ACEITE (R5)** → vida de aceite cuenta solo con el motor en marcha: factor = rpm / 1500 (detenido suma 0). Se pierde el ajuste por temperatura.
+- **SIFON** → escalera: cat-CB-05 aviso (z < −3) · gen-sifoneo-divergencia renombrada «Sifoneo de combustible», crítica, z < −5 · GEN-sifoneo-motor-apagado apagada (duplicada).
+- Limpieza: `tools/borrar_regla_banco.js` borra «BATERIA EN DESSCARGA» de banco-conformidad (R6).
+
+Quedan abiertos: P5 (diferencia de escape entre bancos) y P8 (refrigerante frío), reglas nuevas con valor a decidir.
