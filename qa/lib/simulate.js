@@ -50,6 +50,9 @@ async function simulate({ rule, hours = 24 } = {}) {
   const devs = await db.collection('devices').find({ dId: { $in: dIds } }).project({ dId: 1, deviceType: 1, name: 1 }).toArray();
   const siteState = new Map();
   for (const d of devs) siteState.set(d.dId, { _deviceType: d.deviceType, _siteCode: SITE, _deviceName: d.name || d.dId, _lastUpdate: {} });
+  // spec_perfiles_controladora — mismo umbral que el motor en vivo: valor del equipo > perfil de su
+  // controladora > ficha, y los parámetros de instalación (batería 12/24 V).
+  await require('../../app/api/services/deviceLimits').loadDeviceContexts(db, dIds, siteState);
 
   const { vars } = neededVars(r);
   const to = Date.now(), from = to - H * 3600000;

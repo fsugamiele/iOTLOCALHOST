@@ -19,7 +19,7 @@
   - Perfil `cummins-pcc1302` (`tools/seed_perfiles/seed_pcc1302.js` + `app/api/data/controller_profiles/cummins-pcc1302_fault_codes.json`, 90 códigos): aceite parada 180 kPa (código 415, ECM) y aviso 198 kPa (Qp3); asigna el perfil a los Cummins sin perfil; A0/A1 con espera 10 s.
   - Simulador: al arrancar el grupo la presión de aceite entra en 250 kPa (antes 40 kPa hasta el próximo tick: con espera 10 s daba crítica falsa en cada arranque).
   - Pruebas: cascada de umbrales 11/11 (ficha, perfil, equipo pisa perfil, escala 24 V intacta, hoja cross con perfil / sin perfil / no aplicable); seed contra API falsa (simulación, aplicación, re-ejecución idempotente); simulador 13/13 + 22/22.
-  - **Límite declarado:** la simulación de reglas del QA (`/simulate`) sigue usando el umbral de la ficha (no conoce el perfil del equipo).
+  - ~~Límite declarado: la simulación del QA usaba el umbral de la ficha~~ → **resuelto 2026-10-22** (Franco "si, avanza"): `app/api/services/deviceLimits.js` (cascada equipo > perfil > ficha + parámetros de instalación) es la fuente única del motor (`siteState.refreshRefParams`) y del QA (`qa/lib/simulate.js` — prueba con datos reales del editor — y `qa/lib/backtest.js`).
 
 - **Segunda tanda (Franco 2026-10-20):**
   - Pantalla **Fichas → Controladoras** (`components/fichas/ControllerProfiles.vue`): lista de modelos por ficha con umbrales, mediciones que no tiene, códigos de falla y equipos que la usan; alta / edición / borrado solo superadmin (la API también lo exige); importación de códigos de falla desde JSON.

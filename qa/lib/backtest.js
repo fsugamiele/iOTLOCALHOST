@@ -159,6 +159,8 @@ async function backtest({ packId, days = 7, ruleId = null } = {}) {
 
     const siteState = new Map();
     for (const d of dIds) siteState.set(d, { _deviceType: chosen[d], _siteCode: SITE, _lastUpdate: {} });
+    // spec_perfiles_controladora — umbral del equipo / su controladora, como el motor en vivo.
+    await require('../../app/api/services/deviceLimits').loadDeviceContexts(db, dIds, siteState);
     const mState = new Map(), windowState = new Map(), crossState = new Map();
     let evaluated = 0, fired = 0, episodes = 0, prev = false;
     const prim = [];
