@@ -39,6 +39,7 @@ Descartado tras la prueba: rpm a la deriva en marchas largas (la rampa la reenca
 | Regla | Causa | Propuesta |
 |---|---|---|
 | Marcha inestable (Oscilación) — varianza de rpm > 15 en 1 h | La rampa de arranque/parada (0↔1500) entra en la ventana: varianza 226–320 en cada arranque (16/10). | Condición extra "en marcha estable" (rpm > 300 toda la ventana) o ventana más corta con espera. |
+| ↳ **Resuelto 2026-10-22 (Franco):** σ(rpm, 10 min) > 15 rpm **Y** en marcha ≥ 99 % de esos 10 min, espera 3 min (`tools/fix_ge08.js`; ISO 8528-5 G2 ≈ σ 8 rpm). Simulador: `marcha_inestable` / `marcha_estable`. Prueba con motor real: sin avisos detenido, en marcha sana, ni en parada/arranque; avisa a los 5 min de oscilar y cierra a los 10 min. | | |
 | Sensor de nivel clavado — cambia < 0,2 % con el grupo en marcha | Con el consumo real (0,023 %/min) el tanque baja 0,15–0,45 % en la ventana: queda pegado al umbral → 7 avisos el 19/10. | Umbral 0,05 % o ventana ≥ 30 min. |
 | "Salto brusco" (stepJump) en sifoneo | Mide el salto en **valor absoluto**: una recarga o un reset del simulador (+45 %) también lo cumple. | Mismo criterio que Qi5: elegir sentido (baje / suba). |
 | "Fuera de lo habitual" para pérdida lenta | Un vaciado constante da como máximo z ≈ −1,7 (−√3): nunca llega a −3. Solo ve caídas bruscas. | Pérdida lenta con "si baja rápido" (tendencia) y motor detenido. |

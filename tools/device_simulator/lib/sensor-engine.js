@@ -319,6 +319,11 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       // 30 s son ~2 ticks. La rampa vieja (15 ticks ≈ 7,5 min) estiraba el
       // transitorio de apagado (rpm>300 con oil=0) por minutos y vencía
       // cualquier graceSec razonable en las reglas A0/A1.
+      // Franco 2026-10-22 — regulador oscilando (escenario marcha_inestable): ±40 rpm alrededor de 1500.
+      if (target > 0 && sharedState.rpm_hunting && Math.abs(currentValue - target) <= 60) {
+        deviceState._huntSign = -(deviceState._huntSign || 1);
+        return target + deviceState._huntSign * (35 + Math.round(Math.random() * 10));
+      }
       if (currentValue < target) return Math.min(currentValue + 750, target);
       if (currentValue > target) return Math.max(currentValue - 750, target);
       return currentValue + (target > 0 ? Math.round(jitter(10)) : 0);
@@ -1154,6 +1159,17 @@ const SCENARIOS = {
     duration_ms: 3000,
     noCleanup: true,
     steps: [{ at: 0, sharedSet: { calefactor_caido: null } }],
+  },
+  // Franco 2026-10-22 — «Marcha inestable (Oscilación)»: correr con el grupo en marcha estable.
+  marcha_inestable: {
+    description: 'Regulador de velocidad oscilando: rpm ±40 alrededor de 1500 (ejercita «Marcha inestable»; avisa tras 10 min en marcha + 3 min). Correr con el grupo en marcha',
+    roles: ['CUMMINS'], duration_ms: 3000, noCleanup: true,
+    steps: [{ at: 0, sharedSet: { rpm_hunting: true } }],
+  },
+  marcha_estable: {
+    description: 'Regulador normal: termina la oscilación de rpm',
+    roles: ['CUMMINS'], duration_ms: 3000, noCleanup: true,
+    steps: [{ at: 0, sharedSet: { rpm_hunting: null } }],
   },
   falla_enlace_ecu: {
     description: 'Código de falla 781 — enlace motor↔ECU (ejercita GE-16 eq 781 + GE-17)',
