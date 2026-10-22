@@ -302,6 +302,9 @@ function evolve(variable, currentValue, deviceState, sharedState) {
         // de "refrigerante alta"). La sobretemperatura real se ejercita con falla_sobretemperatura.
         return clamp(currentValue + jitter(1), 75, 90);
       }
+      // Calefactor de bloque caído (escenario): detenido, el refrigerante se enfría hasta ~15 °C.
+      if (sharedState.calefactor_caido) return Math.max(14, currentValue - 2 + jitter(0.3));
+      if (currentValue < 30) return Math.min(30, currentValue + 1);   // calefactor de vuelta: recupera de a poco
       return clamp(currentValue - 1, 30, currentValue);
 
     case 'run_hours':
@@ -1090,6 +1093,21 @@ const SCENARIOS = {
       { at: 0,     set: { fault_code: 1131 } },
       { at: 75000, set: { fault_code: 0 } },
     ],
+  },
+  // Franco 2026-10-22 — regla «Refrigerante frío (grupo detenido)» (< 21 °C, 1 min).
+  calefactor_bloque_caido: {
+    description: 'Calefactor de bloque caído — con el grupo detenido el refrigerante baja a ~15 °C (ejercita «Refrigerante frío»). Se corrige con calefactor_bloque_normal o reset',
+    roles: ['CUMMINS'],
+    duration_ms: 3000,
+    noCleanup: true,
+    steps: [{ at: 0, sharedSet: { calefactor_caido: true } }],
+  },
+  calefactor_bloque_normal: {
+    description: 'Calefactor de bloque reparado — el refrigerante vuelve a mantenerse tibio',
+    roles: ['CUMMINS'],
+    duration_ms: 3000,
+    noCleanup: true,
+    steps: [{ at: 0, sharedSet: { calefactor_caido: null } }],
   },
   falla_enlace_ecu: {
     description: 'Código de falla 781 — enlace motor↔ECU (ejercita GE-16 eq 781 + GE-17)',

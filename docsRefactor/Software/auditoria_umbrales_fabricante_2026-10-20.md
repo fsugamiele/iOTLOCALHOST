@@ -108,4 +108,6 @@ Quedan abiertos: P1 (alternador relativo), P2 (`battery_nominal_v` = 24 en los C
 - **SIFON** → escalera: cat-CB-05 aviso (z < −3) · gen-sifoneo-divergencia renombrada «Sifoneo de combustible», crítica, z < −5 · GEN-sifoneo-motor-apagado apagada (duplicada).
 - Limpieza: `tools/borrar_regla_banco.js` borra «BATERIA EN DESSCARGA» de banco-conformidad (R6).
 
-Quedan abiertos: P5 (diferencia de escape entre bancos) y P8 (refrigerante frío), reglas nuevas con valor a decidir.
+**Reglas nuevas firmadas (Franco 2026-10-22)** — `tools/reglas_nuevas_auditoria.js`:
+- **P5** · `gen-escape-desbalance` «Desbalance de escape entre bancos» (aviso): |banco A − banco B| > 40 °C con el motor en marcha, 2 min. Simulador: `inyector_tapado` / `inyector_goteando`.
+- **P8** · `cummins-refrigerante-frio` «Refrigerante frío (grupo detenido)» (aviso): < 21 °C con rpm < 300, 1 min (aviso de refrigerante frío del PowerCommand, < 70 °F). Simulador: `calefactor_bloque_caido` / `calefactor_bloque_normal`.
