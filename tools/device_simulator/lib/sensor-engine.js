@@ -33,6 +33,43 @@ const DC_FLOAT_V = -54.0, DC_LVD_V = -43.2;
 //   · en el LVD se abre el contactor: el sitio cae y el controlador (alimentado del mismo bus)
 //     deja de reportar. Vuelve con la red o el grupo (reconexión), recargando desde el LVD.
 const DC_BATT_V = -51.0;
+// Franco 2026-10-22 — enfriamiento del grupo antes de detenerse: al volver la red el ATS
+// retransfiere y el grupo sigue en marcha SIN carga este tiempo (PCC 1302: retardo de parada
+// 0–600 s, sección 8.3.3.4). Parametrizable; 0 = se detiene a los 5 s como antes.
+const GEN_COOLDOWN_S = process.env.SIM_GEN_COOLDOWN_S != null && process.env.SIM_GEN_COOLDOWN_S !== ''
+  ? Math.max(0, Math.min(600, Number(process.env.SIM_GEN_COOLDOWN_S) || 0)) : 300;
+const NO_LOAD_FACTOR = 0.3;   // consumo en vacío ≈ 30 % del nominal (enfriamiento)
+
+// Franco 2026-10-22 — código de falla del PCC 1302 coherente con la física del grupo (manual
+// A040D969, sección 9.8 / perfil cummins-pcc1302). Gana el más grave. Los escenarios de código
+// (holdVars fault_code) y los valores fijados a mano siguen mandando mientras duran.
+// Franco 2026-10-22 — fin del enfriamiento del grupo. Lo llama device.js en CADA tick de cualquier
+// equipo del sitio (antes de las retenciones de escenario): pasado GEN_COOLDOWN_S con la red
+// presente, el grupo se detiene; si la red cae durante el enfriamiento, se cancela y el grupo
+// retoma la carga. Devuelve true en el instante en que el grupo se detiene.
+function finEnfriamiento(sh) {
+  if (!sh || !sh.gen_cooling) { if (sh && sh._coolingSince) delete sh._coolingSince; return false; }
+  if (!redPresente(sh)) { delete sh.gen_cooling; delete sh._coolingSince; return false; }
+  if (!sh._coolingSince) { sh._coolingSince = Date.now(); return false; }
+  if (Date.now() - sh._coolingSince < GEN_COOLDOWN_S * 1000) return false;
+  delete sh.gen_cooling; delete sh._coolingSince;
+  sh.gen_running = false;
+  return true;
+}
+
+function codigoFallaPcc(st, sh) {
+  const enMarcha = grupoEnMarcha(sh);
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const rpm = num(st.rpm), oil = num(st.oil_pressure), ct = num(st.coolant_temp), bat = num(st.battery_voltage);
+  if (rpm != null && rpm > 1725) return 1992;                                   // sobrevelocidad 115 %
+  if (Number(sh && sh.gen_crank_failures) >= 3) return 1438;                    // falla de arranque
+  if (enMarcha && rpm != null && rpm > 300 && oil != null && oil < 180) return 415;   // parada por aceite (ECM)
+  if (ct != null && ct > 107.2) return 146;                                     // refrigerante sobre lo normal
+  if (enMarcha && rpm != null && rpm > 300 && oil != null && oil < 198) return 143;   // advertencia de aceite
+  if (bat != null && bat < 11.8) return 441;                                    // batería baja (12 V)
+  if (bat != null && bat > 15.0) return 442;                                    // batería alta (12 V)
+  return 0;
+}
 const DC_DISCHARGE_MIN = Number(process.env.SIM_DC_DISCHARGE_MIN) > 0 ? Number(process.env.SIM_DC_DISCHARGE_MIN) : 20;
 const DC_RECHARGE_V_PER_MIN = 0.5;
 
@@ -210,7 +247,8 @@ function consumptionLphNow(sharedState) {
   const eff = Number(sharedState && sharedState.fuel_eff_factor) > 0
     ? Number(sharedState.fuel_eff_factor) : 1;
   const falla = FACTOR_CONSUMO[fallaSense(sharedState)] || 1;   // spec §6 — anomalía de inyección/aire
-  return FUEL_CONSUMPTION_L_PER_H * eff * falla;
+  const vacio = sharedState && sharedState.gen_cooling && redPresente(sharedState) ? NO_LOAD_FACTOR : 1;   // enfriamiento sin carga
+  return FUEL_CONSUMPTION_L_PER_H * eff * falla * vacio;
 }
 
 // evolve recibe el estado completo del device y el sharedState del site
@@ -232,6 +270,8 @@ function evolve(variable, currentValue, deviceState, sharedState) {
   if (variable === 'genset_running' && deviceState && deviceState.deviceType !== 'CUMMINS' && sharedState.gen_running !== undefined) {
     return grupoEnMarcha(sharedState) ? 1 : 0;
   }
+  // Franco 2026-10-22 — el código de falla del Cummins sale de la física del grupo.
+  if (variable === 'fault_code' && deviceState && deviceState.deviceType === 'CUMMINS') return codigoFallaPcc(deviceState, sharedState);
   if (Number.isInteger(currentValue) &&
       (variable === 'battery_beacons_count' || variable === 'crank_attempts_failed' ||
        variable === 'fault_code' || variable.startsWith('bitmap_') || variable === 'genset_running')) {
@@ -356,6 +396,7 @@ function evolve(variable, currentValue, deviceState, sharedState) {
       // regla de eficiencia. GEN mira su genset_running; CUMMINS el sharedState.gen_running.
       const online = genEnMarcha(deviceState, sharedState);
       if (!online) return 0;
+      if (sharedState.gen_cooling && redPresente(sharedState)) return 0;   // enfriamiento: en marcha pero sin carga (el ATS ya retransfirió)
       return clamp(GENSET_POWER_KW_NOMINAL + jitter(1), 5, 15);
     }
 
@@ -784,13 +825,18 @@ const SCENARIOS = {
   },
 
   mains_restore: {
-    description: 'Restauración de red — vuelve la red al sitio, el grupo se detiene y los rectificadores recargan',
+    description: `Restauración de red — vuelve la red, el ATS retransfiere, el grupo se enfría ${GEN_COOLDOWN_S} s sin carga y se detiene; los rectificadores recargan`,
     roles: ['ATS', 'GEN'],
-    duration_ms: 30000,
+    duration_ms: 10000,
     noCleanup: true,
     steps: [
       { at: 0,    set: { mains_voltage: 220.0, mains_freq: 50.0 }, sharedSet: { mains_ok: true, gen_crank_failures: 0 } },
-      { at: 5000, set: { gen_status: 'STOPPED', gen_voltage: 0, gen_freq: 0, genset_running: 0 }, sharedSet: { gen_running: false } },
+      // Retransferencia a la red: el grupo queda en marcha sin carga (enfriamiento).
+      // El fin del enfriamiento lo decide el ATS en evolve (gen_status): si la red vuelve a caer
+      // durante el enfriamiento, el grupo retoma la carga y NO se detiene.
+      GEN_COOLDOWN_S > 0
+        ? { at: 5000, sharedSet: { gen_cooling: true } }
+        : { at: 5000, set: { gen_status: 'STOPPED', gen_voltage: 0, gen_freq: 0, genset_running: 0 }, sharedSet: { gen_running: false } },
     ],
   },
 
@@ -1183,6 +1229,7 @@ function equipoSinEnergia(deviceState) { return !!(deviceState && deviceState._l
 
 module.exports = {
   equipoSinEnergia,
+  finEnfriamiento,
   initialSecState,
   initialGenState,
   initialAtsState,

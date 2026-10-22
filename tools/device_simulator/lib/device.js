@@ -212,6 +212,15 @@ class SimulatedDevice {
   _tick(varName) {
     if (!this._connected) return;
     if (this._state[varName] === undefined) return;
+    // Franco 2026-10-22 — fin del enfriamiento del grupo (hecho del sitio, lo resuelve cualquier
+    // equipo). El ATS pasa a STOPPED aunque su gen_status esté retenido por un escenario viejo.
+    if (engine.finEnfriamiento(this._sharedState) || (this._state.gen_status === 'RUNNING' && this._sharedState.gen_running === false && !this._sharedState.gen_cooling && this._state.deviceType === 'ATS')) {
+      if (this._state.gen_status !== undefined) {
+        if (this._scenarioHold) this._scenarioHold.delete('gen_status');
+        this._state.gen_status = 'STOPPED'; this._state.gen_voltage = 0; this._state.gen_freq = 0;
+        this._publish('gen_status');
+      }
+    }
     // Variable PINEADA (pico inyectado a mano desde la UI del panel): retiene el
     // valor y lo republica cada tick — persiste hasta que se cambie o se resetee.
     if (this._pinned && this._pinned.has(varName)) { this._publish(varName); return; }

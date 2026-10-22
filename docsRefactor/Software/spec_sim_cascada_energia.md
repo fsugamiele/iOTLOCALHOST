@@ -13,6 +13,8 @@
 
 - **Ajuste (Franco 2026-10-20, "realiza los dos cambios"):** (1) `genset_no_start` y `battery_degraded` detienen el grupo del sitio (antes, tras una transferencia, los rectificadores seguían en flote) y el ATS deja de informar RUNNING; (2) al perderse red y grupo el bus pasa **en el acto** del flote a la tensión de baterías (−51 V) y baja hasta el LVD en `SIM_DC_DISCHARGE_MIN`; (3) en el LVD (−43,2 V) se abre el contactor: el rectificador **deja de reportar** (sitio caído; su controlador se alimenta del bus) y vuelve con la red o el grupo, recargando desde el LVD. Valores PROVISORIOS hasta el doc Eltek 350020.073. Pruebas 27/27 + 13/13.
 
+- **Ajuste (Franco 2026-10-22, "aprobado las recomendaciones"):** (1) el **código de falla del Cummins** sale de la física (manual PCC 1302): 1992 sobrevelocidad > 1725 rpm · 1438 tras 3 arranques fallidos · 415 aceite < 180 kPa en marcha · 146 refrigerante > 107,2 °C · 143 aceite < 198 kPa en marcha · 441 / 442 batería < 11,8 / > 15 V; gana el más grave; los escenarios de código siguen mandando mientras duran. (2) **Enfriamiento:** al volver la red el ATS retransfiere y el grupo sigue en marcha **sin carga** `SIM_GEN_COOLDOWN_S` (300 s por defecto, 0–600 como el PCC 1302; consumo en vacío 30 %) y después se detiene; si la red vuelve a caer durante el enfriamiento, se cancela y el grupo retoma la carga. Pruebas 34/34 + 13/13.
+
 ## 1 · Modelo propuesto (física del sitio en el estado compartido)
 Tres hechos del sitio, que cada equipo LEE en cada lectura (no los fija un escenario equipo por equipo):
 
