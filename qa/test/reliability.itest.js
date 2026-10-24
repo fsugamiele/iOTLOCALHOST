@@ -32,6 +32,7 @@ const notifs = [
 ];
 for (let i = 0; i < 12; i++) notifs.push(n({ ruleId: 'F2a', dId: 'ATS', kind: 'fire', severity: 'warning', time: NOW - 30 * H + i * 30000 }));
 // ── base falsa ──
+const cache = new Map(); const stats = { aggData: 0 };
 const cursor = (arr) => ({ project() { return this; }, sort(s) { const k = Object.keys(s)[0]; arr = [...arr].sort((a, b) => s[k] * (a[k] - b[k])); return this; }, toArray: async () => arr });
 const match = (doc, q) => Object.entries(q).every(([k, c]) => {
   const v = doc[k];
@@ -48,9 +49,15 @@ const coll = {
       for (const d of notifs.filter((x) => match(x, q)).sort((a, b) => b.time - a.time)) { const k = d.ruleId + '|' + d.dId; if (!last.has(k)) last.set(k, d); }
       return cursor([...last.values()].filter((d) => d.kind !== 'resolve').map((d) => ({ last: d }))); },
   },
-  data: { aggregate: (p) => { const q = p[0].$match; const g = new Map();
-    for (const d of data) { if (!match(d, q)) continue; const k = d.dId + '|' + d.variable; const e = g.get(k) || { _id: { d: d.dId, v: d.variable }, s: new Set(), c: 0 }; e.s.add(Math.floor(d.time / 300000)); e.c++; g.set(k, e); }
-    return cursor([...g.values()].map((e) => ({ _id: e._id, b: [...e.s], c: e.c }))); } },
+  data: { aggregate: (p) => { const q = p[0].$match; const g = new Map(); stats.aggData++;
+    for (const d of data) { if (!match(d, q)) continue; const b = Math.floor(d.time / 300000); const k = d.dId + '|' + d.variable + '|' + b;
+      const e = g.get(k) || { _id: { d: d.dId, v: d.variable, b }, c: 0 }; e.c++; g.set(k, e); }
+    stats.desde = q.time.$gte; return cursor([...g.values()]); } },
+  qa_coverage: {
+    createIndex: async () => {},
+    find: (q) => cursor([...cache.values()].filter((d) => match(d, q))),
+    updateOne: async (k, u) => { cache.set(`${k.dId}|${k.variable}|${k.day}`, { ...u.$set }); },
+  },
 };
 mongoose.connection.db = { collection: (n) => coll[n] };
 QaConfig.findById = () => ({ lean: async () => null });
@@ -77,5 +84,10 @@ Snap.create = async (s) => { saved = s; return s; };
   assert.strictEqual(s.isa.max10, 12); assert(s.isa.flood_pct > 0);
   assert(s.notas.some((x) => /reconstruido/.test(x)) && s.notas.some((x) => /sin aviso abierto/.test(x)));
   assert(E.GE.completitud > 99, 'la medición intermitente no debe bajar la completitud');
-  console.log('\nintegración OK');
+  // segunda corrida 1 h después: solo agrega lo que no está cerrado (hoy), no la ventana entera
+  const s2 = await compute({ now: NOW + H, force: true });
+  assert(stats.desde >= Math.floor((NOW + H) / 86400000) * 86400000 - 86400000, 'la 2ª corrida recorrió días ya cerrados');
+  const E2 = Object.fromEntries(s2.equipos.map((e) => [e.dId, e]));
+  assert(Math.abs(E2.GE.completitud - E.GE.completitud) < 0.5 && s2.sitio.caidas === 1);
+  console.log('\nintegración OK (2ª corrida desde', new Date(stats.desde).toISOString(), ')');
 })().catch((e) => { console.error(e); process.exit(1); });

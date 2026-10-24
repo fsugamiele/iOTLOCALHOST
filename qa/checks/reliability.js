@@ -23,6 +23,47 @@ async function loadConfig() {
   return { ...def, ...(doc || {}) };
 }
 
+// Cobertura de datos (ventanas de 5 min con lectura) por equipo y medición, con caché DIARIA en
+// `qa_coverage`: un día cerrado hace más de 2 h no cambia → se agrega una sola vez. Cada corrida
+// horaria recorre solo hoy (y lo que falte). Primera corrida: recorre la ventana completa.
+const DAY = 86400000;
+async function coverage(db, dIds, w0, t1, b0, b1) {
+  const C = db.collection('qa_coverage');
+  await C.createIndex({ dId: 1, variable: 1, day: 1 }, { unique: true });
+  const d0 = Math.floor(w0 / DAY), d1 = Math.floor(t1 / DAY);
+  const cached = await C.find({ dId: { $in: dIds }, day: { $gte: d0, $lte: d1 }, final: true }).toArray();
+  const listos = new Set(cached.map((c) => c.day));
+  const faltan = []; for (let d = d0; d <= d1; d++) if (!listos.has(d)) faltan.push(d);
+  let nuevos = [];
+  if (faltan.length) {
+    const desde = Math.min(...faltan) * DAY;
+    const rows = await db.collection('data').aggregate([
+      { $match: { dId: { $in: dIds }, time: { $gte: desde, $lte: t1 } } },
+      { $group: { _id: { d: '$dId', v: '$variable', b: { $floor: { $divide: ['$time', BUCKET_MS] } } }, c: { $sum: 1 } } },
+    ], { allowDiskUse: true }).toArray();
+    const porDia = new Map();
+    for (const r of rows) {
+      const day = Math.floor(r._id.b * BUCKET_MS / DAY); if (listos.has(day)) continue;
+      const k = `${r._id.d}|${r._id.v}|${day}`;
+      const e = porDia.get(k) || { dId: r._id.d, variable: r._id.v, day, b: [], n: [] };
+      e.b.push(r._id.b); e.n.push(r.c); porDia.set(k, e);
+    }
+    nuevos = [...porDia.values()];
+    for (const e of nuevos) {
+      e.final = (e.day + 1) * DAY < t1 - 2 * 3600000;
+      await C.updateOne({ dId: e.dId, variable: e.variable, day: e.day }, { $set: e }, { upsert: true });
+    }
+  }
+  const out = new Map();
+  for (const e of [...cached, ...nuevos]) {
+    const k = `${e.dId}|${e.variable}`;
+    const o = out.get(k) || { _id: { d: e.dId, v: e.variable }, b: [], c: 0 };
+    e.b.forEach((b, i) => { if (b >= b0 && b <= b1) { o.b.push(b); o.c += e.n[i]; } });
+    out.set(k, o);
+  }
+  return [...out.values()].filter((o) => o.b.length);
+}
+
 async function compute({ now = Date.now(), force = false } = {}) {
   const db = mongoose.connection.db;
   const cfg = await loadConfig();
@@ -58,12 +99,8 @@ async function compute({ now = Date.now(), force = false } = {}) {
   if (recon) notas.push(`${recon} episodio(s) reconstruido(s): el cierre se registró en otro equipo (anterior al fix del 22/10).`);
 
   // ── cobertura de datos en ventanas de 5 min, por equipo y por medición ──
-  const cov = await db.collection('data').aggregate([
-    { $match: { dId: { $in: dIds }, time: { $gte: w0, $lte: t1 } } },
-    { $group: { _id: { d: '$dId', v: '$variable', b: { $floor: { $divide: ['$time', BUCKET_MS] } } }, c: { $sum: 1 } } },
-    { $group: { _id: { d: '$_id.d', v: '$_id.v' }, b: { $push: '$_id.b' }, c: { $sum: '$c' } } },
-  ], { allowDiskUse: true }).toArray();
   const b0 = Math.floor(w0 / BUCKET_MS), b1 = Math.floor(t1 / BUCKET_MS);
+  const cov = await coverage(db, dIds, w0, t1, b0, b1);
   const porEquipo = new Map();            // dId → Set de ventanas con algún dato (sin intermitentes)
   const datos = [];
   for (const row of cov) {
