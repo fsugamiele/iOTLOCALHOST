@@ -16,19 +16,23 @@ const TICK_MS = Number(process.env.QA_RQ_TICK_MS || 10000);
 const SAMPLE_MS = 60000;              // muestreo del "% del tiempo en condición"
 const GAP_MS = 15 * MIN;              // hueco de datos que corta la "historia continua"
 const LARGO_MS = 10 * MIN;            // episodio > 10 min = falla real (no se puede perder al ajustar)
-const CORTA_MS = 10 * MIN;            // excursión corta (candidata a filtrar con espera)
+const CORTA_MS = 10 * MIN;
+const MIN_EPIS = 5;                   // episodios mínimos para hablar de "la mayoría son cortos"            // excursión corta (candidata a filtrar con espera)
 
+let _seed = 12345; const rnd = () => ((_seed = (_seed * 1103515245 + 12345) % 2147483648) / 2147483648);
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
 const r2 = (v, d = 2) => (v == null || !isFinite(v) ? null : Math.round(v * 10 ** d) / 10 ** d);
 const pctl = (arr, p) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 function rango(factoryRange) {
-  const m = String(factoryRange || '').replace(/(\d),(\d)/g, '$1.$2').match(/-?\d+(?:\.\d+)?/g);
-  if (!m || m.length < 2) return null;
-  const a = Number(m[0]), b = Number(m[1]); return a < b ? [a, b] : [b, a];
+  // "0-1800", "-60--20", "200 a 240": un '-' pegado a un número anterior es separador, no signo.
+  const txt = String(factoryRange || '').replace(/(\d),(\d)/g, '$1.$2');
+  const m = [...txt.matchAll(/(^|[^\d.])(-?\d+(?:\.\d+)?)/g)].map((x) => Number(x[2]));
+  if (m.length < 2) return null;
+  const a = m[0], b = m[1]; return a < b ? [a, b] : [b, a];
 }
 
 // Reproduce [from, to] con las reglas dadas. Devuelve, por instancia, avisos/cierres/excursiones.
-async function replay(db, { rules, dIds, devs, siteCode, from, to, vars = null, seed }) {
+async function replay(db, { rules, dIds, devs, siteCode, from, to, vars = null, seed, log = null }) {
   const { RE, createRuleFsm } = engine();
   const siteState = new Map();
   for (const d of devs) siteState.set(d.dId, { _deviceType: d.deviceType, _siteCode: siteCode, _deviceName: d.name || d.dId, _lastUpdate: {} });
@@ -72,7 +76,9 @@ async function replay(db, { rules, dIds, devs, siteCode, from, to, vars = null, 
     }
   };
   const q = { dId: { $in: dIds } }; if (vars) q.variable = { $in: vars };
+  let dia = -1;
   for (let h0 = from; h0 < to; h0 += H) {
+    if (log && Math.floor((h0 - from) / (24 * H)) !== dia) { dia = Math.floor((h0 - from) / (24 * H)); log(`día ${dia + 1} de ${Math.ceil((to - from) / (24 * H))}`); }
     const chunk = await db.collection('data').find({ ...q, time: { $gte: h0, $lt: Math.min(h0 + H, to) } })
       .project({ _id: 0, dId: 1, variable: 1, value: 1, time: 1 }).sort({ time: 1 }).toArray();
     for (const row of chunk) {
@@ -83,13 +89,17 @@ async function replay(db, { rules, dIds, devs, siteCode, from, to, vars = null, 
       if (series) {
         const k = `${row.dId}|${row.variable}`; const v = num(row.value);
         let s = series.get(k);
-        if (!s) { s = { n: 0, mean: 0, m2: 0, min: Infinity, max: -Infinity, dn: 0, d2: 0, last: null, lastT: null, run: 0, runStart: row.time, maxRun: 0 }; series.set(k, s); }
+        if (!s) { s = { n: 0, mean: 0, m2: 0, min: Infinity, max: -Infinity, dn: 0, d2: 0, res: [], last: null, lastT: null, run: 0, runStart: row.time, maxRun: 0 }; series.set(k, s); }
         if (s.lastT != null && row.time - s.lastT > GAP_MS) s.runStart = row.time;
         s.maxRun = Math.max(s.maxRun, row.time - s.runStart); s.lastT = row.time;
         if (v != null) {
           s.n++; const dd = v - s.mean; s.mean += dd / s.n; s.m2 += dd * (v - s.mean);
           if (v < s.min) s.min = v; if (v > s.max) s.max = v;
-          if (s.last != null) { s.dn++; s.d2 += (v - s.last) ** 2; }
+          if (s.last != null) {
+            const dv = Math.abs(v - s.last); s.dn++; s.d2 += dv * dv;
+            // muestra al azar de 2000 diferencias (reservoir) para el σ robusto del ruido
+            if (s.res.length < 2000) s.res.push(dv); else { const j = Math.floor(rnd() * s.dn); if (j < 2000) s.res[j] = dv; }
+          }
           s.last = v;
         }
       }
@@ -134,14 +144,18 @@ async function ruleQuality({ days = 30, now = Date.now() } = {}) {
   const to = now, from = to - days * 24 * H;
 
   const series = new Map();
-  const base = await replay(db, { rules, dIds, devs, siteCode: SITE, from, to, seed: series });
+  const base = await replay(db, { rules, dIds, devs, siteCode: SITE, from, to, seed: series, log: (m) => console.log(`[qa] calidad de reglas · reproduciendo ${m}`) });
+  console.log('[qa] calidad de reglas · probando los cambios propuestos…');
   const typeOf = new Map(devs.map((d) => [d.dId, d.deviceType]));
   // Estadística por tipo de equipo|medición: el equipo con más lecturas de ese tipo.
   const statOf = (dt, v) => {
     let best = null;
     for (const d of devs) if (d.deviceType === dt) { const s = series.get(`${d.dId}|${v}`); if (s && (!best || s.n > best.n)) best = s; }
     if (!best || best.n < 2) return null;
-    const sd = Math.sqrt(best.m2 / (best.n - 1)), sdn = best.dn ? Math.sqrt(best.d2 / best.dn) / Math.SQRT2 : null;
+    // σ_ruido robusto: 1,4826 · mediana(|Δ|) / √2 — los saltos reales (cortes, arranques) no lo inflan.
+    const sd = Math.sqrt(best.m2 / (best.n - 1));
+    const med = pctl(best.res, 0.5);
+    const sdn = med != null ? (1.4826 * med) / Math.SQRT2 : null;
     return { n: best.n, mean: best.mean, sd, sdRuido: sdn, min: best.min, max: best.max, maxRunH: best.maxRun / H };
   };
 
@@ -192,15 +206,17 @@ async function ruleQuality({ days = 30, now = Date.now() } = {}) {
     }
 
     // ── avisa de más ──
-    if (eps.length && (parp > 0 || perDay > 1 || shortShare >= 0.3)) {
+    const cortosCuenta = eps.length >= MIN_EPIS && shortShare >= 0.3;   // con pocos episodios no es patrón (D4)
+    if (eps.length && (parp > 0 || perDay > 1 || cortosCuenta)) {
       const motivos = [];
       if (parp) motivos.push(`${parp} parpadeo(s) (≥ 3 avisos en 60 s)`);
       if (perDay > 1) motivos.push(`${r2(perDay, 2)} avisos/día`);
-      if (shortShare >= 0.3) motivos.push(`${r2(100 * shortShare, 0)} % de los episodios duran menos que la espera de cierre + 1 min`);
+      if (cortosCuenta) motivos.push(`${r2(100 * shortShare, 0)} % de los episodios duran menos que la espera de cierre + 1 min`);
       const p95 = pctl(cortas, 0.95);
       // Espera > p95 de las excursiones cortas, con 30 s de margen (una cadencia de lectura típica).
       const graceNueva = p95 ? Math.min(900, Math.max((Number(r.graceSec) || 0) + 30, Math.ceil(p95 / 30000) * 30 + 30)) : null;
-      const dbNueva = r.type === 'D' && stp && stp.sdRuido ? r2(2 * stp.sdRuido, 3) : null;
+      const continua = ['gt', 'gte', 'lt', 'lte'].includes(op) && !(fv && /int|bool|enum|code|state/i.test(String(fv.type || '')) && !/float/i.test(String(fv.type || '')) && fv.deadband == null);
+      const dbNueva = r.type === 'D' && continua && stp && stp.sdRuido ? r2(2 * stp.sdRuido, 3) : null;
       const dbActual = r.type === 'D' && r.condition ? Number(r.condition.deadband) || 0 : null;
       const prueba = JSON.parse(JSON.stringify(r));
       if (graceNueva) prueba.graceSec = graceNueva;
@@ -213,12 +229,20 @@ async function ruleQuality({ days = 30, now = Date.now() } = {}) {
         perdidas = eps.filter((e) => (e.end == null ? to : e.end) - e.start > LARGO_MS)
           .filter((e) => !eps2.some((f) => f.start <= (e.end == null ? to : e.end) && (f.end == null ? to : f.end) >= e.start)).length;
       }
+      const inutil = despues != null && despues >= 0.8 * eps.length;
+      if (inutil) {
+        out.push({ ...comun, veredicto: 'avisa_de_mas', porque: `Avisa de más: ${motivos.join('; ')}.`,
+          calculo: `reproducido ${days} d con ${graceNueva ? `espera ${graceNueva} s` : ''}${dbNueva ? ` e histéresis ${dbNueva}` : ''}: ${eps.length} → ${despues} avisos`,
+          cambio: `Más espera o histéresis no lo resuelve (${eps.length} → ${despues}): los episodios no son excursiones cortas. Revisar la condición o el umbral.`,
+          propuesta: { graceSec: null, deadband: null, antes: eps.length, despues, perdidas } });
+        continue;
+      }
       const cambios = [];
       if (graceNueva) cambios.push(`espera ${Number(r.graceSec) || 0} s → ${graceNueva} s`);
       if (dbNueva && dbNueva > (dbActual || 0)) cambios.push(`histéresis ${dbActual || 0} → ${dbNueva}`);
       out.push({ ...comun, veredicto: 'avisa_de_mas', porque: `Avisa de más: ${motivos.join('; ')}.`,
         calculo: [`excursiones < 10 min: n = ${cortas.length}${p95 ? ` · p95 = ${Math.round(p95 / 1000)} s` : ''}`,
-          stp && stp.sdRuido != null ? `σ_ruido = ${r2(stp.sdRuido, 4)} → histéresis ≥ 2σ = ${r2(2 * stp.sdRuido, 4)}${r.type !== 'D' ? ' (solo aplicable a reglas de umbral fijo)' : ''}` : null,
+          dbNueva != null ? `σ_ruido = 1,4826·mediana|Δ|/√2 = ${r2(stp.sdRuido, 4)} → histéresis ≥ 2σ = ${r2(2 * stp.sdRuido, 4)}` : null,
           despues != null ? `reproducido ${days} d: ${eps.length} → ${despues} avisos · fallas > 10 min perdidas: ${perdidas}` : null].filter(Boolean).join('\n'),
         cambio: cambios.length ? `${cambios.join(' y ')}.${despues != null ? ` Con ${days} días reproducidos: ${eps.length} → ${despues} avisos, ${perdidas ? `${perdidas} falla(s) real(es) perdida(s) — revisar` : 'ninguna falla real perdida'}.` : ''}` : 'Revisar la condición: los avisos no son excursiones cortas filtrables con espera.',
         propuesta: { graceSec: graceNueva, deadband: dbNueva && dbNueva > (dbActual || 0) ? dbNueva : null, antes: eps.length, despues, perdidas } });
@@ -227,7 +251,15 @@ async function ruleQuality({ days = 30, now = Date.now() } = {}) {
 
     // ── sin avisos: inalcanzable / umbral a revisar / protección ──
     if (!eps.length) {
-      if (thr != null && fisico && ((['gt', 'gte'].includes(op) && thr >= fisico[1]) || (['lt', 'lte'].includes(op) && thr <= fisico[0]))) {
+      const fuera = thr != null && fisico && ((['gt', 'gte'].includes(op) && thr >= fisico[1]) || (['lt', 'lte'].includes(op) && thr <= fisico[0]));
+      const span = fisico ? fisico[1] - fisico[0] : 0;
+      const lejos = fuera && (['gt', 'gte'].includes(op) ? thr - fisico[1] : fisico[0] - thr) > 0.5 * span;
+      if (fuera && !lejos) {
+        out.push({ ...comun, veredicto: 'umbral_revisar', porque: `El umbral (${thr}) queda fuera de la escala de la ficha (${fisico[0]} a ${fisico[1]}): la ficha no contempla ese valor. Revisar la escala de la ficha o el umbral.`,
+          calculo: `${op} ${thr} con escala ${fisico[0]}–${fisico[1]}${stp ? ` · observado ${r2(stp.min, 2)}–${r2(stp.max, 2)}` : ''}`, cambio: 'Ampliar la escala de la ficha si el valor es posible, o corregir el umbral.' });
+        continue;
+      }
+      if (lejos) {
         out.push({ ...comun, veredicto: 'inalcanzable', porque: `El umbral (${thr}) queda fuera del rango físico de la medición según la ficha (${fisico[0]} a ${fisico[1]}): nunca puede cumplirse.`,
           calculo: `${op} ${thr} con rango ${fisico[0]}–${fisico[1]}`, cambio: 'Corregir el umbral o atarlo al límite de la ficha.' });
         continue;
