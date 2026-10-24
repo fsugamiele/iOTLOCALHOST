@@ -1,4 +1,4 @@
-# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · Qs1–Qs6 FIRMADAS ("aprobado, avanza" 24/10) · R1 IMPLEMENTADO
+# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · Qs1–Qs6 FIRMADAS ("aprobado, avanza" 24/10) · R1 CERRADO (validado con datos reales 24/10) · R2 IMPLEMENTADO
 
 **Origen:** Franco 2026-10-24 — el supervisor de calidad tiene bugs de renderizado de gráficos y lo que informa no alcanza para interpretar errores ni decidir cambios. Pide rediseño con información "fehaciente y respaldada por funciones matemáticas e indicadores de confiabilidad (Ao, Ai/técnica, MTBF, λ, MTTR, R, M)".
 **Maqueta aprobada:** `docsRefactor/Software/mockup_supervisor_confiabilidad_v2.html` (datos de ejemplo).
@@ -101,3 +101,8 @@ Consecuencia aplicada de Qs9: la **exposición T** y el **tiempo fuera de servic
 - β (Crow-AMSAA, proceso de Weibull para equipos reparables) solo con ≥ 10 fallas.
 
 **R1b (2026-10-24) — Qs7–Qs9:** `eventClass`/`failDeviceType` en la regla (no cambian la huella del motor ni cuentan como deriva) · selector en el editor (paso 4) · `tools/clasificar_reglas.js` (propuesta por palabras clave, `--apply` con correcciones) · sitio = carga sin energía + red (cortes, horas, MTBF de la red) + plataforma sin datos + eventos que no son falla · mediciones internas `_x` excluidas.
+
+**R2 (2026-10-24) — calidad de las reglas:** `qa/lib/ruleQuality.js` reproduce la ventana con el motor completo (todas las reglas juntas, como en vivo; lectura por horas) y cuenta episodios. Veredictos de §3; para "avisa de más" propone espera > p95 de las excursiones cortas + 30 s y, en reglas de umbral fijo, histéresis ≥ 2·σ_ruido, y **reproduce la regla con el cambio** (avisos antes → después, fallas > 10 min perdidas). Corre en la Capa C nocturna (`qa/checks/ruleQuality.js`) o a pedido (`POST /api/qa/rule-quality/recompute`, en segundo plano) → `rule_quality_snapshots`; `GET /api/qa/rule-quality`; `tools/ver_calidad_reglas.js`.
+- Regla tomada: un umbral **lejano** (> 10 σ) es "umbral a revisar" solo si es un número propio; si viene de la ficha o la controladora (fabricante) es "protección sin disparos".
+- Límite: "deja de reportar" no se reproduce (usa el reloj real). Reinicios del edge no se simulan.
+- Prueba: `qa/test/ruleQuality.itest.js` (motor real, 3 días sintéticos): bus DC con bajones de 40 s → avisa de más, espera 90 s + histéresis 0,21 → 24 → 1 avisos sin perder el corte real de 30 min; sobrevelocidad de ficha → protección; umbral fuera del rango físico → inalcanzable; número fijo lejano con límite en la ficha → umbral a revisar; medición sin lecturas → no evalúa.

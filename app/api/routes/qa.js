@@ -819,4 +819,23 @@ router.put("/qa/config", checkAuth, async (req, res) => {
   }
 });
 
+// ── R2 — calidad de las reglas (30 días reproducidos con el motor completo) ──
+const RuleQualitySnapshot = require("../models/rule_quality_snapshot.js");
+router.get("/qa/rule-quality", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  const q = req.query.siteCode ? { siteCode: String(req.query.siteCode) } : {};
+  const snap = await RuleQualitySnapshot.findOne(q).sort({ computedAt: -1 }).lean();
+  if (!snap) return res.status(404).json({ status: "error", error: "todavía no hay cálculo de calidad de reglas (corre de noche o a pedido)" });
+  return res.json({ status: "success", data: snap });
+});
+router.post("/qa/rule-quality/recompute", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  try {
+    const up = await axios.post(`http://${QA_HOST}:${QA_HTTP_PORT}/rule-quality`, {}, { timeout: 10000, validateStatus: () => true });
+    return res.status(up.status).json(up.data);
+  } catch (error) {
+    return res.status(502).json({ status: "error", error: "no se pudo contactar al worker de calidad" });
+  }
+});
+
 module.exports = router;

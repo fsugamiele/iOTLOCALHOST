@@ -136,4 +136,4 @@ async function simulate({ rule, hours = 24 } = {}) {
   return { ok: true, hours: H, from, to, samples: sampleTs, rows: rows.length, truncated: rows.length >= MAX_ROWS, instances };
 }
 
-module.exports = { simulate };
+module.exports = { simulate, engine };
