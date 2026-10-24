@@ -57,7 +57,7 @@ export function emptyCond(alcance, packType) {
 export function emptyModel(pack) {
   const dt = (pack && pack.deviceType) || '';
   return { nombre: '', alcance: 'equipo', union: 'todas', conds: [emptyCond('equipo', dt)], espera: '60', cierre: '120',
-    cierreModo: 'auto', gravedad: 'warning', reco: '', significa: '', pasos: '', packType: dt };
+    cierreModo: 'auto', gravedad: 'warning', reco: '', significa: '', pasos: '', clase: '', claseEquipo: '', packType: dt };
 }
 
 // ── regla → modelo ─────────────────────────────────────────────────────────
@@ -73,6 +73,8 @@ export function ruleToModel(rule, pack) {
     gravedad: rule.severity || 'warning', reco: rule.recommendation || '', packType: (pack && pack.deviceType) || dt,
     // spec_detalle_alarma_v2 (Qj2/Qj3) — textos del detalle de la alarma.
     significa: rule.meaning || '', pasos: Array.isArray(rule.steps) ? rule.steps.join('\n') : '',
+    // spec_supervisor_confiabilidad_v2 (Qs7) — clase del evento para la confiabilidad.
+    clase: rule.eventClass || '', claseEquipo: rule.failDeviceType || '',
   };
   if (rule.type === 'S') return null;
   if (rule.type === 'M' && rule.metric === 'spread') return null;
@@ -168,6 +170,8 @@ export function modelToRule(model, { pack, existing, editingIndex, isBoolVar }) 
     reset_behavior: model.cierreModo === 'manual' ? 'manual' : 'auto',
     cooldownSec: existing && existing.cooldownSec != null ? existing.cooldownSec : 300,
   });
+  if (model.clase) r.eventClass = model.clase; else delete r.eventClass;
+  if (model.clase === 'equipo' && model.claseEquipo) r.failDeviceType = model.claseEquipo; else delete r.failDeviceType;
   if (simple) {
     const c = model.conds[0], isBool = !!(isBoolVar && isBoolVar(packType, c.variable));
     Object.assign(r, { deviceType: packType, variable: c.variable });

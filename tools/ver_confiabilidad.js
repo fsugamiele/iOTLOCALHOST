@@ -15,8 +15,12 @@ const dt = (t) => new Date(t).toLocaleString('es-AR', { timeZone: 'America/Argen
   const s = await mongoose.connection.db.collection('reliability_snapshots').find({}).sort({ computedAt: -1 }).limit(1).next();
   if (!s) { console.log('Todavía no hay cálculo de confiabilidad.'); process.exit(0); }
   console.log(`Sitio ${s.siteCode} · calculado ${dt(s.computedAt)} en ${(s.durationMs / 1000).toFixed(1)} s · ventana ${s.window.T} h · IC ${s.config.confidence * 100} %\n`);
-  const st = s.sitio;
-  console.log(st ? `SITIO  Ao ${f(st.Ao, 3)} % · ${st.caidas} caída(s) · ${h(st.downH)} sin energía${st.detalle.map((c) => `\n        ${dt(c.desde)} → ${dt(c.hasta)}`).join('')}` : 'SITIO  sin rectificadores con datos');
+  const st = s.sitio || {}; const cg = st.carga;
+  console.log(cg ? `SITIO  carga: Ao ${f(cg.Ao, 3)} % · ${cg.caidas} caída(s) · ${h(cg.downH)} sin energía${cg.detalle.map((c) => `\n        ${dt(c.desde)} → ${dt(c.hasta)}`).join('')}` : 'SITIO  sin rectificadores con datos');
+  if (st.red) console.log(`       red: ${st.red.n} corte(s) · ${h(st.red.horas)} sin red · Ao red ${f(st.red.Ao, 2)} % · MTBF red ${st.red.n ? `${f(st.red.mtbf)} h [${f(st.red.mtbf_lo)}–${f(st.red.mtbf_hi)}]` : `≥ ${f(st.red.mtbf_lo)} h`}`);
+  if (st.plataforma) console.log(`       plataforma sin datos: ${f(st.plataforma.sinDatosPct)} % de la ventana (no cuenta como falla ni baja la completitud)`);
+  if (st.eventos) console.log(`       eventos que no son falla: ${Object.entries(st.eventos).map(([k, v]) => `${k} ${v}`).join(' · ') || 'ninguno'}`);
+  if (st.sinClasificar && st.sinClasificar.length) console.log(`       reglas críticas sin clasificar (no cuentan): ${st.sinClasificar.length}`);
   const a = s.agg;
   console.log(`PARQUE n=${a.n} · MTBF ${f(a.mtbf)} h [${f(a.mtbf_lo)}–${f(a.mtbf_hi)}] · λ ${f(a.lam, 2)}/1000 h · MTTR ${h(a.mttr)} (${a.nReconocidas}/${a.n} reconocidas) · respuesta ${h(a.mrt)} · Ai ${f(a.Ai, 2)} % · Ao ${f(a.Ao, 2)} % · M(${s.config.slaRepairH} h) ${f(a.M4)} % · confianza ${a.conf}\n`);
   for (const q of s.equipos) {

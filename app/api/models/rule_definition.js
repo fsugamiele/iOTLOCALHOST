@@ -49,6 +49,12 @@ const RuleDefinitionSchema = new Schema({
   meaning:           { type: String, default: '' },            // "Qué significa esta alarma"
   steps:             { type: [String], default: undefined },  // "Pasos a seguir", uno por renglón
   correlationParent: { type: String, default: null },
+  // spec_supervisor_confiabilidad_v2 (Qs7) — qué indica el episodio para la confiabilidad:
+  // 'equipo' = falla del equipo (MTBF/MTTR) · 'red' = red/energía (disponibilidad del sitio) ·
+  // 'seguridad' | 'combustible' | 'operacion' = evento, no falla. Sin valor = sin clasificar (no cuenta).
+  eventClass:        { type: String, enum: ['equipo', 'red', 'seguridad', 'combustible', 'operacion'], default: undefined },
+  // Combinadas: tipo de equipo al que se imputa la falla (si no, el equipo dueño del episodio).
+  failDeviceType:    { type: String, default: undefined },
   cooldownSec:       { type: Number, default: 300 },
   escalateAfterMinutes: { type: Number, default: null }, // EDGE-2: minutos sin setpoint antes de escalar INFO→warning. null = sin escalada (opt-in). Calibrable en producción.
 

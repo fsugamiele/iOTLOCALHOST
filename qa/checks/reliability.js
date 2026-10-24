@@ -93,38 +93,72 @@ async function compute({ now = Date.now(), force = false } = {}) {
   ]).toArray();
   const norm = (e) => ({ ...e, kind: e.kind || 'fire', siteId: e.siteId || SITE_ID });
   const events = [...previos.map((p) => norm(p.last)), ...enVentana.map(norm)].sort((a, b) => a.time - b.time);
-  const { episodes, huerfanos } = R.buildEpisodes(events);
+  const built = R.buildEpisodes(events);
+  const { huerfanos } = built;
   if (huerfanos) notas.push(`${huerfanos} cierre(s) sin aviso abierto en la ventana (los revisa Integridad).`);
-  const recon = episodes.filter((e) => e.reconstruida).length;
+  const recon = built.episodes.filter((e) => e.reconstruida).length;
   if (recon) notas.push(`${recon} episodio(s) reconstruido(s): el cierre se registró en otro equipo (anterior al fix del 22/10).`);
+  // Qs8 — rebotes de la misma regla en el mismo equipo = la misma falla.
+  const { episodes, rebotes } = R.mergeRebounds(built.episodes, cfg.mergeGapMin * 60000);
+  if (rebotes) notas.push(`${rebotes} aviso(s) que volvieron antes de ${cfg.mergeGapMin} min del cierre se unieron a su episodio (rebotes).`);
 
-  // ── cobertura de datos en ventanas de 5 min, por equipo y por medición ──
+  // ── Qs7 — clase de cada regla: falla del equipo / red / seguridad / combustible / operación ──
+  const reglas = new Map();
+  for (const p of await db.collection('rulepacks').find({}).project({ 'rules.ruleId': 1, 'rules.label': 1, 'rules.type': 1, 'rules.severity': 1, 'rules.eventClass': 1, 'rules.failDeviceType': 1 }).toArray()) {
+    for (const r of (p.rules || [])) reglas.set(r.ruleId, r);
+  }
+  const devById = new Map(devs.map((d) => [d.dId, d]));
+  const clase = (e) => { const r = reglas.get(e.ruleId); return (r && r.eventClass) || null; };
+  // Falla imputada al tipo que declara la regla (combinadas); si no, al equipo del episodio.
+  const imputar = (e) => {
+    const r = reglas.get(e.ruleId); const ft = r && r.failDeviceType;
+    if (!ft) return e.dId;
+    const own = devById.get(e.dId); if (own && own.deviceType === ft) return e.dId;
+    const cand = devs.filter((d) => d.deviceType === ft);
+    return cand.length ? cand[0].dId : e.dId;
+  };
+  const criticos = episodes.filter((e) => e.severity === 'critical');
+  const sinClasificar = new Map();
+  for (const e of criticos) if (!clase(e)) sinClasificar.set(e.ruleId, (e.label || e.ruleId));
+  if (sinClasificar.size) notas.push(`${sinClasificar.size} regla(s) crítica(s) sin clasificar no cuentan en confiabilidad: ${[...sinClasificar.values()].slice(0, 8).join(', ')}${sinClasificar.size > 8 ? '…' : ''}.`);
+  const eventosPorClase = {};
+  for (const e of criticos) { const c = clase(e); if (c && c !== 'equipo') eventosPorClase[c] = (eventosPorClase[c] || 0) + 1; }
+
+  // ── cobertura de datos en ventanas de 5 min; completitud sobre el tiempo con la plataforma VIVA (Qs9) ──
   const b0 = Math.floor(w0 / BUCKET_MS), b1 = Math.floor(t1 / BUCKET_MS);
-  const cov = await coverage(db, dIds, w0, t1, b0, b1);
-  const porEquipo = new Map();            // dId → Set de ventanas con algún dato (sin intermitentes)
+  const cov = (await coverage(db, dIds, w0, t1, b0, b1)).filter((row) => !String(row._id.v).startsWith('_'));   // `_x`: internas del motor
+  const viva = new Set();                  // ventanas con algún dato de algún equipo del sitio
+  const porEquipo = new Map();             // dId → ventanas con algún dato (sin intermitentes)
+  for (const row of cov) {
+    if (INTERMITENTES.includes(row._id.v)) continue;
+    const s = porEquipo.get(row._id.d) || new Set(); row.b.forEach((x) => { s.add(x); viva.add(x); }); porEquipo.set(row._id.d, s);
+  }
+  const vivasEntre = (from, to) => { let n = 0; for (const b of viva) if (b >= from && b <= to) n++; return n; };
   const datos = [];
   for (const row of cov) {
     const { d, v } = row._id; const set = new Set(row.b);
     const first = Math.min(...row.b), last = Math.max(...row.b);
-    let huecos = 0; for (let b = first + 1; b <= last; b++) if (!set.has(b) && set.has(b - 1)) huecos++;
-    const intermitente = INTERMITENTES.includes(v);
-    if (!intermitente) { const s = porEquipo.get(d) || new Set(); row.b.forEach((x) => s.add(x)); porEquipo.set(d, s); }
-    const dev = devs.find((x) => x.dId === d);
+    let huecos = 0; for (let b = first + 1; b <= last; b++) if (!set.has(b) && set.has(b - 1) && viva.has(b)) huecos++;
+    const den = vivasEntre(Math.max(b0, first), b1);
+    const dev = devById.get(d);
     datos.push({ dId: d, equipo: (dev && dev.name) || d, variable: v, lecturas: row.c, ventanas: set.size,
-      completitud: Math.round(10000 * set.size / (b1 - Math.max(b0, first) + 1)) / 100, huecos, intermitente });
+      completitud: den ? Math.round(10000 * Math.min(set.size, den) / den) / 100 : null, huecos, intermitente: INTERMITENTES.includes(v) });
   }
   datos.sort((a, b) => a.equipo.localeCompare(b.equipo) || a.completitud - b.completitud);
+  // Horas con la plataforma viva dentro de [a, b] (exposición y tiempo fuera de servicio observables).
+  const horasVivas = (a, b) => vivasEntre(Math.floor(a / BUCKET_MS), Math.floor(Math.max(a, b - 1) / BUCKET_MS)) * BUCKET_MS / R.H;
 
-  // ── indicadores por equipo ──
+  // ── indicadores por equipo (solo "falla del equipo", crítica) ──
   const equipos = []; const fallasAll = [];
   for (const d of devs) {
     const s = porEquipo.get(d.dId);
     const firstB = s && s.size ? Math.min(...s) : null;
     const tStart = firstB == null ? w0 : Math.max(w0, firstB * BUCKET_MS);
-    const T = (t1 - tStart) / R.H;
-    const comp = s && s.size ? 100 * s.size / (b1 - Math.floor(tStart / BUCKET_MS) + 1) : null;
-    const eps = episodes.filter((e) => e.dId === d.dId && e.severity === 'critical');
-    const fallas = R.failuresOf(eps, tStart, t1);
+    const T = firstB == null ? 0 : horasVivas(tStart, t1);
+    const den = vivasEntre(Math.floor(tStart / BUCKET_MS), b1);
+    const comp = s && s.size && den ? 100 * Math.min(s.size, den) / den : null;
+    const eps = criticos.filter((e) => clase(e) === 'equipo' && imputar(e) === d.dId);
+    const fallas = R.failuresOf(eps, tStart, t1).map((f) => ({ ...f, downH: horasVivas(f.start, f.end) }));
     fallasAll.push(...fallas);
     const ind = R.indicators(fallas, T, comp, cfg, tStart);
     const prof = d.profileId && profiles.get(d.profileId); const sh = sheets.get(d.deviceType);
@@ -135,19 +169,30 @@ async function compute({ now = Date.now(), force = false } = {}) {
         censurada: f.censurada, reconstruida: f.reconstruida,
         resp: f.ackAt && f.ackAt >= f.start && f.ackAt <= f.end ? (f.ackAt - f.start) / R.H : null,
         rep: f.ackAt && f.ackAt >= f.start && f.ackAt <= f.end && !f.censurada ? (f.end - f.ackAt) / R.H : null,
-        fuera: (f.end - f.start) / R.H })) });
+        fuera: f.downH })) });
     if (firstB == null) notas.push(`${d.name || d.dId}: sin lecturas en la ventana (indicadores no calculables).`);
   }
 
-  // ── caídas del sitio: rectificadores callados mientras otro equipo publica ──
+  // ── sitio: carga sin energía (rectificadores callados con la plataforma viva) + red (Qs7) ──
   const rect = devs.filter((d) => cfg.rectifierTypes.includes(d.deviceType)).map((d) => d.dId);
   const bucketsRect = new Set(), bucketsOtros = new Set();
   for (const row of cov) {
     const dst = rect.includes(row._id.d) ? bucketsRect : bucketsOtros;
     row.b.forEach((b) => dst.add(b));
   }
-  const sitio = R.siteOutages(bucketsRect, bucketsOtros, b0, b1);
-  if (!sitio) notas.push('Sin rectificadores con datos: no se puede calcular la disponibilidad del sitio.');
+  const carga = R.siteOutages(bucketsRect, bucketsOtros, b0, b1);
+  if (!carga) notas.push('Sin rectificadores con datos: no se puede calcular la disponibilidad del sitio.');
+  const Tsitio = horasVivas(w0, t1);
+  const cortes = R.failuresOf(criticos.filter((e) => clase(e) === 'red'), w0, t1).map((f) => ({ ...f, downH: horasVivas(f.start, f.end) }));
+  const red = R.indicators(cortes, Tsitio, null, cfg, w0);
+  const sitio = {
+    ...(carga || {}), carga,
+    red: { n: red.n, horas: red.downH, Ao: red.Ao, mtbf: red.mtbf, mtbf_lo: red.mtbf_lo, mtbf_hi: red.mtbf_hi, lam: red.lam, mdt: red.mdt,
+      cortes: cortes.slice(-30).map((f) => ({ start: f.start, end: f.end, causas: [...new Set(f.causas)], fuera: f.downH, censurada: f.censurada })) },
+    plataforma: { horasVivas: Math.round(Tsitio * 100) / 100, sinDatosPct: Math.round(10000 * (1 - Tsitio / (cfg.windowDays * 24))) / 100 },
+    eventos: eventosPorClase,
+    sinClasificar: [...sinClasificar.entries()].map(([ruleId, label]) => ({ ruleId, label })),
+  };
 
   const fires = enVentana.filter((e) => (e.kind || 'fire') !== 'resolve');
   const snap = {

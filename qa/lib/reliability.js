@@ -84,6 +84,26 @@ function buildEpisodes(events) {
   return { episodes: out, huerfanos };
 }
 
+// Qs8 — rebotes: un nuevo aviso de la MISMA regla en el MISMA equipo antes de `gapMs` desde el
+// cierre anterior es la misma falla (se extiende el episodio). Devuelve { episodes, rebotes }.
+function mergeRebounds(episodes, gapMs) {
+  const by = new Map();
+  for (const e of [...episodes].sort((a, b) => a.start - b.start)) {
+    const k = `${e.ruleId}|${e.dId}`; (by.get(k) || by.set(k, []).get(k)).push(e);
+  }
+  const out = []; let rebotes = 0;
+  for (const list of by.values()) {
+    let cur = null;
+    for (const e of list) {
+      if (cur && cur.end != null && e.start - cur.end < gapMs) {
+        cur.end = e.end; cur.closeMode = e.closeMode; cur.reconstruida = cur.reconstruida || e.reconstruida;
+        if (!cur.ackAt && e.ackAt) cur.ackAt = e.ackAt; cur.rebotes = (cur.rebotes || 0) + 1; rebotes++;
+      } else { cur = { ...e }; out.push(cur); }
+    }
+  }
+  return { episodes: out.sort((a, b) => a.start - b.start), rebotes };
+}
+
 // Recorta a [t0, t1] y une los episodios críticos superpuestos de un equipo en fallas.
 function failuresOf(episodes, t0, t1) {
   const iv = episodes
@@ -115,12 +135,13 @@ function confianza(n, completitud, cfg) {
 // Indicadores de un equipo. T en horas (puede ser menor que la ventana si el equipo es nuevo).
 function indicators(fallas, T, completitud, cfg, tStart) {
   const n = fallas.length;
-  const down = fallas.map((f) => (f.end - f.start) / H);
+  // downH: horas fuera de servicio con la plataforma viva (Qs9); si falta, la duración de reloj.
+  const down = fallas.map((f) => (f.downH != null ? f.downH : (f.end - f.start) / H));
   const TO = Math.max(0, T - down.reduce((s, v) => s + v, 0));
   const rep = fallas.filter((f) => !f.censurada && f.ackAt && f.ackAt >= f.start && f.ackAt <= f.end);
   const mttr = mean(rep.map((f) => (f.end - f.ackAt) / H));
   const mrt = mean(rep.map((f) => (f.ackAt - f.start) / H));
-  const mdt = mean(fallas.filter((f) => !f.censurada).map((f) => (f.end - f.start) / H));
+  const mdt = mean(fallas.filter((f) => !f.censurada).map((f) => (f.downH != null ? f.downH : (f.end - f.start) / H)));
   const ci = mtbfCI(TO, n, cfg.confidence);
   const mtbf = n ? TO / n : null;
   const lam = n && TO > 0 ? (n / TO) * 1000 : null;          // por 1000 h
@@ -215,4 +236,4 @@ function aggregate(eqs, fallasAll, cfg) {
     conf: confianza(n, comp.length ? Math.min(...comp) : null, cfg) };
 }
 
-module.exports = { lnGamma, gammaP, chi2Inv, mtbfCI, buildEpisodes, failuresOf, indicators, crowBeta, isaLoad, siteOutages, aggregate, confianza, H };
+module.exports = { mergeRebounds, lnGamma, gammaP, chi2Inv, mtbfCI, buildEpisodes, failuresOf, indicators, crowBeta, isaLoad, siteOutages, aggregate, confianza, H };

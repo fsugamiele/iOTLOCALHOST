@@ -21,6 +21,7 @@ const QaConfigSchema = new Schema({
   chatterN:       { type: Number, default: 3, min: 2 },
   chatterSec:     { type: Number, default: 60, min: 1 },
   staleH:         { type: Number, default: 24, min: 1 },
+  mergeGapMin:    { type: Number, default: 30, min: 0 },         // Qs8: rebote = misma falla
   everyMin:       { type: Number, default: 60, min: 5 },         // Qs4: cada cuánto recalcula el worker
   rectifierTypes: { type: [String], default: ['ELTEK'] },        // fuentes para la caída del sitio
   updatedBy:      { type: String, default: null },

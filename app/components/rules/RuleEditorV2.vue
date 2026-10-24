@@ -236,6 +236,23 @@
               <button type="button" class="sev-warning" :class="{ on: model.gravedad === 'warning' }" @click="model.gravedad = 'warning'">Advertencia</button>
               <button type="button" class="sev-critical" :class="{ on: model.gravedad === 'critical' }" @click="model.gravedad = 'critical'">Crítica</button>
             </div>
+            <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-clase">Para la confiabilidad, este aviso indica</label>
+              <select id="rv2-clase" v-model="model.clase" class="rv2-in">
+                <option value="">Sin clasificar (no cuenta)</option>
+                <option value="equipo">Falla del equipo — cuenta para MTBF y MTTR</option>
+                <option value="red">Red / energía — cuenta para la disponibilidad del sitio</option>
+                <option value="seguridad">Seguridad — evento, no falla</option>
+                <option value="combustible">Combustible — evento, no falla</option>
+                <option value="operacion">Operación — evento, no falla</option>
+              </select>
+              <span v-if="model.gravedad === 'critical' && !model.clase" class="rv2-hint" style="color:#b7791f">Una regla crítica sin clasificar no entra en los indicadores de confiabilidad.</span>
+            </div>
+            <div v-if="model.clase === 'equipo' && tiposEnRegla.length > 1" class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-clase-eq">¿Qué equipo es el que falla?</label>
+              <select id="rv2-clase-eq" v-model="model.claseEquipo" class="rv2-in">
+                <option value="">El equipo donde se registra el aviso</option>
+                <option v-for="t in tiposEnRegla" :key="t" :value="t">{{ nombreTipo(t) }}</option>
+              </select>
+            </div>
             <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-rec">Qué tiene que hacer el operador</label>
               <textarea id="rv2-rec" v-model="model.reco" class="rv2-in" rows="3" placeholder="Ej.: Despachar técnico con grupo portátil y verificar el arranque del grupo"></textarea>
             </div>
@@ -354,6 +371,8 @@ export default {
       return this.model.conds.map((c, i) => { const r = this.reemplazo(c); return r ? `Condición ${i + 1} · ${this.frase(c)} — ${r}` : null; }).filter(Boolean);
     },
     packKind() { return deviceTypeName(this.packType, this.sheets); },
+    // spec_supervisor_confiabilidad_v2 (Qs7) — tipos de equipo que intervienen (para imputar la falla de una combinada).
+    tiposEnRegla() { return [...new Set([this.packType, ...((this.model && this.model.conds) || []).map((c) => c.deviceType)].filter(Boolean))]; },
     packKindLower() { return this.packKind.toLowerCase(); },
     sheetByType() { const m = {}; for (const s of this.sheets) m[s.deviceType] = s; return m; },
     builtRule() {
@@ -461,6 +480,7 @@ export default {
   },
   beforeDestroy() { this.parar(); clearTimeout(this._simT); clearInterval(this._nowI); clearInterval(this._ageI); },
   methods: {
+    nombreTipo(t) { return deviceTypeName(t, this.sheets); },
     hdr() { return { headers: { token: this.$store.state.auth.token } }; },
     // La página pregunta antes de salir si hay cambios sin guardar.
     marcarSinCambios() { try { this._base = JSON.stringify(this.builtRule); } catch (e) { this._base = null; } },

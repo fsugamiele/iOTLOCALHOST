@@ -101,4 +101,11 @@ t('caídas del sitio: solo cuenta rectificadores callados con la plataforma viva
   assert.strictEqual(R.siteOutages(new Set(), otros, 0, 99), null);
 });
 
+t('rebotes (Qs8): la misma regla y equipo antes de 30 min = un episodio; otra regla u otro equipo no', () => {
+  const e = (r, d, s, en) => ({ ruleId: r, dId: d, start: s * H, end: en == null ? null : en * H });
+  const { episodes, rebotes } = R.mergeRebounds([e('A', 'd', 0, 1), e('A', 'd', 1.4, 2), e('A', 'd', 3, 4), e('B', 'd', 4.1, 5), e('A', 'x', 4.2, 5)], 30 * 60000);
+  assert.strictEqual(rebotes, 1); assert.strictEqual(episodes.length, 4);
+  assert.strictEqual(episodes[0].end, 2 * H); assert.strictEqual(episodes[0].rebotes, 1);
+});
+
 console.log(`\n${ok} pruebas OK`);

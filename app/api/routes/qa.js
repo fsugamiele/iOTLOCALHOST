@@ -774,7 +774,7 @@ const QaConfig = require("../models/qa_config.js");
 const ReliabilitySnapshot = require("../models/reliability_snapshot.js");
 const QA_CONFIG_CAMPOS = ['windowDays', 'confidence', 'slaRepairH', 'aoTarget', 'provisorio', 'confAltaN', 'confMediaN',
   'completitudMin', 'isaDays', 'isaRateTarget', 'floodPerTen', 'floodPctTarget', 'chatterN', 'chatterSec', 'staleH',
-  'everyMin', 'rectifierTypes'];
+  'everyMin', 'rectifierTypes', 'mergeGapMin'];
 
 // GET /api/qa/reliability?siteCode= → la foto más reciente (o 404 si el worker todavía no calculó).
 router.get("/qa/reliability", checkAuth, async (req, res) => {

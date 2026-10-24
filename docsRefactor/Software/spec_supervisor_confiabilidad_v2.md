@@ -75,6 +75,15 @@ Ai = MTBF/(MTBF+MTTR)   Aa = MTBM/(MTBM+M̄) (correctivo+preventivo)   Ao = TO/T
 - Backtest: F2a/A1 del sitio reproducen el conteo real de episodios de `notifications` ± 1.
 - UI: ninguna serie con NaN/Infinity (prueba Playwright en todas las pestañas, también con equipo n = 0 y sin datos).
 
+## 7b · Definiciones FIRMADAS tras validar con datos reales (Franco 2026-10-24)
+| # | Definición |
+|---|---|
+| Qs7 | Cada regla declara su **clase** (`eventClass`): *equipo* (falla: MTBF/MTTR), *red* (red/energía: disponibilidad del sitio), *seguridad*, *combustible*, *operacion* (eventos, no fallas). Las combinadas de *equipo* declaran **qué equipo falla** (`failDeviceType`). Regla crítica sin clase = no cuenta (se informa). |
+| Qs8 | **Rebote:** un nuevo aviso de la misma regla en el mismo equipo antes de 30 min (`qa_config.mergeGapMin`) del cierre anterior es la misma falla. |
+| Qs9 | **Completitud** sobre el tiempo con la plataforma viva (algún equipo del sitio publicando). El tiempo con la plataforma apagada se informa aparte. |
+
+Consecuencia aplicada de Qs9: la **exposición T** y el **tiempo fuera de servicio** de cada equipo también se cuentan solo con la plataforma viva (una falla no se puede observar con la plataforma apagada). MTTR y respuesta siguen en tiempo de reloj (la gente actúa igual).
+
 ## 8 · Implementación
 **R1 (2026-10-24) — cálculo + API:**
 - `qa/lib/reliability.js` (funciones puras): χ² por inversión de la gamma incompleta, IC del MTBF, episodios (Qs3 reconstrucción), fallas, indicadores, Crow-AMSAA, carga ISA-18.2, caídas del sitio, agregado de parque.
@@ -90,3 +99,5 @@ Ai = MTBF/(MTBF+MTTR)   Aa = MTBM/(MTBM+M̄) (correctivo+preventivo)   Ao = TO/T
 - **Caída del sitio** = ventanas de 5 min sin lecturas de ningún rectificador mientras otro equipo del sitio publica (descarta caídas de la plataforma). Precisión ±5 min.
 - Avisos abiertos antes de la ventana se buscan hasta 90 días atrás.
 - β (Crow-AMSAA, proceso de Weibull para equipos reparables) solo con ≥ 10 fallas.
+
+**R1b (2026-10-24) — Qs7–Qs9:** `eventClass`/`failDeviceType` en la regla (no cambian la huella del motor ni cuentan como deriva) · selector en el editor (paso 4) · `tools/clasificar_reglas.js` (propuesta por palabras clave, `--apply` con correcciones) · sitio = carga sin energía + red (cortes, horas, MTBF de la red) + plataforma sin datos + eventos que no son falla · mediciones internas `_x` excluidas.
