@@ -1,0 +1,483 @@
+<title>Supervisor de Calidad Wanomi</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: consola NOC — encabezado de sitio, pestañas, resumen arriba y detalle abajo; misma paleta que la plataforma (black-dashboard). */
+:root {
+  --bg: #f5f6fa; --card: #ffffff; --card2: #f0f2f7; --ink: #1d2233; --mut: #5f6680; --line: #dfe3ec;
+  --acc: #00a585; --acc-ink: #ffffff; --acc-soft: rgba(0, 191, 154, .12);
+  --ok: #0f8a5f; --okb: rgba(15, 138, 95, .12); --atn: #a26f00; --atnb: rgba(232, 183, 48, .18);
+  --mal: #c22d3a; --malb: rgba(217, 58, 70, .12); --info: #2f6fb0; --infob: rgba(59, 130, 196, .13);
+  --grid: rgba(29, 34, 51, .08); --band: rgba(0, 165, 133, .14);
+  --f-ui: "Poppins", "Segoe UI", system-ui, sans-serif; --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1e1e2f; --card: #27293d; --card2: #2e3048; --ink: #e9ebf5; --mut: #9ea3c0; --line: #3a3d58;
+  --acc: #00bf9a; --acc-ink: #062019; --acc-soft: rgba(0, 191, 154, .16);
+  --ok: #3ddc97; --okb: rgba(61, 220, 151, .14); --atn: #f2c94c; --atnb: rgba(242, 201, 76, .16);
+  --mal: #ff6b78; --malb: rgba(255, 107, 120, .15); --info: #6fb1f2; --infob: rgba(111, 177, 242, .15);
+  --grid: rgba(233, 235, 245, .08); --band: rgba(0, 191, 154, .18); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #1e1e2f; --card: #27293d; --card2: #2e3048; --ink: #e9ebf5; --mut: #9ea3c0; --line: #3a3d58;
+  --acc: #00bf9a; --acc-ink: #062019; --acc-soft: rgba(0, 191, 154, .16);
+  --ok: #3ddc97; --okb: rgba(61, 220, 151, .14); --atn: #f2c94c; --atnb: rgba(242, 201, 76, .16);
+  --mal: #ff6b78; --malb: rgba(255, 107, 120, .15); --info: #6fb1f2; --infob: rgba(111, 177, 242, .15);
+  --grid: rgba(233, 235, 245, .08); --band: rgba(0, 191, 154, .18); color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-ui); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 16px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; line-height: 1.25; }
+h1 { font-size: 22px; font-weight: 700; }
+h2 { font-size: 17px; font-weight: 600; }
+h3 { font-size: 14px; font-weight: 600; }
+p { margin: 0; }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.mut { color: var(--mut); }
+.small { font-size: 12.5px; }
+.eyebrow { font-size: 11.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--acc); }
+
+/* encabezado */
+.head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.head__meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 4px 11px; border-radius: 999px; background: var(--card2); color: var(--mut); white-space: nowrap; }
+.pill.ok { background: var(--okb); color: var(--ok); } .pill.atn { background: var(--atnb); color: var(--atn); } .pill.mal { background: var(--malb); color: var(--mal); } .pill.info { background: var(--infob); color: var(--info); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+/* pestañas */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tabs button { font: inherit; font-weight: 600; font-size: 13.5px; color: var(--mut); background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 14px; cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--acc); }
+.tabs button:focus-visible, .btn:focus-visible, tr[tabindex]:focus-visible, .chip:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.between { justify-content: space-between; }
+
+/* veredicto */
+.verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
+.verdict > div { padding: 14px 18px; display: flex; gap: 12px; align-items: flex-start; border-right: 1px solid var(--line); }
+.verdict > div:last-child { border-right: 0; }
+.verdict .sig { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
+.sig.ok { background: var(--ok); } .sig.atn { background: var(--atn); } .sig.mal { background: var(--mal); }
+
+/* indicadores */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 178px), 1fr)); gap: 12px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kpi__lab { font-size: 12.5px; color: var(--mut); font-weight: 500; }
+.kpi__val { font: 600 24px/1.15 var(--f-num); font-variant-numeric: tabular-nums; }
+.kpi__ci { font-size: 12px; color: var(--mut); font-family: var(--f-num); }
+.kpi__foot { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+.conf { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.conf.alta { background: var(--okb); color: var(--ok); } .conf.media { background: var(--atnb); color: var(--atn); } .conf.baja { background: var(--malb); color: var(--mal); }
+
+/* tablas */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--mut); background: var(--card2); }
+td.r, th.r { text-align: right; }
+tbody tr:last-child td { border-bottom: 0; }
+tr[tabindex] { cursor: pointer; }
+tr[tabindex]:hover td { background: var(--acc-soft); }
+tr.sel td { background: var(--acc-soft); }
+.bar { height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; min-width: 60px; }
+.bar > i { display: block; height: 100%; background: var(--acc); }
+
+/* gráficos */
+svg { display: block; width: 100%; height: auto; }
+.g-grid { stroke: var(--grid); stroke-width: 1; }
+.g-axis { fill: var(--mut); font: 11px var(--f-num); }
+.g-line { fill: none; stroke: var(--acc); stroke-width: 2.2; }
+.g-band { fill: var(--band); }
+.g-mark { stroke: var(--mal); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.g-up { fill: var(--okb); } .g-fail { fill: var(--mal); } .g-pm { fill: var(--info); }
+.g-lab { fill: var(--ink); font: 12px var(--f-ui); }
+.g-bar { fill: var(--acc); } .g-bar.flood { fill: var(--mal); }
+.g-limit { stroke: var(--atn); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.empty { display: grid; place-items: center; min-height: 140px; border: 1px dashed var(--line); border-radius: 10px; color: var(--mut); text-align: center; padding: 16px; font-size: 13px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--mut); }
+.legend i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+/* reglas */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 12.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--mut); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--acc); color: var(--acc-ink); border-color: var(--acc); }
+.rule { border: 1px solid var(--line); border-radius: 12px; background: var(--card); display: grid; grid-template-columns: 6px 1fr; overflow: hidden; }
+.rule__stripe.ok { background: var(--ok); } .rule__stripe.atn { background: var(--atn); } .rule__stripe.mal { background: var(--mal); } .rule__stripe.info { background: var(--info); }
+.rule__body { padding: 14px 18px; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); min-width: 0; }
+.rule__body > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.math { font-family: var(--f-num); font-size: 12.5px; background: var(--card2); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; }
+.todo { border-left: 3px solid var(--acc); padding-left: 10px; }
+.btn { font: inherit; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--acc); background: var(--acc); color: var(--acc-ink); }
+.btn.sec { background: transparent; color: var(--ink); border-color: var(--line); }
+
+/* integridad */
+.inv { display: grid; gap: 8px; }
+.inv__nums { display: flex; gap: 18px; flex-wrap: wrap; }
+.inv__nums b { font: 600 20px var(--f-num); display: block; }
+
+/* método */
+.formula { font-family: var(--f-num); font-size: 13px; background: var(--card2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: pre; }
+.defs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.defs .card { gap: 8px; }
+.note { font-size: 12.5px; color: var(--mut); max-width: 75ch; }
+
+@media (max-width: 560px) { .kpi__val { font-size: 21px; } .verdict > div { border-right: 0; border-bottom: 1px solid var(--line); } }
+@media (prefers-reduced-motion: no-preference) { .bar > i { transition: width .4s ease; } }
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <div>
+      <div class="eyebrow">Supervisor de calidad · sitio CR00061 · NEA</div>
+      <h1>Confiabilidad y calidad de alarmas</h1>
+      <p class="mut small">Ventana: últimos 30 días (720 h) · corrida 24/10 14:00 · 7 equipos · 69 reglas activas · <b>maqueta con datos de ejemplo</b></p>
+    </div>
+    <div class="head__meta">
+      <span class="pill ok"><span class="dot"></span>Motor íntegro desde 22/10</span>
+      <span class="pill atn"><span class="dot"></span>4 cambios recomendados</span>
+      <span class="pill info"><span class="dot"></span>Intervalos de confianza al 90 %</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" id="t-resumen" aria-selected="true" data-tab="resumen">Resumen</button>
+    <button role="tab" id="t-confiabilidad" aria-selected="false" data-tab="confiabilidad">Confiabilidad por equipo</button>
+    <button role="tab" id="t-reglas" aria-selected="false" data-tab="reglas">Calidad de las reglas</button>
+    <button role="tab" id="t-integridad" aria-selected="false" data-tab="integridad">Integridad del motor</button>
+    <button role="tab" id="t-datos" aria-selected="false" data-tab="datos">Datos</button>
+    <button role="tab" id="t-metodo" aria-selected="false" data-tab="metodo">Método</button>
+  </nav>
+
+  <!-- ═══════════ RESUMEN ═══════════ -->
+  <section id="resumen" role="tabpanel" aria-labelledby="t-resumen" class="grid">
+    <div class="verdict" id="verdict"></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="row between"><h2>Disponibilidad en 30 días</h2><span class="mut small">cada fila es un equipo</span></div>
+        <div id="gantt"></div>
+        <div class="legend"><span><i style="background:var(--okb)"></i>En servicio</span><span><i style="background:var(--mal)"></i>Falla (aviso → cierre)</span><span><i style="background:var(--info)"></i>Mantenimiento preventivo</span></div>
+      </div>
+      <div class="card">
+        <div class="row between"><h2>Carga de alarmas al operador</h2><span class="mut small">ISA-18.2 · últimos 7 días</span></div>
+        <div id="isa-kpis" class="grid g3"></div>
+        <div id="isa-chart"></div>
+        <p class="note">Barras: avisos por hora. La línea punteada marca la meta de ISA-18.2 (≤ 6 avisos/h por operador). En rojo, horas con inundación (&gt; 10 avisos en 10 min).</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row between"><h2>Qué cambiar primero</h2><button class="btn sec" data-goto="reglas">Ver todas las reglas</button></div>
+      <div id="top-acciones" class="grid"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ CONFIABILIDAD ═══════════ -->
+  <section id="confiabilidad" role="tabpanel" aria-labelledby="t-confiabilidad" class="grid" hidden>
+    <div class="card">
+      <div class="row between"><h2>Indicadores por equipo</h2><span class="mut small">Tocá una fila para ver sus curvas</span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Equipo</th><th class="r">Fallas</th><th class="r">MTBF [IC 90 %]</th><th class="r">λ /1000 h</th><th class="r">MTTR</th><th class="r">Respuesta</th><th class="r">Ai</th><th class="r">Aa</th><th class="r">Ao</th><th class="r">R(24 h)</th><th class="r">M(4 h)</th><th>Confianza</th></tr></thead>
+        <tbody id="tbl-eq"></tbody>
+      </table></div>
+      <p class="note">Ai intrínseca (solo reparación activa) · Aa técnica (correctivo + preventivo) · Ao operacional (todo el tiempo fuera de servicio, incluida la espera de respuesta). Un equipo sin fallas no tiene MTBF puntual: se informa el mínimo garantizado con 90 % de confianza.</p>
+    </div>
+    <div class="grid g2">
+      <div class="card"><div class="row between"><h2 id="det-titulo">Confiabilidad R(t)</h2><span class="mut small" id="det-sub"></span></div><div id="chart-r"></div><p class="note" id="nota-r"></p></div>
+      <div class="card"><div class="row between"><h2>Mantenibilidad M(t)</h2><span class="mut small">SLA de reparación: 4 h</span></div><div id="chart-m"></div><p class="note" id="nota-m"></p></div>
+    </div>
+    <div class="card"><h2>Fallas del equipo</h2><div class="tbl-wrap"><table><thead><tr><th>Inicio</th><th>Causa (regla)</th><th class="r">Respuesta</th><th class="r">Reparación</th><th class="r">Fuera de servicio</th></tr></thead><tbody id="tbl-fallas"></tbody></table></div></div>
+  </section>
+
+  <!-- ═══════════ REGLAS ═══════════ -->
+  <section id="reglas" role="tabpanel" aria-labelledby="t-reglas" class="grid" hidden>
+    <div class="card">
+      <h2>Calidad de las reglas</h2>
+      <p class="note">Cada veredicto sale de reproducir 30 días de lecturas reales con el motor completo (espera, histéresis y cierre incluidos) y cuenta avisos reales, no lecturas sueltas. Cada recomendación trae el cálculo que la respalda.</p>
+      <div class="chips" id="filtros"></div>
+    </div>
+    <div class="grid" id="lista-reglas"></div>
+  </section>
+
+  <!-- ═══════════ INTEGRIDAD ═══════════ -->
+  <section id="integridad" role="tabpanel" aria-labelledby="t-integridad" class="grid" hidden>
+    <div class="card">
+      <h2>Integridad del motor</h2>
+      <p class="note">Controles independientes del motor: reconstruyen cada episodio (aviso → cierre) desde la base y verifican que el motor y la consola cuenten la misma historia. Un hallazgo se cierra solo cuando deja de aparecer en las corridas.</p>
+    </div>
+    <div class="grid g2" id="lista-inv"></div>
+  </section>
+
+  <!-- ═══════════ DATOS ═══════════ -->
+  <section id="datos" role="tabpanel" aria-labelledby="t-datos" class="grid" hidden>
+    <div class="card">
+      <h2>Completitud de los datos</h2>
+      <p class="note">Completitud = lecturas recibidas ÷ lecturas esperadas según la cadencia de la ficha. Con menos de 95 % los indicadores del equipo bajan su nivel de confianza.</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Equipo · medición</th><th class="r">Cadencia</th><th class="r">Recibidas / esperadas</th><th>Completitud</th><th>Huecos &gt; 3 cadencias</th><th>Lectura</th></tr></thead><tbody id="tbl-datos"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ MÉTODO ═══════════ -->
+  <section id="metodo" role="tabpanel" aria-labelledby="t-metodo" class="grid" hidden>
+    <div class="card"><h2>Cómo se calcula cada indicador</h2><p class="note">Falla = episodio de una regla crítica del equipo, desde el aviso hasta el cierre. Ventana T = 720 h. Distribución de fallas exponencial (tasa constante), adecuada para equipos en vida útil; con 10 o más fallas por equipo el supervisor ajusta además una Weibull y avisa si β se aparta de 1 (desgaste o mortalidad infantil).</p></div>
+    <div class="defs">
+      <div class="card"><h3>Tiempos</h3><div class="formula">TO   = T − Σ fuera de servicio
+TTR  = cierre − reconocimiento   (reparación activa)
+TRES = reconocimiento − aviso    (respuesta / logística)
+TDT  = cierre − aviso            (fuera de servicio)</div></div>
+      <div class="card"><h3>MTBF, tasa de falla e intervalo</h3><div class="formula">MTBF = TO / n          λ = n / TO
+IC 90 % (ensayo truncado por tiempo):
+MTBF_inf = 2·TO / χ²(0,95 ; 2n+2)
+MTBF_sup = 2·TO / χ²(0,05 ; 2n)
+n = 0  →  MTBF ≥ 2·TO / χ²(0,95 ; 2)</div></div>
+      <div class="card"><h3>Confiabilidad y mantenibilidad</h3><div class="formula">R(t) = e^(−λ·t)     prob. de operar t horas sin falla
+M(t) = 1 − e^(−t / MTTR)   prob. de reparar antes de t
+Banda de R(t): λ en los extremos del IC del MTBF</div></div>
+      <div class="card"><h3>Disponibilidades</h3><div class="formula">Ai = MTBF / (MTBF + MTTR)
+Aa = MTBM / (MTBM + M̄)     MTBM con correctivo + preventivo
+Ao = TO / T = MTBM / (MTBM + MDT)  incluye la respuesta</div></div>
+      <div class="card"><h3>Confianza del indicador</h3><div class="formula">Alta   n ≥ 5  y completitud ≥ 95 %
+Media  n ≥ 2  y completitud ≥ 95 %
+Baja   n < 2  o  completitud < 95 %</div><p class="note">Con confianza baja el número se muestra junto con su intervalo y no se usa para comparar equipos.</p></div>
+      <div class="card"><h3>Carga de alarmas (ISA-18.2 / EEMUA 191)</h3><div class="formula">Tasa      = avisos / (horas · operadores)   meta ≤ 6 /h
+Inundación = % de ventanas de 10 min con > 10 avisos   meta < 1 %
+Parpadeo   = ≥ 3 avisos del mismo par en 60 s          meta 0
+Permanente = abierta > 24 h                            meta 0
+Top 10     = % del total que aportan las 10 reglas más activas</div></div>
+      <div class="card"><h3>Recomendaciones de ajuste</h3><div class="formula">Histéresis ≥ 2·σ_ruido      σ_ruido = desvío de las diferencias
+                            entre lecturas consecutivas / √2
+Espera     ≥ p95 de la duración de las excursiones cortas
+Alcanzable si el umbral cae dentro del rango físico de la
+medición (ficha) y del rango visto en 30 días ± 3σ</div></div>
+      <div class="card"><h3>Episodios de alarma</h3><div class="formula">Instancia: regla + equipo (combinadas: regla + sitio)
+Aviso y cierre de un episodio llevan el mismo equipo.
+Un cierre sin aviso abierto se busca también antes de la
+ventana antes de declararlo huérfano.</div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const D = {"T": 720.0, "conf": 0.9, "equipos": [{"id": "CR00061-CUMMINS", "nombre": "Grupo electrógeno", "modelo": "Cummins PCC 1302 · HMI211", "tipo": "Grupo", "n": 4, "npm": 2, "Top": 704.8, "mtbf": 176.2, "mtbf_lo": 77.0, "mtbf_hi": 515.8, "lam": 5.675, "mttr": 2.27, "mrt": 0.65, "mdt": 2.92, "Ai": 98.725, "Aa": 98.244, "Ao": 97.889, "R24": 87.27, "R720": 1.7, "M4": 82.8, "completitud": 99.1, "conf": "media", "fallas": [{"t": 52.0, "resp": 0.6, "rep": 1.9, "causa": "Arranques fallidos consecutivos"}, {"t": 190.5, "resp": 0.4, "rep": 3.2, "causa": "Presión de aceite baja"}, {"t": 402.0, "resp": 1.1, "rep": 2.4, "causa": "Sobretemperatura de motor"}, {"t": 611.3, "resp": 0.5, "rep": 1.6, "causa": "Grupo no en automático"}], "prev": [{"t": 120.0, "dur": 2.0, "motivo": "Mantenimiento 250 h"}, {"t": 456.0, "dur": 1.5, "motivo": "Ejercicio con carga"}]}, {"id": "CR00061-ATS", "nombre": "Tablero de transferencia", "modelo": "ComAp InteliATS NT PWR", "tipo": "ATS", "n": 1, "npm": 1, "Top": 717.8, "mtbf": 717.8, "mtbf_lo": 151.3, "mtbf_hi": 13994.0, "lam": 1.393, "mttr": 0.9, "mrt": 0.3, "mdt": 1.2, "Ai": 99.875, "Aa": 99.736, "Ao": 99.694, "R24": 96.71, "R720": 36.7, "M4": 98.8, "completitud": 99.6, "conf": "baja", "fallas": [{"t": 318.2, "resp": 0.3, "rep": 0.9, "causa": "Falla de transferencia"}], "prev": [{"t": 456.0, "dur": 1.0, "motivo": "Prueba de transferencia"}]}, {"id": "CR00061-ELTEK-01", "nombre": "Rectificador 1", "modelo": "Eltek Smartpack S", "tipo": "Rectificador", "n": 2, "npm": 1, "Top": 714.6, "mtbf": 357.3, "mtbf_lo": 113.5, "mtbf_hi": 2010.9, "lam": 2.799, "mttr": 1.65, "mrt": 0.65, "mdt": 2.3, "Ai": 99.54, "Aa": 99.43, "Ao": 99.25, "R24": 93.5, "R720": 13.3, "M4": 91.1, "completitud": 96.8, "conf": "media", "fallas": [{"t": 140.0, "resp": 0.8, "rep": 2.1, "causa": "Tensión de bus DC crítica"}, {"t": 505.4, "resp": 0.5, "rep": 1.2, "causa": "Rectificador caliente"}], "prev": [{"t": 300.0, "dur": 0.8, "motivo": "Limpieza de filtros"}]}, {"id": "CR00061-ELTEK-02", "nombre": "Rectificador 2", "modelo": "Eltek Smartpack S", "tipo": "Rectificador", "n": 1, "npm": 0, "Top": 718.1, "mtbf": 718.1, "mtbf_lo": 151.4, "mtbf_hi": 13999.9, "lam": 1.393, "mttr": 1.4, "mrt": 0.5, "mdt": 1.9, "Ai": 99.805, "Aa": 99.805, "Ao": 99.736, "R24": 96.71, "R720": 36.7, "M4": 94.3, "completitud": 97.0, "conf": "baja", "fallas": [{"t": 505.4, "resp": 0.5, "rep": 1.4, "causa": "Tensión de bus DC crítica"}], "prev": []}, {"id": "CR00061-ELTEK-03", "nombre": "Rectificador 3", "modelo": "Eltek Smartpack S", "tipo": "Rectificador", "n": 0, "npm": 0, "Top": 720.0, "mtbf": null, "mtbf_lo": 240.3, "mtbf_hi": null, "lam": 0.0, "mttr": null, "mrt": null, "mdt": null, "Ai": 100.0, "Aa": 100.0, "Ao": 100.0, "R24": 100.0, "R720": 100.0, "M4": null, "completitud": 97.2, "conf": "baja", "fallas": [], "prev": []}, {"id": "CR00061-GEN", "nombre": "Sense del grupo", "modelo": "Wanomi Sense", "tipo": "Sensor", "n": 2, "npm": 0, "Top": 710.3, "mtbf": 355.1, "mtbf_lo": 112.8, "mtbf_hi": 1998.8, "lam": 2.816, "mttr": 3.75, "mrt": 1.1, "mdt": 4.85, "Ai": 98.955, "Aa": 98.955, "Ao": 98.653, "R24": 93.47, "R720": 13.2, "M4": 65.6, "completitud": 98.4, "conf": "media", "fallas": [{"t": 88.0, "resp": 0.7, "rep": 4.5, "causa": "Sifoneo de combustible"}, {"t": 455.0, "resp": 1.5, "rep": 3.0, "causa": "Autonomía crítica"}], "prev": []}, {"id": "CR00061-SEC", "nombre": "Seguridad del shelter", "modelo": "Wanomi Sense", "tipo": "Sensor", "n": 0, "npm": 0, "Top": 720.0, "mtbf": null, "mtbf_lo": 240.3, "mtbf_hi": null, "lam": 0.0, "mttr": null, "mrt": null, "mdt": null, "Ai": 100.0, "Aa": 100.0, "Ao": 100.0, "R24": 100.0, "R720": 100.0, "M4": null, "completitud": 99.8, "conf": "baja", "fallas": [], "prev": []}], "sitio": {"Ao": 99.875, "caidas": 1, "down": 0.9}, "agg": {"n": 10, "lam": 1.998, "mtbf": 500.6, "mttr": 2.22, "mrt": 0.69, "mdt": 2.91, "mtbf_lo": 295.1, "mtbf_hi": 922.6, "Ai": 99.558, "M4": 83.5, "Ao": 99.317, "Aa": 99.453, "R_resp_24": 84.4, "R_resp_720": 0.6}, "isa": {"total": 129, "por10": 0.13, "por_hora": 0.77, "max10": 19, "flood_pct": 0.3, "stale": 2, "chattering": 3, "top10": 71, "horas": [0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 2, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 2, 1, 1, 1, 0, 2, 2, 1, 0, 0, 1, 0, 0, 1, 0, 2, 1, 0, 0, 1, 0, 1, 0, 0, 2, 1, 0, 2, 2, 0, 0, 1, 1, 0, 1, 0, 27, 9, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 3, 1, 0, 0, 1, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 1, 0, 1, 0, 1, 0, 0, 2, 0, 1, 1, 1, 1, 0, 0]}};
+const fmt = (v, d = 1) => (v == null || !isFinite(v)) ? '—' : Number(v).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = (v, d = 2) => (v == null || !isFinite(v)) ? '—' : fmt(v, d) + ' %';
+const h = (v) => (v == null || !isFinite(v)) ? '—' : (v < 1 ? Math.round(v * 60) + ' min' : fmt(v, 1) + ' h');
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const NS = 'http://www.w3.org/2000/svg';
+
+/* ── gráficos con guardas: sin datos válidos → estado vacío, nunca ±Infinity ── */
+function scale(d0, d1, r0, r1) { const span = (d1 - d0) || 1; return (v) => r0 + ((v - d0) / span) * (r1 - r0); }
+function okNums(arr) { return arr.filter((v) => typeof v === 'number' && isFinite(v)); }
+function emptyState(el, msg) { el.innerHTML = `<div class="empty">${esc(msg)}</div>`; }
+function svg(w, hgt) { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', `0 0 ${w} ${hgt}`); s.setAttribute('role', 'img'); return s; }
+function el(tag, attrs, parent, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; }
+
+function lineChart(host, { xs, ys, lo, hi, xMax, yLabel, xLabel, marker, markerLabel, aria }) {
+  const vals = okNums(ys);
+  if (!vals.length) return emptyState(host, 'Sin datos suficientes para dibujar esta curva.');
+  const W = 560, H = 250, L = 48, R = 16, T = 14, B = 34;
+  const s = svg(W, H); s.setAttribute('aria-label', aria);
+  const X = scale(0, xMax, L, W - R), Y = scale(0, 100, H - B, T);
+  [0, 25, 50, 75, 100].forEach((v) => { el('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: 'g-grid' }, s); el('text', { x: L - 8, y: Y(v) + 4, 'text-anchor': 'end', class: 'g-axis' }, s, v + ' %'); });
+  const ticks = 5; for (let i = 0; i <= ticks; i++) { const v = xMax * i / ticks; el('text', { x: X(v), y: H - B + 18, 'text-anchor': i === 0 ? 'start' : i === ticks ? 'end' : 'middle', class: 'g-axis' }, s, fmt(v, v < 10 ? 1 : 0)); }
+  el('text', { x: W - R, y: H - 4, 'text-anchor': 'end', class: 'g-axis' }, s, xLabel);
+  if (lo && hi) { let d = ''; xs.forEach((x, i) => { d += (i ? 'L' : 'M') + X(x).toFixed(1) + ' ' + Y(hi[i]).toFixed(1); }); for (let i = xs.length - 1; i >= 0; i--) d += 'L' + X(xs[i]).toFixed(1) + ' ' + Y(lo[i]).toFixed(1); el('path', { d: d + 'Z', class: 'g-band' }, s); }
+  let d = ''; xs.forEach((x, i) => { if (isFinite(ys[i])) d += (d ? 'L' : 'M') + X(x).toFixed(1) + ' ' + Y(ys[i]).toFixed(1); }); el('path', { d, class: 'g-line' }, s);
+  if (marker != null) { el('line', { x1: X(marker), x2: X(marker), y1: T, y2: H - B, class: 'g-mark' }, s); el('text', { x: X(marker) + 6, y: T + 12, class: 'g-axis' }, s, markerLabel); }
+  host.innerHTML = ''; host.appendChild(s);
+}
+
+/* ── RESUMEN ── */
+const A = D.agg, S = D.sitio;
+$('verdict').innerHTML = [
+  ['ok', `<b>El sitio estuvo disponible el ${pct(S.Ao, 2)}</b><br><span class="mut small">1 caída de ${Math.round(S.down * 60)} min en 30 días: corte de red con el grupo fuera de automático.</span>`],
+  ['atn', `<b>4 reglas necesitan un ajuste</b><br><span class="mut small">2 avisan de más (parpadeo), 1 no puede llegar a evaluar, 1 con umbral fijo que conviene atar a la capacidad.</span>`],
+  ['ok', `<b>El motor cuenta bien los episodios</b><br><span class="mut small">0 inconsistencias nuevas desde la corrección del 22/10. Las 114 anteriores quedaron como historial.</span>`],
+].map(([c, t]) => `<div><span class="sig ${c}"></span><p>${t}</p></div>`).join('');
+
+const kpi = (lab, val, ci, conf, foot) => `<div class="kpi"><span class="kpi__lab">${lab}</span><span class="kpi__val">${val}</span><span class="kpi__ci">${ci || '&nbsp;'}</span><div class="kpi__foot">${conf ? `<span class="conf ${conf}">confianza ${conf}</span>` : ''}<span class="mut small">${foot}</span></div></div>`;
+$('kpis').innerHTML = [
+  kpi('Disponibilidad operacional Ao (parque)', pct(A.Ao, 2), 'meta ≥ 99,50 %', 'alta', '7 equipos'),
+  kpi('Disponibilidad intrínseca Ai', pct(A.Ai, 2), 'solo reparación activa', 'alta', `n = ${A.n} fallas`),
+  kpi('MTBF del parque', h(A.mtbf), `IC 90 %: ${fmt(A.mtbf_lo, 0)} – ${fmt(A.mtbf_hi, 0)} h`, 'alta', `n = ${A.n}`),
+  kpi('Tasa de falla λ', fmt(A.lam, 2) + ' <span class="small">/1000 h</span>', `≈ ${fmt(A.lam * 0.72, 1)} fallas por mes`, 'alta', 'parque'),
+  kpi('MTTR (reparación activa)', h(A.mttr), `respuesta media ${h(A.mrt)} · fuera de servicio ${h(A.mdt)}`, 'alta', `n = ${A.n}`),
+  kpi('Mantenibilidad M(4 h)', pct(A.M4, 1), 'prob. de reparar dentro del SLA', 'alta', 'e^(−4/MTTR)'),
+].join('');
+
+(function gantt() {
+  const host = $('gantt'); const eqs = D.equipos; const T = D.T;
+  const W = 620, rowH = 26, L = 150, R = 10, top = 6, H = top + eqs.length * rowH + 26;
+  const s = svg(W, H); s.setAttribute('aria-label', 'Disponibilidad de cada equipo en 30 días');
+  const X = scale(0, T, L, W - R);
+  eqs.forEach((e, i) => {
+    const y = top + i * rowH;
+    el('text', { x: 0, y: y + 16, class: 'g-lab' }, s, e.nombre);
+    el('rect', { x: L, y: y + 5, width: W - R - L, height: 14, rx: 3, class: 'g-up' }, s);
+    e.prev.forEach((p) => el('rect', { x: X(p.t), y: y + 5, width: Math.max(2.5, X(p.t + p.dur) - X(p.t)), height: 14, class: 'g-pm' }, s));
+    e.fallas.forEach((f) => { const r = el('rect', { x: X(f.t), y: y + 5, width: Math.max(2.5, X(f.t + f.resp + f.rep) - X(f.t)), height: 14, class: 'g-fail' }, s); el('title', {}, r, `${f.causa} · ${h(f.resp + f.rep)} fuera de servicio`); });
+  });
+  [0, 7, 14, 21, 30].forEach((dd) => el('text', { x: X(dd * 24), y: H - 6, 'text-anchor': dd === 0 ? 'start' : dd === 30 ? 'end' : 'middle', class: 'g-axis' }, s, dd === 30 ? 'hoy' : `día ${dd}`));
+  host.appendChild(s);
+})();
+
+(function isa() {
+  const I = D.isa;
+  const tile = (lab, val, meta, ok) => `<div><span class="kpi__lab">${lab}</span><div class="kpi__val" style="font-size:20px">${val}</div><span class="pill ${ok ? 'ok' : 'atn'}">${meta}</span></div>`;
+  $('isa-kpis').innerHTML = [
+    tile('Avisos por hora', fmt(I.por_hora, 2), 'meta ≤ 6 · cumple', true),
+    tile('Tiempo en inundación', pct(I.flood_pct, 2), 'meta < 1 % · cumple', I.flood_pct < 1),
+    tile('Parpadeos y permanentes', `${I.chattering} · ${I.stale}`, 'meta 0 · revisar', false),
+  ].join('');
+  const host = $('isa-chart'); const W = 620, H = 170, L = 34, R = 8, T = 10, B = 24;
+  const vals = okNums(I.horas); if (!vals.length) return emptyState(host, 'Sin avisos en la ventana.');
+  const yMax = Math.max(8, Math.ceil(Math.max(...vals) / 5) * 5);
+  const s = svg(W, H); s.setAttribute('aria-label', 'Avisos por hora, últimos 7 días');
+  const Y = scale(0, yMax, H - B, T), bw = (W - L - R) / I.horas.length;
+  [0, yMax / 2, yMax].forEach((v) => { el('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: 'g-grid' }, s); el('text', { x: L - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'g-axis' }, s, v); });
+  I.horas.forEach((c, i) => { if (c > 0) el('rect', { x: L + i * bw + 0.5, y: Y(c), width: Math.max(1, bw - 1), height: Y(0) - Y(c), class: 'g-bar' + (c > 10 ? ' flood' : '') }, s); });
+  el('line', { x1: L, x2: W - R, y1: Y(6), y2: Y(6), class: 'g-limit' }, s);
+  for (let d = 0; d <= 7; d++) el('text', { x: L + d * 24 * bw, y: H - 6, 'text-anchor': d === 0 ? 'start' : d === 7 ? 'end' : 'middle', class: 'g-axis' }, s, d === 7 ? 'hoy' : `−${7 - d} d`);
+  host.appendChild(s);
+})();
+
+/* ── REGLAS (ejemplos del sitio) ── */
+const REGLAS = [
+  { id: 'cat-CR00061-F2a', nombre: 'Subfrecuencia de red', equipo: 'ATS', ver: 'parpadeo', sev: 'atn', avisos: 38, dia: 1.27, parp: 14,
+    porque: 'Frecuencia media 49,95 Hz, σ = 0,11 Hz; el umbral (49,5 Hz) está a 4,1 σ. 14 de los 38 avisos se cerraron en menos de 60 s: excursiones cortas de la red, no fallas.',
+    calc: 'excursiones < 2 min: n = 31 · p95 = 41 s\nσ_ruido = 0,045 Hz → histéresis ≥ 2σ = 0,09 Hz',
+    cambio: 'Espera 60 s → 120 s y histéresis 0,10 Hz. Con 30 días de datos reproducidos: 38 → 9 avisos, ninguna falla real perdida.' },
+  { id: 'cat-eltek-A1', nombre: 'Tensión de bus DC baja', equipo: 'Rectificadores', ver: 'parpadeo', sev: 'atn', avisos: 9, dia: 0.3, parp: 6,
+    porque: 'Seis avisos se abrieron y cerraron dos veces dentro del mismo corte de red: la tensión ronda −52 V con ruido ±0,2 V.',
+    calc: 'σ_ruido = 0,18 V → histéresis ≥ 0,36 V (hoy 0,5 V: cumple)\nduración de los rebotes: p95 = 210 s > cierre 120 s',
+    cambio: 'Espera de cierre 120 s → 300 s. Reproducido: 9 → 3 avisos (uno por corte).' },
+  { id: 'cat-AR-08', nombre: 'Grupo sin ejercicio semanal', equipo: 'Sense del grupo', ver: 'inalcanzable', sev: 'mal', avisos: 0, dia: 0, parp: 0,
+    porque: 'Necesita 7 días de historia continua (uso del grupo en 7 días) y el motor se reinició 5 veces en 30 días: la ventana se vacía y nunca llega a evaluar.',
+    calc: 'ventana requerida 168 h · máximo continuo observado 61 h\nP(evaluar) = 0 con la tasa de reinicios actual',
+    cambio: 'Guardar la ventana en la base (como los acumuladores) o calcularla desde el historial al arrancar.' },
+  { id: 'cat-eltek-B2', nombre: 'Corriente de carga DC crítica', equipo: 'Rectificadores', ver: 'fijo', sev: 'info', avisos: 0, dia: 0, parp: 0,
+    porque: 'Alcanzable pero lejano: umbral 95 A, carga observada 28–34 A (media 31,4 A, σ 1,1 A): está a 58 σ. El número fijo no sigue la cantidad de módulos instalados.',
+    calc: 'capacidad instalada: 3 módulos × 50 A = 150 A\n95 A = 63 % de la capacidad',
+    cambio: 'Pasar el umbral a % de la capacidad instalada (aviso 80 %, crítico 95 %), dato de la ficha del equipo.' },
+  { id: 'cat-GE-07', nombre: 'Sobrevelocidad', equipo: 'Grupo electrógeno', ver: 'proteccion', sev: 'ok', avisos: 0, dia: 0, parp: 0,
+    porque: 'Protección: sin disparos en 30 días porque no hubo sobrevelocidad. Es alcanzable: rango físico 0–1800 rpm, máximo visto 1540 rpm, umbral 1725 rpm.',
+    calc: 'alcanzable: 1725 ∈ [0 ; 1800] (ficha)\nmargen sobre lo observado: 185 rpm',
+    cambio: 'Ninguno. Se prueba con el escenario de sobrevelocidad del simulador.' },
+  { id: 'cat-GE-08', nombre: 'Marcha inestable (Oscilación)', equipo: 'Grupo electrógeno', ver: 'sana', sev: 'ok', avisos: 0, dia: 0, parp: 0,
+    porque: 'Desde el cambio del 22/10: 0 avisos en marcha sana, arranques ni paradas. Antes: 46 avisos en 30 días, todos por arranque o parada.',
+    calc: 'σ(rpm, 10 min) en marcha sana: p99 = 5,8 rpm < umbral 15 rpm',
+    cambio: 'Ninguno.' },
+  { id: 'cummins-refrigerante-frio', nombre: 'Refrigerante frío (grupo detenido)', equipo: 'Grupo electrógeno', ver: 'sana', sev: 'ok', avisos: 1, dia: 0.03, parp: 0,
+    porque: 'Un aviso en 30 días, durante la prueba del calefactor de bloque. Cerró a los 9 min de volver a calentar.',
+    calc: 'en condición: 0,4 % del tiempo · duración media del episodio 47 min', cambio: 'Ninguno.' },
+];
+const VER = { parpadeo: 'Avisa de más', inalcanzable: 'No puede evaluar', fijo: 'Umbral a revisar', proteccion: 'Protección sin disparos', sana: 'Sana' };
+let filtro = 'todas';
+function renderReglas() {
+  const counts = REGLAS.reduce((m, r) => (m[r.ver] = (m[r.ver] || 0) + 1, m), {});
+  $('filtros').innerHTML = [['todas', `Todas (${REGLAS.length})`], ...Object.keys(VER).map((k) => [k, `${VER[k]} (${counts[k] || 0})`])]
+    .map(([k, t]) => `<button class="chip" id="f-${k}" aria-pressed="${filtro === k}" data-f="${k}">${t}</button>`).join('');
+  $('lista-reglas').innerHTML = REGLAS.filter((r) => filtro === 'todas' || r.ver === filtro).map((r) => `
+    <article class="rule"><div class="rule__stripe ${r.sev}"></div><div class="rule__body">
+      <div><div class="row"><h3>${esc(r.nombre)}</h3><span class="pill ${r.sev === 'mal' ? 'mal' : r.sev}">${VER[r.ver]}</span></div>
+        <span class="mut small">${esc(r.equipo)} · <span class="num">${r.id}</span></span>
+        <span class="small num">${r.avisos} avisos · ${fmt(r.dia, 2)}/día · ${r.parp} parpadeos</span></div>
+      <div><span class="eyebrow">Por qué</span><p class="small">${esc(r.porque)}</p></div>
+      <div><span class="eyebrow">Cálculo</span><div class="math">${esc(r.calc)}</div></div>
+      <div><span class="eyebrow">Qué cambiar</span><p class="small todo">${esc(r.cambio)}</p>${r.sev === 'atn' || r.sev === 'mal' || r.sev === 'info' ? '<div class="row" style="margin-top:6px"><button class="btn">Aplicar cambio</button><button class="btn sec">Ver en el editor</button></div>' : ''}</div>
+    </div></article>`).join('');
+}
+$('filtros').addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (!b) return; filtro = b.dataset.f; renderReglas(); });
+renderReglas();
+$('top-acciones').innerHTML = REGLAS.filter((r) => ['atn', 'mal', 'info'].includes(r.sev)).map((r) => `
+  <div class="row between" style="border-bottom:1px solid var(--line);padding-bottom:10px"><div style="min-width:0;flex:1 1 320px"><b>${esc(r.nombre)}</b> <span class="pill ${r.sev}">${VER[r.ver]}</span><p class="small mut">${esc(r.cambio)}</p></div><button class="btn sec" data-goto="reglas">Ver cálculo</button></div>`).join('');
+
+/* ── CONFIABILIDAD ── */
+let selEq = 0;
+function renderEq() {
+  $('tbl-eq').innerHTML = D.equipos.map((e, i) => `<tr tabindex="0" data-i="${i}" class="${i === selEq ? 'sel' : ''}">
+    <td><b>${esc(e.nombre)}</b><br><span class="mut small">${esc(e.modelo)}</span></td>
+    <td class="r num">${e.n}</td>
+    <td class="r num">${e.n ? `${h(e.mtbf)} <span class="mut">[${fmt(e.mtbf_lo, 0)}–${fmt(e.mtbf_hi, 0)}]</span>` : `≥ ${fmt(e.mtbf_lo, 0)} h`}</td>
+    <td class="r num">${e.n ? fmt(e.lam, 2) : `≤ ${fmt(1000 / e.mtbf_lo, 2)}`}</td>
+    <td class="r num">${h(e.mttr)}</td><td class="r num">${h(e.mrt)}</td>
+    <td class="r num">${pct(e.Ai)}</td><td class="r num">${pct(e.Aa)}</td><td class="r num">${pct(e.Ao)}</td>
+    <td class="r num">${e.n ? pct(e.R24, 1) : '≥ ' + pct(Math.exp(-24 / e.mtbf_lo) * 100, 1)}</td>
+    <td class="r num">${e.n ? pct(e.M4, 1) : '—'}</td>
+    <td><span class="conf ${e.conf}">${e.conf}</span></td></tr>`).join('');
+  const e = D.equipos[selEq];
+  $('det-titulo').textContent = 'Confiabilidad R(t) · ' + e.nombre; $('det-sub').textContent = e.n ? `MTBF ${h(e.mtbf)} · IC 90 %` : 'sin fallas: cota inferior';
+  const xs = Array.from({ length: 61 }, (_, i) => i * 12); // 0–720 h
+  const lamP = e.n ? 1 / e.mtbf : null, lamLo = e.mtbf_hi ? 1 / e.mtbf_hi : 0, lamHi = 1 / e.mtbf_lo;
+  lineChart($('chart-r'), { xs, ys: xs.map((t) => lamP != null ? 100 * Math.exp(-lamP * t) : 100 * Math.exp(-lamHi * t)), lo: xs.map((t) => 100 * Math.exp(-lamHi * t)), hi: xs.map((t) => 100 * Math.exp(-lamLo * t)), xMax: 720, xLabel: 'horas de misión', marker: 168, markerLabel: '7 días', aria: 'Curva de confiabilidad' });
+  const r168 = lamP != null ? Math.exp(-lamP * 168) * 100 : Math.exp(-lamHi * 168) * 100;
+  $('nota-r').textContent = e.n ? `Probabilidad de operar 7 días seguidos sin falla: ${pct(r168, 1)} (banda: intervalo de confianza del 90 %).` : `Sin fallas en 30 días: con 90 % de confianza, la probabilidad de 7 días sin falla es de al menos ${pct(r168, 1)}.`;
+  if (!e.n) { emptyState($('chart-m'), 'Sin reparaciones en la ventana: no hay datos para estimar la mantenibilidad de este equipo.'); $('nota-m').textContent = ''; }
+  else {
+    const xm = Array.from({ length: 49 }, (_, i) => i * 0.25);
+    lineChart($('chart-m'), { xs: xm, ys: xm.map((t) => 100 * (1 - Math.exp(-t / e.mttr))), xMax: 12, xLabel: 'horas desde el reconocimiento', marker: 4, markerLabel: 'SLA 4 h', aria: 'Curva de mantenibilidad' });
+    $('nota-m').textContent = `Con MTTR ${h(e.mttr)}, el ${pct(e.M4, 1)} de las reparaciones termina dentro de las 4 h del SLA.`;
+  }
+  const t0 = new Date(2026, 8, 24, 14, 0).getTime();
+  $('tbl-fallas').innerHTML = e.fallas.length ? e.fallas.map((f) => `<tr><td class="num">${new Date(t0 + f.t * 3600000).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(f.causa)}</td><td class="r num">${h(f.resp)}</td><td class="r num">${h(f.rep)}</td><td class="r num">${h(f.resp + f.rep)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="mut">Sin fallas en los últimos 30 días.</td></tr>';
+}
+$('tbl-eq').addEventListener('click', (ev) => { const tr = ev.target.closest('tr[data-i]'); if (tr) { selEq = +tr.dataset.i; renderEq(); } });
+$('tbl-eq').addEventListener('keydown', (ev) => { if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset.i) { ev.preventDefault(); selEq = +ev.target.dataset.i; renderEq(); } });
+renderEq();
+
+/* ── INTEGRIDAD ── */
+const INV = [
+  { nombre: 'Cierre en otro equipo', antes: 25, ahora: 0, estado: 'ok', est: 'Resuelto por corrección',
+    criterio: 'Para cada cierre: ¿hay un aviso abierto de la misma regla en el mismo equipo?\nSi no, y sí en otro equipo de la misma regla → hallazgo.',
+    texto: 'Todas antes del 22/10: las reglas combinadas tomaban el equipo del último mensaje. Desde la corrección, aviso y cierre llevan el mismo equipo.' },
+  { nombre: 'Cierre sin aviso', antes: 76, ahora: 0, estado: 'ok', est: 'Resuelto',
+    criterio: 'Cierre sin aviso abierto del par, buscando también el último evento ANTES de la ventana de 48 h.',
+    texto: '61 eran del mismo defecto. 15 eran avisos anteriores a la ventana que el supervisor viejo no buscaba: ya no se cuentan.' },
+  { nombre: 'Motor y consola no coinciden', antes: 13, ahora: 2, estado: 'atn', est: '2 abiertos',
+    criterio: 'Instancias abiertas en el motor vs alarmas activas en la consola, con 120 s de margen.',
+    texto: 'Quedan 2 alarmas activas en la consola que el motor ya cerró. Se cierran con «Cerrar huérfanas».' , accion: 'Cerrar huérfanas' },
+  { nombre: 'Valor del aviso ≠ medición', antes: 3, ahora: 0, estado: 'ok', est: 'Sin hallazgos',
+    criterio: 'El valor del aviso debe coincidir (±2 %) con alguna lectura entre el inicio de la espera de la regla y el aviso.',
+    texto: 'Los 3 anteriores comparaban contra la lectura más cercana a la hora del aviso, que con la espera es posterior a la que lo disparó.' },
+  { nombre: 'Avisos repetidos sin cierre', antes: 0, ahora: 0, estado: 'ok', est: 'Sin hallazgos',
+    criterio: 'Más de un aviso del mismo par sin un cierre entre ellos.', texto: 'El motor no repite avisos de un episodio abierto.' },
+  { nombre: 'Alarma encendida con la medición normal', antes: 1, ahora: 0, estado: 'ok', est: 'Sin hallazgos',
+    criterio: 'Episodio abierto mientras la medición lleva > 30 min sin cumplir la condición (más la espera de cierre).', texto: 'El último caso fue la alarma de refrigerante frío del 22/10, resuelta con la limpieza.' },
+];
+$('lista-inv').innerHTML = INV.map((v) => `<div class="card inv">
+  <div class="row between"><h3>${v.nombre}</h3><span class="pill ${v.estado}"><span class="dot"></span>${v.est}</span></div>
+  <div class="inv__nums"><div><span class="mut small">Antes del 22/10</span><b>${v.antes}</b></div><div><span class="mut small">Últimas 48 h</span><b>${v.ahora}</b></div></div>
+  <div class="math">${esc(v.criterio)}</div><p class="small">${esc(v.texto)}</p>${v.accion ? `<div class="row"><button class="btn">${v.accion}</button></div>` : ''}</div>`).join('');
+
+/* ── DATOS ── */
+const DATOS = [
+  ['Rectificador 1 · tensión de bus DC', 30, 83635, 86400, 3, 'Prueba de corte con LVD abierto (1,4 h): esperado'],
+  ['Grupo electrógeno · rpm', 30, 85622, 86400, 0, 'Completa'],
+  ['Grupo electrógeno · eficiencia de combustible', 60, 5180, 43200, 0, 'Solo se publica con el grupo en marcha: intermitente por diseño'],
+  ['Tablero de transferencia · tensión de red', 30, 86054, 86400, 0, 'Completa'],
+  ['Sense del grupo · nivel de combustible', 60, 42509, 43200, 1, 'Un hueco de 38 min el 12/10'],
+  ['Seguridad del shelter · temperatura', 120, 21557, 21600, 0, 'Completa'],
+];
+$('tbl-datos').innerHTML = DATOS.map(([n, c, r, e2, g, l]) => { const p = r / e2 * 100; const cls = /diseño/.test(l) ? 'info' : p >= 95 ? 'ok' : 'atn';
+  return `<tr><td>${esc(n)}</td><td class="r num">${c} s</td><td class="r num">${r.toLocaleString('es-AR')} / ${e2.toLocaleString('es-AR')}</td><td><div class="row" style="flex-wrap:nowrap"><div class="bar" style="width:90px"><i style="width:${Math.min(100, p).toFixed(1)}%"></i></div><span class="num small">${fmt(p, 1)} %</span></div></td><td class="num">${g}</td><td><span class="pill ${cls}">${esc(l)}</span></td></tr>`; }).join('');
+
+/* ── pestañas (con #enlace por sección) ── */
+const TABS = ['resumen', 'confiabilidad', 'reglas', 'integridad', 'datos', 'metodo'];
+function show(id) {
+  if (!TABS.includes(id)) id = 'resumen';
+  TABS.forEach((t) => { $(t).hidden = t !== id; $('t-' + t).setAttribute('aria-selected', String(t === id)); });
+  try { history.replaceState(null, '', '#' + id); } catch (e) { /* sin historial */ }
+}
+document.querySelector('.tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) show(b.dataset.tab); });
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-goto]'); if (b) { show(b.dataset.goto); window.scrollTo({ top: 0 }); } });
+show((location.hash || '').slice(1));
+</script>
