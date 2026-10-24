@@ -58,6 +58,22 @@ function proponer(r, pack) {
   return { c: 'equipo', why: 'falla del equipo (por defecto)' };
 }
 
+// Avisos de los últimos 90 días cuyas reglas ya no están en ningún pack (lectura directa de Mongo).
+async function notifsBorradas(vivas) {
+  const mongoose = require('/home/node/app/node_modules/mongoose');
+  const uri = `mongodb://${e.MONGO_USERNAME}:${encodeURIComponent(e.MONGO_PASSWORD)}@${e.MONGO_HOST}:${e.MONGO_PORT}/${e.MONGO_DATABASE}`;
+  await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true, authSource: 'admin' });
+  const rows = await mongoose.connection.db.collection('notifications').aggregate([
+    { $match: { ruleId: { $nin: [null, ...vivas] }, time: { $gte: Date.now() - 90 * 86400000 }, kind: { $ne: 'resolve' } } },
+    { $sort: { time: -1 } },
+    { $group: { _id: '$ruleId', label: { $first: '$label' }, severity: { $first: '$severity' }, dId: { $first: '$dId' }, n: { $sum: 1 } } },
+    { $sort: { n: -1 } },
+  ]).toArray();
+  const devs = new Map((await mongoose.connection.db.collection('devices').find({}).project({ dId: 1, deviceType: 1 }).toArray()).map((d) => [d.dId, d.deviceType]));
+  await mongoose.disconnect();
+  return rows.map((r) => ({ ruleId: r._id, label: r.label || r._id, severity: r.severity, deviceType: devs.get(r.dId), n: r.n }));
+}
+
 (async () => {
   const packs = ((await req('GET', '/api/rulepacks')).json || {}).data || [];
   const cambios = new Map(); let n = 0, ya = 0;
@@ -74,8 +90,23 @@ function proponer(r, pack) {
       const list = cambios.get(p.packId) || []; list.push({ i, eventClass: pr.c, failDeviceType: ft }); cambios.set(p.packId, list);
     }
   }
-  console.log(`\n${n} regla(s) a clasificar · ${ya} ya clasificada(s).${APPLY ? '' : '  (simulación; usar --apply, con correcciones ruleId=clase si hace falta)'}`);
+  // Reglas que ya no existen pero dejaron avisos en los últimos 90 días: se clasifican en qa_config.
+  const vivas = new Set(packs.flatMap((p) => (p.rules || []).map((r) => r.ruleId)));
+  const cfgActual = ((await req('GET', '/api/qa/config')).json || {}).data || {};
+  const hist = { ...(cfgActual.clasesHistoricas || {}) };
+  const borradas = await notifsBorradas(vivas);
+  let nh = 0;
+  if (borradas.length) console.log('\nreglas borradas con avisos en los últimos 90 días');
+  for (const b of borradas) {
+    if (hist[b.ruleId] && !OVR[b.ruleId]) { console.log(`  = ${b.ruleId.padEnd(38)} ${hist[b.ruleId].eventClass} · ya clasificada · ${b.label}`); continue; }
+    const pr = OVR[b.ruleId] ? { c: OVR[b.ruleId].eventClass, ft: OVR[b.ruleId].failDeviceType, why: 'indicada a mano' } : proponer({ label: b.label, ruleId: b.ruleId }, { deviceType: b.deviceType });
+    nh++;
+    console.log(`  ${pr.dudosa ? '?' : '→'} ${(SEV[b.severity] || b.severity || '').padEnd(4)} ${b.ruleId.padEnd(38)} ${(pr.c + (pr.ft ? ':' + pr.ft : '')).padEnd(22)} ${b.label} · ${b.n} aviso(s)  (${pr.why})`);
+    hist[b.ruleId] = { eventClass: pr.c, ...(pr.ft ? { failDeviceType: pr.ft } : {}), label: b.label };
+  }
+  console.log(`\n${n} regla(s) a clasificar · ${ya} ya clasificada(s) · ${nh} borrada(s) a clasificar.${APPLY ? '' : '  (simulación; usar --apply, con correcciones ruleId=clase si hace falta)'}`);
   if (!APPLY) process.exit(0);
+  if (nh) { const put = await req('PUT', '/api/qa/config', { clasesHistoricas: hist }); console.log(`PUT qa_config (reglas borradas: ${nh}) → ${put.status}`); }
   for (const p of packs) {
     const list = cambios.get(p.packId); if (!list) continue;
     const rules = p.rules.map((r) => ({ ...r }));

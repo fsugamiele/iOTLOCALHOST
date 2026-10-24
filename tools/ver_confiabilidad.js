@@ -22,10 +22,10 @@ const dt = (t) => new Date(t).toLocaleString('es-AR', { timeZone: 'America/Argen
   if (st.eventos) console.log(`       eventos que no son falla: ${Object.entries(st.eventos).map(([k, v]) => `${k} ${v}`).join(' · ') || 'ninguno'}`);
   if (st.sinClasificar && st.sinClasificar.length) console.log(`       reglas críticas sin clasificar (no cuentan): ${st.sinClasificar.length}`);
   const a = s.agg;
-  console.log(`PARQUE n=${a.n} · MTBF ${f(a.mtbf)} h [${f(a.mtbf_lo)}–${f(a.mtbf_hi)}] · λ ${f(a.lam, 2)}/1000 h · MTTR ${h(a.mttr)} (${a.nReconocidas}/${a.n} reconocidas) · respuesta ${h(a.mrt)} · Ai ${f(a.Ai, 2)} % · Ao ${f(a.Ao, 2)} % · M(${s.config.slaRepairH} h) ${f(a.M4)} % · confianza ${a.conf}\n`);
+  console.log(`PARQUE n=${a.n} · MTBF ${f(a.mtbf)} h [${f(a.mtbf_lo)}–${f(a.mtbf_hi)}] · λ ${f(a.lam, 2)}/1000 h · MTTR ${h(a.mttr)} (sobre ${a.nReconocidas} de ${a.n} reconocidas · confianza ${a.confMttr}) · respuesta ${h(a.mrt)} · Ai ${f(a.Ai, 2)} % · Ao ${f(a.Ao, 2)} % · M(${s.config.slaRepairH} h) ${f(a.M4)} % · confianza ${a.conf}\n`);
   for (const q of s.equipos) {
     console.log(`${q.nombre} (${q.modelo}) · T ${f(q.T)} h · completitud ${f(q.completitud)} % · confianza ${q.conf}`);
-    console.log(`   n=${q.n} · MTBF ${q.n ? `${f(q.mtbf)} h [${f(q.mtbf_lo)}–${f(q.mtbf_hi)}]` : `≥ ${f(q.mtbf_lo)} h`} · λ ${f(q.lam, 2)} · MTTR ${h(q.mttr)} · resp ${h(q.mrt)} · fuera ${h(q.mdt)} · Ai ${f(q.Ai, 2)} · Ao ${f(q.Ao, 2)} · R(24 h) ${q.n ? f(q.R24) : '≥ ' + f(100 * Math.exp(-24 / q.mtbf_lo))} %${q.beta != null ? ` · β ${q.beta}` : ''}`);
+    console.log(`   n=${q.n} · MTBF ${q.n ? `${f(q.mtbf)} h [${f(q.mtbf_lo)}–${f(q.mtbf_hi)}]` : `≥ ${f(q.mtbf_lo)} h`} · λ ${f(q.lam, 2)} · MTTR ${h(q.mttr)}${q.n ? ` (${q.nReconocidas}/${q.n}, conf. ${q.confMttr})` : ''} · resp ${h(q.mrt)} · fuera ${h(q.mdt)} · Ai ${f(q.Ai, 2)} · Ao ${f(q.Ao, 2)} · R(24 h) ${q.n ? f(q.R24) : '≥ ' + f(100 * Math.exp(-24 / q.mtbf_lo))} %${q.beta != null ? ` · β ${q.beta}` : ''}`);
     for (const x of q.fallas) console.log(`     ${dt(x.start)} ${x.causas.join(' + ')} · fuera ${h(x.fuera)}${x.resp != null ? ` (resp ${h(x.resp)}, rep ${h(x.rep)})` : ' · sin reconocer'}${x.censurada ? ' · ABIERTA' : ''}${x.reconstruida ? ' · reconstruida' : ''}`);
   }
   const i = s.isa;

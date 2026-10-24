@@ -24,6 +24,8 @@ const QaConfigSchema = new Schema({
   mergeGapMin:    { type: Number, default: 30, min: 0 },         // Qs8: rebote = misma falla
   everyMin:       { type: Number, default: 60, min: 5 },         // Qs4: cada cuánto recalcula el worker
   rectifierTypes: { type: [String], default: ['ELTEK'] },        // fuentes para la caída del sitio
+  // Qs7 — clase de reglas que ya no existen pero tienen avisos en la ventana { ruleId: { eventClass, failDeviceType, label } }.
+  clasesHistoricas: { type: Schema.Types.Mixed, default: () => ({}) },
   updatedBy:      { type: String, default: null },
 }, { timestamps: true, collection: 'qa_config' });
 

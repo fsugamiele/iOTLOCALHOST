@@ -58,7 +58,7 @@ t('indicadores: MTTR solo con reconocimiento dentro del episodio (Qs2); Ai/Ao/M(
   assert.strictEqual(r.n, 2); assert.strictEqual(r.nReconocidas, 1); assert.strictEqual(r.TO, 716);
   assert.strictEqual(r.mtbf, 358); assert.strictEqual(r.mttr, 2); assert.strictEqual(r.mrt, 1); assert.strictEqual(r.mdt, 2);
   assert.strictEqual(r.Ao, +(100 * 716 / 720).toFixed(3)); assert.strictEqual(r.Ai, +(100 * 358 / 360).toFixed(3));
-  assert.strictEqual(r.M4, +(100 * (1 - Math.exp(-2))).toFixed(2)); assert.strictEqual(r.conf, 'media'); assert.strictEqual(r.Aa, null);
+  assert.strictEqual(r.M4, +(100 * (1 - Math.exp(-2))).toFixed(2)); assert.strictEqual(r.conf, 'media'); assert.strictEqual(r.confMttr, 'baja'); assert.strictEqual(r.Aa, null);
 });
 
 t('equipo sin fallas: nada infinito ni 100 % falso; R(7 d) solo como cota', () => {

@@ -157,6 +157,8 @@ function indicators(fallas, T, completitud, cfg, tStart) {
     R168_cota: !n && ci.lo ? round(100 * Math.exp(-168 / ci.lo), 2) : null,   // n = 0: cota inferior
     M4: mttr ? round(100 * (1 - Math.exp(-cfg.slaRepairH / mttr)), 2) : null,
     completitud: round(completitud, 2), conf: confianza(n, completitud, cfg),
+    // MTTR, respuesta, Ai y M(t) salen solo de las fallas reconocidas: su confianza va por ese n.
+    confMttr: confianza(rep.length, completitud, cfg),
     beta: n >= 10 && tStart != null ? round(crowBeta(fallas.map((f) => f.start), tStart, T), 3) : null,
   };
 }
@@ -233,6 +235,7 @@ function aggregate(eqs, fallasAll, cfg) {
     M4: mttr ? round(100 * (1 - Math.exp(-cfg.slaRepairH / mttr)), 2) : null,
     R24: mtbf ? round(100 * Math.exp(-24 / mtbf), 2) : null,
     completitud: comp.length ? round(Math.min(...comp), 2) : null,
+    confMttr: confianza(rep.length, comp.length ? Math.min(...comp) : null, cfg),
     conf: confianza(n, comp.length ? Math.min(...comp) : null, cfg) };
 }
 

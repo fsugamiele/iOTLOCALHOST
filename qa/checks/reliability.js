@@ -108,6 +108,8 @@ async function compute({ now = Date.now(), force = false } = {}) {
     for (const r of (p.rules || [])) reglas.set(r.ruleId, r);
   }
   const devById = new Map(devs.map((d) => [d.dId, d]));
+  // Reglas borradas: su clase queda en qa_config.clasesHistoricas (la carga tools/clasificar_reglas.js).
+  for (const [id, h] of Object.entries(cfg.clasesHistoricas || {})) if (!reglas.has(id)) reglas.set(id, { ruleId: id, ...h });
   const clase = (e) => { const r = reglas.get(e.ruleId); return (r && r.eventClass) || null; };
   // Falla imputada al tipo que declara la regla (combinadas); si no, al equipo del episodio.
   const imputar = (e) => {
@@ -146,7 +148,12 @@ async function compute({ now = Date.now(), force = false } = {}) {
   }
   datos.sort((a, b) => a.equipo.localeCompare(b.equipo) || a.completitud - b.completitud);
   // Horas con la plataforma viva dentro de [a, b] (exposición y tiempo fuera de servicio observables).
-  const horasVivas = (a, b) => vivasEntre(Math.floor(a / BUCKET_MS), Math.floor(Math.max(a, b - 1) / BUCKET_MS)) * BUCKET_MS / R.H;
+  // Duración de reloj × fracción de ventanas de 5 min con la plataforma viva (no redondea a 5 min).
+  const horasVivas = (a, b) => {
+    if (!(b > a)) return 0;
+    const fa = Math.floor(a / BUCKET_MS), fb = Math.floor((b - 1) / BUCKET_MS);
+    return ((b - a) / R.H) * vivasEntre(fa, fb) / (fb - fa + 1);
+  };
 
   // ── indicadores por equipo (solo "falla del equipo", crítica) ──
   const equipos = []; const fallasAll = [];
