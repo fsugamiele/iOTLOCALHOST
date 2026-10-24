@@ -40,6 +40,12 @@ function proponer(r, pack) {
   const grupo = [...tipos].find((x) => GRUPOS.includes(x)) || 'cummins-pcc';
   const has = (...w) => w.some((x) => t.includes(x));
   if (has('test')) return { c: 'operacion', why: 'regla de prueba', dudosa: true };
+  if (has('robo de bater')) return { c: 'seguridad', why: 'robo de baterías' };
+  if (has('deja de reportar')) return { c: 'operacion', why: 'comunicación del equipo con la plataforma' };
+  if (has('retorno de red')) return { c: 'equipo', ft: 'ATS', why: 'no retransfiere con la red presente' };
+  if (has('cambio de aceite')) return { c: 'operacion', why: 'mantenimiento' };
+  if (has('gasoil', 'proyeccion')) return { c: 'combustible', why: 'combustible' };
+  if (has('tension dc', 'dc-bus')) return { c: 'red', why: 'energía DC del sitio' };
   if (has('sin arranque del grupo', 'corriendo sin generar')) return { c: 'equipo', ft: grupo, why: 'el grupo no responde' };
   if (has('transferencia')) return { c: 'equipo', ft: 'ATS', why: 'falla del tablero de transferencia' };
   if (has('puerta', 'door', 'movimiento', 'pir', 'cobre', 'copper', 'cerco', 'fence', 'intrus', 'tamper', 'apertura', 'baliza', 'beacon', 'tierra', 'ground')) return { c: 'seguridad', why: 'intrusión / perímetro' };
@@ -48,6 +54,7 @@ function proponer(r, pack) {
   if (has('perdida de ac', 'corte de energia', 'red ', ' red', 'mains', 'subfrecuencia', 'sobrefrecuencia', 'cascada', 'bus dc critica', 'bus dc baja', 'desconexion por bateria', 'lvd', 'bateria en des')) return { c: 'red', why: 'red / energía del sitio', dudosa: has('bateria en des') };
   if (has('sala', 'shelter', 'temperatura ambiente')) return { c: 'operacion', why: 'ambiente del shelter', dudosa: true };
   if (has('comunicacion', 'enlace', 'sin datos')) return { c: 'equipo', why: 'pérdida de comunicación', dudosa: true };
+  if (has('corriente de carga dc critica')) return { c: 'equipo', why: 'sobrecarga del rectificador', dudosa: true };
   return { c: 'equipo', why: 'falla del equipo (por defecto)' };
 }
 
