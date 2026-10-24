@@ -1,4 +1,4 @@
-# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · IMPLEMENTACIÓN: Qs1–Qs6 A FIRMAR
+# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · Qs1–Qs6 FIRMADAS ("aprobado, avanza" 24/10) · R1 IMPLEMENTADO
 
 **Origen:** Franco 2026-10-24 — el supervisor de calidad tiene bugs de renderizado de gráficos y lo que informa no alcanza para interpretar errores ni decidir cambios. Pide rediseño con información "fehaciente y respaldada por funciones matemáticas e indicadores de confiabilidad (Ao, Ai/técnica, MTBF, λ, MTTR, R, M)".
 **Maqueta aprobada:** `docsRefactor/Software/mockup_supervisor_confiabilidad_v2.html` (datos de ejemplo).
@@ -74,3 +74,19 @@ Ai = MTBF/(MTBF+MTTR)   Aa = MTBM/(MTBM+M̄) (correctivo+preventivo)   Ao = TO/T
 - Datos sintéticos con λ conocido (simulador, 30 días acelerados): λ estimado dentro del IC en ≥ 90 % de 50 corridas.
 - Backtest: F2a/A1 del sitio reproducen el conteo real de episodios de `notifications` ± 1.
 - UI: ninguna serie con NaN/Infinity (prueba Playwright en todas las pestañas, también con equipo n = 0 y sin datos).
+
+## 8 · Implementación
+**R1 (2026-10-24) — cálculo + API:**
+- `qa/lib/reliability.js` (funciones puras): χ² por inversión de la gamma incompleta, IC del MTBF, episodios (Qs3 reconstrucción), fallas, indicadores, Crow-AMSAA, carga ISA-18.2, caídas del sitio, agregado de parque.
+- `qa/checks/reliability.js` (Capa B, recalcula cada `everyMin`) → colección `reliability_snapshots` (se borran solas a los 90 días). `qa/routes/reliability.js`: recalcular ya.
+- `app/api/models/qa_config.js` + API: `GET /api/qa/reliability`, `POST /api/qa/reliability/recompute`, `GET|PUT /api/qa/config` (superadmin).
+- Pruebas: `qa/test/reliability.test.js` (11: tabla χ², IC, cobertura 93 % en 2000 corridas con λ conocido, episodios, superpuestas, Qs2, n = 0 sin infinitos, D4, β, ISA, caídas) y `qa/test/reliability.itest.js` (integración con base falsa).
+
+**Reglas de cálculo tomadas en R1 (a validar por Franco):**
+- Episodios críticos **superpuestos del mismo equipo = una falla** (la misma caída leída como un evento, criterio de cascada de CLAUDE.md §1); la falla lista todas las reglas que la componen.
+- **Aa queda "—"**: el service registrado (`resolve-by-service`) es un evento puntual, sin duración. Para calcular Aa hace falta registrar inicio y fin del mantenimiento (pendiente, fuera de R1).
+- **T por equipo** empieza en su primera lectura dentro de la ventana (un equipo instalado hace 5 días no se evalúa sobre 30).
+- **Completitud** = % de ventanas de 5 min con alguna lectura; las mediciones intermitentes por diseño (consumo/autonomía) no cuentan.
+- **Caída del sitio** = ventanas de 5 min sin lecturas de ningún rectificador mientras otro equipo del sitio publica (descarta caídas de la plataforma). Precisión ±5 min.
+- Avisos abiertos antes de la ventana se buscan hasta 90 días atrás.
+- β (Crow-AMSAA, proceso de Weibull para equipos reparables) solo con ≥ 10 fallas.

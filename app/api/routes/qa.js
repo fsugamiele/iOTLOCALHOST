@@ -769,4 +769,54 @@ router.get("/qa/rule/:ruleId/forecast", checkAuth, async (req, res) => {
   }
 });
 
+// ── spec_supervisor_confiabilidad_v2 (R1) — confiabilidad precalculada por el worker (Qs4) ──
+const QaConfig = require("../models/qa_config.js");
+const ReliabilitySnapshot = require("../models/reliability_snapshot.js");
+const QA_CONFIG_CAMPOS = ['windowDays', 'confidence', 'slaRepairH', 'aoTarget', 'provisorio', 'confAltaN', 'confMediaN',
+  'completitudMin', 'isaDays', 'isaRateTarget', 'floodPerTen', 'floodPctTarget', 'chatterN', 'chatterSec', 'staleH',
+  'everyMin', 'rectifierTypes'];
+
+// GET /api/qa/reliability?siteCode= → la foto más reciente (o 404 si el worker todavía no calculó).
+router.get("/qa/reliability", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  try {
+    const q = req.query.siteCode ? { siteCode: String(req.query.siteCode) } : {};
+    const snap = await ReliabilitySnapshot.findOne(q).sort({ computedAt: -1 }).lean();
+    if (!snap) return res.status(404).json({ status: "error", error: "todavía no hay cálculo de confiabilidad (el worker lo hace cada hora)" });
+    return res.json({ status: "success", data: snap });
+  } catch (error) {
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
+// POST /api/qa/reliability/recompute → proxy al worker (recalcular ahora).
+router.post("/qa/reliability/recompute", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  try {
+    const up = await axios.post(`http://${QA_HOST}:${QA_HTTP_PORT}/reliability`, {}, { timeout: 120000, validateStatus: () => true });
+    return res.status(up.status).json(up.data);
+  } catch (error) {
+    return res.status(502).json({ status: "error", error: "no se pudo contactar al worker de calidad" });
+  }
+});
+
+// GET/PUT /api/qa/config — parámetros del supervisor (Qs5). Solo superadmin.
+router.get("/qa/config", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  const doc = await QaConfig.findById('default').lean();
+  return res.json({ status: "success", data: { ...new QaConfig({ _id: 'default' }).toObject(), ...(doc || {}) } });
+});
+router.put("/qa/config", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  try {
+    const set = {};
+    for (const k of QA_CONFIG_CAMPOS) if (req.body && req.body[k] !== undefined) set[k] = req.body[k];
+    set.updatedBy = req.userData && req.userData._id ? String(req.userData._id) : null;
+    const doc = await QaConfig.findByIdAndUpdate('default', { $set: set }, { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }).lean();
+    return res.json({ status: "success", data: doc });
+  } catch (error) {
+    return res.status(400).json({ status: "error", error: error.message || error });
+  }
+});
+
 module.exports = router;
