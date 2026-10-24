@@ -39,7 +39,10 @@ function proponer(r, pack) {
   const tipos = new Set([pack.deviceType, r.deviceType, ...JSON.stringify(r.crossExpr || {}).match(/"deviceType":"[^"]+"/g)?.map((x) => x.slice(14, -1)) || []]);
   const grupo = [...tipos].find((x) => GRUPOS.includes(x)) || 'cummins-pcc';
   const has = (...w) => w.some((x) => t.includes(x));
-  if (has('test')) return { c: 'operacion', why: 'regla de prueba', dudosa: true };
+  if (has('test') || /^(banco-|bm-|bk-)/i.test(r.ruleId)) return { c: 'operacion', why: 'regla de prueba / banco de conformidad' };
+  if (has('aire', 'sala ')) return { c: 'operacion', why: 'climatización del shelter (no es un equipo monitoreado)' };
+  if (has('sensor') && has('clavado')) return { c: 'equipo', why: 'sensor averiado' };
+  if (has('carga del banco')) return { c: 'red', why: 'energía de baterías del sitio' };
   if (has('robo de bater')) return { c: 'seguridad', why: 'robo de baterías' };
   if (has('deja de reportar')) return { c: 'operacion', why: 'comunicación del equipo con la plataforma' };
   if (has('retorno de red')) return { c: 'equipo', ft: 'ATS', why: 'no retransfiere con la red presente' };
