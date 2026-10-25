@@ -11,6 +11,7 @@
 //   docker exec -i node node - --apply < tools/aplicar_calidad_reglas.js            → aplica
 //   docker exec -i node node - --apply --sin cat-TR-03,cat-AR-03 < tools/aplicar_calidad_reglas.js
 //   docker exec -i node node - --apply --solo cummins-GA1-autonomy-warn < tools/aplicar_calidad_reglas.js
+//   --forzar id1,id2 → aplica aunque la condición «parpadee» (ya diagnosticada con qa/diag/parpadeo.js)
 const http = require('http');
 const NM = '/home/node/app/node_modules/';
 require(NM + 'dotenv').config({ path: '/home/node/app/.env' });
@@ -20,7 +21,7 @@ const e = process.env;
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
 const lista = (flag) => { const i = args.indexOf(flag); return i >= 0 && args[i + 1] ? args[i + 1].split(',').map((x) => x.trim()).filter(Boolean) : null; };
-const SOLO = lista('--solo'), SIN = lista('--sin') || [];
+const SOLO = lista('--solo'), SIN = lista('--sin') || [], FORZAR = lista('--forzar') || [];
 if (!e.JWT_SECRET) { console.error('ERROR: falta JWT_SECRET (correr dentro del contenedor node).'); process.exit(1); }
 const TOKEN = jwt.sign({ userData: { _id: e.ADMIN_ID || '6a32e105be5ca779169754af', email: e.ADMIN_EMAIL || 'admin@wanomi.com' } }, e.JWT_SECRET, { expiresIn: '10m' });
 const req = (method, path, body) => new Promise((ok, ko) => {
@@ -39,7 +40,7 @@ function motivoExclusion(r) {
   if (p.perdidas > 0) return `pierde ${p.perdidas} falla(s) real(es)`;
   if (p.despues === 0) return 'dejaría la regla sin avisos (revisar a mano)';
   if (p.despues > 0.5 * p.antes) return `baja poco (${p.antes} → ${p.despues})`;
-  if ((r.excursiones || 0) > 20 * Math.max(1, r.avisos || 0)) return `la condición parpadea (${r.excursiones} excursiones para ${r.avisos} avisos): revisar en R3`;
+  if ((r.excursiones || 0) > 20 * Math.max(1, r.avisos || 0) && !FORZAR.includes(r.ruleId)) return `la condición parpadea (${r.excursiones} excursiones para ${r.avisos} avisos): revisar en R3`;
   return null;
 }
 
