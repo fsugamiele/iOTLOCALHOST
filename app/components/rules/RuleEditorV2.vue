@@ -215,7 +215,7 @@
             <div class="rv2-st">¿Cuánto esperar y cómo se cierra?</div>
             <p class="rv2-sh">La espera evita avisos por un pico de un instante. El cierre evita que la alarma se abra y cierre una y otra vez.</p>
             <div class="rv2-grid3">
-              <div class="rv2-fld"><label class="rv2-lab" for="rv2-esp">Avisar si sigue así durante (s)</label><input id="rv2-esp" v-model="model.espera" class="rv2-in" inputmode="numeric"></div>
+              <div class="rv2-fld"><label class="rv2-lab" for="rv2-esp">Avisar si sigue así durante (s)</label><input id="rv2-esp" v-model="model.espera" class="rv2-in" inputmode="numeric"><span v-if="esperaCorta" class="rv2-hint" style="color:#b7791f">{{ esperaCorta }}</span></div>
               <div class="rv2-fld"><label class="rv2-lab" for="rv2-cie">Cerrar si se normaliza durante (s)</label><input id="rv2-cie" v-model="model.cierre" class="rv2-in" inputmode="numeric"></div>
               <div class="rv2-fld"><span class="rv2-lab">Al normalizarse</span>
                 <div class="rv2-seg rv2-seg-sm" role="group" aria-label="Cierre">
@@ -372,6 +372,19 @@ export default {
     },
     packKind() { return deviceTypeName(this.packType, this.sheets); },
     // spec_supervisor_confiabilidad_v2 (Qs7) — tipos de equipo que intervienen (para imputar la falla de una combinada).
+    // spec_supervisor_confiabilidad_v2 (R4) — combinadas con mediciones que llegan a ritmos distintos: en cada
+    // cambio de estado (arranque, parada) hay un instante con una medición nueva y la otra vieja. La espera tiene
+    // que cubrir al menos la cadencia más lenta (caso Subtensión del grupo, 25/10).
+    esperaCorta() {
+      const conds = (this.model && this.model.conds) || [];
+      if (conds.length < 2) return '';
+      const seg = (c) => { const sh = this.sheetByType[c.deviceType]; const v = sh && (sh.variables || []).find((x) => x.name === c.variable); const m = v && /^(\d+)\s*s$/.exec(String(v.cadence || '')); return m ? Number(m[1]) : null; };
+      const cad = conds.map(seg).filter((x) => x != null);
+      if (cad.length < 2) return '';
+      const max = Math.max(...cad), min = Math.min(...cad);
+      if (max === min || (Number(this.model.espera) || 0) >= max) return '';
+      return `Las condiciones se actualizan cada ${min} s y cada ${max} s: con menos de ${max} s de espera, al arrancar o parar un equipo puede avisar por una lectura vieja.`;
+    },
     tiposEnRegla() { return [...new Set([this.packType, ...((this.model && this.model.conds) || []).map((c) => c.deviceType)].filter(Boolean))]; },
     packKindLower() { return this.packKind.toLowerCase(); },
     sheetByType() { const m = {}; for (const s of this.sheets) m[s.deviceType] = s; return m; },

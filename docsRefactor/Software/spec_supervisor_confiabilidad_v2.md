@@ -1,4 +1,4 @@
-# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · Qs1–Qs6 FIRMADAS ("aprobado, avanza" 24/10) · R1 CERRADO (validado con datos reales 24/10) · R2 CERRADO (17 reglas ajustadas 25/10) · R3 IMPLEMENTADO
+# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · Qs1–Qs6 FIRMADAS ("aprobado, avanza" 24/10) · R1 CERRADO (validado con datos reales 24/10) · R2 CERRADO (17 reglas ajustadas 25/10) · R3 CERRADO · R4 IMPLEMENTADO
 
 **Origen:** Franco 2026-10-24 — el supervisor de calidad tiene bugs de renderizado de gráficos y lo que informa no alcanza para interpretar errores ni decidir cambios. Pide rediseño con información "fehaciente y respaldada por funciones matemáticas e indicadores de confiabilidad (Ao, Ai/técnica, MTBF, λ, MTTR, R, M)".
 **Maqueta aprobada:** `docsRefactor/Software/mockup_supervisor_confiabilidad_v2.html` (datos de ejemplo).
@@ -115,3 +115,11 @@ Consecuencia aplicada de Qs9: la **exposición T** y el **tiempo fuera de servic
 - **Cierre automático:** `closeAbsent` en cada check (invariantes, ingesta, oráculo): un hallazgo abierto que no aparece en 2 corridas seguidas pasa a `resolved` con `resolvedBy: 'auto'`; si vuelve a aparecer se reabre. Lo cerrado a mano (`resolvedBy` = usuario), ack y muted no se tocan.
 - **Aceptar como referencia (I13):** `POST /api/qa/rule/:ruleId/accept-reference` → la foto canónica pasa a ser la definición viva (`capturedFrom: 'accepted'`, `acceptedBy/At`) y se cierran sus I13.
 - Diagnóstico de condiciones que parpadean: `qa/diag/parpadeo.js` (reproduce una regla y lista cada cambio de etapa con el mensaje y el estado de cada condición).
+
+**R4 (2026-10-25) — UI nueva** (`pages/admin/calidad/index.vue` + `components/qa/v2/*`): pestañas Resumen · Confiabilidad por equipo · Calidad de las reglas · Integridad del motor · Datos · Método, como la maqueta, con datos reales de `/api/qa/reliability`, `/rule-quality`, `/findings`, `/config`.
+- Gráficos SVG propios (`QaLinea`, `QaGantt`, `QaBarras`) con guardas: solo puntos finitos; sin datos → estado vacío. Probado en navegador (Playwright) con las fotos de las pruebas de integración, en tema oscuro y claro y a 390 px: sin errores de consola, sin NaN/Infinity/undefined en el SVG ni en el texto, sin scroll horizontal.
+- Acciones: «Aplicar cambio» (lee el pack, verifica que la regla no cambió desde la corrida y guarda por `PUT /api/rulepacks/:packId`, como el editor; avisa si se pierden fallas reales y que se cierran las alarmas abiertas) · «Ver en el editor» · Recalcular · Marcar resuelto / Silenciar / Aceptar como referencia · parámetros del supervisor (SLA, meta Ao, ventana, rebote, completitud).
+- El inventario (encender / apagar reglas) queda dentro de «Calidad de las reglas».
+- Editor de reglas: si una regla combina mediciones con cadencias distintas (ficha) y la espera es menor que la más lenta, avisa debajo de la espera.
+- Oráculo: los veredictos viejos (MUERTA / PERMANENTE / RUIDOSA) se apagan (`QA_ORACULO_VEREDICTOS=true` los reactiva) y sus hallazgos se cierran solos.
+- Pendiente: la página de detalle por regla (`/admin/calidad/:ruleId`) sigue con los gráficos viejos.
