@@ -61,7 +61,7 @@ function cond(n) {
     process.exit(0);
   }
   // Vive en app/ porque es lo único montado en el contenedor node (junto con el simulador).
-  const src = '/home node/app/api/data/rule_textos.json'.replace(' ', '/');
+  const src = '/home/node/app/api/data/rule_textos.json';
   let textos;
   try { textos = JSON.parse(fs.readFileSync(src, 'utf8')); } catch (err) { console.error(`No pude leer ${src}: ${err.message}`); process.exit(1); }
   let n = 0;
