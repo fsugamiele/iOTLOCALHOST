@@ -1,4 +1,4 @@
-# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · Qs1–Qs6 FIRMADAS ("aprobado, avanza" 24/10) · R1 CERRADO (validado con datos reales 24/10) · R2 IMPLEMENTADO
+# SPEC — Supervisor de calidad v2: confiabilidad y calidad de alarmas · 2026-10-24 · DEFINICIONES FIRMADAS (D1–D4, Franco "ok, avanza") · Qs1–Qs6 FIRMADAS ("aprobado, avanza" 24/10) · R1 CERRADO (validado con datos reales 24/10) · R2 CERRADO (17 reglas ajustadas 25/10) · R3 IMPLEMENTADO
 
 **Origen:** Franco 2026-10-24 — el supervisor de calidad tiene bugs de renderizado de gráficos y lo que informa no alcanza para interpretar errores ni decidir cambios. Pide rediseño con información "fehaciente y respaldada por funciones matemáticas e indicadores de confiabilidad (Ao, Ai/técnica, MTBF, λ, MTTR, R, M)".
 **Maqueta aprobada:** `docsRefactor/Software/mockup_supervisor_confiabilidad_v2.html` (datos de ejemplo).
@@ -107,3 +107,11 @@ Consecuencia aplicada de Qs9: la **exposición T** y el **tiempo fuera de servic
 - Límite: "deja de reportar" no se reproduce (usa el reloj real). Reinicios del edge no se simulan.
 - Prueba: `qa/test/ruleQuality.itest.js` (motor real, 3 días sintéticos): bus DC con bajones de 40 s → avisa de más, espera 90 s + histéresis 0,21 → 24 → 1 avisos sin perder el corte real de 30 min; sobrevelocidad de ficha → protección; umbral fuera del rango físico → inalcanzable; número fijo lejano con límite en la ficha → umbral a revisar; medición sin lecturas → no evalúa.
 - Ajustes tras la 1ª corrida real (24/10, 2,35 M lecturas, 27,9 min): escala de la ficha leída bien ("0-1800" no es −1800); umbral fuera de la escala de la ficha = "umbral a revisar" (la escala es de fábrica, no el límite físico), "inalcanzable" solo si excede la escala en más de la mitad de su amplitud; "la mayoría de los episodios son cortos" solo con ≥ 5 episodios; histéresis solo en comparaciones de orden sobre mediciones continuas y con σ robusto (1,4826·mediana|Δ|/√2, los cortes y arranques no lo inflan); si el cambio reproducido no baja al menos 20 % los avisos, no se propone (se pide revisar la condición); avance por día en el log.
+
+**R3 (2026-10-25) — integridad del motor:**
+- I1/I4: el aviso abierto **antes** de la ventana (hasta 90 días) se carga como abierto; su cierre ya no sale como «cierre sin aviso».
+- I6: el testigo es la lectura que más se parece al valor del aviso entre el **inicio de la espera** (graceSec) y el aviso (± 2 min); con espera, el aviso sale con la lectura que la cumplió, no con la más cercana.
+- I5 (alarma encendida con la medición normal): umbral = 30 min **+ la espera de cierre** de la regla.
+- **Cierre automático:** `closeAbsent` en cada check (invariantes, ingesta, oráculo): un hallazgo abierto que no aparece en 2 corridas seguidas pasa a `resolved` con `resolvedBy: 'auto'`; si vuelve a aparecer se reabre. Lo cerrado a mano (`resolvedBy` = usuario), ack y muted no se tocan.
+- **Aceptar como referencia (I13):** `POST /api/qa/rule/:ruleId/accept-reference` → la foto canónica pasa a ser la definición viva (`capturedFrom: 'accepted'`, `acceptedBy/At`) y se cierran sus I13.
+- Diagnóstico de condiciones que parpadean: `qa/diag/parpadeo.js` (reproduce una regla y lista cada cambio de etapa con el mensaje y el estado de cada condición).

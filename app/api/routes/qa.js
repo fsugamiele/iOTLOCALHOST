@@ -350,7 +350,10 @@ router.patch("/qa/findings/:id/status", checkAuth, async (req, res) => {
 
     const finding = await QualityFinding.findByIdAndUpdate(
       req.params.id,
-      { $set: { status } },
+      // R3 — quién lo cerró a mano (un cierre manual no se reabre solo; uno automático sí).
+      { $set: status === 'resolved'
+        ? { status, resolvedBy: String((req.userData && (req.userData.email || req.userData._id)) || 'usuario'), resolvedAt: new Date() }
+        : { status, resolvedBy: null, resolvedAt: null } },
       { new: true, runValidators: true }
     ).lean();
 
@@ -835,6 +838,26 @@ router.post("/qa/rule-quality/recompute", checkAuth, async (req, res) => {
     return res.status(up.status).json(up.data);
   } catch (error) {
     return res.status(502).json({ status: "error", error: "no se pudo contactar al worker de calidad" });
+  }
+});
+
+// ── R3 — «Aceptar la versión actual como referencia» (deriva I13): la foto canónica de la regla
+// pasa a ser la definición viva, queda registrado quién y cuándo, y se cierra el hallazgo I13.
+const RuleSnapshotR3 = require("../models/rule_snapshot.js");
+router.post("/qa/rule/:ruleId/accept-reference", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  try {
+    const ruleId = String(req.params.ruleId);
+    const pack = await RulePack.findOne({ "rules.ruleId": ruleId }).lean();
+    const rule = pack && (pack.rules || []).find((r) => r.ruleId === ruleId);
+    if (!rule) return res.status(404).json({ status: "error", error: "regla no encontrada" });
+    const quien = String((req.userData && (req.userData.email || req.userData._id)) || 'usuario');
+    const def = JSON.parse(JSON.stringify(rule)); delete def._id;
+    await RuleSnapshotR3.updateOne({ ruleId }, { $set: { packId: pack.packId, definition: def, capturedFrom: 'accepted', capturedAt: new Date(), acceptedBy: quien, acceptedAt: new Date() } }, { upsert: true });
+    const r = await QualityFinding.updateMany({ type: 'I13', ruleId, status: { $in: ['open', 'ack'] } }, { $set: { status: 'resolved', resolvedBy: 'aceptado:' + quien, resolvedAt: new Date() } });
+    return res.json({ status: "success", data: { ruleId, packId: pack.packId, hallazgosCerrados: r.modifiedCount != null ? r.modifiedCount : r.nModified } });
+  } catch (error) {
+    return res.status(500).json({ status: "error", error: error.message || error });
   }
 });
 

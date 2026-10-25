@@ -21,10 +21,27 @@ async function upsertFinding(f) {
       evidence: f.evidence != null ? f.evidence : null,
       suggestedAction: f.suggestedAction || '',
       lastSeen: now,
+      missedRuns: 0,
     },
     $inc: { count: 1 },
     $setOnInsert: { firstSeen: now, status: 'open' },
-  }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  }, { upsert: true, new: true, setDefaultsOnInsert: true }).then(async (doc) => {
+    // R3 — si se había cerrado SOLO y vuelve a aparecer, se reabre (uno cerrado a mano no).
+    if (doc && doc.status === 'resolved' && doc.resolvedBy === 'auto') {
+      await QualityFinding.updateOne({ _id: doc._id }, { $set: { status: 'open', resolvedBy: null, resolvedAt: null } });
+    }
+    return doc;
+  });
 }
 
-module.exports = { upsertFinding };
+// spec_supervisor_confiabilidad_v2 (R3) — cierra los hallazgos ABIERTOS de esos tipos que no se
+// vieron en esta corrida (lastSeen < inicio) por `minMissed` corridas seguidas. Respeta ack/muted.
+async function closeAbsent(types, inicio, minMissed = 2) {
+  const q = { type: { $in: types }, status: 'open', lastSeen: { $lt: inicio } };
+  await QualityFinding.updateMany(q, { $inc: { missedRuns: 1 } });
+  const r = await QualityFinding.updateMany({ ...q, missedRuns: { $gte: minMissed } },
+    { $set: { status: 'resolved', resolvedBy: 'auto', resolvedAt: new Date() } });
+  return (r && (r.modifiedCount != null ? r.modifiedCount : r.nModified)) || 0;
+}
+
+module.exports = { upsertFinding, closeAbsent };

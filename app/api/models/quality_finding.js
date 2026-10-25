@@ -37,6 +37,11 @@ const QualityFindingSchema = new Schema({
   // open = vigente · ack = visto por admin · resolved = ya no se observa ·
   // muted = silenciado a propósito (no vuelve a notificar). Lo togglea /api/qa (bloque 140).
   status: { type: String, enum: ['open', 'ack', 'resolved', 'muted'], default: 'open' },
+  // spec_supervisor_confiabilidad_v2 (R3) — cierre automático: corridas seguidas sin verlo; quién y
+  // cuándo lo cerró ('auto' = dejó de aparecer 2 corridas · 'aceptado' = deriva aceptada · usuario).
+  missedRuns: { type: Number, default: 0 },
+  resolvedBy: { type: String, default: null },
+  resolvedAt: { type: Date, default: null },
 }, {
   timestamps: true,
   collection: 'quality_findings',

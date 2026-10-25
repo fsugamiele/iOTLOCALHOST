@@ -11,7 +11,7 @@
 // además computeSilent({windowH}) → Set de 'dId|variable' callados para el bloque 138.
 
 const mongoose = require('mongoose');
-const { upsertFinding } = require('../lib/findings');
+const { upsertFinding, closeAbsent } = require('../lib/findings');
 
 // Knobs por env con default NOMBRADO (sin hardcodes; patrón const X = Number(env || default)).
 //   QA_STALE_MULT   — múltiplo de la cadencia mediana a partir del cual se considera callada (3×).
@@ -103,6 +103,7 @@ async function mapaSiteCode() {
 // que agrega qa/index.js (devicesCovered + findingsWritten). Dedup por corrida: la agregación
 // da UNA fila por (dId,variable), así que un upsert por fuente callada no duplica (contrato §4).
 async function run() {
+  const inicioRun = new Date();   // R3: cierre automático de lo que deja de aparecer
   const { fuentes } = await evaluarFuentes(QA_DH_WINDOW_H);
   const site = await mapaSiteCode();
 
@@ -131,6 +132,7 @@ async function run() {
     findingsWritten += 1;
   }
 
+  await closeAbsent(['INGESTA'], inicioRun);
   return {
     check: 'data-health',
     rulesCovered: [],                   // este check no cubre reglas, cubre fuentes de ingesta

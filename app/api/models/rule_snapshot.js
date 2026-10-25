@@ -15,7 +15,9 @@ const RuleSnapshotSchema = new Schema({
   ruleId:       { type: String, required: true, unique: true },
   packId:       { type: String, required: true },
   definition:   { type: Schema.Types.Mixed },   // la regla COMPLETA tal como se vio por primera vez (clon del subdoc)
-  capturedFrom: { type: String, enum: ['seed', 'put'] },
+  capturedFrom: { type: String, enum: ['seed', 'put', 'accepted'] },   // R3: 'accepted' = deriva aceptada como referencia
+  acceptedBy:   { type: String, default: null },
+  acceptedAt:   { type: Date, default: null },
   capturedAt:   { type: Date, default: Date.now },
 }, {
   collection: 'rule_snapshots',
