@@ -16,7 +16,7 @@
 |---|---|---|
 | **Cummins PowerCommand 1.1/1.2 · PCC 1302** (`cummins-pcc`, perfil `cummins-pcc1302`) | Manual de servicio A040D969 Ed. 1 (268 pp.) · hoja de datos HMI211 | ✅ **Hecho** — `cummins_pcc1302.md` / `.json`: 90 códigos, 72 con localización de averías completa (§9.8), 12 vigilados por una regla Wanomi |
 | **Eltek Smartpack S** (`ELTEK`) | User Guide **350030.013** (36 pp.; los archivos «controladora eltek flatpack» y «SMART PACK 2» son el mismo) · *Parametrización ELTEK para VRLA* (Narada 12NDF155) · informe retrofit MBBU | ✅ **Hecho (parcial)** — `eltek_smartpack_s.md`: modelo de alarmas, umbrales contra el banco Narada 12NDF155 (flote 54,0 · LVD 43,2 · sobretensión 57 V coinciden con la ficha), alarmas y verificación. Localización de averías PROVISORIO. **Falta:** 350020.073 (valores por defecto) |
-| **ComAp InteliATS NT PWR / STD** (`ATS`) | Guía del operador (feb-2009, 8 pp.) | ⏳ a procesar — guía corta, sin lista de alarmas ni valores por defecto. **Falta:** *InteliATS NT Reference Guide* (setpoints y alarmas) |
+| **ComAp InteliATS NT PWR / STD** (`ATS`) | **Guía de Referencia IA-NT PWR SW 2.2** (nov-2010, español, 91 pp.) · guía del operador | ✅ **Hecho** — `comap_inteliats_nt_pwr.md`: valores de fábrica de todas las protecciones con registro Modbus, 18 alarmas con tipo, tiempos de transferencia; localización de averías PROVISORIO. Propuestas P1–P3 a firmar. Ojo: la ficha dice «InteliATS²», confirmar modelo |
 | **ComAp InteliGen / InteliSys NT** | *Communication Guide* IGS-NT 04-2015 (comunicación, no alarmas) · hoja de datos InteliLite NT MRS16 | ○ referencia de driver. **Falta:** *Reference Guide* IL-NT / IG-NT (alarmas) si aparecen en el parque |
 | **Vertiv NetSure NCU M830B/D** | Manual del usuario 11 YG 5020 NR Rev. D (208 pp.) | ⏳ a procesar — niveles de alarma configurables |
 | **Eaton SC200** | Manual de la operación IPN 997-00012-61A (95 pp.) | ⏳ a procesar |
@@ -34,7 +34,6 @@
 | Equipo | Documento | Para qué |
 |---|---|---|
 | Eltek Smartpack S | 350020.073 *Functionality Description* | valores por defecto de alarmas y LVD (hoy PROVISORIOS) |
-| ComAp InteliATS NT | *IA-NT PWR Reference Guide* (setpoints, protecciones, lista de alarmas) — **existe en comap-control.com** (inglés 3,29 MB · **español 2,54 MB**), requiere cuenta gratuita | umbrales de red / grupo y textos del ATS |
 | Cummins PCC 1302 | mapa de registros Modbus | driver (sigue faltando) |
 | Delta (power plant) · DSE (grupos) | manuales de controlador | están en el informe de marcas de Claro; no hay documentos |
 | John Deere / Perkins | códigos de falla del motor (SPN/FMI) | si el driver lee el ECM de esos motores |

@@ -1,0 +1,228 @@
+{
+ "equipo": "ComAp InteliATS NT PWR",
+ "ficha": "ATS",
+ "fuente": {
+  "doc": "IA-NT PWR Guía de Referencia SW 2.2 nov-2010 (es)",
+  "paginasDefaults": "80-81",
+  "paginasEventos": "77"
+ },
+ "nominal": {
+  "V": 231,
+  "Hz": 50
+ },
+ "umbrales": [
+  {
+   "id": "Mains <V",
+   "pct": 60,
+   "valor": 138.6,
+   "unidad": "V",
+   "retardoSec": 2.0,
+   "modbus": 8307,
+   "tipo": "MF"
+  },
+  {
+   "id": "Mains >V",
+   "pct": 110,
+   "valor": 254.1,
+   "unidad": "V",
+   "retardoSec": 2.0,
+   "modbus": 8305,
+   "tipo": "MF"
+  },
+  {
+   "id": "Mains V Unbal",
+   "pct": 10,
+   "retardoSec": 2.0,
+   "modbus": 8446,
+   "tipo": "MF"
+  },
+  {
+   "id": "Mains <Freq",
+   "pct": 98,
+   "valor": 49.0,
+   "unidad": "Hz",
+   "retardoSec": 0.5,
+   "modbus": 8312,
+   "tipo": "MF"
+  },
+  {
+   "id": "Mains >Freq",
+   "pct": 102,
+   "valor": 51.0,
+   "unidad": "Hz",
+   "retardoSec": 0.5,
+   "modbus": 8310,
+   "tipo": "MF"
+  },
+  {
+   "id": "Gen <V Trp",
+   "pct": 70,
+   "valor": 161.7,
+   "unidad": "V",
+   "retardoSec": 3.0,
+   "modbus": 8293,
+   "tipo": "TRP"
+  },
+  {
+   "id": "Gen >V Trp",
+   "pct": 110,
+   "valor": 254.1,
+   "unidad": "V",
+   "retardoSec": 3.0,
+   "modbus": 8291,
+   "tipo": "TRP"
+  },
+  {
+   "id": "Volt Unbal Trp",
+   "pct": 10,
+   "retardoSec": 3.0,
+   "modbus": 8288,
+   "tipo": "TRP"
+  },
+  {
+   "id": "Gen <Freq Trp",
+   "pct": 85,
+   "valor": 42.5,
+   "unidad": "Hz",
+   "retardoSec": 3.0,
+   "modbus": 8298,
+   "tipo": "TRP"
+  },
+  {
+   "id": "Gen >Freq Trp",
+   "pct": 110,
+   "valor": 55.0,
+   "unidad": "Hz",
+   "retardoSec": 3.0,
+   "modbus": 8296,
+   "tipo": "TRP"
+  },
+  {
+   "id": "Amps Unbal Trp",
+   "pct": 50,
+   "retardoSec": 5.0,
+   "modbus": 8284,
+   "tipo": "WRN"
+  },
+  {
+   "id": "Short Crct Trp",
+   "pct": 250,
+   "retardoSec": 0.0,
+   "modbus": 8282,
+   "tipo": "TRP"
+  },
+  {
+   "id": "Amps IDMT Del",
+   "valor": 4.0,
+   "unidad": "s",
+   "modbus": 8283,
+   "tipo": "TRP"
+  },
+  {
+   "id": "Batt Undervolt",
+   "valor": 18.0,
+   "unidad": "V",
+   "retardoSec": 5,
+   "modbus": 8387,
+   "tipo": "WRN"
+  },
+  {
+   "id": "Batt Overvolt",
+   "valor": 36.0,
+   "unidad": "V",
+   "retardoSec": 5,
+   "modbus": 9587,
+   "tipo": "WRN"
+  }
+ ],
+ "tiemposAMF": {
+  "EmergStart Del": 5,
+  "MainsReturnDel": 20,
+  "Transfer Del": 1.0,
+  "MCB Close Del": 1.0,
+  "Max Start Del": 20,
+  "Min Stab Time": 3,
+  "Stop Time": 60,
+  "BreakerFailSec": 5
+ },
+ "alarmas": [
+  {
+   "id": "Trp Start Fail",
+   "tipo": "TRP"
+  },
+  {
+   "id": "Trp BatteryFlat",
+   "tipo": "TRP"
+  },
+  {
+   "id": "Wrn Batt Volt",
+   "tipo": "WRN"
+  },
+  {
+   "id": "Trp Gen Lx >,<V",
+   "tipo": "TRP"
+  },
+  {
+   "id": "Trp Gen V Unbal",
+   "tipo": "TRP"
+  },
+  {
+   "id": "Trp Gen >Freq",
+   "tipo": "TRP"
+  },
+  {
+   "id": "Wrn Amps Unbal",
+   "tipo": "WRN"
+  },
+  {
+   "id": "Trp Overload",
+   "tipo": "TRP"
+  },
+  {
+   "id": "EmergencyStop",
+   "tipo": "TRP"
+  },
+  {
+   "id": "GCB Fail",
+   "tipo": "TRP"
+  },
+  {
+   "id": "MCB Fail",
+   "tipo": "MF"
+  },
+  {
+   "id": "Gen CCW Rot",
+   "tipo": null
+  },
+  {
+   "id": "Mains CCW Rot",
+   "tipo": null
+  },
+  {
+   "id": "Trp GenRd Fail",
+   "tipo": "TRP"
+  },
+  {
+   "id": "Wrn Stop Fail",
+   "tipo": "WRN"
+  },
+  {
+   "id": "Wrn GeStateNA",
+   "tipo": "WRN"
+  },
+  {
+   "id": "ParamFail",
+   "tipo": null
+  },
+  {
+   "id": "Low BackupBatt",
+   "tipo": "WRN"
+  }
+ ],
+ "localizacionAverias": "PROVISORIO: la guía no trae procedimiento",
+ "propuestas": [
+  "P1 límites de parada del grupo en ficha",
+  "P2 límite de falla de red de fábrica como referencia",
+  "P3 leer setpoints por Modbus"
+ ]
+}
