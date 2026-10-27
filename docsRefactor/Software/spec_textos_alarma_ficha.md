@@ -29,7 +29,7 @@
 | # | Regla | Problema |
 |---|---|---|
 | H1 | eltek-baseline-temperature | Condición **imposible**: `baseline > 3 AND baseline < −3` (nunca se cumple). Debe ser **OR**. |
-| H2 | cat-GE-16 (código 781) | La regla es **crítica**; el manual del PCC 1302 clasifica el 781 como **advertencia**. |
+| H2 | cat-GE-16 (código 781) | ~~El manual clasifica el 781 como advertencia~~ **Corregido 27/10:** el manual (A040D969 §9.8.25, pág. 220 del PDF) **no indica** el tipo del 781; el «advertencia» del perfil era inferido. Se mantiene crítica hasta confirmarlo en el equipo (InPower). |
 | H3 | cat-AR-08 | «Qué hacer» habla de poner en AUTO; la regla es «sin ejercicio semanal» (no corresponde). |
 | H4 | gen-autonomy-crit | Umbral fijo 12 h mientras la de aviso usa la ficha; el texto dice `{umbral}`. |
 | H5 | cummins-pcc-sifoneo-divergencia, cat-CB-05, GEN-sifoneo-motor-apagado | Pasos escritos en **un solo renglón** separados por «;». |
