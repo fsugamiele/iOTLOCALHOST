@@ -1,0 +1,35 @@
+{
+  "equipo": "Eltek Smartpack S",
+  "ficha": "ELTEK",
+  "fuentes": [
+    { "doc": "User Guide Smartpack S Controller 350030.013 1v0-2012-06", "paginas": "20-35" },
+    { "doc": "Parametrización de sistemas de energía ELTEK para bancos VRLA (Eltek Argentina)", "paginas": "1-8" }
+  ],
+  "falta": ["350020.073 Functionality Description (valores por defecto)"],
+  "convencion": "bus DC negativo (V)",
+  "umbrales": [
+    { "magnitud": "tension_flote", "valor": -54.0, "fuente": "VRLA Narada 12NDF155 p.1", "estado": "documentado" },
+    { "magnitud": "tension_ecualizacion", "valor": -56.4, "fuente": "VRLA p.1", "estado": "documentado" },
+    { "magnitud": "sobretension_mayor", "valor": -57.0, "histeresis": 0.1, "retardoSec": 5, "fuente": "Guía p.28 (ejemplo)", "estado": "ejemplo", "wanomi": "DC-05 lt -57 (fijo, pasar a ficha)" },
+    { "magnitud": "lvd_desconexion", "valor": -43.2, "fuente": "VRLA p.1; Guía p.31 ejemplo 43,00", "estado": "documentado" },
+    { "magnitud": "lvd_reconexion", "valor": -48.0, "fuente": "Guía p.31 (ejemplo)", "estado": "ejemplo" },
+    { "magnitud": "tension_baja_aviso", "valor": -52.0, "fuente": null, "estado": "PROVISORIO" },
+    { "magnitud": "tension_critica", "valor": -48.0, "fuente": null, "estado": "PROVISORIO" },
+    { "magnitud": "corriente_recarga_A", "valor": 33.75, "fuente": "VRLA p.1 y 5 (por string, 155 Ah)", "estado": "documentado" },
+    { "magnitud": "temperatura_bateria_aviso", "valor": 35, "fuente": "VRLA p.2", "estado": "documentado" },
+    { "magnitud": "temperatura_bateria_critica", "valor": 45, "fuente": null, "estado": "PROVISORIO" },
+    { "magnitud": "corriente_carga_dc", "valor": null, "fuente": null, "estado": "sin fuente", "wanomi": "B1 80 A / B2 95 A fijos" }
+  ],
+  "alarmas": [
+    { "id": "MainsAlarm", "tipo": "Major", "medicionWanomi": "mains_voltage" },
+    { "id": "LowBattery", "tipo": "Major", "medicionWanomi": "dc_bus_voltage", "regla": "DC-03" },
+    { "id": "LVBD_LVLD", "tipo": "Major", "medicionWanomi": "dc_bus_voltage" },
+    { "id": "HighBattery", "tipo": "Major", "medicionWanomi": "dc_bus_voltage", "regla": "DC-05" },
+    { "id": "RectifierError", "tipo": "Minor", "regla": "DC-06" },
+    { "id": "SymmVolt", "tipo": "Major", "medicionWanomi": null },
+    { "id": "BatteryTemp", "tipo": "Minor/Major", "medicionWanomi": "temperature" },
+    { "id": "FuseAlarm", "tipo": "Major", "medicionWanomi": null },
+    { "id": "DoorAlarm", "tipo": "evento", "medicionWanomi": "SEC" }
+  ],
+  "localizacionAverias": "PROVISORIO: la guía 350030.013 no trae sección de localización de averías"
+}
