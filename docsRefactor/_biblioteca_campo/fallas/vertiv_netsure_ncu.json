@@ -1,0 +1,149 @@
+{
+ "equipo": "Vertiv NetSure NCU",
+ "ficha": null,
+ "fuente": {
+  "doc": "NCU Manual del usuario 11 YG 5020 NR Rev. D (es)",
+  "paginas": {
+   "niveles": "8",
+   "bateria": "100",
+   "alarmas": "61-99",
+   "parametros": "117-125"
+  }
+ },
+ "falta": [
+  "Esquema de configuración de la NCU (esquema C) por sitio"
+ ],
+ "nivelesAlarma": [
+  "Crítica",
+  "Urgente",
+  "Observación"
+ ],
+ "bateriaDefaults": {
+  "flote": 53.5,
+  "ecualizacion": 56.4,
+  "altaTension": 55.7,
+  "sobretension": 58.5,
+  "bajaTension": 45,
+  "subtension": 42,
+  "sobrecorrienteC": 0.3,
+  "limiteCorrienteC": 0.1,
+  "eficienciaCarga": 96,
+  "tiempoDescargaH": {
+   "0.1C": 10,
+   "0.2C": 4.9,
+   "0.3C": 3,
+   "0.4C": 2,
+   "0.5C": 1.4,
+   "0.6C": 1.2,
+   "0.7C": 1.1,
+   "0.8C": 0.9
+  }
+ },
+ "ecoLimiteCarga": 45,
+ "alarmas": [
+  {
+   "id": "Fallo Red",
+   "accion": "Comprobar por qué no hay CA comercial",
+   "wanomi": "M1/C1"
+  },
+  {
+   "id": "FalloGraveRed",
+   "accion": "Comprobar la causa de la baja tensión"
+  },
+  {
+   "id": "Fallo CA",
+   "accion": "Comprobar por qué no hay alimentación de entrada de CA"
+  },
+  {
+   "id": "Subtensión 1/2",
+   "accion": "Con falla de red apagar cargas no críticas; si la carga supera la capacidad instalar rectificadores; en recarga se borra sola",
+   "wanomi": "DC-03, DC-09"
+  },
+  {
+   "id": "Sobretensión 1/2",
+   "accion": "Comprobar la causa y el valor configurado",
+   "wanomi": "DC-05"
+  },
+  {
+   "id": "LVD1/LVD2 Desconect",
+   "accion": null
+  },
+  {
+   "id": "Fallo LVD1/LVD2",
+   "accion": "Comprobar y reemplazar el contactor"
+  },
+  {
+   "id": "Rect defect / HVSD / Rect protegido",
+   "accion": "Ver manual del rectificador",
+   "wanomi": "DC-06"
+  },
+  {
+   "id": "Fallo Div Rect",
+   "accion": "Comprobar tensión de entrada; reemplazar rectificadores"
+  },
+  {
+   "id": "Fallo Vent",
+   "accion": "Reemplazar el ventilador"
+  },
+  {
+   "id": "Lím Corriente",
+   "accion": "En recarga se borra solo; si la carga supera la capacidad agregar o reemplazar rectificadores",
+   "wanomi": "B1/B2"
+  },
+  {
+   "id": "AltaTemp Rect",
+   "accion": "Comprobar la causa de la alta temperatura"
+  },
+  {
+   "id": "Fallo Com Rect / FalloComTodRect",
+   "accion": "Revisar cables y bus CAN; restablecer; reemplazar controlador"
+  },
+  {
+   "id": "Rect No Det / Gr Rect no Det",
+   "accion": "Revisar cables de comunicación"
+  },
+  {
+   "id": "Temp Comp Alta/MAlta/Baja / Temp BTRM",
+   "accion": "Comprobar la causa de la temperatura",
+   "wanomi": "temperature"
+  },
+  {
+   "id": "Alm Fusib N",
+   "accion": "Eliminar la causa (sobrecarga/cortocircuito) antes de reponer; si se quitó a mano consultar antes"
+  },
+  {
+   "id": "Sobrecarg / AltoNivCarg1",
+   "accion": "Comprobar la carga",
+   "wanomi": "B1/B2"
+  },
+  {
+   "id": "SPD / Disp SPD",
+   "accion": "Revisar el descargador"
+  },
+  {
+   "id": "Par/ApagEmer",
+   "accion": "Verificar por qué se estableció ese modo"
+  },
+  {
+   "id": "Baja capacidad",
+   "accion": "Comprobar las baterías"
+  },
+  {
+   "id": "Fallo DG / Sobretemp DG / Baja Pres Aceite / Alta Temp Agua / Bajo Nivel Combust",
+   "accion": "Comprobar el generador"
+  },
+  {
+   "id": "Alm Tpo Mnt",
+   "accion": "Mantenimiento y reiniciar temporizador"
+  },
+  {
+   "id": "Fallo AutoDetect",
+   "accion": "Reemplazar la controladora"
+  }
+ ],
+ "propuestas": [
+  "V1 ficha VERTIV con Tabla 6",
+  "V2 leer umbrales por SNMP",
+  "V3 acción del fabricante como Pasos a seguir"
+ ]
+}
