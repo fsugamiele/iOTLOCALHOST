@@ -1,0 +1,355 @@
+{
+ "_doc": "spec_textos_alarma_ficha T4 (2026-10-28) — textos propios de las reglas que no heredan de la ficha. Se aplica con tools/textos_reglas.js --apply --sobrescribir: solo se tocan los campos presentes. Reemplazan textos existentes de baja calidad: cummins-pcc-sifoneo-divergencia, cummins-pcc-baseline-fuel-efficiency, cat-GE-16, cat-CB-05, GEN-sifoneo-motor-apagado",
+ "cummins-M1-mains-loss": {
+  "meaning": "El sitio se quedó sin red eléctrica (menos de 100 V en el ATS): pasa a grupo electrógeno o a baterías.",
+  "steps": [
+   "Confirmar en el detalle si el grupo arrancó y tomó la carga",
+   "Si el grupo no arrancó: ver el tiempo hasta el corte de baterías",
+   "Consultar a la distribuidora si el corte es zonal",
+   "Si el corte se extiende y el grupo no está disponible: coordinar grupo móvil"
+  ]
+ },
+ "cummins-C1-mains-loss-gen-no-start": {
+  "recommendation": "Despacho urgente al grupo: no arrancó tras el corte de red.",
+  "meaning": "Se cortó la red y el grupo no arrancó: el sitio está funcionando con baterías y se va a caer cuando se agoten.",
+  "steps": [
+   "Ver el tiempo hasta el corte de baterías en el detalle",
+   "Revisar alarmas activas del grupo (falla de arranque, no en automático, combustible)",
+   "Despachar técnico al grupo o grupo móvil según la autonomía",
+   "En sitio: verificar modo AUTO, combustible y batería de arranque"
+  ]
+ },
+ "cummins-pcc-proyeccion-cumm-gasoil": {
+  "recommendation": "El gasoil va a llegar al 25 % en menos de 8 horas: programar la recarga.",
+  "meaning": "Con el consumo actual, el tanque del grupo va a bajar del 25 % en menos de 8 horas.",
+  "steps": [
+   "Ver el nivel actual y el consumo en el detalle",
+   "Programar la recarga de combustible",
+   "Si hay corte de red en curso, priorizar la carga"
+  ]
+ },
+ "cummins-pcc-baseline-coolant-temp": {
+  "meaning": "La temperatura del refrigerante se apartó más de 3 °C de lo habitual para este grupo con el motor por debajo de la velocidad nominal: señal temprana, todavía lejos del límite.",
+  "steps": [
+   "Comparar con la temperatura ambiente y la carga del momento",
+   "Ver si se repite en los próximos días",
+   "En el próximo ingreso: revisar nivel de refrigerante, radiador y termostato"
+  ]
+ },
+ "cummins-pcc-accel-coolant-temp": {
+  "meaning": "Con el grupo en marcha, el refrigerante se calienta cada vez más rápido: puede haber una falla de refrigeración en curso.",
+  "steps": [
+   "Ver cuánto falta para la temperatura de parada en el detalle",
+   "Reducir la carga del grupo si la planta lo permite",
+   "Despachar técnico: radiador, ventilador, correa y nivel de refrigerante"
+  ]
+ },
+ "cummins-pcc-oil-life": {
+  "meaning": "El aceite acumuló las horas de uso de su intervalo de cambio (las horas pesan más cuando el motor trabaja caliente y a más velocidad).",
+  "steps": [
+   "Programar el cambio de aceite y filtro en la próxima visita",
+   "Registrar el servicio en la alarma para reiniciar el contador"
+  ]
+ },
+ "cummins-pcc-sifoneo-divergencia": {
+  "meaning": "El nivel del tanque baja más rápido de lo que indica el caudalímetro: hay combustible que sale sin pasar por el motor (robo o fuga) o el medidor está averiado.",
+  "steps": [
+   "Comparar en el detalle la caída del tanque con el consumo medido",
+   "Revisar si hubo ingreso al sitio (puertas, cámaras)",
+   "Despachar verificación: medir el tanque con varilla y buscar fugas",
+   "Si no hay faltante, revisar el caudalímetro"
+  ]
+ },
+ "cummins-pcc-eficiencia-ratio": {
+  "recommendation": "El grupo consume más gasoil por kW entregado que lo normal: programar mantenimiento (filtros e inyectores).",
+  "meaning": "El grupo gasta más gasoil por cada kW que entrega de lo normal: pierde eficiencia (filtros, inyectores) o hay una falla incipiente.",
+  "steps": [
+   "Ver en el detalle desde cuándo sube el consumo por kW",
+   "Revisar la fecha del último mantenimiento",
+   "Programar revisión de filtros de aire y combustible e inyectores"
+  ]
+ },
+ "cummins-pcc-baseline-fuel-efficiency": {
+  "meaning": "La eficiencia de combustible del grupo se apartó de lo habitual para este equipo: señal temprana de desgaste o de un cambio en la carga.",
+  "steps": [
+   "Comparar con la carga del grupo en ese momento",
+   "Ver si se repite en los próximos arranques",
+   "Si persiste: programar revisión de filtros e inyectores"
+  ]
+ },
+ "cat-GE-16": {
+  "recommendation": "Revisar el mazo CAN y la alimentación de la electrónica del motor.",
+  "meaning": "El controlador perdió la comunicación con la electrónica del motor (código 781): no se ven las mediciones del motor y sus protecciones pueden no informar.",
+  "steps": [
+   "Ver si el grupo sigue en marcha y entregando tensión",
+   "En sitio: revisar el mazo de comunicación (CAN) entre el control y el motor y sus terminaciones",
+   "Revisar la alimentación de la electrónica del motor",
+   "Resetear el código una vez restablecida la comunicación"
+  ]
+ },
+ "cat-GE-17": {
+  "recommendation": "Leer el código en el detalle y aplicar la verificación del manual del fabricante.",
+  "meaning": "El controlador del grupo tiene un código de falla activo. El detalle muestra el nombre del código y sus causas según el manual del fabricante.",
+  "steps": [
+   "Leer el código y sus causas en el detalle de la alarma",
+   "Si es una parada: confirmar el estado de la red y la autonomía de baterías",
+   "Aplicar la verificación del manual en el orden de las causas",
+   "Corregir, resetear el código en el controlador y probar el grupo con carga"
+  ]
+ },
+ "cat-AR-02": {
+  "recommendation": "Revisar batería, bornes y motor de arranque del grupo.",
+  "meaning": "El grupo recibió la orden de arranque y no arrancó (código 1438): no va a tomar la carga si se corta la red.",
+  "steps": [
+   "Si hay corte de red: ver el tiempo hasta el corte de baterías y coordinar grupo móvil",
+   "Revisar alarmas de batería de arranque y combustible",
+   "En sitio: revisar batería y bornes, fusible de 20 A, motor de arranque, solenoide y relé",
+   "Verificar que la parada de emergencia no esté activada"
+  ]
+ },
+ "cat-MO-01-cummins": {
+  "recommendation": "Revisar el enlace y la alimentación del equipo que dejó de reportar.",
+  "meaning": "El controlador del grupo dejó de enviar datos hace más de 15 minutos: no se puede ver el estado del grupo.",
+  "steps": [
+   "Ver si otros equipos del sitio siguen reportando (si ninguno reporta, es el enlace del sitio)",
+   "Revisar la alimentación del controlador y del equipo de Wanomi",
+   "En sitio: revisar el cable de comunicación con el controlador"
+  ]
+ },
+ "cat-CR00061-F4": {
+  "recommendation": "Revisar la excitación del alternador y el interruptor del grupo.",
+  "meaning": "El grupo está en marcha pero no genera tensión: el motor gira y el alternador no entrega (o el interruptor del grupo está abierto).",
+  "steps": [
+   "Ver si el ATS muestra alarma de tensión del grupo o del interruptor",
+   "Si hay corte de red: el sitio está con baterías, ver la autonomía",
+   "En sitio: revisar excitación del alternador, AVR e interruptor del grupo"
+  ]
+ },
+ "cat-SG-04": {
+  "recommendation": "Revisar el regulador de velocidad y el combustible del grupo.",
+  "meaning": "Con el grupo en marcha, la frecuencia está fuera de 48,5–51,5 Hz: el motor no sostiene la velocidad (carga o combustible) o la regulación está mal.",
+  "steps": [
+   "Ver si la frecuencia está baja (carga alta, combustible) o alta (regulación)",
+   "Revisar la carga del grupo y el nivel de combustible",
+   "En sitio: revisar el gobernador y los filtros de combustible"
+  ]
+ },
+ "cat-TR-03": {
+  "recommendation": "Despacho urgente al tablero de transferencia: el grupo genera y la carga no se alimenta.",
+  "meaning": "Se cortó la red y el grupo genera tensión, pero la carga no se alimenta: la transferencia no se completó.",
+  "steps": [
+   "Ver en el ATS el estado de los interruptores de red y de grupo",
+   "Revisar alarmas del ATS (falla de interruptor del grupo o de red)",
+   "Despacho urgente al tablero de transferencia",
+   "En sitio: revisar el contactor del grupo y su contacto de confirmación"
+  ]
+ },
+ "cat-TR-04": {
+  "recommendation": "Revisar el tablero de transferencia: volvió la red y el grupo sigue en marcha.",
+  "meaning": "Volvió la red pero el grupo sigue en marcha: no hizo la retransferencia o está en modo de prueba / manual.",
+  "steps": [
+   "Esperar el tiempo de retorno de red del ATS (20 s de fábrica) más el enfriamiento",
+   "Verificar si el ATS está en modo TEST o MAN",
+   "Si sigue: revisar el tablero de transferencia y la señal de parada del grupo"
+  ]
+ },
+ "cat-TR-09": {
+  "recommendation": "Despacho prioritario con grupo móvil: el sitio vive de baterías y está descargando.",
+  "meaning": "Sin red, sin grupo y con las baterías descargando: el sitio se va a caer cuando lleguen al corte.",
+  "steps": [
+   "Ver el tiempo hasta el corte de baterías en el detalle",
+   "Despachar grupo móvil con prioridad",
+   "Informar al NOC el riesgo de caída del sitio",
+   "Revisar por qué no arrancó el grupo (alarmas del grupo)"
+  ]
+ },
+ "cat-TR-10": {
+  "recommendation": "Revisar los contactos auxiliares de posición del tablero de transferencia.",
+  "meaning": "El tablero indica que la carga está en el grupo, pero el grupo no tiene tensión: la señal de posición del tablero no coincide con la realidad.",
+  "steps": [
+   "Comparar con la tensión de red: ¿la carga está realmente en la red?",
+   "En sitio: revisar los contactos auxiliares de posición del tablero",
+   "Revisar el cableado de las señales al ATS"
+  ]
+ },
+ "cat-MO-01-ats": {
+  "recommendation": "Revisar el enlace y la alimentación del equipo que dejó de reportar.",
+  "meaning": "El ATS dejó de enviar datos hace más de 15 minutos: no se ve el estado de la red ni de la transferencia.",
+  "steps": [
+   "Ver si otros equipos del sitio siguen reportando",
+   "Revisar la alimentación del ATS y del equipo de Wanomi",
+   "En sitio: revisar el cable de comunicación"
+  ]
+ },
+ "eltek-baseline-temperature": {
+  "meaning": "La temperatura del sistema se apartó más de 3 °C de lo habitual para esta planta (hacia arriba o hacia abajo): señal temprana de un cambio en la climatización.",
+  "steps": [
+   "Comparar con la temperatura ambiente y el estado del aire acondicionado",
+   "Ver si se repite en los próximos días",
+   "En el próximo ingreso: revisar climatización y ventilación"
+  ]
+ },
+ "eltek-accel-dc-bus-voltage": {
+  "meaning": "La tensión del bus de −48 V cae cada vez más rápido: las baterías se descargan de forma acelerada.",
+  "steps": [
+   "Ver si hay corte de red y si el grupo arrancó",
+   "Ver el tiempo hasta el corte en el detalle",
+   "Revisar si aumentó la carga del sitio",
+   "Si hay red: revisar los rectificadores"
+  ]
+ },
+ "cat-DC-03": {
+  "recommendation": "Despacho prioritario: la planta DC desconecta en menos de 2 horas.",
+  "meaning": "Con la descarga actual, la planta DC llega al corte de baterías en menos de 2 horas: el sitio se va a caer si no vuelve la energía.",
+  "steps": [
+   "Ver si hay corte de red y el estado del grupo",
+   "Despachar grupo o grupo móvil con prioridad",
+   "Apagar cargas no críticas si la planta lo permite",
+   "Informar al NOC el horario estimado de caída"
+  ]
+ },
+ "cat-DC-06": {
+  "recommendation": "Revisar el rectificador señalado: se aparta del reparto de carga.",
+  "meaning": "Un rectificador entrega bastante menos corriente que los demás: está fallando o perdió su entrada de CA.",
+  "steps": [
+   "Ver en el detalle cuál rectificador se aparta",
+   "Revisar alarmas de rectificador en la controladora",
+   "En sitio: revisar el LED del módulo y su térmica de entrada",
+   "Reasentar o reemplazar el módulo"
+  ]
+ },
+ "cat-DC-10": {
+  "recommendation": "Revisar la comunicación con la controladora y el sensor de corriente.",
+  "meaning": "La corriente de carga no cambió nada en 6 horas: la lectura probablemente está congelada (comunicación o sensor), no es una carga real constante.",
+  "steps": [
+   "Comparar con la tensión del bus: ¿sigue variando?",
+   "Revisar la comunicación de Wanomi con la controladora",
+   "En sitio: revisar el sensor de corriente (shunt) y su conexión"
+  ]
+ },
+ "cat-MO-01-eltek": {
+  "recommendation": "Revisar el enlace y la alimentación del equipo que dejó de reportar.",
+  "meaning": "La controladora de la planta DC dejó de enviar datos hace más de 15 minutos: no se ve el estado de baterías y rectificadores.",
+  "steps": [
+   "Ver si otros equipos del sitio siguen reportando",
+   "Revisar la alimentación del equipo de Wanomi y la controladora",
+   "En sitio: revisar el cable de comunicación"
+  ]
+ },
+ "GEN-proyeccion-gasoil": {
+  "recommendation": "El gasoil va a llegar al 50 % en menos de 8 horas: programar la recarga.",
+  "meaning": "Con el consumo actual, el tanque del grupo va a bajar del 50 % en menos de 8 horas.",
+  "steps": [
+   "Ver el nivel actual y el consumo en el detalle",
+   "Programar la recarga de combustible",
+   "Si hay corte de red en curso, priorizar la carga"
+  ]
+ },
+ "gen-baseline-exhaust-temp": {
+  "meaning": "Con el grupo en marcha, la temperatura de escape se apartó más de 3 °C de lo habitual para este equipo: señal temprana, todavía lejos del límite.",
+  "steps": [
+   "Comparar con la carga del grupo en ese momento",
+   "Ver si se repite en los próximos arranques",
+   "En el próximo mantenimiento: filtro de aire e inyectores"
+  ]
+ },
+ "gen-sifoneo-divergencia": {
+  "meaning": "Con el grupo apagado, el nivel del tanque bajó más de lo esperable: posible robo de combustible o fuga.",
+  "steps": [
+   "Revisar si hubo ingreso al sitio (puertas, cámaras)",
+   "Despachar verificación: medir el tanque con varilla y buscar fugas",
+   "Si se confirma faltante: hacer el informe y la denuncia"
+  ]
+ },
+ "gen-eficiencia-ratio": {
+  "recommendation": "El grupo consume más gasoil por kW entregado que lo normal: programar mantenimiento (filtros e inyectores).",
+  "meaning": "Con el grupo en marcha, consume más gasoil por kW que lo normal y empeorando: pierde eficiencia o hay una falla incipiente.",
+  "steps": [
+   "Ver desde cuándo sube el consumo por kW",
+   "Revisar la fecha del último mantenimiento",
+   "Programar revisión de filtros e inyectores"
+  ]
+ },
+ "cat-AR-03": {
+  "recommendation": "Revisar relé, solenoide y cable del motor de arranque del grupo.",
+  "meaning": "El grupo intentó arrancar y el motor de arranque no tomó corriente: el arranque no llega al motor de arranque (relé, solenoide o cable).",
+  "steps": [
+   "Si hay corte de red: ver la autonomía de baterías y coordinar grupo móvil",
+   "En sitio: revisar relé, solenoide y cable del motor de arranque",
+   "Verificar la batería de arranque y sus bornes"
+  ]
+ },
+ "cat-AR-04": {
+  "recommendation": "Reemplazar la batería de arranque del grupo antes del próximo corte.",
+  "meaning": "Al arrancar, la batería del grupo cae por debajo de 9,6 V: está débil y en el próximo arranque puede no alcanzar.",
+  "steps": [
+   "Ver la tensión de la batería en reposo y su tendencia",
+   "Programar el reemplazo de la batería de arranque",
+   "Revisar el cargador de baterías del grupo"
+  ]
+ },
+ "cat-CB-05": {
+  "recommendation": "Revisar fugas en uniones, filtro y retorno del tanque del grupo.",
+  "meaning": "Con el grupo apagado, el nivel del tanque baja de a poco: hay una pérdida lenta de combustible (fuga) o un faltante.",
+  "steps": [
+   "Ver en el detalle desde cuándo baja el nivel",
+   "En sitio: revisar uniones, filtro, retorno y tanque buscando fugas",
+   "Medir el tanque con varilla para confirmar"
+  ]
+ },
+ "cat-CB-06": {
+  "recommendation": "Verificar el sensor de nivel del tanque con varilla.",
+  "meaning": "Con el grupo en marcha, la lectura del nivel del tanque no cambia: el sensor de nivel está trabado o sin señal.",
+  "steps": [
+   "Comparar con el consumo del grupo: si está en marcha, el nivel tiene que bajar",
+   "En sitio: medir el tanque con varilla",
+   "Revisar el sensor de nivel y su conexión"
+  ]
+ },
+ "cat-MO-01-gen": {
+  "recommendation": "Revisar el enlace y la alimentación del equipo que dejó de reportar.",
+  "meaning": "El equipo del grupo dejó de enviar datos hace más de 15 minutos: no se ve el estado del grupo.",
+  "steps": [
+   "Ver si otros equipos del sitio siguen reportando",
+   "Revisar la alimentación del equipo de Wanomi",
+   "En sitio: revisar el cable de comunicación"
+  ]
+ },
+ "GEN-sifoneo-motor-apagado": {
+  "recommendation": "Revisar el nivel y el circuito de combustible: posible robo o pérdida.",
+  "meaning": "Con el grupo apagado, el tanque perdió combustible: posible robo o pérdida.",
+  "steps": [
+   "Revisar si hubo ingreso al sitio",
+   "Despachar verificación: medir el tanque y buscar fugas",
+   "Si se confirma faltante: hacer el informe"
+  ]
+ },
+ "cat-MO-01-sec": {
+  "recommendation": "Revisar el enlace y la alimentación del equipo que dejó de reportar.",
+  "meaning": "El sensor de seguridad del sitio dejó de enviar datos hace más de 15 minutos: el sitio está sin vigilancia de Wanomi.",
+  "steps": [
+   "Ver si otros equipos del sitio siguen reportando",
+   "Revisar alimentación y enlace del sensor",
+   "Si coincide con otras alarmas de seguridad: tratarlo como posible intrusión"
+  ]
+ },
+ "cat-BT-01": {
+  "recommendation": "Inspección física inmediata del banco de baterías: faltan módulos.",
+  "meaning": "Faltan módulos del banco de baterías (se detectan menos de 4 balizas): posible robo de baterías.",
+  "steps": [
+   "Revisar si hubo ingreso al sitio (puertas, cámaras)",
+   "Despachar inspección física inmediata",
+   "Si se confirma: informar a seguridad y hacer la denuncia",
+   "Verificar la autonomía del sitio con el banco reducido"
+  ]
+ },
+ "cat-CR00061-C1": {
+  "meaning": "La temperatura del refrigerante superó su valor de referencia durante más de 7 minutos: el grupo trabaja caliente.",
+  "steps": [
+   "Ver la tendencia de la temperatura y la carga del grupo",
+   "Reducir la carga si la planta lo permite",
+   "En sitio: nivel de refrigerante (motor frío), radiador, persianas y correa del ventilador",
+   "Si no baja en 5 minutos con carga reducida: detener el motor"
+  ]
+ }
+}

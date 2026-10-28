@@ -21,6 +21,7 @@ const jwt = require(NM + 'jsonwebtoken');
 const e = process.env;
 const APPLY = process.argv.includes('--apply');
 const SOBRE = process.argv.includes('--sobrescribir');
+const SIM = process.argv.includes('--simular');   // con --apply: muestra antes → después y NO escribe
 if (!e.JWT_SECRET) { console.error('ERROR: falta JWT_SECRET (correr dentro del contenedor node).'); process.exit(1); }
 const TOKEN = jwt.sign({ userData: { _id: e.ADMIN_ID || '6a32e105be5ca779169754af', email: e.ADMIN_EMAIL || 'admin@wanomi.com' } }, e.JWT_SECRET, { expiresIn: '10m' });
 const req = (method, path, body) => new Promise((ok, ko) => {
@@ -72,16 +73,23 @@ function cond(n) {
       const t = textos[r.ruleId]; if (!t) continue;
       for (const k of ['eventClass', 'recommendation', 'meaning', 'steps']) {
         if (t[k] == null || (!SOBRE && !vacio(r[k]))) continue;
-        r[k] = k === 'steps' ? t.steps.slice(0, 12) : t[k];
+        const nuevo = k === 'steps' ? t.steps.slice(0, 12) : t[k];
+        if (JSON.stringify(r[k]) === JSON.stringify(nuevo)) continue;
+        if (SIM) {
+          const ver = (x) => (Array.isArray(x) ? x.join(' / ') : String(x || '—'));
+          console.log(`[${p.packId}] ${r.ruleId} · ${k}\n    antes:   ${ver(r[k]).slice(0, 220)}\n    después: ${ver(nuevo).slice(0, 220)}`);
+        }
+        r[k] = nuevo;
         cambios++;
       }
     }
     if (!cambios) continue;
+    if (SIM) { n += cambios; continue; }
     const body = { rulepack: { packId: p.packId, deviceType: p.deviceType, version: (p.version || 1) + 1, description: p.description || '', canary: !!p.canary, rules } };
     const put = await req('PUT', `/api/rulepacks/${p.packId}`, body);
     console.log(`PUT ${p.packId} (${cambios} texto/s) → ${put.status}${put.status !== 200 ? ' ' + put.raw.slice(0, 300) : ''}`);
     n += cambios;
   }
-  console.log(`${n} texto(s) cargado(s)${SOBRE ? ' (con --sobrescribir)' : ' (solo los vacíos)'}.`);
+  console.log(`${n} texto(s) ${SIM ? 'a cargar (SIMULACIÓN: no se escribió nada)' : 'cargado(s)'}${SOBRE ? ' (con --sobrescribir)' : ' (solo los vacíos)'}.`);
   process.exit(0);
 })().catch((err) => { console.error('ERROR:', err.message); process.exit(1); });
