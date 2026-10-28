@@ -1,4 +1,4 @@
-# SPEC — Textos de la alarma desde la ficha («¿Qué tan grave es y qué hay que hacer?») · 2026-10-27 · A FIRMAR (Qt1–Qt6)
+# SPEC — Textos de la alarma desde la ficha («¿Qué tan grave es y qué hay que hacer?») · 2026-10-27 · **FIRMADO 27/10 (Qt1–Qt6 según recomendación)**
 
 **Origen:** Franco 2026-10-27 — todas las alarmas deben tener completos los cuatro campos del paso 4 del editor («Para la confiabilidad, este aviso indica», «Qué tiene que hacer el operador», «Qué significa esta alarma», «Pasos a seguir»), y la información debe salir de la **ficha**.
 **Insumo:** volcado `tools/textos_reglas.js` (27/10, 73 reglas).
@@ -43,7 +43,9 @@
 5. **Editor y detalle.** Texto heredado con «● de la ficha / del perfil»; si se cambia, aviso «Estás reemplazando un texto predefinido» y «Volver a la ficha». En Fichas, una sección «Textos de la alarma» por límite.
 6. **Supervisor.** Control «regla sin textos» (alguno de los cuatro vacío después de la herencia) en Calidad de las reglas.
 
-## 4 · Preguntas a firmar
+## 4 · Preguntas — firmadas por Franco 2026-10-27 («aprobadas las recomendaciones»)
+Queda abierto dentro de Qt5: H2 (severidad GE-16), H3 (texto de AR-08 — fuente nueva: ejercicio FG Wilson), H4 (ficha para gen-autonomy-crit), H6 (variable de oil-life).
+**Insumo nuevo:** biblioteca de fallas (`_biblioteca_campo/fallas/`) reemplaza a T2 y alimenta T4/T5; propuesta **L1** (tecnología de batería por sitio) aprobada junto con las demás propuestas de la biblioteca.
 | # | Pregunta | Recomendación |
 |---|---|---|
 | Qt1 | ¿Textos en la ficha por **límite** (atención ≠ parada) o por **medición**? | **Por límite**: «presión de aceite baja» (programar revisión) no se atiende igual que «parada por presión de aceite» (despacho). |
