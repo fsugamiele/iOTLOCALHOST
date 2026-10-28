@@ -57,5 +57,30 @@
   "L2 leer SOC/alarmas del BMS",
   "L3 riesgo concentrador alimentado de la misma planta"
  ],
- "noCopiado": "contraseñas y direcciones de acceso de las plantas"
+ "noCopiado": "contraseñas y direcciones de acceso de las plantas",
+ "zteZXDC48FB150C1": {
+  "fuente": "Product Description V1.0 2020-05 tabla 3-3; data sheet 2019",
+  "cargaV": 52.5,
+  "protAltaV": 55.5,
+  "protBajaV": 42,
+  "celdaAltaV": 3.85,
+  "celdaBajaV": 2.55,
+  "sobrecorrienteA": 110,
+  "corrienteMaxA": 100,
+  "limitadorCargaA": 10,
+  "tempCargaC": [
+   0,
+   55
+  ],
+  "tempDescargaC": [
+   -20,
+   55
+  ],
+  "capacidadAh": 150,
+  "energiaWh": 7200,
+  "vidaAnios25C": 15,
+  "ciclos80DOD35C": 3500,
+  "autodescargaPctMes": 3,
+  "paraleloMax": "15-16"
+ }
 }

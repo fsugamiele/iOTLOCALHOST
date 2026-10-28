@@ -2,7 +2,9 @@
 
 ## 1 · Fuente
 *Manual de montaje, configuración y puesta en marcha de bancos de baterías de litio* — manual para instaladores, **AMX Argentina S.A. (Claro)**, versión 1 (2024), 72 pp. — `MANUAL INSTALADORES_BB LITIO_V1_240502_114710.pdf`.
-Cubre tres módulos y la configuración de **seis plantas de energía** con litio. Es documento **del operador**: dice cómo Claro configura sus sitios (vale más que el valor de fábrica para Wanomi).
+Cubre tres módulos y la configuración de **seis plantas de energía** con litio. (La copia «V1 (5) (1)-1» recibida el 27/10 tiene el mismo texto: es otra exportación del mismo documento.)
+
+**Complemento ZTE ZXDC48 FB150C1:** *Product Description* V1.0 (2020-05, inglés, 14 pp., ZTE confidencial) y *Data sheet* (2019, 2 diapositivas) — §2b. Es documento **del operador**: dice cómo Claro configura sus sitios (vale más que el valor de fábrica para Wanomi).
 **No se copian:** contraseñas y direcciones de acceso de las plantas que figuran en el §7.
 
 | Módulo | Páginas | Comunicación | Contactos secos |
@@ -26,6 +28,24 @@ Contactos **normal cerrado**: se abren con alarma (en Shoto hay que cablearlos e
 
 **Ajuste por planta (§7, pp. 52–66):** Delta Orion, Eltek Smartpack S, Eaton SC200, DPC SC501, ZTE CSU501B, Vertiv M830B — flote 52,5 V, LVBD 40 V, LVLD 40 V. Reconexión LVD: DPC 44 V; Vertiv LVD2 46 V y LVD1 49,5 V. ZTE CSU501B y Vertiv M830B **no pueden** cortar por entrada externa → LVLD **por tiempo**.
 **Riesgo anotado por Claro (p. 66):** en Vertiv, el LVD1 por tiempo sigue dependiendo de la tensión; puede dar problemas con baterías Huawei en modo de tensión de salida regulada.
+
+## 2b · Protecciones de fábrica del BMS · ZTE ZXDC48 FB150C1 (Product Description, Tabla 3-3, pp. 8–9; data sheet)
+| Protección / dato | De fábrica |
+|---|---|
+| Tensión de carga estándar | **52,5 V** (coincide con Claro) |
+| Protección por **alta tensión** del módulo | **55,5 V** |
+| Protección por **baja tensión** del módulo (corta la batería) | **42 V** |
+| Protección por celda alta / baja | 3,85 V / 2,55 V |
+| Protección por sobrecorriente | **110 A** (carga y descarga 0–100 A) |
+| Limitador de corriente de carga | 10 A (se activa solo según temperatura, tensión y corriente de celdas) |
+| Temperatura de carga / descarga | **0 a 55 °C** / −20 a 55 °C |
+| Capacidad / energía | 150 Ah (C5, 25 °C, corte 42 V) / 7,2 kWh |
+| Vida | 15 años a 25 °C · 3500 ciclos al 80 % de descarga a 35 °C |
+| Autodescarga | < 3 % por mes |
+| Paralelo | hasta 15 (data sheet) o 16 (product description) módulos |
+| Comunicación | RS485 ×2 (protocolo YD/T 1363.3-2014, hacia la CSU de ZTE) · RS232 solo para actualizar software · 1 contacto seco |
+
+**Consecuencia:** el BMS de ZTE **corta solo a 42 V**, antes que el LVBD de la planta (40 V, ajuste de Claro). En un sitio con baterías ZTE el corte real del respaldo es **42 V**: es el valor que tiene que usar el «tiempo hasta corte» (DC-03), no 40 V. Además el BMS **no carga por debajo de 0 °C**.
 
 ## 3 · Autonomía (anexo 8.2, p. 70)
 Módulo 150 Ah, descarga hasta 42 V, curva casi lineal (el SOC se puede estimar por consumo):
@@ -52,9 +72,9 @@ Módulo 150 Ah, descarga hasta 42 V, curva casi lineal (el SOC se puede estimar 
 Los umbrales de bus DC de la ficha `ELTEK` (aviso **−52 V**, crítico **−48 V**, LVD **−43,2 V**) están pensados para **plomo-ácido VRLA**. En un sitio de Claro con **litio**:
 - el flote es 52,5 V, así que el aviso de −52 V queda a 0,5 V del flote y salta con cualquier descarga mínima;
 - Claro usa **50 V** como baja tensión (batería en descarga) y **46,5 V** como muy baja;
-- el LVD está en **40 V**, no en 43,2 V: el cálculo de «tiempo hasta LVD» (DC-03) daría de menos.
+- el LVD está en **40 V**, no en 43,2 V, y con baterías ZTE el propio BMS corta a **42 V**: el «tiempo hasta corte» (DC-03) tiene que usar el primero que actúe.
 
 ## 6 · Propuestas (a firmar)
-- **L1** · Agregar a la ficha del sitio la **tecnología de batería** (VRLA / LiFePO4) y que los límites del bus DC se tomen según esa tecnología: VRLA = valores actuales; litio = 50 / 46,5 V y LVD 40 V (fuente: este manual).
+- **L1** · Agregar a la ficha del sitio la **tecnología de batería** (VRLA / LiFePO4) y que los límites del bus DC se tomen según esa tecnología: VRLA = valores actuales; litio = 50 / 46,5 V y corte en el mayor entre el LVBD de la planta (40 V) y la protección del BMS (42 V en ZTE) (fuente: este manual y la Product Description ZTE).
 - **L2** · Leer el **SOC** y las alarmas del BMS cuando haya acceso (Shoto por SNMP; Huawei por SCC800; ZTE por RS485) y usar SOC ≤ 20 % como aviso de corte inminente de cargas no esenciales.
 - **L3** · Regla: «concentrador del BMS alimentado desde la misma planta» como riesgo de pérdida de gestión (dato de instalación).
