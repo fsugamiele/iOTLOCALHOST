@@ -67,7 +67,9 @@ function mainLimitRef(rule) {
     const tipos = new Set();
     const walk = (n) => { if (!n || typeof n !== 'object') return; if (Array.isArray(n.children)) { n.children.forEach(walk); return; } if (n.deviceType) tipos.add(n.deviceType); };
     walk(rule.crossExpr);
-    if (own && tipos.size === 1) return { deviceType: own.deviceType, variable: own.variable, kind: own.cond.limitRef, op: own.cond.op };
+    // Además el límite tiene que ser del MISMO equipo de la regla (su pack): una regla del grupo que
+    // mira la red del ATS (corte sin arranque) no es «tensión de red baja».
+    if (own && tipos.size === 1 && (!rule.deviceType || own.deviceType === rule.deviceType)) return { deviceType: own.deviceType, variable: own.variable, kind: own.cond.limitRef, op: own.cond.op };
   }
   return null;
 }

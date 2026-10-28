@@ -69,7 +69,7 @@ export function fichaTexts(rule, sheets) {
     const tipos = new Set();
     const all = (n) => { if (!n) return; if (Array.isArray(n.children)) n.children.forEach(all); else if (n.deviceType) tipos.add(n.deviceType); };
     all(rule.crossExpr);
-    if (own && tipos.size === 1) ref = { deviceType: own.deviceType, variable: own.variable, c: own.condition };
+    if (own && tipos.size === 1 && (!rule.deviceType || own.deviceType === rule.deviceType)) ref = { deviceType: own.deviceType, variable: own.variable, c: own.condition };
   }
   if (!ref) return null;
   const sh = (sheets || []).find(s => s.deviceType === ref.deviceType);
