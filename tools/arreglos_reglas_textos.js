@@ -74,7 +74,22 @@ const H3_SRC = 'FG Wilson 356-5902 v15 §8.2 p. 76 (quincenal 5 min en vacío; m
         }
       }
       // H4 — el crítico de autonomía pasa a la ficha si la ficha lo tiene en el mismo valor.
-      if (r.ruleId === 'gen-autonomy-crit') {
+      if (r.ruleId === 'gen-autonomy-crit' && r.crossExpr) {
+        // Combinada (autonomía + en marcha): la hoja de autonomía con número fijo pasa al límite crítico.
+        const hojas = [];
+        const walk = (n) => { if (!n) return; if (Array.isArray(n.children)) n.children.forEach(walk); else if (n.condition && /autonomy/.test(n.variable || '')) hojas.push(n); };
+        walk(r.crossExpr);
+        if (!hojas.length) log.push(`H4 ${r.ruleId}: NO se toca — sin hoja de autonomía. Forma: ${J(r.crossExpr).slice(0, 300)}`);
+        for (const h of hojas) {
+          const c = h.condition;
+          if (c.limitRef) { log.push(`H4 ${r.ruleId}: ya usa el límite de la ficha`); continue; }
+          const lim = limite(h.deviceType, h.variable, 'trip', 'lt');
+          if (lim && Number(lim.value) === Number(c.value) && ['lt', 'lte'].includes(c.op)) {
+            log.push(`H4 ${r.ruleId}: hoja ${h.deviceType}.${h.variable} ${c.op} ${c.value} fijo → límite crítico de la ficha (${lim.value} h)`);
+            h.condition = { op: c.op, limitRef: 'trip', ...(c.deadband != null ? { deadband: c.deadband } : {}) };
+          } else log.push(`H4 ${r.ruleId}: NO se toca — hoja ${h.deviceType}.${h.variable} ${J(c)}, límite crítico de ficha ${lim ? lim.op + ' ' + lim.value : 'inexistente'}`);
+        }
+      } else if (r.ruleId === 'gen-autonomy-crit') {
         const c = r.condition || {};
         if (c.limitRef) log.push(`H4 ${r.ruleId}: ya usa el límite de la ficha`);
         else {

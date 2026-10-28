@@ -62,7 +62,12 @@ function mainLimitRef(rule) {
     const refs = [];
     forEachRef(rule, (r) => { if (r.where === 'leaf') refs.push(r); });
     const own = refs.find((r) => r.variable === rule.variable) || refs[0];
-    if (own) return { deviceType: own.deviceType, variable: own.variable, kind: own.cond.limitRef, op: own.cond.op };
+    // Solo combinadas de UN equipo (ej. presión de aceite + «en marcha»): una combinada entre
+    // equipos (cascada de energía: red + grupo) dice algo distinto que el límite suelto → no hereda.
+    const tipos = new Set();
+    const walk = (n) => { if (!n || typeof n !== 'object') return; if (Array.isArray(n.children)) { n.children.forEach(walk); return; } if (n.deviceType) tipos.add(n.deviceType); };
+    walk(rule.crossExpr);
+    if (own && tipos.size === 1) return { deviceType: own.deviceType, variable: own.variable, kind: own.cond.limitRef, op: own.cond.op };
   }
   return null;
 }

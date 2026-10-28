@@ -65,7 +65,11 @@ export function fichaTexts(rule, sheets) {
     const walk = (n) => { if (!n) return; if (Array.isArray(n.children)) n.children.forEach(walk); else if (n.condition && n.condition.limitRef && n.deviceType) leaves.push(n); };
     walk(rule.crossExpr);
     const own = leaves.find(l => l.variable === rule.variable) || leaves[0];
-    if (own) ref = { deviceType: own.deviceType, variable: own.variable, c: own.condition };
+    // Solo combinadas de un equipo (espejo de limitRef.js): una cascada entre equipos no hereda.
+    const tipos = new Set();
+    const all = (n) => { if (!n) return; if (Array.isArray(n.children)) n.children.forEach(all); else if (n.deviceType) tipos.add(n.deviceType); };
+    all(rule.crossExpr);
+    if (own && tipos.size === 1) ref = { deviceType: own.deviceType, variable: own.variable, c: own.condition };
   }
   if (!ref) return null;
   const sh = (sheets || []).find(s => s.deviceType === ref.deviceType);

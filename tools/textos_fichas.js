@@ -39,10 +39,11 @@ const CAMPOS = ['meaning', 'operatorAction', 'steps', 'causes', 'source'];
   // Reglas que heredarían cada límite (condición D con limitRef u hoja de combinada con limitRef).
   const usuarios = new Map();
   const anotar = (dt, v, kind, op, r) => { const k = `${dt}|${v}|${kind}|${dirOf(op)}`; if (!usuarios.has(k)) usuarios.set(k, new Set()); usuarios.get(k).add(r.ruleId); };
+  // Mismo criterio que la herencia real (api/services/limitRef.js · mainLimitRef).
+  const { mainLimitRef } = require('/home/node/app/api/services/limitRef.js');
   for (const p of packs) for (const r of (p.rules || [])) {
-    if (r.condition && r.condition.limitRef) anotar(r.deviceType || p.deviceType, r.variable, r.condition.limitRef, r.condition.op, r);
-    const walk = (n) => { if (!n) return; if (Array.isArray(n.children)) n.children.forEach(walk); else if (n.condition && n.condition.limitRef) anotar(n.deviceType, n.variable, n.condition.limitRef, n.condition.op, r); };
-    if (r.crossExpr) walk(r.crossExpr);
+    const ref = mainLimitRef({ ...r, deviceType: r.deviceType || p.deviceType });
+    if (ref) anotar(ref.deviceType, ref.variable, ref.kind, ref.op, r);
   }
 
   let nCampos = 0, nSinTexto = 0;
