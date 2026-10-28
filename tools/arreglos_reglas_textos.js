@@ -4,6 +4,7 @@
 //   H3 cat-AR-08                    recomendación correcta: avisa cada semana + ejercicio con carga (FG Wilson 356-5902 p. 76)
 //   H4 gen-autonomy-crit            umbral fijo 12 h → límite crítico de la ficha (12 h), solo si la ficha lo tiene en 12
 //   H5 pasos en un solo renglón con «;» → un paso por renglón (cualquier regla)
+//   H7 (con --h7) cummins-A0/A1: «en marcha» rpm > 1575 (límite de atención de la ficha) → rpm > 300
 //
 //   docker exec -i node node - < tools/arreglos_reglas_textos.js           → SIMULACIÓN (muestra antes → después)
 //   docker exec -i node node - --apply < tools/arreglos_reglas_textos.js   → APLICA por la API (PUT /api/rulepacks/:packId)
@@ -14,6 +15,7 @@ require(NM + 'dotenv').config({ path: '/home/node/app/.env' });
 const jwt = require(NM + 'jsonwebtoken');
 const e = process.env;
 const APPLY = process.argv.includes('--apply');
+const H7 = process.argv.includes('--h7');   // pendiente de firma de Franco
 if (!e.JWT_SECRET) { console.error('ERROR: falta JWT_SECRET (correr dentro del contenedor node).'); process.exit(1); }
 const TOKEN = jwt.sign({ userData: { _id: e.ADMIN_ID || '6a32e105be5ca779169754af', email: e.ADMIN_EMAIL || 'admin@wanomi.com' } }, e.JWT_SECRET, { expiresIn: '10m' });
 const req = (method, path, body) => new Promise((ok, ko) => {
@@ -99,6 +101,16 @@ const H3_SRC = 'FG Wilson 356-5902 v15 §8.2 p. 76 (quincenal 5 min en vacío; m
             r.condition = { op: c.op, limitRef: 'trip', ...(c.deadband != null ? { deadband: c.deadband } : {}) };
           } else log.push(`H4 ${r.ruleId}: NO se toca — condición ${J(c)}, límite crítico de ficha ${lim ? lim.op + ' ' + lim.value : 'inexistente'} (${r.deviceType || p.deviceType}.${r.variable})`);
         }
+      }
+      // H7 (solo con --h7) — A0/A1: la condición «en marcha» usaba el límite de ATENCIÓN de rpm de la
+      // ficha (1575 rpm = sobrevelocidad) → la regla solo podía saltar con el motor sobreacelerado.
+      // Pasa a rpm > 300 fijo, como GA1/GA2 (DEC-REF-56, umbral de marcha).
+      if (H7 && ['cummins-A0-oil-pressure-low', 'cummins-A1-oil-pressure'].includes(r.ruleId) && r.crossExpr) {
+        let hecho = false;
+        const fix = (n) => { if (!n) return; if (Array.isArray(n.children)) { n.children.forEach(fix); return; }
+          if (n.variable === 'rpm' && n.condition && n.condition.limitRef === 'warning' && ['gt', 'gte'].includes(n.condition.op)) { n.condition = { op: 'gt', value: 300 }; hecho = true; } };
+        fix(r.crossExpr);
+        log.push(hecho ? `H7 ${r.ruleId}: «en marcha» rpm > [ficha:atención 1575] → rpm > 300` : `H7 ${r.ruleId}: no se encontró la condición de rpm con límite de ficha — no se toca`);
       }
       // H5 — pasos en un renglón con «;».
       if (Array.isArray(r.steps) && r.steps.length === 1 && r.steps[0].includes(';')) {

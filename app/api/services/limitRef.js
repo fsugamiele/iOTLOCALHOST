@@ -61,7 +61,9 @@ function mainLimitRef(rule) {
   if (rule.type === 'cross' && rule.crossExpr) {
     const refs = [];
     forEachRef(rule, (r) => { if (r.where === 'leaf') refs.push(r); });
-    const own = refs.find((r) => r.variable === rule.variable) || refs[0];
+    // Una sola condición con límite de ficha: esa es la principal. Con dos o más es ambiguo
+    // (no se adivina): la regla necesita sus propios textos.
+    const own = refs.length === 1 ? refs[0] : null;
     // Solo combinadas de UN equipo (ej. presión de aceite + «en marcha»): una combinada entre
     // equipos (cascada de energía: red + grupo) dice algo distinto que el límite suelto → no hereda.
     const tipos = new Set();
