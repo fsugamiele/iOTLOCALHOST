@@ -39,6 +39,9 @@ const deviceSchema = new Schema({
     // el CORE la detecte) y umbrales PROPIOS del equipo (leídos de la controladora o
     // cargados por el instalador). Cascada: equipo > perfil > ficha.
     profileId: { type: String, default: undefined },
+    // spec L1 (biblioteca de fallas, aprobado 2026-10-28) — tecnología del banco de baterías de la
+    // planta DC: los límites de la ficha pueden tener un valor propio por tecnología (byBatteryTech).
+    batteryTech: { type: String, enum: ['vrla', 'lifepo4'], default: undefined },
     limitOverrides: { type: [{ _id: false, variable: String, kind: String, op: String, value: Number, source: String }], default: undefined },
 });
 

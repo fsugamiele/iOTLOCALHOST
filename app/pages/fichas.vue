@@ -370,7 +370,7 @@
             <td>
               <span v-if="!(row.limits || []).length" class="text-muted">—</span>
               <span v-for="(l, j) in row.limits" :key="j" class="badge badge-warning mr-1">
-                {{ l.kind }}: {{ OPERATOR_LABELS[l.op] || l.op }} {{ l.value }} {{ l.unit || '' }}<template v-if="l.texts"> · textos</template>
+                {{ l.kind }}: {{ OPERATOR_LABELS[l.op] || l.op }} {{ l.value }} {{ l.unit || '' }}<template v-if="l.byBatteryTech && l.byBatteryTech.lifepo4"> · litio {{ l.byBatteryTech.lifepo4.value }}</template><template v-if="l.texts"> · textos</template>
               </span>
             </td>
           </template>
@@ -771,6 +771,7 @@ export default {
               when: l.when || undefined,   // precondición (ej. solo en marcha) — no se pierde al editar
               relativeTo: l.relativeTo || undefined,   // E1 · U-04 — escalado C3 (12/24 V): no se pierde al editar
               texts: textsPayload(l.texts),   // spec_textos_alarma_ficha Qt1 — textos de la alarma del límite
+              byBatteryTech: l.byBatteryTech || undefined,   // spec L1 — valor por tecnología de batería: no se pierde al editar
             })),
           })),
         };

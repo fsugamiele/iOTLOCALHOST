@@ -1,0 +1,13 @@
+{
+ "_doc": "spec L1 (aprobado 2026-10-28) — valores de la ficha para plantas con baterías de litio (device.batteryTech = 'lifepo4'). Lo aplica tools/litio_ficha.js.",
+ "limites": [
+  {"deviceType": "ELTEK", "variable": "dc_bus_voltage", "kind": "warning", "op": "gt", "lifepo4": -50,
+   "source": "Manual de instaladores BB litio V1, AMX Argentina (Claro) pp. 25, 39, 51: alarma de baja tensión de batería 50 V («batería en descarga»)"},
+  {"deviceType": "ELTEK", "variable": "dc_bus_voltage", "kind": "trip", "op": "gt", "lifepo4": -46.5,
+   "source": "Manual de instaladores BB litio V1, AMX Argentina (Claro) pp. 25, 39, 51: alarma de muy baja tensión de batería 46,5 V"}
+ ],
+ "pendientes": [
+  "cat-DC-03 (tiempo hasta el corte): el objetivo de la proyección es un parámetro de la regla, no un límite; con litio el corte real es 42 V (BMS ZTE) o 40 V (LVBD Claro) — falta llevarlo a la ficha",
+  "Sobretensión del bus con litio: sin valor de alarma documentado por Claro (protección del BMS ZTE 55,5 V)"
+ ]
+}

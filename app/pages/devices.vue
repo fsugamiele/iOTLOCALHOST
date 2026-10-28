@@ -294,6 +294,16 @@
             <base-input v-model="refForm.rated_kw" placeholder="ej. 20" type="number" />
           </div>
         </div>
+        <!-- spec L1 — tecnología del banco de baterías (planta DC): elige el juego de umbrales de la ficha. -->
+        <div class="form-group">
+          <label>Baterías de la planta</label>
+          <select v-model="refForm.batteryTech" class="form-control">
+            <option value="">Sin dato (umbrales de plomo-ácido de la ficha)</option>
+            <option value="vrla">Plomo-ácido (VRLA)</option>
+            <option value="lifepo4">Litio (LiFePO4)</option>
+          </select>
+          <small class="text-muted">Con litio se usan los valores de la ficha para litio donde los haya (estándar Claro: aviso 50 V, crítica 46,5 V).</small>
+        </div>
         <!-- spec_perfiles_controladora (Qp6) — modelo de controladora y umbrales propios del equipo. -->
         <div class="form-group">
           <label>Controladora</label>
@@ -491,6 +501,7 @@ export default {
         battery_nominal_v: r.battery_nominal_v != null ? r.battery_nominal_v : "",
         rated_kw: r.rated_kw != null ? r.rated_kw : "",
         profileId: device.profileId || "",
+        batteryTech: device.batteryTech || "",
         limites: [],
       };
       this.perfiles = []; this.perfil = null;
@@ -536,7 +547,7 @@ export default {
       }
       const axiosHeaders = { headers: { token: this.$store.state.auth.token } };
       try {
-        const res = await this.$axios.put("/device/refparams", { dId, refParams }, axiosHeaders);
+        const res = await this.$axios.put("/device/refparams", { dId, refParams, batteryTech: this.refForm.batteryTech || null }, axiosHeaders);
         if (res.data.status == "success") {
           const p = res.data.refParams || {};
           const txt = Object.keys(p).length ? Object.entries(p).map(([k, v]) => `${k}=${v}`).join(", ") : "valores de la ficha";

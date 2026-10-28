@@ -30,6 +30,9 @@ const LimitSchema = new Schema({
   // cargado en el equipo se usa `base` (decisión Franco 2026-10-14).
   relativeTo: { type: Schema.Types.Mixed },
   texts:      { type: LimitTextsSchema, default: undefined },
+  // spec L1 — valor del límite según la tecnología de batería del equipo (device.batteryTech):
+  // { lifepo4: { value, source } }. Sin entrada para esa tecnología = el value de siempre.
+  byBatteryTech: { type: Schema.Types.Mixed, default: undefined },
 }, { _id: false });
 
 const VariableSchema = new Schema({

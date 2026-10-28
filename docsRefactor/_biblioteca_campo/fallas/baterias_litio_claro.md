@@ -78,3 +78,9 @@ Los umbrales de bus DC de la ficha `ELTEK` (aviso **−52 V**, crítico **−48 
 - **L1** · Agregar a la ficha del sitio la **tecnología de batería** (VRLA / LiFePO4) y que los límites del bus DC se tomen según esa tecnología: VRLA = valores actuales; litio = 50 / 46,5 V y corte en el mayor entre el LVBD de la planta (40 V) y la protección del BMS (42 V en ZTE) (fuente: este manual y la Product Description ZTE).
 - **L2** · Leer el **SOC** y las alarmas del BMS cuando haya acceso (Shoto por SNMP; Huawei por SCC800; ZTE por RS485) y usar SOC ≤ 20 % como aviso de corte inminente de cargas no esenciales.
 - **L3** · Regla: «concentrador del BMS alimentado desde la misma planta» como riesgo de pérdida de gestión (dato de instalación).
+
+## 7 · Estado de L1 (aprobado por Franco 2026-10-28 · opción B: dato del sitio)
+- Equipo: `device.batteryTech` = `vrla` | `lifepo4` (Dispositivos → Parámetros de instalación → «Baterías de la planta»).
+- Ficha: cada límite puede traer `byBatteryTech.lifepo4 { value, source }`. Cargado en ELTEK `dc_bus_voltage`: aviso **−50 V**, crítica **−46,5 V** (este manual, pp. 25/39/51) — `tools/litio_ficha.js`.
+- Motor y QA: cascada **equipo > perfil > ficha según batería > ficha** (`app/api/services/deviceLimits.js`).
+- **Pendiente:** objetivo de la proyección de DC-03 (corte real 42 V con BMS ZTE / 40 V LVBD) y valor de sobretensión con litio (sin dato de Claro).

@@ -292,8 +292,12 @@ router.put("/device/autonomy", checkAuth, async (req, res) => {
 const REF_PARAM_RE = /^[a-z][a-z0-9_]*$/;
 router.put("/device/refparams", checkAuth, async (req, res) => {
   try {
-    const { dId, refParams } = req.body || {};
+    const { dId, refParams, batteryTech } = req.body || {};
     if (!dId) return res.status(400).json({ status: "error", error: "dId es requerido" });
+    // spec L1 — tecnología de batería de la planta DC ('vrla' | 'lifepo4' | null = sin dato).
+    if (batteryTech !== undefined && batteryTech !== null && !['vrla', 'lifepo4'].includes(batteryTech)) {
+      return res.status(400).json({ status: "error", error: "batteryTech debe ser 'vrla', 'lifepo4' o null" });
+    }
     if (!refParams || typeof refParams !== 'object' || Array.isArray(refParams)) {
       return res.status(400).json({ status: "error", error: "refParams debe ser un objeto { nombre: número }" });
     }
@@ -311,13 +315,17 @@ router.put("/device/refparams", checkAuth, async (req, res) => {
     }
     if (Object.keys(merged).length) await Device.updateOne({ ...writeFilter, dId }, { $set: { refParams: merged } });
     else await Device.updateOne({ ...writeFilter, dId }, { $unset: { refParams: 1 } });
+    if (batteryTech !== undefined) {
+      if (batteryTech) await Device.updateOne({ ...writeFilter, dId }, { $set: { batteryTech } });
+      else await Device.updateOne({ ...writeFilter, dId }, { $unset: { batteryTech: 1 } });
+    }
 
     if (global.mqttClient && global.mqttClient.connected) {
       global.mqttClient.publish('wanomi/edge/all/reload', '{}', { qos: 1 }, (err) => {
         if (err) console.error(`[devices] Reload publish FALLÓ (PUT refparams ${dId}): ${err.message}`);
       });
     }
-    return res.json({ status: "success", dId, refParams: merged });
+    return res.json({ status: "success", dId, refParams: merged, batteryTech: batteryTech !== undefined ? (batteryTech || null) : (existing.batteryTech || null) });
   } catch (error) {
     console.log("ERROR UPDATING DEVICE REFPARAMS"); console.log(error);
     return res.status(500).json({ status: "error", error: error.message || error });
