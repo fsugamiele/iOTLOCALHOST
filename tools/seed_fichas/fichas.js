@@ -87,8 +87,17 @@ const FICHAS = [
     V('mains_freq', 'Frecuencia red', 'float', 'Hz', 0.1, '48-52', [
       L('warning', 'lt', 49.5, 'Hz', 'pack ats-inteliats-v1 F2a'),
       L('warning', 'gt', 50.5, 'Hz', 'pack ats-inteliats-v1 F2b')]),
-    V('gen_voltage', 'Tensión generador', 'float', 'V', 2, '200-240'),
-    V('gen_freq', 'Frecuencia generador', 'float', 'Hz', 0.1, '48-52'),
+    // spec_textos_alarma_ficha T3 (P1) — avisos Wanomi (reglas SG-02/03/04) + protecciones de fábrica del ATS.
+    V('gen_voltage', 'Tensión generador', 'float', 'V', 2, '200-240', [
+      L('warning', 'lt', 198, 'V', 'Wanomi −10 % de 220 V — regla cat-SG-02'),
+      L('warning', 'gt', 242, 'V', 'Wanomi +10 % de 220 V — regla cat-SG-03'),
+      L('trip', 'lt', 161.7, 'V', 'ComAp IA-NT PWR Guía de Referencia SW 2.2 pp. 80-81 (231 V / 50 Hz): Gen <V Trp 70 %, 3 s'),
+      L('trip', 'gt', 254.1, 'V', 'ComAp IA-NT PWR Guía de Referencia SW 2.2 pp. 80-81 (231 V / 50 Hz): Gen >V Trp 110 %, 3 s')]),
+    V('gen_freq', 'Frecuencia generador', 'float', 'Hz', 0.1, '48-52', [
+      L('warning', 'lt', 48.5, 'Hz', 'Wanomi −3 % de 50 Hz — regla cat-SG-04 (PROVISORIO)'),
+      L('warning', 'gt', 51.5, 'Hz', 'Wanomi +3 % de 50 Hz — regla cat-SG-04 (PROVISORIO)'),
+      L('trip', 'lt', 42.5, 'Hz', 'ComAp IA-NT PWR Guía de Referencia SW 2.2 pp. 80-81 (231 V / 50 Hz): Gen <Freq Trp 85 %, 3 s'),
+      L('trip', 'gt', 55, 'Hz', 'ComAp IA-NT PWR Guía de Referencia SW 2.2 pp. 80-81 (231 V / 50 Hz): Gen >Freq Trp 110 %, 3 s')]),
     V('load_kw', 'Carga activa', 'float', 'kW', 0.5, '0-20'),
     V('gen_status', 'Estado del generador', 'categorical', '', null),
   ] },
@@ -100,7 +109,9 @@ const FICHAS = [
       L('warning', 'gt', -52, 'V', 'DEC-REF-123 / spec_signo_bus_dc.md (A1) — PROVISORIO'),
       L('trip',    'gt', -48, 'V', 'DEC-REF-123 / spec_signo_bus_dc.md (A2) — PROVISORIO'),
       L('trip',    'lt', -57, 'V', 'spec_signo_bus_dc.md DC-05 (sobretensión) — PROVISORIO')]),
-    V('dc_load_current', 'Corriente carga', 'float', 'A', 1, '0-300'),
+    V('dc_load_current', 'Corriente carga', 'float', 'A', 1, '0-300', [
+      L('warning', 'gt', 80, 'A', 'Wanomi — PROVISORIO sin fuente: pasar a % de la capacidad instalada — regla cat-eltek-B1'),
+      L('trip', 'gt', 95, 'A', 'Wanomi — PROVISORIO sin fuente: pasar a % de la capacidad instalada — regla cat-eltek-B2')]),
     // Temperatura de BATERÍA (decisión Franco). VRLA: 25 °C nominal, vida ½ cada +10 °C.
     V('temperature', 'Temperatura de batería', 'float', '°C', 0.5, '-20-60', [
       L('warning', 'gt', 35, '°C', 'auditoría 2026-10-14 F-11 — PROVISORIO: confirmar setpoint Smartpack / datasheet batería'),

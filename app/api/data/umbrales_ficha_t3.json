@@ -1,0 +1,159 @@
+{
+ "_doc": "spec_textos_alarma_ficha T3 (Qt2, firmado 2026-10-27; P1 biblioteca aprobado) — umbrales fijos que pasan a la ficha. Lo aplica tools/umbrales_a_ficha.js.",
+ "limites": [
+  {
+   "deviceType": "ATS",
+   "variable": "gen_voltage",
+   "kind": "warning",
+   "op": "lt",
+   "value": 198,
+   "unit": "V",
+   "source": "Wanomi −10 % de 220 V (igual que la red; aviso temprano) — regla cat-SG-02"
+  },
+  {
+   "deviceType": "ATS",
+   "variable": "gen_voltage",
+   "kind": "warning",
+   "op": "gt",
+   "value": 242,
+   "unit": "V",
+   "source": "Wanomi +10 % de 220 V (igual que la red) — regla cat-SG-03"
+  },
+  {
+   "deviceType": "ATS",
+   "variable": "gen_voltage",
+   "kind": "trip",
+   "op": "lt",
+   "value": 161.7,
+   "unit": "V",
+   "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz): Gen <V Trp 70 %, 3 s"
+  },
+  {
+   "deviceType": "ATS",
+   "variable": "gen_voltage",
+   "kind": "trip",
+   "op": "gt",
+   "value": 254.1,
+   "unit": "V",
+   "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz): Gen >V Trp 110 %, 3 s"
+  },
+  {
+   "deviceType": "ATS",
+   "variable": "gen_freq",
+   "kind": "warning",
+   "op": "lt",
+   "value": 48.5,
+   "unit": "Hz",
+   "source": "Wanomi −3 % de 50 Hz — regla cat-SG-04 (PROVISORIO)"
+  },
+  {
+   "deviceType": "ATS",
+   "variable": "gen_freq",
+   "kind": "warning",
+   "op": "gt",
+   "value": 51.5,
+   "unit": "Hz",
+   "source": "Wanomi +3 % de 50 Hz — regla cat-SG-04 (PROVISORIO)"
+  },
+  {
+   "deviceType": "ATS",
+   "variable": "gen_freq",
+   "kind": "trip",
+   "op": "lt",
+   "value": 42.5,
+   "unit": "Hz",
+   "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz): Gen <Freq Trp 85 %, 3 s"
+  },
+  {
+   "deviceType": "ATS",
+   "variable": "gen_freq",
+   "kind": "trip",
+   "op": "gt",
+   "value": 55,
+   "unit": "Hz",
+   "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz): Gen >Freq Trp 110 %, 3 s"
+  },
+  {
+   "deviceType": "ELTEK",
+   "variable": "dc_load_current",
+   "kind": "warning",
+   "op": "gt",
+   "value": 80,
+   "unit": "A",
+   "source": "Wanomi — PROVISORIO sin fuente: pasar a % de la capacidad instalada de rectificadores — regla cat-eltek-B1"
+  },
+  {
+   "deviceType": "ELTEK",
+   "variable": "dc_load_current",
+   "kind": "trip",
+   "op": "gt",
+   "value": 95,
+   "unit": "A",
+   "source": "Wanomi — PROVISORIO sin fuente: pasar a % de la capacidad instalada de rectificadores — regla cat-eltek-B2"
+  }
+ ],
+ "reglas": [
+  {
+   "ruleId": "cat-DC-05",
+   "deviceType": "ELTEK",
+   "variable": "dc_bus_voltage",
+   "op": "lt",
+   "value": -57,
+   "kind": "trip"
+  },
+  {
+   "ruleId": "cat-SG-02",
+   "deviceType": "ATS",
+   "variable": "gen_voltage",
+   "op": "lt",
+   "value": 198,
+   "kind": "warning"
+  },
+  {
+   "ruleId": "cat-SG-03",
+   "deviceType": "ATS",
+   "variable": "gen_voltage",
+   "op": "gt",
+   "value": 242,
+   "kind": "warning"
+  },
+  {
+   "ruleId": "cat-SG-04",
+   "deviceType": "ATS",
+   "variable": "gen_freq",
+   "op": "lt",
+   "value": 48.5,
+   "kind": "warning"
+  },
+  {
+   "ruleId": "cat-SG-04",
+   "deviceType": "ATS",
+   "variable": "gen_freq",
+   "op": "gt",
+   "value": 51.5,
+   "kind": "warning"
+  },
+  {
+   "ruleId": "cat-eltek-B1",
+   "deviceType": "ELTEK",
+   "variable": "dc_load_current",
+   "op": "gt",
+   "value": 80,
+   "kind": "warning"
+  },
+  {
+   "ruleId": "cat-eltek-B2",
+   "deviceType": "ELTEK",
+   "variable": "dc_load_current",
+   "op": "gt",
+   "value": 95,
+   "kind": "trip"
+  }
+ ],
+ "quedanFijos": {
+  "cummins-M1-mains-loss": "red < 100 V = AUSENCIA de red (no es un límite del fabricante; el ATS transfiere de fábrica bajo 138,6 V)",
+  "cat-CR00061-F4": "grupo en marcha con < 100 V = sin salida del alternador (ausencia, no límite)",
+  "cat-AR-04": "batería < 9,6 V DURANTE el arranque = batería débil (Cummins A040D969 código 1442: 6–10 V en 12 V); la ficha ya usa sus dos límites hacia abajo (11,8 / 11 V) para la batería en reposo",
+  "cat-AR-03": "corriente de arranque < 20 A con intento fallido = motor de arranque que no gira (PROVISORIO)"
+ }
+}

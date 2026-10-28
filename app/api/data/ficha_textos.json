@@ -1,284 +1,620 @@
 {
-  "_doc": "spec_textos_alarma_ficha T2 — textos de la alarma por límite de ficha. Clave: deviceType → variable → 'kind|dir' (dir = lt | gt). Lo aplica tools/textos_fichas.js. Fuente: docsRefactor/_biblioteca_campo/fallas/.",
-  "cummins-pcc": {
-    "oil_pressure": {
-      "warning|lt": {
-        "meaning": "La presión de aceite del motor bajó a menos de {umbral}: el motor se lubrica peor y, si sigue bajando, el controlador lo va a parar.",
-        "operatorAction": "Programar revisión del grupo en el día; si la presión sigue cayendo, despachar técnico.",
-        "steps": ["Ver en el detalle si la presión sigue bajando o se estabilizó", "Revisar si el grupo trabaja con carga alta o temperatura de refrigerante alta", "En sitio: verificar el nivel de aceite y buscar fugas externas", "Verificar que el aceite cumpla la especificación y no esté contaminado con refrigerante o combustible", "Si el nivel está bien, revisar el regulador de presión de aceite (manual de servicio, código 143)"],
-        "causes": ["Nivel de aceite bajo", "Fuga externa", "Aceite fuera de especificación", "Aceite contaminado con refrigerante o combustible", "Temperatura del refrigerante alta", "Regulador de presión de aceite defectuoso"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 143, pág. 179 del PDF"
-      },
-      "trip|lt": {
-        "meaning": "La presión de aceite bajó a menos de {umbral}: es la protección del motor y el grupo se para para no dañarse.",
-        "operatorAction": "Despachar técnico: el grupo queda parado y el sitio pasa a baterías si no hay red.",
-        "steps": ["Confirmar si el grupo se detuvo y si hay red; calcular la autonomía de baterías", "No rearrancar a distancia hasta revisar el aceite", "En sitio: verificar nivel de aceite y fugas", "Verificar especificación y contaminación del aceite", "Revisar el regulador de presión de aceite y el sensor (manual de servicio, código 415)"],
-        "causes": ["Nivel de aceite bajo", "Fuga externa", "Aceite fuera de especificación", "Aceite contaminado con refrigerante o combustible", "Temperatura del refrigerante alta", "Regulador de presión de aceite defectuoso"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 415 (180 kPa / 10 s), pág. 204 del PDF"
-      }
-    },
-    "coolant_temp": {
-      "warning|gt": {
-        "meaning": "El refrigerante del motor superó {umbral}: el grupo está trabajando caliente y puede llegar a pararse por temperatura.",
-        "operatorAction": "Programar revisión; si la temperatura sigue subiendo, reducir carga o despachar técnico.",
-        "steps": ["Ver la tendencia de la temperatura y la carga del grupo", "Verificar la temperatura ambiente del sitio", "En sitio: revisar el nivel de refrigerante (con el motor frío) y la mezcla agua-anticongelante", "Revisar que el radiador no esté obstruido y las persianas abran", "Revisar la correa del ventilador (manual de servicio, código 146)"],
-        "causes": ["Temperatura ambiente alta", "Radiador bloqueado", "Persianas cerradas o dañadas", "Nivel de refrigerante bajo", "Mezcla agua-anticongelante incorrecta", "Correa del ventilador rota o suelta"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 146, pág. 185 del PDF"
-      },
-      "trip|gt": {
-        "meaning": "El refrigerante superó {umbral}: el controlador para el grupo para proteger el motor.",
-        "operatorAction": "Despachar técnico: el grupo queda parado; verificar si el sitio tiene red o autonomía de baterías.",
-        "steps": ["Confirmar si el grupo se detuvo y el estado de la red", "No rearrancar a distancia hasta que se enfríe y se revise", "En sitio: nivel de refrigerante con el motor frío y fugas", "Revisar radiador, persianas y correa del ventilador", "Revisar el sensor de temperatura (manual de servicio, código 151)"],
-        "causes": ["Temperatura ambiente alta", "Radiador bloqueado", "Persianas cerradas o dañadas", "Nivel de refrigerante bajo", "Mezcla agua-anticongelante incorrecta", "Correa del ventilador rota o suelta"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 151, pág. 188 del PDF"
-      }
-    },
-    "rpm": {
-      "warning|gt": {
-        "meaning": "El motor gira por encima de {umbral}: la velocidad está fuera de la nominal y la frecuencia del grupo puede salirse de rango.",
-        "operatorAction": "Programar revisión de la regulación de velocidad del grupo.",
-        "steps": ["Ver si la frecuencia del grupo también está alta", "Revisar si coincide con un cambio brusco de carga", "En sitio: revisar el gobernador / regulación de velocidad", "Verificar el sensor de velocidad y su conexión"],
-        "source": "Wanomi: 105 % de 1500 rpm — PROVISORIO (el manual no fija un aviso de velocidad)"
-      },
-      "trip|gt": {
-        "meaning": "El motor superó {umbral}: es sobrevelocidad y el controlador para el grupo para evitar daños.",
-        "operatorAction": "Despachar técnico: el grupo queda parado; no rearrancar a distancia.",
-        "steps": ["Confirmar la parada y el estado de la red", "En sitio: verificar que la simulación de fallas no esté habilitada (InPower)", "Verificar el umbral configurado y el tipo de combustible", "Revisar conexiones y arnés del sensor de velocidad", "Revisar el sensor de posición/velocidad (manual de servicio, código 234)"],
-        "causes": ["Simulación de fallas habilitada", "Umbral mal configurado", "Tipo de combustible mal configurado", "Conexiones del sensor de velocidad defectuosas", "Arnés del motor defectuoso", "Sensor de velocidad defectuoso"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 234, pág. 202 del PDF; sobrevelocidad 115 % (curso Cummins 6283 p. 126)"
-      }
-    },
-    "battery_voltage": {
-      "warning|lt": {
-        "meaning": "La batería de arranque del grupo está en {umbral} o menos: puede no alcanzar para arrancar cuando haga falta.",
-        "operatorAction": "Programar revisión del cargador y la batería de arranque antes del próximo corte.",
-        "steps": ["Ver si la tensión baja también con el grupo en marcha (alternador)", "Revisar si el cargador de baterías está alimentado", "En sitio: revisar conexiones y bornes de la batería", "Medir la batería; reemplazarla si está descargada o defectuosa", "Revisar el alternador del motor (manual de servicio, código 441)"],
-        "causes": ["Conexiones de la batería dañadas", "Mala conexión a tierra", "Batería descargada o defectuosa", "Cargador sin alimentación o defectuoso", "Alternador que no carga"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 441, pág. 214 del PDF"
-      },
-      "trip|lt": {
-        "meaning": "La batería de arranque bajó a {umbral} o menos: el grupo probablemente no arranque.",
-        "operatorAction": "Despachar técnico con batería de reemplazo: el sitio no tiene respaldo de grupo confiable.",
-        "steps": ["Avisar al NOC: el respaldo de grupo no está asegurado", "En sitio: revisar cargador y bornes", "Medir y reemplazar la batería si corresponde", "Probar un arranque con la batería nueva"],
-        "causes": ["Batería descargada o defectuosa", "Cargador de baterías sin alimentación o defectuoso", "Conexiones dañadas"],
-        "source": "Cummins A040D969 Ed. 1, códigos 441 / 1442, pág. 214 del PDF; umbral: decisión Franco 2026-10-14"
-      },
-      "warning|gt": {
-        "meaning": "La batería de arranque está por encima de {umbral}: se está sobrecargando y se acorta su vida.",
-        "operatorAction": "Programar revisión del cargador de baterías y del alternador del motor.",
-        "steps": ["Ver si pasa con el grupo parado (cargador) o en marcha (alternador)", "En sitio: verificar la tensión configurada del cargador", "Revisar el alternador de CC del motor (manual de servicio, código 442)"],
-        "causes": ["Tensión de batería mal configurada", "Cargador sobrecargando la batería", "Alternador de CC defectuoso"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 442, pág. 217 del PDF"
-      },
-      "trip|gt": {
-        "meaning": "La batería de arranque superó {umbral}: sobrecarga severa, riesgo de dañar la batería y la electrónica.",
-        "operatorAction": "Despachar técnico para revisar el cargador o el alternador.",
-        "steps": ["Ver si pasa con el grupo parado o en marcha", "En sitio: desconectar o ajustar el cargador si es la causa", "Revisar el alternador de CC del motor (código 442)"],
-        "causes": ["Cargador sobrecargando la batería", "Alternador de CC defectuoso"],
-        "source": "Cummins A040D969 Ed. 1, §9.8 código 442, pág. 217 del PDF"
-      }
-    },
-    "fuel_level": {
-      "warning|lt": {
-        "meaning": "El tanque del grupo está en {umbral} o menos: hay que programar la recarga de combustible.",
-        "operatorAction": "Programar la recarga de combustible del sitio.",
-        "steps": ["Ver la autonomía estimada en el detalle", "Revisar si hubo consumo fuera de lo normal (posible sifoneo)", "Programar la carga con el proveedor de combustible"],
-        "source": "Wanomi: umbral NFPA 110 (registros_consolidado_gef.md §4 b0)"
-      },
-      "trip|lt": {
-        "meaning": "El tanque del grupo está en {umbral} o menos: el grupo puede quedarse sin combustible en el próximo corte.",
-        "operatorAction": "Despachar la recarga de combustible con urgencia.",
-        "steps": ["Ver la autonomía estimada y si hay corte de red en curso", "Despachar combustible", "Revisar si hubo consumo anormal (posible sifoneo)"],
-        "source": "Wanomi: decisión Franco 2026-10-14"
-      }
-    },
-    "autonomy_hours": {
-      "warning|lt": {
-        "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía.",
-        "operatorAction": "Programar la recarga de combustible.",
-        "steps": ["Ver el nivel del tanque y el consumo en el detalle", "Programar la carga con el proveedor"],
-        "source": "Wanomi: decisión Franco 2026-10-14"
-      },
-      "trip|lt": {
-        "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía: el sitio puede caer si el corte se extiende.",
-        "operatorAction": "Despachar la recarga de combustible con urgencia.",
-        "steps": ["Ver si hay corte de red en curso y cuánto lleva", "Despachar combustible", "Si no llega a tiempo, coordinar grupo móvil"],
-        "source": "Wanomi: decisión Franco 2026-10-14 y 2026-10-27 (crítica desde 12 h)"
-      }
-    }
+ "_doc": "spec_textos_alarma_ficha T2 — textos de la alarma por límite de ficha. Clave: deviceType → variable → 'kind|dir' (dir = lt | gt). Lo aplica tools/textos_fichas.js. Fuente: docsRefactor/_biblioteca_campo/fallas/.",
+ "cummins-pcc": {
+  "oil_pressure": {
+   "warning|lt": {
+    "meaning": "La presión de aceite del motor bajó a menos de {umbral}: el motor se lubrica peor y, si sigue bajando, el controlador lo va a parar.",
+    "operatorAction": "Programar revisión del grupo en el día; si la presión sigue cayendo, despachar técnico.",
+    "steps": [
+     "Ver en el detalle si la presión sigue bajando o se estabilizó",
+     "Revisar si el grupo trabaja con carga alta o temperatura de refrigerante alta",
+     "En sitio: verificar el nivel de aceite y buscar fugas externas",
+     "Verificar que el aceite cumpla la especificación y no esté contaminado con refrigerante o combustible",
+     "Si el nivel está bien, revisar el regulador de presión de aceite (manual de servicio, código 143)"
+    ],
+    "causes": [
+     "Nivel de aceite bajo",
+     "Fuga externa",
+     "Aceite fuera de especificación",
+     "Aceite contaminado con refrigerante o combustible",
+     "Temperatura del refrigerante alta",
+     "Regulador de presión de aceite defectuoso"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 143, pág. 179 del PDF"
+   },
+   "trip|lt": {
+    "meaning": "La presión de aceite bajó a menos de {umbral}: es la protección del motor y el grupo se para para no dañarse.",
+    "operatorAction": "Despachar técnico: el grupo queda parado y el sitio pasa a baterías si no hay red.",
+    "steps": [
+     "Confirmar si el grupo se detuvo y si hay red; calcular la autonomía de baterías",
+     "No rearrancar a distancia hasta revisar el aceite",
+     "En sitio: verificar nivel de aceite y fugas",
+     "Verificar especificación y contaminación del aceite",
+     "Revisar el regulador de presión de aceite y el sensor (manual de servicio, código 415)"
+    ],
+    "causes": [
+     "Nivel de aceite bajo",
+     "Fuga externa",
+     "Aceite fuera de especificación",
+     "Aceite contaminado con refrigerante o combustible",
+     "Temperatura del refrigerante alta",
+     "Regulador de presión de aceite defectuoso"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 415 (180 kPa / 10 s), pág. 204 del PDF"
+   }
   },
-  "ATS": {
-    "mains_voltage": {
-      "warning|lt": {
-        "meaning": "La tensión de red bajó a menos de {umbral}: la red está floja; si sigue cayendo el ATS va a pasar al grupo.",
-        "operatorAction": "Vigilar la red y verificar que el grupo esté listo para tomar carga.",
-        "steps": ["Ver si la baja es de una fase o de todas", "Verificar que el grupo esté en AUTO y sin alarmas", "Si persiste, consultar a la distribuidora", "En sitio: revisar acometida y fusibles de medición de red"],
-        "source": "Wanomi ±10 % de 220 V (aviso temprano); el ATS transfiere de fábrica bajo 60 % (138,6 V) en 2 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 63-64 y 81"
-      },
-      "warning|gt": {
-        "meaning": "La tensión de red superó {umbral}: sobretensión que puede dañar equipos y hacer transferir al ATS.",
-        "operatorAction": "Vigilar la red; si persiste, consultar a la distribuidora.",
-        "steps": ["Ver si la suba es de una fase o de todas", "Verificar que el grupo esté en AUTO", "Si persiste, reclamar a la distribuidora", "En sitio: revisar el neutro de la acometida"],
-        "source": "Wanomi ±10 % de 220 V (aviso temprano); el ATS transfiere de fábrica sobre 110 % (254,1 V) en 2 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 63 y 81"
-      }
-    },
-    "mains_freq": {
-      "warning|lt": {
-        "meaning": "La frecuencia de red bajó a menos de {umbral}: red inestable.",
-        "operatorAction": "Vigilar la red y verificar que el grupo esté listo.",
-        "steps": ["Ver si coincide con una baja de tensión", "Verificar que el grupo esté en AUTO", "Si persiste, consultar a la distribuidora"],
-        "source": "Wanomi (aviso temprano); el ATS transfiere de fábrica bajo 98 % (49 Hz) en 0,5 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 64 y 81"
-      },
-      "warning|gt": {
-        "meaning": "La frecuencia de red superó {umbral}: red inestable.",
-        "operatorAction": "Vigilar la red y verificar que el grupo esté listo.",
-        "steps": ["Ver si coincide con un cambio de tensión", "Verificar que el grupo esté en AUTO", "Si persiste, consultar a la distribuidora"],
-        "source": "Wanomi (aviso temprano); el ATS transfiere de fábrica sobre 102 % (51 Hz) en 0,5 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 64 y 81"
-      }
-    }
+  "coolant_temp": {
+   "warning|gt": {
+    "meaning": "El refrigerante del motor superó {umbral}: el grupo está trabajando caliente y puede llegar a pararse por temperatura.",
+    "operatorAction": "Programar revisión; si la temperatura sigue subiendo, reducir carga o despachar técnico.",
+    "steps": [
+     "Ver la tendencia de la temperatura y la carga del grupo",
+     "Verificar la temperatura ambiente del sitio",
+     "En sitio: revisar el nivel de refrigerante (con el motor frío) y la mezcla agua-anticongelante",
+     "Revisar que el radiador no esté obstruido y las persianas abran",
+     "Revisar la correa del ventilador (manual de servicio, código 146)"
+    ],
+    "causes": [
+     "Temperatura ambiente alta",
+     "Radiador bloqueado",
+     "Persianas cerradas o dañadas",
+     "Nivel de refrigerante bajo",
+     "Mezcla agua-anticongelante incorrecta",
+     "Correa del ventilador rota o suelta"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 146, pág. 185 del PDF"
+   },
+   "trip|gt": {
+    "meaning": "El refrigerante superó {umbral}: el controlador para el grupo para proteger el motor.",
+    "operatorAction": "Despachar técnico: el grupo queda parado; verificar si el sitio tiene red o autonomía de baterías.",
+    "steps": [
+     "Confirmar si el grupo se detuvo y el estado de la red",
+     "No rearrancar a distancia hasta que se enfríe y se revise",
+     "En sitio: nivel de refrigerante con el motor frío y fugas",
+     "Revisar radiador, persianas y correa del ventilador",
+     "Revisar el sensor de temperatura (manual de servicio, código 151)"
+    ],
+    "causes": [
+     "Temperatura ambiente alta",
+     "Radiador bloqueado",
+     "Persianas cerradas o dañadas",
+     "Nivel de refrigerante bajo",
+     "Mezcla agua-anticongelante incorrecta",
+     "Correa del ventilador rota o suelta"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 151, pág. 188 del PDF"
+   }
   },
-  "ELTEK": {
-    "dc_bus_voltage": {
-      "warning|gt": {
-        "meaning": "El bus de −48 V bajó a {umbral}: las baterías se están descargando (sin red o con rectificadores que no alcanzan).",
-        "operatorAction": "Verificar la red y el grupo; estimar cuánto falta para el corte de baterías.",
-        "steps": ["Ver si hay corte de red y si el grupo arrancó", "Ver el tiempo estimado hasta el corte (LVD) en el detalle", "Si hay red: revisar alarmas de rectificadores y reparto de corriente", "Si el corte se extiende: coordinar grupo o grupo móvil", "En sitio: revisar rectificadores y térmicas de entrada"],
-        "source": "Eltek Smartpack S User Guide 350030.013 pp. 27-33; flote 54,0 V Narada 12NDF155 (Parametrización Eltek VRLA p. 1); umbral −52 V PROVISORIO"
-      },
-      "trip|gt": {
-        "meaning": "El bus de −48 V bajó a {umbral}: el banco está cerca del corte por baja tensión y el sitio puede quedar sin energía.",
-        "operatorAction": "Despachar energía de respaldo (grupo o grupo móvil) con urgencia.",
-        "steps": ["Confirmar corte de red y estado del grupo", "Ver el tiempo hasta el corte (LVD) en el detalle", "Despachar grupo móvil si el grupo del sitio no está disponible", "Apagar cargas no críticas si la planta lo permite", "En sitio: verificar que el LVD esté habilitado y la batería sana"],
-        "source": "Eltek Smartpack S 350030.013 p. 31 (LVD); descarga mínima 43,2 V Narada 12NDF155; umbral −48 V PROVISORIO"
-      },
-      "trip|lt": {
-        "meaning": "El bus superó {umbral} (en valor absoluto): sobretensión que puede dañar los equipos de transmisión.",
-        "operatorAction": "Verificar si la planta está en carga a fondo; si no, despachar técnico.",
-        "steps": ["Ver si coincide con una ecualización (56,4 V es normal en ese modo)", "Revisar la tensión de flote configurada en la controladora", "En sitio: revisar los rectificadores y la controladora"],
-        "source": "Eltek Smartpack S 350030.013 p. 28 (sobretensión 57,00 V, ejemplo); ecualización 56,4 V Narada 12NDF155 — PROVISORIO"
-      }
-    },
-    "temperature": {
-      "warning|gt": {
-        "meaning": "La batería superó {umbral}: trabaja caliente y su vida se acorta (cada 10 °C de más, la vida de una VRLA cae a la mitad).",
-        "operatorAction": "Programar revisión de la climatización del shelter.",
-        "steps": ["Ver la temperatura ambiente del sitio", "Revisar alarmas del aire acondicionado", "En sitio: revisar la climatización y la ventilación del gabinete de baterías"],
-        "source": "Parametrización Eltek para VRLA (Narada 12NDF155) p. 2: operación recomendada 25 °C / 35 °C"
-      },
-      "trip|gt": {
-        "meaning": "La batería superó {umbral}: riesgo de daño del banco y de embalamiento térmico.",
-        "operatorAction": "Despachar técnico para revisar la climatización y el banco de baterías.",
-        "steps": ["Ver la temperatura ambiente y el estado del aire acondicionado", "Revisar si la batería está en carga a fondo", "En sitio: revisar climatización, ventilación y estado del banco"],
-        "source": "Wanomi: 45 °C — PROVISORIO (sin valor del fabricante)"
-      }
-    }
+  "rpm": {
+   "warning|gt": {
+    "meaning": "El motor gira por encima de {umbral}: la velocidad está fuera de la nominal y la frecuencia del grupo puede salirse de rango.",
+    "operatorAction": "Programar revisión de la regulación de velocidad del grupo.",
+    "steps": [
+     "Ver si la frecuencia del grupo también está alta",
+     "Revisar si coincide con un cambio brusco de carga",
+     "En sitio: revisar el gobernador / regulación de velocidad",
+     "Verificar el sensor de velocidad y su conexión"
+    ],
+    "source": "Wanomi: 105 % de 1500 rpm — PROVISORIO (el manual no fija un aviso de velocidad)"
+   },
+   "trip|gt": {
+    "meaning": "El motor superó {umbral}: es sobrevelocidad y el controlador para el grupo para evitar daños.",
+    "operatorAction": "Despachar técnico: el grupo queda parado; no rearrancar a distancia.",
+    "steps": [
+     "Confirmar la parada y el estado de la red",
+     "En sitio: verificar que la simulación de fallas no esté habilitada (InPower)",
+     "Verificar el umbral configurado y el tipo de combustible",
+     "Revisar conexiones y arnés del sensor de velocidad",
+     "Revisar el sensor de posición/velocidad (manual de servicio, código 234)"
+    ],
+    "causes": [
+     "Simulación de fallas habilitada",
+     "Umbral mal configurado",
+     "Tipo de combustible mal configurado",
+     "Conexiones del sensor de velocidad defectuosas",
+     "Arnés del motor defectuoso",
+     "Sensor de velocidad defectuoso"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 234, pág. 202 del PDF; sobrevelocidad 115 % (curso Cummins 6283 p. 126)"
+   }
   },
-  "GEN": {
-    "fuel_level": {
-      "warning|lt": {
-        "meaning": "El tanque del grupo está en {umbral} o menos: hay que programar la recarga de combustible.",
-        "operatorAction": "Programar la recarga de combustible del sitio.",
-        "steps": ["Ver la autonomía estimada en el detalle", "Revisar si hubo consumo fuera de lo normal (posible sifoneo)", "Programar la carga con el proveedor de combustible"],
-        "source": "Wanomi: umbral NFPA 110 (registros_consolidado_gef.md §4 b0)"
-      },
-      "trip|lt": {
-        "meaning": "El tanque del grupo está en {umbral} o menos: el grupo puede quedarse sin combustible en el próximo corte.",
-        "operatorAction": "Despachar la recarga de combustible con urgencia.",
-        "steps": ["Ver la autonomía estimada y si hay corte de red en curso", "Despachar combustible", "Revisar si hubo consumo anormal (posible sifoneo)"],
-        "source": "Wanomi: decisión Franco 2026-10-14"
-      }
-    },
-    "exhaust_temp": {
-      "warning|gt": {
-        "meaning": "El escape del grupo superó {umbral}: el motor trabaja exigido o con mala combustión.",
-        "operatorAction": "Programar revisión del grupo.",
-        "steps": ["Ver la carga del grupo en el momento del aviso", "Comparar los dos bancos de escape si hay sensores en ambos", "En sitio: revisar filtro de aire, inyección y sobrecarga"],
-        "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO (a confirmar con el datasheet del motor)"
-      },
-      "trip|gt": {
-        "meaning": "El escape del grupo superó {umbral}: riesgo de daño del turbo y las válvulas.",
-        "operatorAction": "Despachar técnico; reducir la carga del grupo si es posible.",
-        "steps": ["Ver la carga del grupo", "Reducir carga si la planta lo permite", "En sitio: revisar filtro de aire, inyección y escape"],
-        "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO (a confirmar con el datasheet del motor)"
-      }
-    },
-    "alternator_voltage": {
-      "warning|lt": {
-        "meaning": "El alternador de carga del motor entrega menos de {umbral}: la batería de arranque no se está cargando bien con el grupo en marcha.",
-        "operatorAction": "Programar revisión del alternador de carga.",
-        "steps": ["Verificar que el grupo esté en marcha (el límite solo aplica en marcha)", "En sitio: revisar la correa y las conexiones del alternador", "Revisar el regulador del alternador"],
-        "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO; SDMO 33501732001NE: alarma «fallo alternador de carga» (p. 45 del manual)"
-      },
-      "warning|gt": {
-        "meaning": "El alternador de carga entrega más de {umbral}: está sobrecargando la batería de arranque.",
-        "operatorAction": "Programar revisión del regulador del alternador.",
-        "steps": ["Verificar que el grupo esté en marcha", "En sitio: revisar el regulador del alternador"],
-        "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO"
-      }
-    },
-    "battery_voltage": {
-      "warning|lt": {
-        "meaning": "La batería de arranque del grupo está en {umbral} o menos: puede no alcanzar para arrancar cuando haga falta.",
-        "operatorAction": "Programar revisión del cargador y la batería de arranque antes del próximo corte.",
-        "steps": ["Ver si la tensión baja también con el grupo en marcha (alternador)", "Revisar si el cargador de baterías está alimentado", "En sitio: revisar conexiones y bornes", "Medir la batería; reemplazarla si está descargada o defectuosa"],
-        "causes": ["Batería descargada, gastada o sulfatada", "Mala conexión o bornes flojos", "Cargador sin alimentación o defectuoso", "Alternador que no carga"],
-        "source": "SDMO 33501732001NE §8.5 (fallos de batería, p. 67 del manual); Cummins A040D969 código 441 (referencia)"
-      },
-      "trip|lt": {
-        "meaning": "La batería de arranque bajó a {umbral} o menos: el grupo probablemente no arranque.",
-        "operatorAction": "Despachar técnico con batería de reemplazo: el sitio no tiene respaldo de grupo confiable.",
-        "steps": ["Avisar al NOC: el respaldo de grupo no está asegurado", "En sitio: revisar cargador y bornes", "Medir y reemplazar la batería si corresponde", "Probar un arranque"],
-        "source": "SDMO 33501732001NE §8.5; umbral: decisión Franco 2026-10-14"
-      },
-      "warning|gt": {
-        "meaning": "La batería de arranque está por encima de {umbral}: se está sobrecargando y pierde agua.",
-        "operatorAction": "Programar revisión del cargador o del regulador del alternador.",
-        "steps": ["Ver si pasa con el grupo parado (cargador) o en marcha (alternador)", "En sitio: revisar la tensión del cargador"],
-        "source": "SDMO 33501732001NE §8.5 («consumo de agua elevado: tensión de carga demasiado elevada»)"
-      },
-      "trip|gt": {
-        "meaning": "La batería de arranque superó {umbral}: sobrecarga severa.",
-        "operatorAction": "Despachar técnico para revisar el cargador o el alternador.",
-        "steps": ["Ver si pasa con el grupo parado o en marcha", "En sitio: desconectar o ajustar el cargador si es la causa"],
-        "source": "SDMO 33501732001NE §8.5"
-      }
-    },
-    "crank_attempts_failed": {
-      "trip|gt": {
-        "meaning": "El grupo intentó arrancar {umbral} veces sin lograrlo: no va a tomar carga y el sitio queda con baterías.",
-        "operatorAction": "Despachar técnico: el grupo no arranca.",
-        "steps": ["Ver el tiempo hasta el corte de baterías y coordinar grupo móvil", "Verificar combustible y batería de arranque", "En sitio: revisar paradas de emergencia sin activar y eventos de parada activos; resetear tras corregir", "Revisar partidor, solenoide y relé de arranque"],
-        "causes": ["Sin combustible o aire en el circuito", "Batería de arranque descargada", "Parada de emergencia activada", "Partidor, solenoide o relé de arranque defectuoso"],
-        "source": "SDMO 33501732001NE §6.2.5 (fallo de arranque: 3 intentos, p. 43 del manual); FG Wilson 356-5902 §5.2.11 p. 45; Cummins A040D969 código 1438 p. 226"
-      }
-    },
-    "mains_voltage": {
-      "warning|lt": {
-        "meaning": "La tensión de red bajó a menos de {umbral}: la red está floja y el grupo puede tener que arrancar.",
-        "operatorAction": "Vigilar la red y verificar que el grupo esté listo para tomar carga.",
-        "steps": ["Ver si la baja es de una fase o de todas", "Verificar que el grupo esté en AUTO y sin alarmas", "Si persiste, consultar a la distribuidora"],
-        "source": "Wanomi ±10 % de 220 V (igual que ATS)"
-      },
-      "warning|gt": {
-        "meaning": "La tensión de red superó {umbral}: sobretensión que puede dañar equipos.",
-        "operatorAction": "Vigilar la red; si persiste, consultar a la distribuidora.",
-        "steps": ["Ver si la suba es de una fase o de todas", "Si persiste, reclamar a la distribuidora"],
-        "source": "Wanomi ±10 % de 220 V (igual que ATS)"
-      }
-    },
-    "autonomy_hours": {
-      "warning|lt": {
-        "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía.",
-        "operatorAction": "Programar la recarga de combustible.",
-        "steps": ["Ver el nivel del tanque y el consumo en el detalle", "Programar la carga con el proveedor"],
-        "source": "Wanomi: decisión Franco 2026-10-14"
-      },
-      "trip|lt": {
-        "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía: el sitio puede caer si el corte se extiende.",
-        "operatorAction": "Despachar la recarga de combustible con urgencia.",
-        "steps": ["Ver si hay corte de red en curso y cuánto lleva", "Despachar combustible", "Si no llega a tiempo, coordinar grupo móvil"],
-        "source": "Wanomi: decisión Franco 2026-10-14 y 2026-10-27 (crítica desde 12 h)"
-      }
-    }
+  "battery_voltage": {
+   "warning|lt": {
+    "meaning": "La batería de arranque del grupo está en {umbral} o menos: puede no alcanzar para arrancar cuando haga falta.",
+    "operatorAction": "Programar revisión del cargador y la batería de arranque antes del próximo corte.",
+    "steps": [
+     "Ver si la tensión baja también con el grupo en marcha (alternador)",
+     "Revisar si el cargador de baterías está alimentado",
+     "En sitio: revisar conexiones y bornes de la batería",
+     "Medir la batería; reemplazarla si está descargada o defectuosa",
+     "Revisar el alternador del motor (manual de servicio, código 441)"
+    ],
+    "causes": [
+     "Conexiones de la batería dañadas",
+     "Mala conexión a tierra",
+     "Batería descargada o defectuosa",
+     "Cargador sin alimentación o defectuoso",
+     "Alternador que no carga"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 441, pág. 214 del PDF"
+   },
+   "trip|lt": {
+    "meaning": "La batería de arranque bajó a {umbral} o menos: el grupo probablemente no arranque.",
+    "operatorAction": "Despachar técnico con batería de reemplazo: el sitio no tiene respaldo de grupo confiable.",
+    "steps": [
+     "Avisar al NOC: el respaldo de grupo no está asegurado",
+     "En sitio: revisar cargador y bornes",
+     "Medir y reemplazar la batería si corresponde",
+     "Probar un arranque con la batería nueva"
+    ],
+    "causes": [
+     "Batería descargada o defectuosa",
+     "Cargador de baterías sin alimentación o defectuoso",
+     "Conexiones dañadas"
+    ],
+    "source": "Cummins A040D969 Ed. 1, códigos 441 / 1442, pág. 214 del PDF; umbral: decisión Franco 2026-10-14"
+   },
+   "warning|gt": {
+    "meaning": "La batería de arranque está por encima de {umbral}: se está sobrecargando y se acorta su vida.",
+    "operatorAction": "Programar revisión del cargador de baterías y del alternador del motor.",
+    "steps": [
+     "Ver si pasa con el grupo parado (cargador) o en marcha (alternador)",
+     "En sitio: verificar la tensión configurada del cargador",
+     "Revisar el alternador de CC del motor (manual de servicio, código 442)"
+    ],
+    "causes": [
+     "Tensión de batería mal configurada",
+     "Cargador sobrecargando la batería",
+     "Alternador de CC defectuoso"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 442, pág. 217 del PDF"
+   },
+   "trip|gt": {
+    "meaning": "La batería de arranque superó {umbral}: sobrecarga severa, riesgo de dañar la batería y la electrónica.",
+    "operatorAction": "Despachar técnico para revisar el cargador o el alternador.",
+    "steps": [
+     "Ver si pasa con el grupo parado o en marcha",
+     "En sitio: desconectar o ajustar el cargador si es la causa",
+     "Revisar el alternador de CC del motor (código 442)"
+    ],
+    "causes": [
+     "Cargador sobrecargando la batería",
+     "Alternador de CC defectuoso"
+    ],
+    "source": "Cummins A040D969 Ed. 1, §9.8 código 442, pág. 217 del PDF"
+   }
+  },
+  "fuel_level": {
+   "warning|lt": {
+    "meaning": "El tanque del grupo está en {umbral} o menos: hay que programar la recarga de combustible.",
+    "operatorAction": "Programar la recarga de combustible del sitio.",
+    "steps": [
+     "Ver la autonomía estimada en el detalle",
+     "Revisar si hubo consumo fuera de lo normal (posible sifoneo)",
+     "Programar la carga con el proveedor de combustible"
+    ],
+    "source": "Wanomi: umbral NFPA 110 (registros_consolidado_gef.md §4 b0)"
+   },
+   "trip|lt": {
+    "meaning": "El tanque del grupo está en {umbral} o menos: el grupo puede quedarse sin combustible en el próximo corte.",
+    "operatorAction": "Despachar la recarga de combustible con urgencia.",
+    "steps": [
+     "Ver la autonomía estimada y si hay corte de red en curso",
+     "Despachar combustible",
+     "Revisar si hubo consumo anormal (posible sifoneo)"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14"
+   }
+  },
+  "autonomy_hours": {
+   "warning|lt": {
+    "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía.",
+    "operatorAction": "Programar la recarga de combustible.",
+    "steps": [
+     "Ver el nivel del tanque y el consumo en el detalle",
+     "Programar la carga con el proveedor"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14"
+   },
+   "trip|lt": {
+    "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía: el sitio puede caer si el corte se extiende.",
+    "operatorAction": "Despachar la recarga de combustible con urgencia.",
+    "steps": [
+     "Ver si hay corte de red en curso y cuánto lleva",
+     "Despachar combustible",
+     "Si no llega a tiempo, coordinar grupo móvil"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14 y 2026-10-27 (crítica desde 12 h)"
+   }
   }
+ },
+ "ATS": {
+  "mains_voltage": {
+   "warning|lt": {
+    "meaning": "La tensión de red bajó a menos de {umbral}: la red está floja; si sigue cayendo el ATS va a pasar al grupo.",
+    "operatorAction": "Vigilar la red y verificar que el grupo esté listo para tomar carga.",
+    "steps": [
+     "Ver si la baja es de una fase o de todas",
+     "Verificar que el grupo esté en AUTO y sin alarmas",
+     "Si persiste, consultar a la distribuidora",
+     "En sitio: revisar acometida y fusibles de medición de red"
+    ],
+    "source": "Wanomi ±10 % de 220 V (aviso temprano); el ATS transfiere de fábrica bajo 60 % (138,6 V) en 2 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 63-64 y 81"
+   },
+   "warning|gt": {
+    "meaning": "La tensión de red superó {umbral}: sobretensión que puede dañar equipos y hacer transferir al ATS.",
+    "operatorAction": "Vigilar la red; si persiste, consultar a la distribuidora.",
+    "steps": [
+     "Ver si la suba es de una fase o de todas",
+     "Verificar que el grupo esté en AUTO",
+     "Si persiste, reclamar a la distribuidora",
+     "En sitio: revisar el neutro de la acometida"
+    ],
+    "source": "Wanomi ±10 % de 220 V (aviso temprano); el ATS transfiere de fábrica sobre 110 % (254,1 V) en 2 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 63 y 81"
+   }
+  },
+  "mains_freq": {
+   "warning|lt": {
+    "meaning": "La frecuencia de red bajó a menos de {umbral}: red inestable.",
+    "operatorAction": "Vigilar la red y verificar que el grupo esté listo.",
+    "steps": [
+     "Ver si coincide con una baja de tensión",
+     "Verificar que el grupo esté en AUTO",
+     "Si persiste, consultar a la distribuidora"
+    ],
+    "source": "Wanomi (aviso temprano); el ATS transfiere de fábrica bajo 98 % (49 Hz) en 0,5 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 64 y 81"
+   },
+   "warning|gt": {
+    "meaning": "La frecuencia de red superó {umbral}: red inestable.",
+    "operatorAction": "Vigilar la red y verificar que el grupo esté listo.",
+    "steps": [
+     "Ver si coincide con un cambio de tensión",
+     "Verificar que el grupo esté en AUTO",
+     "Si persiste, consultar a la distribuidora"
+    ],
+    "source": "Wanomi (aviso temprano); el ATS transfiere de fábrica sobre 102 % (51 Hz) en 0,5 s — ComAp IA-NT PWR Guía de Referencia SW 2.2, pp. 64 y 81"
+   }
+  },
+  "gen_voltage": {
+   "warning|lt": {
+    "meaning": "El grupo entrega menos de {umbral} estando en marcha: tensión baja que puede afectar a los rectificadores.",
+    "operatorAction": "Programar revisión del regulador de tensión (AVR) del grupo.",
+    "steps": [
+     "Ver si la baja coincide con un aumento de carga",
+     "Comparar con la frecuencia del grupo (si también baja, es el motor)",
+     "En sitio: revisar el AVR y las conexiones del alternador"
+    ],
+    "source": "Wanomi −10 % de 220 V; ComAp IA-NT PWR p. 77 (Trp Gen Lx <V)"
+   },
+   "warning|gt": {
+    "meaning": "El grupo entrega más de {umbral}: sobretensión que puede dañar los equipos del sitio.",
+    "operatorAction": "Despachar técnico para revisar el regulador de tensión (AVR) del grupo.",
+    "steps": [
+     "Ver si coincide con una baja brusca de carga",
+     "En sitio: revisar el AVR y su ajuste"
+    ],
+    "source": "Wanomi +10 % de 220 V; ComAp IA-NT PWR p. 77 (Trp Gen Lx >V)"
+   },
+   "trip|lt": {
+    "meaning": "La tensión del grupo bajó de {umbral}: el ATS lo desconecta y lo para (protección de fábrica).",
+    "operatorAction": "Despachar técnico: el grupo queda parado; verificar red y autonomía de baterías.",
+    "steps": [
+     "Confirmar si el grupo se detuvo y el estado de la red",
+     "En sitio: revisar AVR, excitación y conexiones del alternador",
+     "Resetear el ATS (Fault Reset) tras corregir"
+    ],
+    "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz); lista de eventos p. 77 (Trp Gen Lx <V)"
+   },
+   "trip|gt": {
+    "meaning": "La tensión del grupo superó {umbral}: el ATS lo desconecta y lo para (protección de fábrica).",
+    "operatorAction": "Despachar técnico: el grupo queda parado; verificar red y autonomía de baterías.",
+    "steps": [
+     "Confirmar la parada y el estado de la red",
+     "En sitio: revisar el AVR",
+     "Resetear el ATS (Fault Reset) tras corregir"
+    ],
+    "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz); lista de eventos p. 77 (Trp Gen Lx >V)"
+   }
+  },
+  "gen_freq": {
+   "warning|lt": {
+    "meaning": "La frecuencia del grupo bajó de {umbral}: el motor no sostiene la velocidad (carga alta o falta de combustible).",
+    "operatorAction": "Programar revisión del grupo; si baja más, despachar técnico.",
+    "steps": [
+     "Ver la carga del grupo",
+     "Revisar nivel de combustible y alarmas del motor",
+     "En sitio: revisar gobernador y filtros de combustible"
+    ],
+    "source": "Wanomi −3 % de 50 Hz (PROVISORIO); ComAp IA-NT PWR p. 77"
+   },
+   "warning|gt": {
+    "meaning": "La frecuencia del grupo superó {umbral}: el motor gira de más.",
+    "operatorAction": "Programar revisión de la regulación de velocidad del grupo.",
+    "steps": [
+     "Ver si coincide con una baja brusca de carga",
+     "En sitio: revisar el gobernador"
+    ],
+    "source": "Wanomi +3 % de 50 Hz (PROVISORIO); ComAp IA-NT PWR p. 77"
+   },
+   "trip|lt": {
+    "meaning": "La frecuencia del grupo bajó de {umbral}: el ATS lo desconecta y lo para (protección de fábrica).",
+    "operatorAction": "Despachar técnico: el grupo queda parado.",
+    "steps": [
+     "Confirmar la parada y el estado de la red",
+     "En sitio: revisar combustible, gobernador y sobrecarga",
+     "Resetear el ATS tras corregir"
+    ],
+    "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz); lista de eventos p. 77 (Trp Gen >Freq / <Freq)"
+   },
+   "trip|gt": {
+    "meaning": "La frecuencia del grupo superó {umbral}: el ATS lo desconecta y lo para (protección de fábrica).",
+    "operatorAction": "Despachar técnico: el grupo queda parado.",
+    "steps": [
+     "Confirmar la parada y el estado de la red",
+     "En sitio: revisar el gobernador",
+     "Resetear el ATS tras corregir"
+    ],
+    "source": "ComAp IA-NT PWR Guía de Referencia SW 2.2 (nov-2010), tabla de valores de fábrica pp. 80-81 (nominal 231 V / 50 Hz); lista de eventos p. 77"
+   }
+  }
+ },
+ "ELTEK": {
+  "dc_bus_voltage": {
+   "warning|gt": {
+    "meaning": "El bus de −48 V bajó a {umbral}: las baterías se están descargando (sin red o con rectificadores que no alcanzan).",
+    "operatorAction": "Verificar la red y el grupo; estimar cuánto falta para el corte de baterías.",
+    "steps": [
+     "Ver si hay corte de red y si el grupo arrancó",
+     "Ver el tiempo estimado hasta el corte (LVD) en el detalle",
+     "Si hay red: revisar alarmas de rectificadores y reparto de corriente",
+     "Si el corte se extiende: coordinar grupo o grupo móvil",
+     "En sitio: revisar rectificadores y térmicas de entrada"
+    ],
+    "source": "Eltek Smartpack S User Guide 350030.013 pp. 27-33; flote 54,0 V Narada 12NDF155 (Parametrización Eltek VRLA p. 1); umbral −52 V PROVISORIO"
+   },
+   "trip|gt": {
+    "meaning": "El bus de −48 V bajó a {umbral}: el banco está cerca del corte por baja tensión y el sitio puede quedar sin energía.",
+    "operatorAction": "Despachar energía de respaldo (grupo o grupo móvil) con urgencia.",
+    "steps": [
+     "Confirmar corte de red y estado del grupo",
+     "Ver el tiempo hasta el corte (LVD) en el detalle",
+     "Despachar grupo móvil si el grupo del sitio no está disponible",
+     "Apagar cargas no críticas si la planta lo permite",
+     "En sitio: verificar que el LVD esté habilitado y la batería sana"
+    ],
+    "source": "Eltek Smartpack S 350030.013 p. 31 (LVD); descarga mínima 43,2 V Narada 12NDF155; umbral −48 V PROVISORIO"
+   },
+   "trip|lt": {
+    "meaning": "El bus superó {umbral} (en valor absoluto): sobretensión que puede dañar los equipos de transmisión.",
+    "operatorAction": "Verificar si la planta está en carga a fondo; si no, despachar técnico.",
+    "steps": [
+     "Ver si coincide con una ecualización (56,4 V es normal en ese modo)",
+     "Revisar la tensión de flote configurada en la controladora",
+     "En sitio: revisar los rectificadores y la controladora"
+    ],
+    "source": "Eltek Smartpack S 350030.013 p. 28 (sobretensión 57,00 V, ejemplo); ecualización 56,4 V Narada 12NDF155 — PROVISORIO"
+   }
+  },
+  "temperature": {
+   "warning|gt": {
+    "meaning": "La batería superó {umbral}: trabaja caliente y su vida se acorta (cada 10 °C de más, la vida de una VRLA cae a la mitad).",
+    "operatorAction": "Programar revisión de la climatización del shelter.",
+    "steps": [
+     "Ver la temperatura ambiente del sitio",
+     "Revisar alarmas del aire acondicionado",
+     "En sitio: revisar la climatización y la ventilación del gabinete de baterías"
+    ],
+    "source": "Parametrización Eltek para VRLA (Narada 12NDF155) p. 2: operación recomendada 25 °C / 35 °C"
+   },
+   "trip|gt": {
+    "meaning": "La batería superó {umbral}: riesgo de daño del banco y de embalamiento térmico.",
+    "operatorAction": "Despachar técnico para revisar la climatización y el banco de baterías.",
+    "steps": [
+     "Ver la temperatura ambiente y el estado del aire acondicionado",
+     "Revisar si la batería está en carga a fondo",
+     "En sitio: revisar climatización, ventilación y estado del banco"
+    ],
+    "source": "Wanomi: 45 °C — PROVISORIO (sin valor del fabricante)"
+   }
+  },
+  "dc_load_current": {
+   "warning|gt": {
+    "meaning": "La carga del sitio superó {umbral}: los rectificadores trabajan cerca de su capacidad y queda menos margen para recargar baterías.",
+    "operatorAction": "Revisar si hubo altas de equipos; programar ampliación de rectificadores si se mantiene.",
+    "steps": [
+     "Ver la tendencia de la corriente de carga",
+     "Verificar si coincide con una recarga de baterías (se normaliza sola)",
+     "Revisar alarmas de límite de corriente de los rectificadores",
+     "Si persiste: evaluar agregar rectificadores"
+    ],
+    "source": "Wanomi — PROVISORIO (sin valor del fabricante); Vertiv NCU / Eaton SC200: alarma de sobrecarga del sistema"
+   },
+   "trip|gt": {
+    "meaning": "La carga del sitio superó {umbral}: la planta está al límite; ante un corte la autonomía de baterías se acorta.",
+    "operatorAction": "Despachar revisión de la planta DC y del consumo del sitio.",
+    "steps": [
+     "Ver si hay rectificadores en falla (reparto de corriente)",
+     "Verificar el consumo de los equipos del sitio",
+     "En sitio: revisar rectificadores y agregar capacidad si hace falta"
+    ],
+    "source": "Wanomi — PROVISORIO (sin valor del fabricante)"
+   }
+  }
+ },
+ "GEN": {
+  "fuel_level": {
+   "warning|lt": {
+    "meaning": "El tanque del grupo está en {umbral} o menos: hay que programar la recarga de combustible.",
+    "operatorAction": "Programar la recarga de combustible del sitio.",
+    "steps": [
+     "Ver la autonomía estimada en el detalle",
+     "Revisar si hubo consumo fuera de lo normal (posible sifoneo)",
+     "Programar la carga con el proveedor de combustible"
+    ],
+    "source": "Wanomi: umbral NFPA 110 (registros_consolidado_gef.md §4 b0)"
+   },
+   "trip|lt": {
+    "meaning": "El tanque del grupo está en {umbral} o menos: el grupo puede quedarse sin combustible en el próximo corte.",
+    "operatorAction": "Despachar la recarga de combustible con urgencia.",
+    "steps": [
+     "Ver la autonomía estimada y si hay corte de red en curso",
+     "Despachar combustible",
+     "Revisar si hubo consumo anormal (posible sifoneo)"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14"
+   }
+  },
+  "exhaust_temp": {
+   "warning|gt": {
+    "meaning": "El escape del grupo superó {umbral}: el motor trabaja exigido o con mala combustión.",
+    "operatorAction": "Programar revisión del grupo.",
+    "steps": [
+     "Ver la carga del grupo en el momento del aviso",
+     "Comparar los dos bancos de escape si hay sensores en ambos",
+     "En sitio: revisar filtro de aire, inyección y sobrecarga"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO (a confirmar con el datasheet del motor)"
+   },
+   "trip|gt": {
+    "meaning": "El escape del grupo superó {umbral}: riesgo de daño del turbo y las válvulas.",
+    "operatorAction": "Despachar técnico; reducir la carga del grupo si es posible.",
+    "steps": [
+     "Ver la carga del grupo",
+     "Reducir carga si la planta lo permite",
+     "En sitio: revisar filtro de aire, inyección y escape"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO (a confirmar con el datasheet del motor)"
+   }
+  },
+  "alternator_voltage": {
+   "warning|lt": {
+    "meaning": "El alternador de carga del motor entrega menos de {umbral}: la batería de arranque no se está cargando bien con el grupo en marcha.",
+    "operatorAction": "Programar revisión del alternador de carga.",
+    "steps": [
+     "Verificar que el grupo esté en marcha (el límite solo aplica en marcha)",
+     "En sitio: revisar la correa y las conexiones del alternador",
+     "Revisar el regulador del alternador"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO; SDMO 33501732001NE: alarma «fallo alternador de carga» (p. 45 del manual)"
+   },
+   "warning|gt": {
+    "meaning": "El alternador de carga entrega más de {umbral}: está sobrecargando la batería de arranque.",
+    "operatorAction": "Programar revisión del regulador del alternador.",
+    "steps": [
+     "Verificar que el grupo esté en marcha",
+     "En sitio: revisar el regulador del alternador"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14 — PROVISORIO"
+   }
+  },
+  "battery_voltage": {
+   "warning|lt": {
+    "meaning": "La batería de arranque del grupo está en {umbral} o menos: puede no alcanzar para arrancar cuando haga falta.",
+    "operatorAction": "Programar revisión del cargador y la batería de arranque antes del próximo corte.",
+    "steps": [
+     "Ver si la tensión baja también con el grupo en marcha (alternador)",
+     "Revisar si el cargador de baterías está alimentado",
+     "En sitio: revisar conexiones y bornes",
+     "Medir la batería; reemplazarla si está descargada o defectuosa"
+    ],
+    "causes": [
+     "Batería descargada, gastada o sulfatada",
+     "Mala conexión o bornes flojos",
+     "Cargador sin alimentación o defectuoso",
+     "Alternador que no carga"
+    ],
+    "source": "SDMO 33501732001NE §8.5 (fallos de batería, p. 67 del manual); Cummins A040D969 código 441 (referencia)"
+   },
+   "trip|lt": {
+    "meaning": "La batería de arranque bajó a {umbral} o menos: el grupo probablemente no arranque.",
+    "operatorAction": "Despachar técnico con batería de reemplazo: el sitio no tiene respaldo de grupo confiable.",
+    "steps": [
+     "Avisar al NOC: el respaldo de grupo no está asegurado",
+     "En sitio: revisar cargador y bornes",
+     "Medir y reemplazar la batería si corresponde",
+     "Probar un arranque"
+    ],
+    "source": "SDMO 33501732001NE §8.5; umbral: decisión Franco 2026-10-14"
+   },
+   "warning|gt": {
+    "meaning": "La batería de arranque está por encima de {umbral}: se está sobrecargando y pierde agua.",
+    "operatorAction": "Programar revisión del cargador o del regulador del alternador.",
+    "steps": [
+     "Ver si pasa con el grupo parado (cargador) o en marcha (alternador)",
+     "En sitio: revisar la tensión del cargador"
+    ],
+    "source": "SDMO 33501732001NE §8.5 («consumo de agua elevado: tensión de carga demasiado elevada»)"
+   },
+   "trip|gt": {
+    "meaning": "La batería de arranque superó {umbral}: sobrecarga severa.",
+    "operatorAction": "Despachar técnico para revisar el cargador o el alternador.",
+    "steps": [
+     "Ver si pasa con el grupo parado o en marcha",
+     "En sitio: desconectar o ajustar el cargador si es la causa"
+    ],
+    "source": "SDMO 33501732001NE §8.5"
+   }
+  },
+  "crank_attempts_failed": {
+   "trip|gt": {
+    "meaning": "El grupo intentó arrancar {umbral} veces sin lograrlo: no va a tomar carga y el sitio queda con baterías.",
+    "operatorAction": "Despachar técnico: el grupo no arranca.",
+    "steps": [
+     "Ver el tiempo hasta el corte de baterías y coordinar grupo móvil",
+     "Verificar combustible y batería de arranque",
+     "En sitio: revisar paradas de emergencia sin activar y eventos de parada activos; resetear tras corregir",
+     "Revisar partidor, solenoide y relé de arranque"
+    ],
+    "causes": [
+     "Sin combustible o aire en el circuito",
+     "Batería de arranque descargada",
+     "Parada de emergencia activada",
+     "Partidor, solenoide o relé de arranque defectuoso"
+    ],
+    "source": "SDMO 33501732001NE §6.2.5 (fallo de arranque: 3 intentos, p. 43 del manual); FG Wilson 356-5902 §5.2.11 p. 45; Cummins A040D969 código 1438 p. 226"
+   }
+  },
+  "mains_voltage": {
+   "warning|lt": {
+    "meaning": "La tensión de red bajó a menos de {umbral}: la red está floja y el grupo puede tener que arrancar.",
+    "operatorAction": "Vigilar la red y verificar que el grupo esté listo para tomar carga.",
+    "steps": [
+     "Ver si la baja es de una fase o de todas",
+     "Verificar que el grupo esté en AUTO y sin alarmas",
+     "Si persiste, consultar a la distribuidora"
+    ],
+    "source": "Wanomi ±10 % de 220 V (igual que ATS)"
+   },
+   "warning|gt": {
+    "meaning": "La tensión de red superó {umbral}: sobretensión que puede dañar equipos.",
+    "operatorAction": "Vigilar la red; si persiste, consultar a la distribuidora.",
+    "steps": [
+     "Ver si la suba es de una fase o de todas",
+     "Si persiste, reclamar a la distribuidora"
+    ],
+    "source": "Wanomi ±10 % de 220 V (igual que ATS)"
+   }
+  },
+  "autonomy_hours": {
+   "warning|lt": {
+    "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía.",
+    "operatorAction": "Programar la recarga de combustible.",
+    "steps": [
+     "Ver el nivel del tanque y el consumo en el detalle",
+     "Programar la carga con el proveedor"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14"
+   },
+   "trip|lt": {
+    "meaning": "Con el combustible que queda, el grupo tiene menos de {umbral} de autonomía: el sitio puede caer si el corte se extiende.",
+    "operatorAction": "Despachar la recarga de combustible con urgencia.",
+    "steps": [
+     "Ver si hay corte de red en curso y cuánto lleva",
+     "Despachar combustible",
+     "Si no llega a tiempo, coordinar grupo móvil"
+    ],
+    "source": "Wanomi: decisión Franco 2026-10-14 y 2026-10-27 (crítica desde 12 h)"
+   }
+  }
+ }
 }
