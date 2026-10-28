@@ -1,0 +1,67 @@
+{
+ "equipo": "SDMO (Kohler) NEXYS/TELYS",
+ "ficha": null,
+ "fuente": {
+  "doc": "Manual de uso y mantenimiento 33501732001NE_2_1 (es)",
+  "anexoD": "pp. 251-266"
+ },
+ "fallos": {
+  "presionAceite": "fallo",
+  "temperaturaMotor": "fallo",
+  "arranque": "fallo (3 intentos)",
+  "sobrevelocidad": "fallo",
+  "subvelocidad": "fallo (<1000 rpm)",
+  "bajoCombustible": "fallo y alarma",
+  "bajoRefrigerante": "fallo (2 s)",
+  "sobrecargaCortocircuito": "fallo",
+  "diferencialAislamiento": "fallo",
+  "paradaEmergencia": "fallo",
+  "stopEnAuto": "fallo",
+  "alternadorCarga": "alarma"
+ },
+ "enfriamientoMin": [
+  1,
+  2
+ ],
+ "j1939FMI": {
+  "0": "válido por encima del rango, más grave",
+  "1": "válido por debajo del rango, más grave",
+  "2": "irregular, intermitente o incorrecto",
+  "3": "tensión alta o corto a fuente alta",
+  "4": "tensión baja o corto a fuente baja",
+  "5": "corriente baja o circuito abierto",
+  "6": "corriente alta o a masa",
+  "7": "sistema mecánico no responde o desajustado",
+  "8": "frecuencia/PWM/período irregular",
+  "9": "velocidad de actualización irregular",
+  "10": "velocidad de cambio irregular",
+  "11": "causa raíz desconocida",
+  "12": "dispositivo inteligente defectuoso",
+  "13": "fuera de calibración",
+  "14": "instrucciones especiales",
+  "15": "por encima del rango, menos grave",
+  "16": "por encima del rango, moderadamente grave",
+  "17": "por debajo del rango, menos grave",
+  "18": "por debajo del rango, moderadamente grave",
+  "19": "datos de red con error",
+  "31": "la condición existe"
+ },
+ "spnUtiles": {
+  "97": "agua en combustible",
+  "98": "nivel de aceite",
+  "100": "presión de aceite",
+  "102": "presión aire colector",
+  "105": "temp aire admisión",
+  "158": "tensión batería",
+  "168": "tensión sistema",
+  "174": "temp combustible",
+  "175": "temp aceite",
+  "190": "velocidad motor",
+  "1136": "temp ECU",
+  "2017": "bus J1939"
+ },
+ "propuestas": [
+  "S1 ficha SDMO",
+  "S2 diccionario J1939 común"
+ ]
+}

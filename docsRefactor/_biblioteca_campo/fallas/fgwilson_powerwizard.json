@@ -1,0 +1,40 @@
+{
+ "equipo": "FG Wilson serie P (PowerWizard 1.1/2.1/2.1+/4.1, DeepSea, FG100)",
+ "ficha": null,
+ "fuente": {
+  "doc": "Manual de operación y mantenimiento 356-5902 v15 02/22 (es)"
+ },
+ "valores": {
+  "bombaTrasvaseOnPct": 25,
+  "bombaTrasvaseOffPct": 75,
+  "enfriamientoMin": 3,
+  "ejercicio": {
+   "sinCargaCadaDias": 14,
+   "sinCargaMin": 5,
+   "conCargaCadaDias": 30,
+   "conCargaMinPct": 50,
+   "conCargaH": [
+    1,
+    2
+   ]
+  }
+ },
+ "averias": [
+  "No arranca",
+  "Baja presión de aceite",
+  "High coolant temp",
+  "Overspeed",
+  "Under-voltage",
+  "Over-voltage",
+  "No toma carga",
+  "No para en manual",
+  "No para en automático",
+  "Not In Auto Mode",
+  "Fail to stop",
+  "Petición de servicio"
+ ],
+ "propuestas": [
+  "W1 fuente para AR-08",
+  "W2 ficha FGWILSON"
+ ]
+}

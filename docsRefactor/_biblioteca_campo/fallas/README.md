@@ -22,13 +22,13 @@
 | **Eaton SC200** (sin ficha aún) | Manual de la operación IPN 997-00012-61A (95 pp.) | ✅ **Hecho** — `eaton_sc200.md`: 36 alarmas del glosario con qué hacer, LVD, resolución de problemas. **Sin valores de fábrica** (vienen en el archivo de configuración de cada equipo). Propuestas E1–E2 |
 | **ZTE ZXDU CSU518B / 513B · CSU501B** (sin ficha aún) | Guía de configuración de baterías y comunicación (2016, 36 pp.) · hoja CSU501B | ✅ **Hecho (parcial)** — `zte_csu518b.md`: predeterminados de flote, ecualización, prueba, **LLVD1 45 V · BLVD 44 V**, desconexión por temperatura. **Falta:** lista de alarmas de la CSU |
 | **Bancos de baterías de litio** (Huawei ESM-48150B1 · Shoto SDA10-48150 · ZTE ZXDC48 FB150C1) | Manual de instaladores BB litio V1 — **Claro / AMX Argentina** (72 pp.) | ✅ **Hecho** — `baterias_litio_claro.md`: **valores que Claro programa con litio** (flote 52,5/54 V, alarma 50 V y 46,5 V, LVD 40 V, corte por SOC 20 %), ajuste en 6 plantas, autonomía, estados del BMS. **Hallazgo:** los umbrales DC de Wanomi son de plomo-ácido → propuesta L1 |
-| **Grupo SDMO / Kohler R44 · controlador TELYS / NEXYS** (sitio Monte Ralo; motores John Deere / Perkins) | Manual de uso y mantenimiento 33501732001NE_2_1 (268 pp.) | ⏳ a procesar — alarmas y fallos por pictograma |
-| **Grupo FG Wilson serie P · PowerWizard** | Manual de operación y mantenimiento 356-5902 v15 (81 pp.) | ⏳ a procesar — lista de alarmas PowerWizard |
+| **Grupo SDMO / Kohler · NEXYS / TELYS** (sitio Monte Ralo; motores John Deere / Volvo / Perkins) | Manual de uso y mantenimiento 33501732001NE_2_1 (266 pp.) | ✅ **Hecho** — `grupo_sdmo_telys_nexys.md`: 12 fallos/alarmas con tipo, batería, **diccionario J1939 SPN/FMI** (anexo D). Sin umbrales (en el TELYS de cada grupo). Propuestas S1–S2 |
+| **Grupo FG Wilson serie P · PowerWizard / DeepSea / FG100** | Manual de operación y mantenimiento 356-5902 v15 (81 pp.) | ✅ **Hecho** — `fgwilson_powerwizard.md`: niveles de alarma de 4 controladores, guía de averías, **ejercicio del fabricante** (quincenal en vacío, mensual ≥ 50 % carga). Sin umbrales. Propuestas W1–W2 |
 | Cummins grupo marino MDDC (0981-0172) | Manual del operador | ○ referencia (no es el parque telco) |
 | Westric SW-302 (secuenciador de aire acondicionado) | 76-1023-05 | ○ fase 2 (Sense AA) |
 | Fuera de alcance | Doble LVD (configuración de red de una PC), Nokia FPFH, Wavence, telurímetro | — |
 
-**Recibidos 27/10, a procesar:** códigos de falla del ECM **Cummins ISX CM871** (J1939 SPN/FMI; confirmar que el motor del parque tenga ECM) · *Manual de aplicación de generadores enfriados por líquido* (diseño e instalación, sin fallas).
+**Recibidos 27/10, en reserva:** códigos de falla del ECM **Cummins ISX CM871** (J1939 SPN/FMI; para el diccionario común S2 si el parque tiene ECM) · *Manual de aplicación de generadores enfriados por líquido* (diseño e instalación, sin fallas).
 
 **Excluido sin abrir (seguridad):** `Usuario_y_Contraseña_ZTE.pdf`.
 **Con credenciales adentro (leídos, credenciales NO copiadas):** manual de litio §7 (claves de las plantas), hoja CSU501B, guía CSU518B (claves SNMP/GPRS de fábrica).
