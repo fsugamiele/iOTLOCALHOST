@@ -370,11 +370,23 @@
             <td>
               <span v-if="!(row.limits || []).length" class="text-muted">—</span>
               <span v-for="(l, j) in row.limits" :key="j" class="badge badge-warning mr-1">
-                {{ l.kind }}: {{ OPERATOR_LABELS[l.op] || l.op }} {{ l.value }} {{ l.unit || '' }}
+                {{ l.kind }}: {{ OPERATOR_LABELS[l.op] || l.op }} {{ l.value }} {{ l.unit || '' }}<template v-if="l.texts"> · textos</template>
               </span>
             </td>
           </template>
         </base-table>
+        <!-- spec_textos_alarma_ficha (Qt1) — textos de la alarma de cada límite (lectura). -->
+        <template v-if="textosDetalle.length">
+          <h5 class="mt-3 mb-1">Textos de la alarma por límite</h5>
+          <div v-for="(t, k) in textosDetalle" :key="'tx' + k" class="ficha-tx mb-2">
+            <strong><code>{{ t.variable }}</code> · {{ t.kind }} {{ OPERATOR_LABELS[t.op] || t.op }} {{ t.value }} {{ t.unit || '' }}</strong>
+            <div v-if="t.texts.meaning"><small class="text-muted">Qué significa:</small> {{ t.texts.meaning }}</div>
+            <div v-if="t.texts.operatorAction"><small class="text-muted">Qué hacer:</small> {{ t.texts.operatorAction }}</div>
+            <ol v-if="(t.texts.steps || []).length" class="mb-0 pl-3"><li v-for="(x, i) in t.texts.steps" :key="i">{{ x }}</li></ol>
+            <small v-if="t.texts.source" class="text-muted d-block">Fuente: {{ t.texts.source }}</small>
+          </div>
+        </template>
+        <p v-else class="text-muted mt-2 mb-0"><small>Esta ficha no tiene textos de alarma cargados en sus límites.</small></p>
       </template>
       <div slot="footer">
         <base-button type="secondary" @click="detailModal = false">Cerrar</base-button>
@@ -485,6 +497,13 @@ export default {
     };
   },
   computed: {
+    textosDetalle() {
+      const out = [];
+      for (const v of ((this.detailSheet && this.detailSheet.variables) || [])) {
+        for (const l of (v.limits || [])) if (l.texts) out.push({ variable: v.name, kind: l.kind, op: l.op, value: l.value, unit: l.unit || v.unit, texts: l.texts });
+      }
+      return out;
+    },
     // Lectura global (D-1); escritura solo superadmin. El backend re-gatea
     // cada verbo (403) — esto es solo visibilidad de botones.
     isSuperadmin() {

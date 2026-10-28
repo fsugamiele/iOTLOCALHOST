@@ -515,7 +515,7 @@ export default {
       const own = String(this.model[k] || '').trim();
       return !!src && !!own && own !== String(src).trim();
     },
-    fichaVer(t) { return this.umb.txt ? String(t || '').replace(/\{umbral\}/g, this.umb.txt) : String(t || ''); },
+    fichaVer(t) { const u = (this.ficha && this.ficha.umbral) || this.umb.txt; return u ? String(t || '').replace(/\{umbral\}/g, u) : String(t || ''); },
     nombreTipo(t) { return deviceTypeName(t, this.sheets); },
     hdr() { return { headers: { token: this.$store.state.auth.token } }; },
     // La página pregunta antes de salir si hay cambios sin guardar.

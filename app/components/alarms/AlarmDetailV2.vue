@@ -329,7 +329,17 @@ export default {
 
     // ── 3 · Cómo solucionarlo ──
     recomendacion() { return this.regla ? String(this.regla.recommendation || '').replace(/\{umbral\}/g, this.umbralTxtGeneral) : ''; },
-    umbralTxtGeneral() { const c = (this.v2.conditions || [])[0]; const t = c && c.atFire && c.atFire.threshold; return typeof t === 'number' ? this.valor(t, c.meta) : 'el límite configurado'; },
+    // {umbral}: el de la condición del límite de ficha de donde salen los textos (ej. «Cargador caído»:
+    // la batería, no la red); si no, la medición propia de la regla; si no, la primera condición.
+    umbralTxtGeneral() {
+      const cs = this.v2.conditions || [];
+      const ref = this.regla && this.regla.textos && this.regla.textos.ref;
+      const c = (ref && cs.find(x => x.variable === ref.variable && (!x.deviceType || x.deviceType === ref.deviceType)))
+        || (this.regla && cs.find(x => x.variable === this.regla.variable && x.atFire && typeof x.atFire.threshold === 'number'))
+        || cs[0];
+      const t = c && c.atFire && c.atFire.threshold;
+      return typeof t === 'number' ? this.valor(t, c.meta) : 'el límite configurado';
+    },
     pasos() {
       const steps = (this.regla && this.regla.steps) || [];
       const done = new Map((this.v2.stepsDone || []).map(x => [x.i, x]));

@@ -78,7 +78,10 @@ export function fichaTexts(rule, sheets) {
   const cands = v ? (v.limits || []).filter(l => l.kind === ref.c.limitRef && (!ref.c.op || dir.includes(l.op))) : [];
   const t = cands.length === 1 ? cands[0].texts : null;
   if (!t || !(t.meaning || t.operatorAction || (t.steps || []).length)) return null;
-  return { meaning: t.meaning || '', operatorAction: t.operatorAction || '', steps: (t.steps || []).filter(Boolean), source: t.source || '' };
+  // {umbral} de estos textos = el valor de ESTE límite (no el de otra condición de la regla).
+  const lv = cands[0].value, lu = cands[0].unit || (v && v.unit) || '';
+  const umbral = typeof lv === 'number' ? `${String(Math.round(lv * 100) / 100).replace('.', ',')}${lu ? (lu === '%' ? ' %' : ` ${lu}`) : ''}` : '';
+  return { meaning: t.meaning || '', operatorAction: t.operatorAction || '', steps: (t.steps || []).filter(Boolean), source: t.source || '', umbral };
 }
 function condValueText(c, deviceType, variable, sheets, unit) {
   if (!c || !c.limitRef) return c ? c.value : '';
