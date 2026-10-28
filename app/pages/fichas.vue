@@ -380,9 +380,9 @@
           <h5 class="mt-3 mb-1">Textos de la alarma por límite</h5>
           <div v-for="(t, k) in textosDetalle" :key="'tx' + k" class="ficha-tx mb-2">
             <strong><code>{{ t.variable }}</code> · {{ t.kind }} {{ OPERATOR_LABELS[t.op] || t.op }} {{ t.value }} {{ t.unit || '' }}</strong>
-            <div v-if="t.texts.meaning"><small class="text-muted">Qué significa:</small> {{ t.texts.meaning }}</div>
-            <div v-if="t.texts.operatorAction"><small class="text-muted">Qué hacer:</small> {{ t.texts.operatorAction }}</div>
-            <ol v-if="(t.texts.steps || []).length" class="mb-0 pl-3"><li v-for="(x, i) in t.texts.steps" :key="i">{{ x }}</li></ol>
+            <div v-if="t.texts.meaning"><small class="text-muted">Qué significa:</small> {{ conUmbral(t.texts.meaning, t) }}</div>
+            <div v-if="t.texts.operatorAction"><small class="text-muted">Qué hacer:</small> {{ conUmbral(t.texts.operatorAction, t) }}</div>
+            <ol v-if="(t.texts.steps || []).length" class="mb-0 pl-3"><li v-for="(x, i) in t.texts.steps" :key="i">{{ conUmbral(x, t) }}</li></ol>
             <small v-if="t.texts.source" class="text-muted d-block">Fuente: {{ t.texts.source }}</small>
           </div>
         </template>
@@ -719,6 +719,14 @@ export default {
       this.newSheet.variables.push({
         name: '', label: '', type: 'number', unit: '', factoryRange: '', cadence: '', deadband: null, limits: [],
       });
+    },
+    // {umbral} en la vista de la ficha = el valor de ESE límite con su unidad.
+    conUmbral(txt, t) {
+      if (typeof txt !== 'string' || !txt.includes('{umbral}')) return txt;
+      const v = Number(t.value);
+      if (t.value === '' || t.value == null || isNaN(v)) return txt.replace(/\{umbral\}/g, 'el umbral');
+      const u = t.unit ? (t.unit === '%' ? ' %' : ` ${t.unit}`) : '';
+      return txt.replace(/\{umbral\}/g, `${String(Math.round(v * 100) / 100).replace('.', ',')}${u}`);
     },
     textsResumen(t) {
       if (!t) return '';
