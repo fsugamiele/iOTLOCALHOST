@@ -1,5 +1,5 @@
 {
- "_doc": "spec_textos_alarma_ficha T4 (2026-10-28) — textos propios de las reglas que no heredan de la ficha. Se aplica con tools/textos_reglas.js --apply --sobrescribir: solo se tocan los campos presentes. Reemplazan textos existentes de baja calidad: cummins-pcc-sifoneo-divergencia, cummins-pcc-baseline-fuel-efficiency, cat-GE-16, cat-CB-05, GEN-sifoneo-motor-apagado",
+ "_doc": "spec_textos_alarma_ficha T4 (2026-10-28) — textos propios de las reglas que no heredan de la ficha. Se aplica con tools/textos_reglas.js --apply --sobrescribir: solo se tocan los campos presentes. Reemplazan textos existentes de baja calidad: cummins-pcc-sifoneo-divergencia, cummins-pcc-baseline-fuel-efficiency, cat-GE-16, cat-CB-05, GEN-sifoneo-motor-apagado · Nombres corregidos (mayúsculas, acentos): cummins-pcc-proyeccion-cumm-gasoil, GEN-proyeccion-gasoil, cummins-C1-mains-loss-gen-no-start, cat-GE-08, cummins-pcc-baseline-coolant-temp, cummins-pcc-accel-coolant-temp, cummins-pcc-baseline-fuel-efficiency, eltek-baseline-temperature, eltek-accel-dc-bus-voltage, gen-baseline-exhaust-temp, GEN-sifoneo-motor-apagado, cat-TR-04",
  "cummins-M1-mains-loss": {
   "meaning": "El sitio se quedó sin red eléctrica (menos de 100 V en el ATS): pasa a grupo electrógeno o a baterías.",
   "steps": [
@@ -17,7 +17,8 @@
    "Revisar alarmas activas del grupo (falla de arranque, no en automático, combustible)",
    "Despachar técnico al grupo o grupo móvil según la autonomía",
    "En sitio: verificar modo AUTO, combustible y batería de arranque"
-  ]
+  ],
+  "label": "Corte de energía sostenido sin arranque del grupo"
  },
  "cummins-pcc-proyeccion-cumm-gasoil": {
   "recommendation": "El gasoil va a llegar al 25 % en menos de 8 horas: programar la recarga.",
@@ -26,7 +27,8 @@
    "Ver el nivel actual y el consumo en el detalle",
    "Programar la recarga de combustible",
    "Si hay corte de red en curso, priorizar la carga"
-  ]
+  ],
+  "label": "Proyección de gasoil (Cummins)"
  },
  "cummins-pcc-baseline-coolant-temp": {
   "meaning": "La temperatura del refrigerante se apartó más de 3 °C de lo habitual para este grupo con el motor por debajo de la velocidad nominal: señal temprana, todavía lejos del límite.",
@@ -34,7 +36,8 @@
    "Comparar con la temperatura ambiente y la carga del momento",
    "Ver si se repite en los próximos días",
    "En el próximo ingreso: revisar nivel de refrigerante, radiador y termostato"
-  ]
+  ],
+  "label": "Temperatura de refrigerante fuera de lo normal"
  },
  "cummins-pcc-accel-coolant-temp": {
   "meaning": "Con el grupo en marcha, el refrigerante se calienta cada vez más rápido: puede haber una falla de refrigeración en curso.",
@@ -42,7 +45,8 @@
    "Ver cuánto falta para la temperatura de parada en el detalle",
    "Reducir la carga del grupo si la planta lo permite",
    "Despachar técnico: radiador, ventilador, correa y nivel de refrigerante"
-  ]
+  ],
+  "label": "Temperatura de refrigerante: sube cada vez más rápido"
  },
  "cummins-pcc-oil-life": {
   "meaning": "El aceite acumuló las horas de uso de su intervalo de cambio (las horas pesan más cuando el motor trabaja caliente y a más velocidad).",
@@ -75,7 +79,8 @@
    "Comparar con la carga del grupo en ese momento",
    "Ver si se repite en los próximos arranques",
    "Si persiste: programar revisión de filtros e inyectores"
-  ]
+  ],
+  "label": "Eficiencia de combustible fuera de lo normal"
  },
  "cat-GE-16": {
   "recommendation": "Revisar el mazo CAN y la alimentación de la electrónica del motor.",
@@ -151,7 +156,8 @@
    "Esperar el tiempo de retorno de red del ATS (20 s de fábrica) más el enfriamiento",
    "Verificar si el ATS está en modo TEST o MAN",
    "Si sigue: revisar el tablero de transferencia y la señal de parada del grupo"
-  ]
+  ],
+  "label": "Grupo en marcha con retorno de red"
  },
  "cat-TR-09": {
   "recommendation": "Despacho prioritario con grupo móvil: el sitio vive de baterías y está descargando.",
@@ -187,7 +193,8 @@
    "Comparar con la temperatura ambiente y el estado del aire acondicionado",
    "Ver si se repite en los próximos días",
    "En el próximo ingreso: revisar climatización y ventilación"
-  ]
+  ],
+  "label": "Temperatura del sistema fuera de lo normal"
  },
  "eltek-accel-dc-bus-voltage": {
   "meaning": "La tensión del bus de −48 V cae cada vez más rápido: las baterías se descargan de forma acelerada.",
@@ -196,7 +203,8 @@
    "Ver el tiempo hasta el corte en el detalle",
    "Revisar si aumentó la carga del sitio",
    "Si hay red: revisar los rectificadores"
-  ]
+  ],
+  "label": "Tensión DC: cae cada vez más rápido"
  },
  "cat-DC-03": {
   "recommendation": "Despacho prioritario: la planta DC desconecta en menos de 2 horas.",
@@ -243,7 +251,8 @@
    "Ver el nivel actual y el consumo en el detalle",
    "Programar la recarga de combustible",
    "Si hay corte de red en curso, priorizar la carga"
-  ]
+  ],
+  "label": "Proyección de gasoil"
  },
  "gen-baseline-exhaust-temp": {
   "meaning": "Con el grupo en marcha, la temperatura de escape se apartó más de 3 °C de lo habitual para este equipo: señal temprana, todavía lejos del límite.",
@@ -251,7 +260,8 @@
    "Comparar con la carga del grupo en ese momento",
    "Ver si se repite en los próximos arranques",
    "En el próximo mantenimiento: filtro de aire e inyectores"
-  ]
+  ],
+  "label": "Temperatura de escape fuera de lo normal"
  },
  "gen-sifoneo-divergencia": {
   "meaning": "Con el grupo apagado, el nivel del tanque bajó más de lo esperable: posible robo de combustible o fuga.",
@@ -322,7 +332,8 @@
    "Revisar si hubo ingreso al sitio",
    "Despachar verificación: medir el tanque y buscar fugas",
    "Si se confirma faltante: hacer el informe"
-  ]
+  ],
+  "label": "Sifoneo con motor apagado"
  },
  "cat-MO-01-sec": {
   "recommendation": "Revisar el enlace y la alimentación del equipo que dejó de reportar.",
@@ -351,5 +362,8 @@
    "En sitio: nivel de refrigerante (motor frío), radiador, persianas y correa del ventilador",
    "Si no baja en 5 minutos con carga reducida: detener el motor"
   ]
+ },
+ "cat-GE-08": {
+  "label": "Marcha inestable (oscilación)"
  }
 }

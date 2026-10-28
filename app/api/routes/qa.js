@@ -822,6 +822,29 @@ router.put("/qa/config", checkAuth, async (req, res) => {
   }
 });
 
+// spec_textos_alarma_ficha T6 (Qt6) — reglas críticas y de advertencia sin alguno de sus textos
+// DESPUÉS de la herencia de la ficha. Se calcula al momento (barato: solo lee packs y fichas).
+router.get("/qa/rule-texts", checkAuth, async (req, res) => {
+  if (denySiNoSuperadmin(req, res)) return;
+  try {
+    const packs = await RulePack.find({}).lean();
+    await resolvePacksForRead(packs, _db());
+    const vac = (v) => v == null || (Array.isArray(v) ? !v.filter(Boolean).length : String(v).trim() === '');
+    const NOMBRE = { meaning: 'Qué significa', recommendation: 'Qué hacer', steps: 'Pasos a seguir' };
+    const faltan = [];
+    let revisadas = 0;
+    for (const p of packs) for (const r of (p.rules || [])) {
+      if (r.enabled === false || !['critical', 'warning'].includes(r.severity)) continue;
+      revisadas++;
+      const f = Object.keys(NOMBRE).filter((k) => vac(r[k]));
+      if (f.length) faltan.push({ ruleId: r.ruleId, packId: p.packId, label: r.label, severity: r.severity, faltan: f.map((k) => NOMBRE[k]) });
+    }
+    return res.json({ status: "success", data: { revisadas, faltan } });
+  } catch (error) {
+    return res.status(500).json({ status: "error", error: error.message || error });
+  }
+});
+
 // ── R2 — calidad de las reglas (30 días reproducidos con el motor completo) ──
 const RuleQualitySnapshot = require("../models/rule_quality_snapshot.js");
 router.get("/qa/rule-quality", checkAuth, async (req, res) => {

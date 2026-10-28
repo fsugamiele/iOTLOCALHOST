@@ -71,7 +71,7 @@ function cond(n) {
     let cambios = 0;
     for (const r of rules) {
       const t = textos[r.ruleId]; if (!t) continue;
-      for (const k of ['eventClass', 'recommendation', 'meaning', 'steps']) {
+      for (const k of ['label', 'eventClass', 'recommendation', 'meaning', 'steps']) {
         if (t[k] == null || (!SOBRE && !vacio(r[k]))) continue;
         const nuevo = k === 'steps' ? t.steps.slice(0, 12) : t[k];
         if (JSON.stringify(r[k]) === JSON.stringify(nuevo)) continue;

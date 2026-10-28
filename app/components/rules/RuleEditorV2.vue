@@ -258,18 +258,21 @@
               <span v-if="heredado('reco')" class="rv2-hint rv2-ficha">● de la ficha: {{ fichaVer(ficha.operatorAction) }}</span>
               <span v-else-if="pisado('reco')" class="rv2-hint rv2-pisa">Estás reemplazando un texto predefinido de la ficha. <a href="#" @click.prevent="model.reco = ''">Volver a la ficha</a></span>
             </div>
-            <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-sig">Qué significa esta alarma <span class="rv2-hint">(opcional)</span></label>
+            <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-sig">Qué significa esta alarma <span class="rv2-hint">{{ model.gravedad === 'info' ? '(opcional)' : '' }}</span></label>
               <input id="rv2-sig" v-model="model.significa" class="rv2-in" maxlength="200" :placeholder="ficha && ficha.meaning ? fichaVer(ficha.meaning) : 'Ej.: El sitio está con baterías y el grupo electrógeno no arrancó.'">
               <span v-if="heredado('significa')" class="rv2-hint rv2-ficha">● de la ficha: {{ fichaVer(ficha.meaning) }}</span>
               <span v-else-if="pisado('significa')" class="rv2-hint rv2-pisa">Estás reemplazando un texto predefinido de la ficha. <a href="#" @click.prevent="model.significa = ''">Volver a la ficha</a></span>
               <span class="rv2-hint">Es la primera frase que lee el operador en el detalle de la alarma. Si la dejás vacía, se usa {{ ficha && ficha.meaning ? 'la de la ficha del equipo' : 'el nombre de la regla' }}.</span>
             </div>
-            <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-pasos">Pasos a seguir <span class="rv2-hint">(opcional · uno por renglón)</span></label>
+            <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-pasos">Pasos a seguir <span class="rv2-hint">({{ model.gravedad === 'info' ? 'opcional · ' : '' }}uno por renglón)</span></label>
               <textarea id="rv2-pasos" v-model="model.pasos" class="rv2-in" rows="4" placeholder="Llamar al técnico de guardia de la zona&#10;Confirmar con el NOC si el corte es de la distribuidora&#10;Revisar el grupo e intentar arranque manual"></textarea>
               <span v-if="heredado('pasos')" class="rv2-hint rv2-ficha">● de la ficha:<ol class="rv2-ficha__l"><li v-for="(x, i) in ficha.steps" :key="i">{{ fichaVer(x) }}</li></ol></span>
               <span v-else-if="pisado('pasos')" class="rv2-hint rv2-pisa">Estás reemplazando los pasos predefinidos de la ficha. <a href="#" @click.prevent="model.pasos = ''">Volver a la ficha</a></span>
               <span class="rv2-hint">En el detalle de la alarma se muestran como una lista para ir tildando; queda registrado quién hizo cada paso.</span>
               <span v-if="ficha && ficha.source" class="rv2-hint">Fuente de los textos de la ficha: {{ ficha.source }}</span>
+            </div>
+            <div v-if="textosFaltan.length" class="rv2-fld rv2-pisa" style="margin-top: 10px;" role="alert">
+              Una alarma {{ model.gravedad === 'critical' ? 'crítica' : 'de advertencia' }} necesita sus textos para que el operador sepa qué hacer. Falta: {{ textosFaltan.join(', ') }}.
             </div>
           </div></div>
         </div>
@@ -413,7 +416,18 @@ export default {
     nMetricas() { return this.model.conds.filter((c) => !['valor', 'limite'].includes(c.medida)).length; },
     contador() { return `${this.model.conds.length} de 8 condiciones · ${this.nMetricas} de 3 que miran cómo evoluciona la medición`; },
     simulable() { return this.model.conds.every((c) => !condProblem(c)); },
-    canSave() { return !!this.model.nombre.trim() && this.simulable && !this.excede; },
+    canSave() { return !!this.model.nombre.trim() && this.simulable && !this.excede && !this.textosFaltan.length; },
+    // spec_textos_alarma_ficha T6 (Qt6) — crítica y advertencia necesitan los tres textos; cuenta lo
+    // que trae la ficha (si la ficha ya lo trae, no hay que escribir nada).
+    textosFaltan() {
+      if (!['critical', 'warning'].includes(this.model.gravedad)) return [];
+      const f = this.ficha || {};
+      const out = [];
+      if (!String(this.model.significa || '').trim() && !f.meaning) out.push('Qué significa esta alarma');
+      if (!String(this.model.reco || '').trim() && !f.operatorAction) out.push('Qué tiene que hacer el operador');
+      if (!String(this.model.pasos || '').trim() && !(f.steps || []).length) out.push('Pasos a seguir');
+      return out;
+    },
     resumen() {
       const g = { info: 'informativa', warning: 'de advertencia', critical: 'crítica' }[this.model.gravedad];
       const u = this.model.union === 'todas' ? 'y' : 'o';

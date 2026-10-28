@@ -14,6 +14,21 @@
       </div>
       <div class="qv-row"><button type="button" class="qv-btn qv-btn--sec" :disabled="recalculando" @click="$emit('recalcular')">{{ recalculando ? 'Recalculando… (≈ 25 min)' : 'Recalcular ahora' }}</button></div>
     </div>
+    <!-- spec_textos_alarma_ficha T6 — reglas críticas / de advertencia sin textos (después de la herencia). -->
+    <div class="qv-card" v-if="txt">
+      <div class="qv-row qv-between">
+        <h3 class="qv-h">Textos de las alarmas</h3>
+        <span class="qv-mut qv-small">{{ txt.revisadas }} reglas críticas y de advertencia revisadas</span>
+      </div>
+      <p v-if="!txt.faltan.length" class="qv-small qv-ok-txt">✓ Todas tienen «Qué significa», «Qué hacer» y «Pasos a seguir» (propios o de la ficha).</p>
+      <template v-else>
+        <p class="qv-note">{{ txt.faltan.length }} regla(s) sin algún texto: el operador no va a tener la guía completa en el detalle de la alarma.</p>
+        <div v-for="f in txt.faltan" :key="'tx' + f.ruleId" class="qv-row qv-between" style="border-top:1px solid #e2e8f0;padding:6px 0">
+          <span class="qv-small"><b>{{ f.label }}</b> · {{ sevTxt(f.severity) }} · <span class="qv-num">{{ f.ruleId }}</span><br>falta: {{ f.faltan.join(', ') }}</span>
+          <button type="button" class="qv-btn qv-btn--sec" @click="editor(f)">Completar en el editor</button>
+        </div>
+      </template>
+    </div>
     <article v-for="r in visibles" :key="r.ruleId" class="qv-rule">
       <div class="qv-rule__stripe" :class="'qv-' + V(r).cls"></div>
       <div class="qv-rule__body">
@@ -42,7 +57,13 @@ import { fmt, fechaLarga, VEREDICTOS } from './qaFormat';
 export default {
   name: 'QaReglas',
   props: { rq: { type: Object, default: null }, error: { type: String, default: '' }, recalculando: { type: Boolean, default: false } },
-  data: () => ({ filtro: 'atender', aplicando: null, aplicadas: {} }),
+  data: () => ({ filtro: 'atender', aplicando: null, aplicadas: {}, txt: null }),
+  async mounted() {
+    try {
+      const r = await this.$axios.get('/qa/rule-texts', { headers: { token: this.$store.state.auth.token } });
+      this.txt = (r.data && r.data.data) || null;
+    } catch (e) { this.txt = null; }
+  },
   computed: {
     reglas() { return (this.rq && this.rq.reglas) || []; },
     chips() {
