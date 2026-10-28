@@ -1,0 +1,61 @@
+{
+ "equipo": "Bancos de baterías LiFePO4 48 V 150 Ah (Huawei ESM-48150B1, Shoto SDA10-48150, ZTE ZXDC48 FB150C1)",
+ "fuente": {
+  "doc": "Manual instaladores BB litio v1, AMX Argentina (Claro), 2024"
+ },
+ "plantaClaro": {
+  "floteHuawei": 54,
+  "floteShotoZTE": 52.5,
+  "ecualizacion": "deshabilitada",
+  "compTemp": "deshabilitada",
+  "limiteRecargaPct": 10,
+  "alarmaBajaV": 50,
+  "alarmaMuyBajaV": 46.5,
+  "LVLD": {
+   "V": 41,
+   "reconexionV": 43,
+   "porPlanta": 40
+  },
+  "LVBD": {
+   "V": 40,
+   "reconexionV": 42
+  },
+  "corteNoEsencialesSOC": 20,
+  "alarmaSOCLiberaShoto": 35
+ },
+ "autonomiaMin": {
+  "corrienteA": [
+   15,
+   30,
+   45,
+   60,
+   75,
+   90,
+   100.5
+  ],
+  "total": [
+   618,
+   306,
+   200.4,
+   148.2,
+   117,
+   97.2,
+   81.6
+  ],
+  "hastaSOC20": [
+   494.4,
+   244.8,
+   160.32,
+   118.56,
+   93.6,
+   77.76,
+   65.28
+  ]
+ },
+ "propuestas": [
+  "L1 tecnología de batería por sitio",
+  "L2 leer SOC/alarmas del BMS",
+  "L3 riesgo concentrador alimentado de la misma planta"
+ ],
+ "noCopiado": "contraseñas y direcciones de acceso de las plantas"
+}

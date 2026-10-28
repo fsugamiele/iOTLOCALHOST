@@ -1,0 +1,55 @@
+{
+ "equipo": "ZTE ZXDU CSU518B/513B/501B",
+ "ficha": null,
+ "fuente": {
+  "doc": "Guía de usuario CSU518B & 513B configuración de baterías y comunicación 2016-03-20 (es)"
+ },
+ "falta": [
+  "lista de alarmas de la CSU"
+ ],
+ "defaults": {
+  "flote": 53.5,
+  "ecualizacion": 56.4,
+  "ecualizacionPeriodoDias": 90,
+  "corrienteCargaC10": 0.15,
+  "pruebaFinV": 46.0,
+  "pruebaFinCapC10": 0.65,
+  "pruebaMaxH": 8,
+  "deteccionBateriaDias": 30,
+  "LLVD1": {
+   "habilitado": true,
+   "V": 45.0,
+   "min": 300,
+   "capC10": 0.6
+  },
+  "LLVD2": {
+   "habilitado": false,
+   "V": 44.0,
+   "min": 600
+  },
+  "BLVD": {
+   "habilitado": true,
+   "V": 44.0,
+   "min": 600
+  },
+  "LLTD": {
+   "habilitado": false,
+   "C": -15
+  },
+  "BHTD": {
+   "habilitado": false,
+   "C": 50
+  },
+  "BLTD": {
+   "habilitado": false,
+   "C": -15
+  },
+  "litio": {
+   "cargaV": 54,
+   "inicioCargaSOC": 80,
+   "corrienteC10": 0.32,
+   "maxMin": 900
+  }
+ },
+ "noCopiado": "contraseñas y claves de fábrica"
+}

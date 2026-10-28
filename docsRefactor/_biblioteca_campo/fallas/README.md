@@ -20,8 +20,8 @@
 | **ComAp InteliGen / InteliSys NT** | *Communication Guide* IGS-NT 04-2015 (comunicación, no alarmas) · hoja de datos InteliLite NT MRS16 | ○ referencia de driver. **Falta:** *Reference Guide* IL-NT / IG-NT (alarmas) si aparecen en el parque |
 | **Vertiv NetSure NCU M830B/D** (sin ficha aún) | Manual del usuario 11 YG 5020 NR Rev. D (208 pp.) | ✅ **Hecho** — `vertiv_netsure_ncu.md`: niveles de alarma, **valores de fábrica de batería** (flote 53,5 · sobretensión 58,5 · subtensión 42 V), **alarmas con acción correctiva del fabricante**. **Falta:** esquema C por sitio (LVD, umbrales de red). Propuestas V1–V3 |
 | **Eaton SC200** (sin ficha aún) | Manual de la operación IPN 997-00012-61A (95 pp.) | ✅ **Hecho** — `eaton_sc200.md`: 36 alarmas del glosario con qué hacer, LVD, resolución de problemas. **Sin valores de fábrica** (vienen en el archivo de configuración de cada equipo). Propuestas E1–E2 |
-| **ZTE ZXDU CSU518B / 513B · CSU501B** | Guía de configuración de baterías y comunicación · hoja de parámetros CSU501B | ⏳ a procesar (parámetros de batería). **Falta:** lista de alarmas de la CSU |
-| **Bancos de baterías de litio (ZTE / Huawei)** | Manual de instaladores BB litio V1 (71 pp.) | ⏳ a procesar — tabla de alarmas y protecciones del BMS |
+| **ZTE ZXDU CSU518B / 513B · CSU501B** (sin ficha aún) | Guía de configuración de baterías y comunicación (2016, 36 pp.) · hoja CSU501B | ✅ **Hecho (parcial)** — `zte_csu518b.md`: predeterminados de flote, ecualización, prueba, **LLVD1 45 V · BLVD 44 V**, desconexión por temperatura. **Falta:** lista de alarmas de la CSU |
+| **Bancos de baterías de litio** (Huawei ESM-48150B1 · Shoto SDA10-48150 · ZTE ZXDC48 FB150C1) | Manual de instaladores BB litio V1 — **Claro / AMX Argentina** (72 pp.) | ✅ **Hecho** — `baterias_litio_claro.md`: **valores que Claro programa con litio** (flote 52,5/54 V, alarma 50 V y 46,5 V, LVD 40 V, corte por SOC 20 %), ajuste en 6 plantas, autonomía, estados del BMS. **Hallazgo:** los umbrales DC de Wanomi son de plomo-ácido → propuesta L1 |
 | **Grupo SDMO / Kohler R44 · controlador TELYS / NEXYS** (sitio Monte Ralo; motores John Deere / Perkins) | Manual de uso y mantenimiento 33501732001NE_2_1 (268 pp.) | ⏳ a procesar — alarmas y fallos por pictograma |
 | **Grupo FG Wilson serie P · PowerWizard** | Manual de operación y mantenimiento 356-5902 v15 (81 pp.) | ⏳ a procesar — lista de alarmas PowerWizard |
 | Cummins grupo marino MDDC (0981-0172) | Manual del operador | ○ referencia (no es el parque telco) |
@@ -31,6 +31,7 @@
 **Recibidos 27/10, a procesar:** códigos de falla del ECM **Cummins ISX CM871** (J1939 SPN/FMI; confirmar que el motor del parque tenga ECM) · *Manual de aplicación de generadores enfriados por líquido* (diseño e instalación, sin fallas).
 
 **Excluido sin abrir (seguridad):** `Usuario_y_Contraseña_ZTE.pdf`.
+**Con credenciales adentro (leídos, credenciales NO copiadas):** manual de litio §7 (claves de las plantas), hoja CSU501B, guía CSU518B (claves SNMP/GPRS de fábrica).
 
 ## Manuales que faltan (a conseguir de fuentes oficiales)
 | Equipo | Documento | Para qué |
@@ -38,6 +39,7 @@
 | Eltek Smartpack S | 350020.073 *Functionality Description* | valores por defecto de alarmas y LVD (hoy PROVISORIOS) |
 | Cummins PCC 1302 | mapa de registros Modbus | driver (sigue faltando; Franco tiene cuenta Cummins) |
 | Eaton SC200 | archivo de configuración DCTools del sitio | umbrales reales |
+| ZTE CSU | manual de usuario completo (capítulo de alarmas) | lista de alarmas |
 | Vertiv NCU | Esquema de configuración (esquema C) del sitio | valores de fábrica de LVD, red y gravedad |
 | Delta (power plant) · DSE (grupos) | manuales de controlador | están en el informe de marcas de Claro; no hay documentos |
 | John Deere / Perkins | códigos de falla del motor (SPN/FMI) | si el driver lee el ECM de esos motores |
