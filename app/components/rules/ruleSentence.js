@@ -53,6 +53,29 @@ export function resolveCondValue(c, deviceType, variable, sheets) {
   const lim = v && (v.limits || []).find(l => l.kind === c.limitRef && dir.includes(l.op));
   return lim ? lim.value : undefined;
 }
+// spec_textos_alarma_ficha (Qt3) — textos del límite PRINCIPAL de la regla en la ficha
+// (espejo de mainLimitRef/limitTexts de api/services/limitRef.js): la condición D, o en una
+// combinada la hoja con umbral de ficha sobre la medición propia (si no, la primera).
+export function fichaTexts(rule, sheets) {
+  if (!rule) return null;
+  let ref = null;
+  if (rule.condition && rule.condition.limitRef) ref = { deviceType: rule.deviceType, variable: rule.variable, c: rule.condition };
+  else if (rule.crossExpr) {
+    const leaves = [];
+    const walk = (n) => { if (!n) return; if (Array.isArray(n.children)) n.children.forEach(walk); else if (n.condition && n.condition.limitRef && n.deviceType) leaves.push(n); };
+    walk(rule.crossExpr);
+    const own = leaves.find(l => l.variable === rule.variable) || leaves[0];
+    if (own) ref = { deviceType: own.deviceType, variable: own.variable, c: own.condition };
+  }
+  if (!ref) return null;
+  const sh = (sheets || []).find(s => s.deviceType === ref.deviceType);
+  const v = sh && (sh.variables || []).find(x => x.name === ref.variable);
+  const dir = ['lt', 'lte'].includes(ref.c.op) ? ['lt', 'lte'] : ['gt', 'gte'].includes(ref.c.op) ? ['gt', 'gte'] : [ref.c.op];
+  const cands = v ? (v.limits || []).filter(l => l.kind === ref.c.limitRef && (!ref.c.op || dir.includes(l.op))) : [];
+  const t = cands.length === 1 ? cands[0].texts : null;
+  if (!t || !(t.meaning || t.operatorAction || (t.steps || []).length)) return null;
+  return { meaning: t.meaning || '', operatorAction: t.operatorAction || '', steps: (t.steps || []).filter(Boolean), source: t.source || '' };
+}
 function condValueText(c, deviceType, variable, sheets, unit) {
   if (!c || !c.limitRef) return c ? c.value : '';
   const val = resolveCondValue(c, deviceType, variable, sheets);

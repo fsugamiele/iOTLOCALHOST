@@ -6,6 +6,7 @@ const { checkAuth } = require("../middlewares/authentication.js");
 const { buildReadFilter, buildWriteFilter } = require("../middlewares/scope.js");
 const colors = require("colors");
 const { hasAccumulatorLeaf, instanceKey } = require("../services/combinedRule.js");   // spec_reglas_compuestas
+const { mainLimitRef, inheritTexts } = require("../services/limitRef.js");   // spec_textos_alarma_ficha (Qt3)
 
 import AlarmRule from "../models/emqx_alarm_rule.js";
 import Notification from "../models/notifications.js";
@@ -1091,9 +1092,22 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
 
   // Regla: solo lo que la pantalla necesita (los textos y cómo cierra).
   const r = ruleRaw || {};
+  // spec_textos_alarma_ficha (Qt3) — los textos vacíos se leen del límite principal de la ficha.
+  let tx = null;
+  if (ruleRaw) {
+    const ref = mainLimitRef(ruleRaw);
+    if (ref) {
+      const sh = await db.collection('equipmentsheets').findOne({ deviceType: ref.deviceType }, { projection: { deviceType: 1, variables: 1 } });
+      if (sh) {
+        tx = inheritTexts({ meaning: r.meaning, recommendation: r.recommendation, steps: r.steps, condition: ruleRaw.condition, crossExpr: ruleRaw.crossExpr,
+          type: ruleRaw.type, deviceType: ruleRaw.deviceType, variable: ruleRaw.variable }, new Map([[sh.deviceType, sh]]));
+      }
+    }
+  }
+  const txt = tx || r;
   const rule = ruleRaw ? {
-    label: r.label, meaning: r.meaning || '', steps: Array.isArray(r.steps) ? r.steps.filter(Boolean) : [],
-    recommendation: r.recommendation || '', severity: r.severity, type: r.type, metric: r.metric || null,
+    label: r.label, meaning: txt.meaning || '', steps: Array.isArray(txt.steps) ? txt.steps.filter(Boolean) : [],
+    recommendation: txt.recommendation || '', textos: tx ? tx._textos : null, severity: r.severity, type: r.type, metric: r.metric || null,
     deviceType: r.deviceType, variable: r.variable, unit: r.unit || null, condition: r.condition || null,
     crossExpr: r.crossExpr || null, scope: r.scope || null, window: r.window || null, mParams: r.mParams || null,
     mWindow: r.mWindow || null, graceSec: r.graceSec || 0, resolveGraceSec: r.resolveGraceSec || 0,

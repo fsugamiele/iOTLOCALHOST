@@ -2,6 +2,18 @@ import mongoose from 'mongoose';
 const { OPERATORS } = require('./rule_definition');   // D-3: fuente única (hermano, no '../models/...')
 const Schema = mongoose.Schema;
 
+// spec_textos_alarma_ficha (Qt1, firmado 2026-10-27) — textos de la alarma POR LÍMITE
+// (atención ≠ parada). Las reglas cuya condición principal usa este límite (limitRef) los
+// LEEN cuando su campo está vacío (Qt3: herencia en la lectura, sin copia). Fuente: la
+// biblioteca de fallas (docsRefactor/_biblioteca_campo/fallas/).
+const LimitTextsSchema = new Schema({
+  meaning:        { type: String },             // «Qué significa esta alarma»
+  operatorAction: { type: String },             // «Qué tiene que hacer el operador» (→ recommendation)
+  steps:          { type: [String], default: undefined },  // «Pasos a seguir» (primero remoto, después en sitio)
+  causes:         { type: [String], default: undefined },  // causas probables en el orden del fabricante
+  source:         { type: String },             // documento, edición y página
+}, { _id: false });
+
 const LimitSchema = new Schema({
   kind:   { type: String, enum: ['warning', 'trip'], required: true },  // enum cerrado (DEC-REF-94)
   op:     { type: String, enum: OPERATORS },                            // atado al enum compartido (Franco)
@@ -17,6 +29,7 @@ const LimitSchema = new Schema({
   // battery_nominal_v = 24 el umbral efectivo es value × 24/12. Sin el parámetro
   // cargado en el equipo se usa `base` (decisión Franco 2026-10-14).
   relativeTo: { type: Schema.Types.Mixed },
+  texts:      { type: LimitTextsSchema, default: undefined },
 }, { _id: false });
 
 const VariableSchema = new Schema({

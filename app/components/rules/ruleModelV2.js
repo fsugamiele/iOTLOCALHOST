@@ -159,6 +159,7 @@ export function modelToRule(model, { pack, existing, editingIndex, isBoolVar }) 
   const simple = model.alcance === 'equipo' && model.conds.length === 1 && model.conds[0].equipos.length === 1 && model.conds[0].equipos[0] === 'este';
   const base = existing ? JSON.parse(JSON.stringify(existing)) : {};
   delete base._id;
+  delete base._textos;   // marca de lectura (textos heredados de la ficha): nunca se guarda
   for (const f of ['condition', 'crossExpr', 'scope', 'setpointSource', 'fallbackToD', 'metric', 'mWindow', 'mParams', 'inputs', 'window']) delete base[f];
   const r = Object.assign(base, {
     ruleId: existing ? existing.ruleId : genRuleId(pack, packType, model.nombre, editingIndex),

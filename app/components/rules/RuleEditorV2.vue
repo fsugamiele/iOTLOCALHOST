@@ -254,15 +254,22 @@
               </select>
             </div>
             <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-rec">Qué tiene que hacer el operador</label>
-              <textarea id="rv2-rec" v-model="model.reco" class="rv2-in" rows="3" placeholder="Ej.: Despachar técnico con grupo portátil y verificar el arranque del grupo"></textarea>
+              <textarea id="rv2-rec" v-model="model.reco" class="rv2-in" rows="3" :placeholder="ficha && ficha.operatorAction ? fichaVer(ficha.operatorAction) : 'Ej.: Despachar técnico con grupo portátil y verificar el arranque del grupo'"></textarea>
+              <span v-if="heredado('reco')" class="rv2-hint rv2-ficha">● de la ficha: {{ fichaVer(ficha.operatorAction) }}</span>
+              <span v-else-if="pisado('reco')" class="rv2-hint rv2-pisa">Estás reemplazando un texto predefinido de la ficha. <a href="#" @click.prevent="model.reco = ''">Volver a la ficha</a></span>
             </div>
             <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-sig">Qué significa esta alarma <span class="rv2-hint">(opcional)</span></label>
-              <input id="rv2-sig" v-model="model.significa" class="rv2-in" maxlength="200" placeholder="Ej.: El sitio está con baterías y el grupo electrógeno no arrancó.">
-              <span class="rv2-hint">Es la primera frase que lee el operador en el detalle de la alarma. Si la dejás vacía, se usa el nombre de la regla.</span>
+              <input id="rv2-sig" v-model="model.significa" class="rv2-in" maxlength="200" :placeholder="ficha && ficha.meaning ? fichaVer(ficha.meaning) : 'Ej.: El sitio está con baterías y el grupo electrógeno no arrancó.'">
+              <span v-if="heredado('significa')" class="rv2-hint rv2-ficha">● de la ficha: {{ fichaVer(ficha.meaning) }}</span>
+              <span v-else-if="pisado('significa')" class="rv2-hint rv2-pisa">Estás reemplazando un texto predefinido de la ficha. <a href="#" @click.prevent="model.significa = ''">Volver a la ficha</a></span>
+              <span class="rv2-hint">Es la primera frase que lee el operador en el detalle de la alarma. Si la dejás vacía, se usa {{ ficha && ficha.meaning ? 'la de la ficha del equipo' : 'el nombre de la regla' }}.</span>
             </div>
             <div class="rv2-fld" style="margin-top: 14px;"><label class="rv2-lab" for="rv2-pasos">Pasos a seguir <span class="rv2-hint">(opcional · uno por renglón)</span></label>
               <textarea id="rv2-pasos" v-model="model.pasos" class="rv2-in" rows="4" placeholder="Llamar al técnico de guardia de la zona&#10;Confirmar con el NOC si el corte es de la distribuidora&#10;Revisar el grupo e intentar arranque manual"></textarea>
+              <span v-if="heredado('pasos')" class="rv2-hint rv2-ficha">● de la ficha:<ol class="rv2-ficha__l"><li v-for="(x, i) in ficha.steps" :key="i">{{ fichaVer(x) }}</li></ol></span>
+              <span v-else-if="pisado('pasos')" class="rv2-hint rv2-pisa">Estás reemplazando los pasos predefinidos de la ficha. <a href="#" @click.prevent="model.pasos = ''">Volver a la ficha</a></span>
               <span class="rv2-hint">En el detalle de la alarma se muestran como una lista para ir tildando; queda registrado quién hizo cada paso.</span>
+              <span v-if="ficha && ficha.source" class="rv2-hint">Fuente de los textos de la ficha: {{ ficha.source }}</span>
             </div>
           </div></div>
         </div>
@@ -315,7 +322,7 @@
 </template>
 
 <script>
-import { deviceTypeName, fillThresholdText, resolveCondValue, LIMIT_REF_LABELS } from '@/components/rules/ruleSentence.js';
+import { deviceTypeName, fillThresholdText, resolveCondValue, LIMIT_REF_LABELS, fichaTexts } from '@/components/rules/ruleSentence.js';
 import {
   MEDIDAS, CON_VENTANA, SOLO_BOOL, VALOR_LAB, opsFor, emptyCond, emptyModel, ruleToModel, modelToRule, condProblem,
 } from '@/components/rules/ruleModelV2.js';
@@ -388,6 +395,8 @@ export default {
     tiposEnRegla() { return [...new Set([this.packType, ...((this.model && this.model.conds) || []).map((c) => c.deviceType)].filter(Boolean))]; },
     packKindLower() { return this.packKind.toLowerCase(); },
     sheetByType() { const m = {}; for (const s of this.sheets) m[s.deviceType] = s; return m; },
+    // spec_textos_alarma_ficha (Qt3) — textos que la regla hereda de su límite principal en la ficha.
+    ficha() { try { return fichaTexts(this.builtRule, this.sheets); } catch (e) { return null; } },
     builtRule() {
       const r = modelToRule(this.model, { pack: this.pack, existing: this.rule, editingIndex: this.editingIndex, isBoolVar: (dt, v) => this.tipoVarDe(dt, v) === 'bool' });
       const back = (u, txt) => {
@@ -493,6 +502,20 @@ export default {
   },
   beforeDestroy() { this.parar(); clearTimeout(this._simT); clearInterval(this._nowI); clearInterval(this._ageI); },
   methods: {
+    // ● de la ficha: el campo está vacío y la ficha trae el texto (se usa ese).
+    heredado(k) {
+      const f = this.ficha; if (!f) return false;
+      const src = { reco: f.operatorAction, significa: f.meaning, pasos: (f.steps || []).join('\n') }[k];
+      return !!src && !String(this.model[k] || '').trim();
+    },
+    // El campo tiene texto propio distinto del de la ficha: se avisa y se ofrece volver.
+    pisado(k) {
+      const f = this.ficha; if (!f) return false;
+      const src = { reco: f.operatorAction, significa: f.meaning, pasos: (f.steps || []).join('\n') }[k];
+      const own = String(this.model[k] || '').trim();
+      return !!src && !!own && own !== String(src).trim();
+    },
+    fichaVer(t) { return this.umb.txt ? String(t || '').replace(/\{umbral\}/g, this.umb.txt) : String(t || ''); },
     nombreTipo(t) { return deviceTypeName(t, this.sheets); },
     hdr() { return { headers: { token: this.$store.state.auth.token } }; },
     // La página pregunta antes de salir si hay cambios sin guardar.
@@ -913,4 +936,7 @@ body:not(.white-content) .b-E1 { fill: #3b3d55; background: #3b3d55; }
 .tiles { margin-top: 8px; } .rv2-tile { background: var(--card2); border-radius: 10px; padding: 8px 10px; } .rv2-big { font-size: 20px; font-weight: 700; }
 .rv2-nowc { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
 .rv2-log { font-size: 12.5px; line-height: 1.7; background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; margin: 6px 0 0; color: var(--ink); }
+.rv2-ficha { display: block; color: #2b6cb0; }
+.rv2-pisa { display: block; color: #b7791f; }
+.rv2-ficha__l { margin: 2px 0 0; padding-left: 18px; }
 </style>

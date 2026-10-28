@@ -110,6 +110,7 @@
         <section class="ad2-card ad2-side" aria-labelledby="ad2-s3">
           <p class="ad2-q">3 · Cómo solucionarlo</p>
           <h2 id="ad2-s3" class="ad2-h2">{{ abierta ? 'Qué hacer ahora' : 'Qué se hizo' }}</h2>
+          <p v-if="pasos.length && regla && regla.recommendation" class="ad2-reco">{{ recomendacion }}</p>
           <template v-if="pasos.length">
             <label v-for="p in pasos" :key="p.i" class="ad2-paso" :class="{ hecho: p.hecho }">
               <input type="checkbox" :checked="p.hecho" :disabled="!abierta || pasoBusy === p.i" @change="tildar(p.i, $event.target.checked)">
@@ -119,6 +120,7 @@
           </template>
           <p v-else-if="regla && regla.recommendation" class="mb-0">{{ recomendacion }}</p>
           <p v-else class="ad2-hint mb-0">Esta regla no tiene recomendación cargada. Se puede agregar desde el editor de reglas.</p>
+          <p v-if="textoFicha" class="ad2-hint ad2-ficha">● {{ textoFicha }}</p>
           <div v-for="f in codigosFalla.filter(x => x.causes.length)" :key="'fcc' + f.dId + f.code" class="ad2-fc">
             <b>Causas posibles del código {{ f.code }} (manual del fabricante)</b>
             <ol class="ad2-fc__l"><li v-for="(c, i) in f.causes.slice(0, 8)" :key="i">{{ c }}</li></ol>
@@ -225,7 +227,7 @@ export default {
 
     // ── 1 · Qué está pasando ──
     titular() {
-      if (this.regla && this.regla.meaning) return this.regla.meaning;
+      if (this.regla && this.regla.meaning) return String(this.regla.meaning).replace(/\{umbral\}/g, this.umbralTxtGeneral);
       const r = this.recomendacion; const m = r ? r.match(/^.*?[.!?](\s|$)/) : null; const p = m ? m[0].trim() : r;
       return p || (this.alarm && this.alarm.label) || 'Alarma';
     },
@@ -331,7 +333,15 @@ export default {
     pasos() {
       const steps = (this.regla && this.regla.steps) || [];
       const done = new Map((this.v2.stepsDone || []).map(x => [x.i, x]));
-      return steps.map((txt, i) => { const d = done.get(i); return { i, txt, hecho: !!d, quien: d ? `${d.by} · ${this.hora(d.at, true)}` : '' }; });
+      return steps.map((txt, i) => { const d = done.get(i); return { i, txt: String(txt).replace(/\{umbral\}/g, this.umbralTxtGeneral), hecho: !!d, quien: d ? `${d.by} · ${this.hora(d.at, true)}` : '' }; });
+    },
+    // spec_textos_alarma_ficha (Qt3/Qt4) — de dónde salen los textos: la ficha del equipo (con su fuente).
+    textoFicha() {
+      const t = this.regla && this.regla.textos;
+      if (!t || !['meaning', 'recommendation', 'steps'].some(k => t[k] === 'ficha')) return '';
+      const src = t.source ? ` · fuente: ${t.source}` : '';
+      const prov = /PROVISORIO/i.test(t.source || '') ? ' (PROVISORIO: sin manual del fabricante)' : '';
+      return `Textos tomados de la ficha del equipo${src}${prov}`;
     },
     avanceTxt() {
       const n = this.pasos.filter(p => p.hecho).length;
@@ -581,4 +591,6 @@ body:not(.white-content) .ad2 { --card: #27293d; --card2: #1e1e2f; --ink: #e8e8e
 .ad2-eq__n { font-size: 13px; font-weight: 600; }
 .ad2-otras { margin: 4px 0 0; padding-left: 18px; font-size: 14px; }
 .ad2-otras a { color: var(--acc); }
+.ad2-reco { font-weight: 600; margin-bottom: 8px; }
+.ad2-ficha { margin-top: 8px; display: block; }
 </style>

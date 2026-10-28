@@ -19,7 +19,9 @@ const crypto = require('crypto');
 // spec_detalle_alarma_v2 — "Qué significa" y "Pasos a seguir" son textos del detalle de la
 // alarma: el motor no los lee, así que editarlos no cuenta como cambio de la regla (no cierra
 // alarmas abiertas por edición).
-const DISPLAY_ONLY = new Set(['meaning', 'steps', 'eventClass', 'failDeviceType']);   // + clase de confiabilidad (Qs7): solo la lee el supervisor
+// spec_textos_alarma_ficha §0 — la recomendación también es texto (el motor la copia al aviso
+// pero no decide con ella) y los textos heredados de la ficha (_textos) tampoco cuentan.
+const DISPLAY_ONLY = new Set(['meaning', 'steps', 'recommendation', '_textos', 'eventClass', 'failDeviceType']);   // + clase de confiabilidad (Qs7): solo la lee el supervisor
 function hashRule(rule) {
   return crypto.createHash('sha256').update(JSON.stringify(rule, (k, v) => (DISPLAY_ONLY.has(k) ? undefined : v))).digest('hex');
 }

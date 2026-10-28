@@ -44,7 +44,11 @@
 6. **Supervisor.** Control «regla sin textos» (alguno de los cuatro vacío después de la herencia) en Calidad de las reglas.
 
 ## 4 · Preguntas — firmadas por Franco 2026-10-27 («aprobadas las recomendaciones»)
-Queda abierto dentro de Qt5: H2 (severidad GE-16), H3 (texto de AR-08 — fuente nueva: ejercicio FG Wilson), H4 (ficha para gen-autonomy-crit), H6 (variable de oil-life).
+Qt5 — decisiones de Franco 2026-10-27:
+- **H2** · cat-GE-16 (código 781) pasa a **advertencia**.
+- **H3** · cat-AR-08 **sigue avisando cada semana**; el texto recomienda hacer funcionar el grupo **con carga** cierto tiempo (fuente: FG Wilson 356-5902 p. 76 — mensual ≥ 50 % de carga 1–2 h; quincenal 5 min en vacío).
+- **H4** · gen-autonomy-crit toma el umbral de la **ficha**; valor **12 h** (crítica a partir de 12 h de autonomía).
+- **H6** · cummins-pcc-oil-life: la variable actual (temperatura de refrigerante ponderada por rpm) **se mantiene**.
 **Insumo nuevo:** biblioteca de fallas (`_biblioteca_campo/fallas/`) reemplaza a T2 y alimenta T4/T5; propuesta **L1** (tecnología de batería por sitio) aprobada junto con las demás propuestas de la biblioteca.
 | # | Pregunta | Recomendación |
 |---|---|---|
@@ -57,3 +61,7 @@ Queda abierto dentro de Qt5: H2 (severidad GE-16), H3 (texto de AR-08 — fuente
 
 ## 5 · Orden propuesto (bloques)
 **T1** modelo de ficha + herencia en la lectura + editor/detalle con marca · **T2** completar la ficha del Cummins con el manual PCC 1302 y los perfiles de código · **T3** pasar umbrales fijos a la ficha (Qt2) · **T4** textos de las 47 reglas propias (los reviso con Franco por pack) · **T5** ComAp / Eltek provisorios · **T6** control «regla sin textos» y obligatoriedad en el editor.
+
+## 6 · Estado
+- **T1 implementado 2026-10-27:** `equipment_sheet.js` (límite → `texts` {meaning, operatorAction, steps, causes, source}) · `limitRef.js` (`mainLimitRef`, `limitTexts`, `inheritTexts` dentro de `resolveRule`; `fillTexts` completa `{umbral}` en significado y pasos) · motor: `recommendation` y `_textos` pasan a DISPLAY_ONLY (editar textos no cierra alarmas) · detalle de alarma: textos heredados + «● Textos tomados de la ficha del equipo · fuente» (+ PROVISORIO) y la recomendación se muestra también cuando hay pasos · editor: «● de la ficha», «Estás reemplazando un texto predefinido» + «Volver a la ficha» · Fichas: «Textos de la alarma» por límite.
+- Arreglo de paso: la pantalla Fichas perdía `when` y `relativeTo` de los límites al editar (la carga los descartaba); ahora se conservan.

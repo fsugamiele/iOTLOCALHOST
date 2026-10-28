@@ -49,6 +49,55 @@ function forEachRef(rule, fn) {
   if (rule.type === 'cross') walk(rule.crossExpr);
 }
 
+// spec_textos_alarma_ficha (Qt1/Qt3, firmado 2026-10-27) — textos heredados de la ficha.
+// Límite PRINCIPAL de la regla: el de su condición D, o en una combinada la hoja con limitRef
+// sobre la medición propia de la regla (si no, la primera hoja con limitRef). Debe calcularse
+// ANTES de resolver (resolveRule borra limitRef de la copia).
+function mainLimitRef(rule) {
+  if (!rule) return null;
+  if (rule.condition && rule.condition.limitRef) {
+    return { deviceType: rule.deviceType, variable: rule.variable, kind: rule.condition.limitRef, op: rule.condition.op };
+  }
+  if (rule.type === 'cross' && rule.crossExpr) {
+    const refs = [];
+    forEachRef(rule, (r) => { if (r.where === 'leaf') refs.push(r); });
+    const own = refs.find((r) => r.variable === rule.variable) || refs[0];
+    if (own) return { deviceType: own.deviceType, variable: own.variable, kind: own.cond.limitRef, op: own.cond.op };
+  }
+  return null;
+}
+
+const TEXT_FIELDS = [['meaning', 'meaning'], ['recommendation', 'operatorAction'], ['steps', 'steps']];
+const emptyText = (v) => v == null || (Array.isArray(v) ? !v.filter(Boolean).length : String(v).trim() === '');
+
+// limitTexts(rule, sheets) → { texts, ref } del límite principal, o null.
+function limitTexts(rule, sheetsByType) {
+  const ref = mainLimitRef(rule);
+  if (!ref || !sheetsByType) return null;
+  const lim = findLimit(sheetsByType, ref.deviceType, ref.variable, ref.kind, ref.op);
+  const t = lim && lim.texts ? plain(lim.texts) : null;
+  if (!t || TEXT_FIELDS.every(([, f]) => emptyText(t[f]))) return null;
+  return { texts: t, ref };
+}
+
+// inheritTexts(rule, sheets, ref?) — IN PLACE: completa meaning / recommendation / steps
+// VACÍOS con los del límite principal y marca el origen en rule._textos
+// ({ meaning: 'ficha'|'regla'|null, …, source }). Lo propio de la regla siempre gana.
+function inheritTexts(rule, sheetsByType, lt) {
+  const got = lt || limitTexts(rule, sheetsByType);
+  const from = {};
+  for (const [rf, tf] of TEXT_FIELDS) {
+    if (!emptyText(rule[rf])) { from[rf] = 'regla'; continue; }
+    const v = got && got.texts[tf];
+    if (!emptyText(v)) { rule[rf] = Array.isArray(v) ? v.filter(Boolean).slice(0, 12) : v; from[rf] = 'ficha'; }
+    else from[rf] = null;
+  }
+  if (got && got.texts.source) from.source = got.texts.source;
+  if (got) from.ref = got.ref;
+  rule._textos = from;
+  return rule;
+}
+
 // resolveRule(rule, sheets) → { rule: copia resuelta, unresolved: [motivo] }
 // D:    condition.value ← límite; condition.when ← límite.when (el motor lo evalúa).
 // hoja: condition.value ← límite; si el límite tiene `when` → la hoja pasa a
@@ -56,6 +105,7 @@ function forEachRef(rule, fn) {
 function resolveRule(rule0, sheetsByType) {
   const rule = JSON.parse(JSON.stringify(rule0));
   const unresolved = [];
+  const lt = limitTexts(rule, sheetsByType);   // antes de resolver: después ya no hay limitRef
   const resolveCond = (deviceType, variable, cond) => {
     const lim = findLimit(sheetsByType, deviceType, variable, cond.limitRef, cond.op);
     if (!lim) { unresolved.push(`${deviceType}/${variable} ${cond.limitRef}${cond.op ? ' ' + cond.op : ''}`); return null; }
@@ -99,6 +149,7 @@ function resolveRule(rule0, sheetsByType) {
     };
     rule.crossExpr = walk(rule.crossExpr);
   }
+  if (!unresolved.length) inheritTexts(rule, sheetsByType, lt);
   return { rule, unresolved };
 }
 
@@ -131,6 +182,15 @@ function fillThreshold(text, rule, thresholdUsed) {
   return text.replace(/\{umbral\}/g, `${num}${u}`);
 }
 
+// {umbral} en todos los textos que lee una persona (nombre, recomendación, significado, pasos).
+function fillTexts(rule) {
+  rule.label = fillThreshold(rule.label, rule);
+  rule.recommendation = fillThreshold(rule.recommendation, rule);
+  rule.meaning = fillThreshold(rule.meaning, rule);
+  if (Array.isArray(rule.steps)) rule.steps = rule.steps.map((x) => fillThreshold(x, rule));
+  return rule;
+}
+
 // resolvePacksForRead(packs, db) — para LECTORES de reglas fuera del motor (QA:
 // backtest, invariantes, detalle de regla): resuelve limitRef IN PLACE contra
 // equipmentsheets (driver crudo). Sin refs no consulta nada. Una regla que no
@@ -139,7 +199,7 @@ async function resolvePacksForRead(packs, db) {
   if (!packs || !packs.length) return packs;
   if (!packs.some(p => JSON.stringify(p.rules || []).includes('"limitRef"'))) {
     for (const p of packs) for (const r of (p.rules || [])) {
-      r.label = fillThreshold(r.label, r); r.recommendation = fillThreshold(r.recommendation, r);
+      fillTexts(r);
     }
     return packs;
   }
@@ -149,12 +209,12 @@ async function resolvePacksForRead(packs, db) {
     p.rules = (p.rules || []).map(r => {
       const { rule, unresolved } = resolveRule(r, by);
       if (unresolved.length) return { ...r, _limitRefUnresolved: unresolved };
-      rule.label = fillThreshold(rule.label, rule);
-      rule.recommendation = fillThreshold(rule.recommendation, rule);
+      fillTexts(rule);
       return rule;
     });
   }
   return packs;
 }
 
-module.exports = { limitDir, limitKey, LIMIT_KINDS, findLimit, forEachRef, resolveRule, refsToLimit, resolvePacksForRead, fillThreshold };
+module.exports = { limitDir, limitKey, LIMIT_KINDS, findLimit, forEachRef, resolveRule, refsToLimit, resolvePacksForRead, fillThreshold,
+  mainLimitRef, limitTexts, inheritTexts, fillTexts };

@@ -314,6 +314,22 @@
               <i class="tim-icons icon-trash-simple"></i>
             </base-button>
           </div>
+          <div class="col-12 mb-1">
+            <a href="#" class="ficha-tx-tog" @click.prevent="$set(l.texts, 'open', !l.texts.open)">
+              {{ l.texts.open ? '▾' : '▸' }} Textos de la alarma
+              <small class="text-muted">{{ textsResumen(l.texts) }}</small>
+            </a>
+            <div v-if="l.texts.open" class="ficha-tx">
+              <small class="text-muted d-block mb-1">Las reglas que usan este límite toman estos textos cuando no tienen uno propio. <code>{umbral}</code> se reemplaza por el valor del equipo.</small>
+              <base-input v-model="l.texts.meaning" label="Qué significa esta alarma" placeholder="Qué pasa físicamente y qué consecuencia tiene" />
+              <base-input v-model="l.texts.operatorAction" label="Qué tiene que hacer el operador" placeholder="Una acción del NOC en una frase" />
+              <label class="mb-0">Pasos a seguir <small class="text-muted">(uno por renglón · primero remoto, después en sitio)</small></label>
+              <textarea v-model="l.texts.steps" class="form-control mb-2" rows="4"></textarea>
+              <label class="mb-0">Causas probables <small class="text-muted">(una por renglón · orden del fabricante)</small></label>
+              <textarea v-model="l.texts.causes" class="form-control mb-2" rows="3"></textarea>
+              <base-input v-model="l.texts.source" label="Fuente de los textos" placeholder="Documento, edición y página — o PROVISORIO" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -416,6 +432,23 @@ const OPERATOR_LABELS = {
   lt: 'menor que', lte: 'menor o igual que',
   eq: 'igual a', neq: 'distinto a',
 };
+
+
+// spec_textos_alarma_ficha (Qt1) — textos de la alarma por límite: formulario ↔ payload.
+function textsForm(t) {
+  const x = t || {};
+  return { open: false, meaning: x.meaning || '', operatorAction: x.operatorAction || '',
+    steps: Array.isArray(x.steps) ? x.steps.join('\n') : '', causes: Array.isArray(x.causes) ? x.causes.join('\n') : '', source: x.source || '' };
+}
+function textsPayload(t) {
+  if (!t) return undefined;
+  const lines = (s) => String(s || '').split('\n').map(x => x.trim()).filter(Boolean);
+  const out = { meaning: String(t.meaning || '').trim() || undefined, operatorAction: String(t.operatorAction || '').trim() || undefined,
+    steps: lines(t.steps).slice(0, 12), causes: lines(t.causes), source: String(t.source || '').trim() || undefined };
+  if (!out.steps.length) delete out.steps;
+  if (!out.causes.length) delete out.causes;
+  return Object.values(out).some(v => v !== undefined) ? out : undefined;
+}
 
 export default {
   middleware: ['authenticated'],
@@ -573,12 +606,16 @@ export default {
           factoryRange: v.factoryRange || '',
           cadence: v.cadence || '',
           deadband: v.deadband == null ? '' : v.deadband,
+          // Se conservan when / relativeTo (antes se perdían al editar desde esta pantalla) y los
+          // textos de la alarma del límite (spec_textos_alarma_ficha Qt1).
           limits: (v.limits || []).map(l => ({
+            ...l,
             kind: l.kind || 'warning',
             op: l.op || '',
             value: l.value == null ? '' : l.value,
             unit: l.unit || '',
             source: l.source || '',
+            texts: textsForm(l.texts),
           })),
         })),
       };
@@ -628,7 +665,7 @@ export default {
               factoryRange: v.factoryRange || '',
               cadence: v.cadence || '',
               deadband: (v.deadband === null || v.deadband === undefined) ? null : v.deadband,
-              limits: v.limits || [],
+              limits: (v.limits || []).map(l => ({ ...l, texts: textsForm(l.texts) })),
             })),
           };
           this.rawCandidates = draft.rawCandidates || [];
@@ -664,8 +701,13 @@ export default {
         name: '', label: '', type: 'number', unit: '', factoryRange: '', cadence: '', deadband: null, limits: [],
       });
     },
+    textsResumen(t) {
+      if (!t) return '';
+      const n = [t.meaning, t.operatorAction, t.steps].filter(x => String(x || '').trim()).length;
+      return n ? `(${n} de 3 cargados${/PROVISORIO/i.test(t.source || '') ? ' · PROVISORIO' : ''})` : '(sin textos)';
+    },
     addLimit(variable) {
-      variable.limits.push({ kind: 'warning', op: 'gt', value: null, unit: '', source: '' });
+      variable.limits.push({ kind: 'warning', op: 'gt', value: null, unit: '', source: '', texts: textsForm(null) });
     },
     async submitCreate() {
       if (!this.canCreate) return;
@@ -701,6 +743,7 @@ export default {
               source: l.source || undefined,
               when: l.when || undefined,   // precondición (ej. solo en marcha) — no se pierde al editar
               relativeTo: l.relativeTo || undefined,   // E1 · U-04 — escalado C3 (12/24 V): no se pierde al editar
+              texts: textsPayload(l.texts),   // spec_textos_alarma_ficha Qt1 — textos de la alarma del límite
             })),
           })),
         };
@@ -794,4 +837,6 @@ export default {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
+.ficha-tx-tog { font-size: 12px; }
+.ficha-tx { border-left: 3px solid #e2e8f0; padding: 6px 0 4px 10px; margin-top: 4px; }
 </style>
