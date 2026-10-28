@@ -1,0 +1,74 @@
+{
+ "equipo": "Eaton SC200",
+ "ficha": null,
+ "fuente": {
+  "doc": "Manual de la operación SC200 IPN 997-00012-61A ago-2007 (es)",
+  "paginasManual": "33-46, 66-76"
+ },
+ "falta": [
+  "archivo de configuración del sitio (DCTools)"
+ ],
+ "gravedades": [
+  "crítica",
+  "importante",
+  "poco importante",
+  "aviso"
+ ],
+ "umbralesFijos": {
+  "partialACFailPctRect": 20,
+  "noLoadPct": 2,
+  "noLoadA": 2,
+  "zonaMuertaCorrientePct": 2
+ },
+ "umbralesConfigurables": [
+  "High/Low Float",
+  "High/Low Load",
+  "Batt Temp High/Low",
+  "LVD1/2 disconnect/reconnect/recognition",
+  "System Overload threshold/period/type",
+  "AC Fail recognition period",
+  "Generator start Ah/V"
+ ],
+ "alarmas": [
+  "AC Fail",
+  "Partial AC Fail",
+  "Rectifier Fail",
+  "Multiple Rect Fail",
+  "Rect(s) Comms Lost",
+  "Rect Current Limit",
+  "Rect Over-Temp",
+  "System Overload",
+  "High Float",
+  "Low Float",
+  "High Load",
+  "Low Load",
+  "In Discharge",
+  "LVD Disconnected",
+  "LVD Fail",
+  "LVD Manual",
+  "LVD Characterization Error",
+  "Batt Fuse Fail",
+  "Load Fuse Fail",
+  "High Batt Temp",
+  "Low Batt Temp",
+  "Batt Test Fail",
+  "Battery Test Active",
+  "Batt Current Limit",
+  "Equalize Active",
+  "Fast Charge Active",
+  "MOV Fail",
+  "ACD Fan Fail",
+  "Cabinet Fan Fail",
+  "Sensor Fail",
+  "Missing Hardware",
+  "New Hardware",
+  "Unknown Hardware",
+  "Config Error",
+  "No Load",
+  "Generator Start"
+ ],
+ "propuestas": [
+  "E1 ficha EATON leyendo umbrales del equipo",
+  "E2 pedir archivo de configuración"
+ ]
+}

@@ -3059,7 +3059,7 @@
   {
    "code": 1446,
    "name": "Alto voltaje de CA",
-   "type": null,
+   "type": "Parada",
    "logic": "Tensión del alternador sobre el umbral (105–125 % del nominal) durante el retardo (1–10 s).",
    "causes": [],
    "diagnosis": [],
@@ -3070,7 +3070,7 @@
    "reglaWanomi": null,
    "fuente": "A040D969 (Ed. 1, 1-2011), fuera de §9.8 (menús / funciones): sin procedimiento de diagnóstico",
    "tipo": "no indicado en el manual",
-   "tipoInferido": "shutdown"
+   "typeSource": "curso 6283 p.125"
   },
   {
    "code": 1447,
@@ -4769,5 +4769,58 @@
    "fuente": "A040D969 (Ed. 1, 1-2011) §9.8, pág. 255 del PDF",
    "tipo": "no indicado en el manual"
   }
- ]
+ ],
+ "complementoCurso6283": {
+  "doc": "Cummins 6283 Aspectos básicos de controles de PowerCommand, guía del instructor v1.1 (2014)",
+  "autoridad": "curso de capacitación, menor que el manual de servicio",
+  "predeterminados": [
+   {
+    "codigo": 1446,
+    "valor": "110 % / 10 s; instantáneo 130 %",
+    "pag": 125
+   },
+   {
+    "codigo": 1447,
+    "valor": "85 % / 10 s",
+    "pag": 125
+   },
+   {
+    "codigo": [
+     1448,
+     1449
+    ],
+    "valor": "-6 Hz / +6 Hz / 10 s",
+    "pag": 125
+   },
+   {
+    "codigo": 234,
+    "valor": "115 % velocidad nominal",
+    "pag": 126
+   },
+   {
+    "codigo": [
+     1471,
+     1472
+    ],
+    "valor": "advertencia = mitad del límite de parada",
+    "pag": 125
+   },
+   {
+    "codigo": 1438,
+    "valor": "típico 3 ciclos 15 s giro / 15 s descanso (1-7)",
+    "pag": 120
+   },
+   {
+    "parametro": "demora arranque/parada",
+    "valor": "0 s (0-300 / 0-600)",
+    "pag": 82
+   }
+  ],
+  "tipo": {
+   "1446": "Parada (curso p.125)",
+   "1448": "inferido shutdown, respaldado por curso p.125",
+   "1449": "inferido shutdown, respaldado por curso p.125"
+  },
+  "metodo": "GATRR (pp.160-162)"
+ }
 }

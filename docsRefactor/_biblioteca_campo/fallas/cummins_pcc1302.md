@@ -1,13 +1,30 @@
 # Biblioteca de fallas · Cummins PowerCommand 1.1 / 1.1R / 1.2 (PCC 1302)
 
 **Fuente principal:** *Manual de servicio Controlador PowerCommand 1.1 / 1.1R / 1.2*, Cummins **A040D969 (Edición 1), 1-2011**, 268 pp. — §8.3 (umbrales configurables), §9 (Localización de averías), §9.8 (códigos de falla con lógica, causas y diagnóstico).
-**Complementos:** *PowerCommand 1.1 control system — Specification sheet* (HMI211) · *Operator Manual PowerCommand 2100* (valores citados en `auditoria_umbrales_fabricante_2026-10-20.md`).
+**Complementos:** curso Cummins *6283 Aspectos básicos de controles de PowerCommand*, guía del instructor v1.1 (2014, 167 pp.) — §1b · *PowerCommand 1.1 control system — Specification sheet* (HMI211) · *Operator Manual PowerCommand 2100* (valores citados en `auditoria_umbrales_fabricante_2026-10-20.md`).
 **Datos estructurados:** `cummins_pcc1302.json` (mismo contenido, para cargar ficha y perfil).
 
 > **Nota del fabricante (§9.6):** todo código de tipo «advertencia» puede reconfigurarse como «parada» con InPower. Se documentan los valores **predeterminados**; en campo hay que confirmar la configuración de cada sitio.
 
 ## 1 · Umbrales
 Ver `../cummins_pcc1302_manual_servicio.md` §2 (protecciones configurables: rango, retardo, código) y §3 (umbrales **fijos** de la lógica: 146 = 107,2 °C / 5 s · 415 = 180 kPa / 10 s · 488 = 85 °C / 90 s · 1447 = 85 % / 10 s · 1471 = 110 % / 60 s · 1472 = 150 % · 1992 = +15 %). Valor que usa Wanomi y su porqué: `../../Software/auditoria_umbrales_fabricante_2026-10-20.md` y `spec_perfiles_controladora.md` (perfil `cummins-pcc1302`).
+
+## 1b · Complemento: curso Cummins 6283 (guía del instructor, no es el manual de servicio)
+Valores **predeterminados** que el curso declara para el PCC 1302 (pp. 52, 82, 120, 125–126). Donde el manual de servicio da solo el rango, estos son la referencia de fábrica.
+
+| Protección | Predeterminado | Página | Código |
+|---|---|---|---|
+| Alto voltaje CA | **110 %** del nominal, 10 s · instantáneo **130 %** | 125 | 1446 |
+| Bajo voltaje CA | **85 %** del nominal, 10 s (coincide con el manual) | 125 | 1447 |
+| Subfrecuencia / sobrefrecuencia | **−6 Hz / +6 Hz** del nominal, 10 s | 125 | 1448 / 1449 |
+| Exceso de velocidad del motor | **115 %** de la velocidad nominal | 126 | 234 |
+| Corriente alta (AmpSentry) | advertencia = **mitad** del límite de parada | 125 | 1471 / 1472 |
+| Arranque por ciclos | típico **3 ciclos de 15 s de giro / 15 s de descanso** (configurable 1–7) | 120 | 1438 |
+| Demora de arranque / de parada | 0–300 s / 0–600 s, **0 s** de fábrica | 82 | — |
+| Presión de aceite, temperatura de refrigerante, batería | predeterminados **según el motor**; ajustables con InPower | 126 | 415/143, 146/151, 441/442 |
+
+**Tipo:** el curso dice que en el **PCC 1302 las protecciones del alternador apagan el grupo de inmediato** (no tiene control de interruptor; p. 125) y nombra «**Apagado** por alto/bajo voltaje CA». Con eso, **1446 pasa a Parada** (fuente: curso). 1448/1449 figuran en la misma lista de protecciones del alternador: se mantienen como inferidos (shutdown), ahora con respaldo del curso; confirmar en InPower.
+**Método de diagnóstico Cummins (lección 9, pp. 160–162):** GATRR — recopilar (síntomas, LED, historial de fallas), analizar (aislar el subsistema, buscar el código en el manual de servicio), probar (componentes en orden de probabilidad), reparar, volver a probar (secuencia completa con carga). Sirve como estructura de «Pasos a seguir» para la regla genérica GE-17.
 
 ## 2 · Cobertura Wanomi
 
@@ -69,7 +86,7 @@ Ver `../cummins_pcc1302_manual_servicio.md` §2 (protecciones configurables: ran
 | Batería y carga | 442 | Alto voltaje de la batería | Advertencia | cummins-pcc.battery_voltage | GE-17 (genérica) |
 | Batería y carga | 1442 | Batería débil | no indicado en el manual (inferido: warning) | cummins-pcc.battery_voltage | GE-17 (genérica) |
 | Batería y carga | 2678 | Falla del cargador (alternador de carga) | no indicado en el manual (inferido: warning) | — | GE-17 (genérica) |
-| Salida eléctrica (alternador / AVR) | 1446 | Alto voltaje de CA | no indicado en el manual (inferido: shutdown) | ATS.gen_voltage | GE-17 (genérica) |
+| Salida eléctrica (alternador / AVR) | 1446 | Alto voltaje de CA | Parada (curso 6283 p. 125; el manual no lo indica) | ATS.gen_voltage | GE-17 (genérica) |
 | Salida eléctrica (alternador / AVR) | 1447 | Voltaje de CA bajo | Parada | ATS.gen_voltage | GE-17 (genérica) |
 | Salida eléctrica (alternador / AVR) | 1471 | Corriente CA alta | Advertencia | — | GE-17 (genérica) |
 | Salida eléctrica (alternador / AVR) | 1472 | Corriente CA alta | Parada | — | GE-17 (genérica) |
@@ -924,7 +941,7 @@ Formato: **qué detecta** (lógica del controlador) · **causas probables** en e
 
 **Desde Wanomi:** ver la tendencia de `cummins-pcc.battery_voltage` en el detalle de la alarma antes de despachar.
 
-### 1446 · Alto voltaje de CA — no indicado en el manual (inferido: shutdown)
+### 1446 · Alto voltaje de CA — Parada (curso 6283 p. 125; el manual no lo indica)
 *A040D969 (Ed. 1, 1-2011), fuera de §9.8 (menús / funciones): sin procedimiento de diagnóstico* · sistema: Salida eléctrica (alternador / AVR)
 
 **Qué detecta:** Tensión del alternador sobre el umbral (105–125 % del nominal) durante el retardo (1–10 s).
