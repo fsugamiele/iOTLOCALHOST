@@ -30,7 +30,9 @@ async function loadLabels(siteId) {
   } catch (e) { console.warn('[ruleLog] no se pudieron leer las etiquetas de las fichas:', e.message); }
 }
 
-const hhmmss = (ts) => new Date(ts).toTimeString().slice(0, 8);
+// Hora local del operador (el contenedor corre en UTC): mismo criterio que edge-engine/index.js.
+const TZ_LOG = process.env.TZ_LOG || 'America/Argentina/Buenos_Aires';
+const hhmmss = (ts) => new Date(ts).toLocaleTimeString('es-AR', { hour12: false, timeZone: TZ_LOG }).slice(0, 8);
 const num = (v) => (typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',') : (v == null ? '—' : String(v)));
 function varText(deviceType, variable) {
   const l = (labels.get(deviceType) || new Map()).get(variable);

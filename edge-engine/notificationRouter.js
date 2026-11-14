@@ -346,7 +346,7 @@ function notify(alarm) {
   // Acá solo los cierres que NO salen del ciclo: por edición, confirmación o service.
   if (alarm.kind === 'resolve' && /^resolve-by-(edit|ack|service)$/.test(alarm.mode || '')) {
     const why = { 'resolve-by-edit': 'cerrada porque se editó la regla', 'resolve-by-ack': 'cerrada por confirmación', 'resolve-by-service': 'cerrada por service registrado' }[alarm.mode];
-    console.log(`${new Date().toTimeString().slice(0, 8)} «${alarm.label || alarm.ruleId}» ${alarm.deviceName || alarm.deviceId}: ${why}`);
+    console.log(`${new Date().toLocaleTimeString('es-AR', { hour12: false, timeZone: process.env.TZ_LOG || 'America/Argentina/Buenos_Aires' }).slice(0, 8)} «${alarm.label || alarm.ruleId}» ${alarm.deviceName || alarm.deviceId}: ${why}`);
   }
 
   // Fire-and-forget — el orden no importa, ningún canal bloquea al siguiente
