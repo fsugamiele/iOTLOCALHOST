@@ -459,7 +459,8 @@ export default {
           // Medición inicial del gráfico: la propia de la alarma; si no, la primera con números.
           if (!this._serieElegida) {
             const a = this.detail.alarm, ss = this.series;
-            let k = ss.findIndex(x => x.dId === a.dId && x.variable === a.variable);
+            let k = ss.findIndex(x => x.derived);   // primero el número que la regla calcula y compara
+            if (k < 0) k = ss.findIndex(x => x.dId === a.dId && x.variable === a.variable);
             if (k < 0) k = ss.findIndex(x => x.type !== 'bool' && !(Array.isArray(x.enumValues) && x.enumValues.length) && !x.points.every(q => q.value === 0 || q.value === 1));
             this.serieIdx = k < 0 ? 0 : k;
           } else if (this.serieIdx >= this.series.length) this.serieIdx = 0;

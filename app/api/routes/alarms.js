@@ -1325,6 +1325,47 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
       limits: fichaLimits(devBy.get(p.dId), p.variable), points: bucketizar(pts, bucketMs) });
   }
 
+  // Franco 2026-11-15 — cuando la regla mira la RELACIÓN (o la diferencia) entre dos mediciones,
+  // el gráfico muestra ese número calculado, que es el que la regla compara con su límite, y va
+  // primero. Misma cuenta que el motor (typeM: a / b · |a − b|), punto a punto sobre las lecturas.
+  try {
+    const hojas = ruleRaw && ruleRaw.type === 'cross' ? leafList(ruleRaw.crossExpr) : [];
+    const derivadas = [];
+    for (const c of conditions) {
+      if (c.measure !== 'metric' || !['ratio', 'divergence'].includes(c.metric) || derivadas.length >= 2) continue;
+      const hoja = hojas.find(h => h.leafId === c.leafId) || (ruleRaw && ruleRaw.type === 'M' ? ruleRaw : null);
+      const ins = hoja && Array.isArray(hoja.inputs) ? hoja.inputs : null;
+      if (!ins || !ins[0] || !ins[1] || !ins[0].variable || !ins[1].variable) continue;
+      const base = c.dIds[0] || notif.dId;
+      const baseType = (devBy.get(base) || {}).deviceType;
+      const idDe = (inp) => (!inp.deviceType || inp.deviceType === baseType ? base : ((devs.find(d => d.deviceType === inp.deviceType) || {}).dId || null));
+      const idA = idDe(ins[0]), idB = idDe(ins[1]);
+      if (!idA || !idB) continue;
+      const leer = async (dId, variable) => bucketizar((await Data.find({ dId, variable, time: { $gte: from, $lte: until } }, { time: 1, value: 1, _id: 0 }).sort({ time: 1 }).lean())
+        .filter(d => typeof d.value === 'number' && Number.isFinite(d.value)).map(d => ({ time: d.time, value: d.value })), bucketMs);
+      const [pa, pb] = await Promise.all([leer(idA, ins[0].variable), leer(idB, ins[1].variable)]);
+      const bPor = new Map(pb.map(q => [Math.floor(q.time / bucketMs), q.value]));   // se emparejan por minuto (o paso)
+      const pts = [];
+      for (const q of pa) {
+        const b = bPor.get(Math.floor(q.time / bucketMs));
+        if (b == null) continue;
+        if (c.metric === 'ratio') { if (b !== 0) pts.push({ time: q.time, value: q.value / b }); }
+        else pts.push({ time: q.time, value: Math.abs(q.value - b) });
+      }
+      if (!pts.length) continue;
+      const mA = varMeta((devBy.get(idA) || {}).deviceType, ins[0].variable), mB = varMeta((devBy.get(idB) || {}).deviceType, ins[1].variable);
+      const nA = mA.label || ins[0].variable.replace(/_/g, ' '), nB = mB.label || ins[1].variable.replace(/_/g, ' ');
+      const propia = !derivadas.length && ruleRaw && ruleRaw.variableLabel;   // la primera lleva el nombre y la unidad de la regla
+      const nombre = propia ? String(ruleRaw.variableLabel) : (c.metric === 'ratio' ? `${nA} por ${nB}` : `Diferencia entre ${nA} y ${nB}`);
+      derivadas.push({ dId: base, deviceName: (devBy.get(base) || {}).name || base, variable: `${c.metric}:${ins[0].variable}:${ins[1].variable}`,
+        label: nombre.charAt(0).toUpperCase() + nombre.slice(1), unit: propia && ruleRaw.unit ? ruleRaw.unit : (c.metric === 'ratio' ? (mA.unit && mB.unit ? `${mA.unit}/${mB.unit}` : null) : mA.unit),
+        type: 'float', enumValues: null, derived: c.metric === 'ratio' ? `${nA} dividido ${nB}` : `diferencia entre ${nA} y ${nB}`,
+        measure: 'value', threshold: typeof c.atFire.threshold === 'number' ? c.atFire.threshold : null,
+        atFire: typeof c.atFire.value === 'number' ? c.atFire.value : null, limits: [], points: pts });
+    }
+    if (derivadas.length) series.unshift(...derivadas);
+  } catch (e) { console.log("ERROR DERIVED SERIES", e && e.message); }
+
   // Contexto 1 — cómo empezó: avisos y cierres de TODO el sitio en la hora previa (+10 min después).
   let timeline = [];
   if (siteId) {

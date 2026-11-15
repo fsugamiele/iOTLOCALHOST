@@ -81,6 +81,7 @@
     </div>
 
     <div class="atc-pie">
+      <span v-if="main.derived">Este número lo calcula la regla: {{ main.derived }}.</span>
       <span v-if="sinLineaRegla">El límite de esta regla no es un valor fijo de esta medición (mira cómo cambia o la compara con otra), por eso no va como línea.</span>
       <span v-if="g.inv">El eje va de más cargado (arriba) a menos cargado (abajo): descargar se ve como bajar.</span>
       <span class="atc-pie__acc">
