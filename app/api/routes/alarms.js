@@ -7,6 +7,7 @@ const { buildReadFilter, buildWriteFilter } = require("../middlewares/scope.js")
 const colors = require("colors");
 const { hasAccumulatorLeaf, instanceKey } = require("../services/combinedRule.js");   // spec_reglas_compuestas
 const { mainLimitRef, inheritTexts } = require("../services/limitRef.js");   // spec_textos_alarma_ficha (Qt3)
+const { applyDeviceProfile } = require("../services/deviceLimits.js");
 
 import AlarmRule from "../models/emqx_alarm_rule.js";
 import Notification from "../models/notifications.js";
@@ -247,6 +248,10 @@ router.get("/alarms", checkAuth, async (req, res) => {
     const page = items.slice(0, limit);
     const nextCursor = page.length === limit ? page[page.length - 1].lastEventTime : null;
     page.forEach(it => delete it.lastEventTime);
+    // Propuesta Alarmas (2026-11) — qué pasa · qué hacer · avance de los pasos, sin abrir el detalle.
+    try { await enrichItems(page); }
+    catch (e) { console.log("ERROR ENRICHING ALARMS LIST", e && (e.stack || e.message)); }
+    page.forEach(it => { delete it._leaves; delete it._stepsDone; });
 
     return res.json({
       status: "success",
@@ -457,7 +462,8 @@ router.get("/alarms/:id/detail", checkAuth, async (req, res) => {
     // ── spec_detalle_alarma_v2 — qué pasa · por qué · cómo se soluciona · contexto.
     // Si algo de esto falla, el detalle igual responde (el detalle anterior no lo necesita).
     let v2 = null;
-    try { v2 = await buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, firedAt, resolvedAt, state, now, ruleRaw, fsmRow }); }
+    const win = req.query.win === '24h' ? '24h' : null;   // período del gráfico: el episodio (default) o 24 horas
+    try { v2 = await buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, firedAt, resolvedAt, state, now, ruleRaw, fsmRow, win }); }
     catch (e) { console.log("ERROR BUILDING ALARM DETAIL V2", e && (e.stack || e.message)); }
 
     return res.json({
@@ -654,6 +660,8 @@ function pipelineEpisodios(notifFilter, extraMatch, now) {
         correlationParent: { $first: "$correlationParent" },
         acknowledgedBy:    { $first: "$acknowledgedBy" },
         ackAt:             { $first: "$ackAt" },
+        leaves:            { $first: "$leaves" },
+        stepsDone:         { $first: "$stepsDone" },
         // Fire que abrió el episodio cuando el último evento es resolve:
         // es el fire más reciente de la pareja (precede al resolve por orden).
         lastFireTime: { $max: { $cond: [
@@ -723,8 +731,61 @@ function episodioAItem(g, now, childMap, siteNameByCode) {
     ackAt: g.ackAt != null ? g.ackAt : null,
     repeatCount: g.fires24h,
     childCount: childMap.get(`${g._id.ruleId}|${g.siteId}`) || 0,
+    _leaves: Array.isArray(g.leaves) ? g.leaves : null,       // internos: los usa enrichItems y se borran
+    _stepsDone: Array.isArray(g.stepsDone) ? g.stepsDone : [],
     lastEventTime: g.lastTime   // interno: cursor/sort; se borra antes de responder
   };
+}
+
+// Propuesta Alarmas (2026-11) — completa cada ítem de la lista con lo que el operador lee sin
+// abrir el detalle: qué significa y qué hacer (textos de la regla o heredados de la ficha, igual
+// que el detalle), cuántos pasos tiene y cuántos se hicieron, el nombre de la medición y el
+// valor del límite para reemplazar {umbral}. Solo lectura; si falla, la lista responde igual.
+async function enrichItems(items) {
+  if (!items.length) return;
+  const db = mongoose.connection.db;
+  const ruleIds = [...new Set(items.map(i => i.ruleId).filter(Boolean))];
+  const packs = await RulePack.find({ 'rules.ruleId': { $in: ruleIds } }, { rules: 1 }).lean();
+  const ruleBy = new Map();
+  for (const p of packs) for (const r of (p.rules || [])) if (ruleIds.includes(r.ruleId) && !ruleBy.has(r.ruleId)) ruleBy.set(r.ruleId, r);
+  const dIds = [...new Set(items.map(i => i.dId).filter(Boolean))];
+  const devs = dIds.length ? await Device.find({ dId: { $in: dIds } }, { dId: 1, name: 1, deviceType: 1, _id: 0 }).lean() : [];
+  const devBy = new Map(devs.map(d => [d.dId, d]));
+  const types = new Set(devs.map(d => d.deviceType).filter(Boolean));
+  for (const r of ruleBy.values()) {
+    if (r.deviceType) types.add(r.deviceType);
+    leafList(r.crossExpr).forEach(l => { if (l.deviceType) types.add(l.deviceType); });
+  }
+  const sheets = types.size ? await db.collection('equipmentsheets').find({ deviceType: { $in: [...types] } })
+    .project({ deviceType: 1, variables: 1 }).toArray() : [];
+  const sheetBy = new Map(sheets.map(s => [s.deviceType, s]));
+  const meta = (dt, v) => {
+    const s = sheetBy.get(dt); const x = s && (s.variables || []).find(z => z.name === v);
+    return x ? { label: x.label || null, unit: x.unit || null, type: x.type || null, enumValues: x.enumValues || null } : { label: null, unit: null, type: null, enumValues: null };
+  };
+  for (const it of items) {
+    const r = ruleBy.get(it.ruleId) || null;
+    const dt = (devBy.get(it.dId) || {}).deviceType || (r && r.deviceType) || null;
+    it.deviceType = dt;
+    it.perSite = !!(r && r.type === 'cross' && !(r.scope && r.scope.deviceType));
+    it.varMeta = meta(dt, it.variable);
+    const tx = r ? inheritTexts({ meaning: r.meaning, recommendation: r.recommendation, steps: r.steps, condition: r.condition,
+      crossExpr: r.crossExpr, type: r.type, deviceType: r.deviceType, variable: r.variable }, sheetBy) : null;
+    it.meaning = (tx && tx.meaning) || '';
+    if (tx && tx.recommendation) it.recommendation = tx.recommendation;
+    const steps = tx && Array.isArray(tx.steps) ? tx.steps.filter(Boolean) : [];
+    it.stepsTotal = steps.length;
+    it.stepsDoneCount = (it._stepsDone || []).filter(x => x && Number.isInteger(x.i) && x.i < steps.length).length;
+    // {umbral}: el valor del límite del que salen los textos (el de la condición que lo usa al avisar).
+    const ref = tx && tx._textos && tx._textos.ref;
+    let um = null;
+    if (ref && it._leaves) {
+      const l = it._leaves.find(x => x && x.variable === ref.variable && (!x.deviceType || x.deviceType === ref.deviceType) && typeof x.threshold === 'number');
+      if (l) um = { value: l.threshold, ...meta(l.deviceType || ref.deviceType, l.variable) };
+    }
+    if (!um && typeof it.thresholdUsed === 'number' && (!ref || ref.variable === it.variable)) um = { value: it.thresholdUsed, ...it.varMeta };
+    it.umbral = um;
+  }
 }
 
 // Submuestrea una serie a <= max puntos conservando extremos (paso uniforme).
@@ -1064,6 +1125,8 @@ const V2_PRE_MS = 90 * 60000;          // gráfico: 1 h 30 antes del aviso…
 const V2_POST_MS = 30 * 60000;         // …y 30 min después del cierre (o hasta ahora)
 const V2_BUCKET_MS = 60000;            // 1 punto por minuto
 const V2_MAX_SERIES = 4;
+const V2_MAX_POINTS = 600;             // puntos por medición antes de agrandar el paso
+const V2_MAX_SPAN_MS = 7 * DAY_MS;     // tope del período del gráfico
 const V2_CONTEXT_PRE_MS = HOUR_MS;     // "Cómo empezó": la hora previa al aviso
 const V2_REPORTING_MS = 10 * 60000;    // equipo "reporta" si mandó algo en 10 min (frescura del motor)
 
@@ -1084,7 +1147,7 @@ async function lastValues(pairs) {
   return out;
 }
 
-async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, firedAt, resolvedAt, state, now, ruleRaw, fsmRow }) {
+async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, firedAt, resolvedAt, state, now, ruleRaw, fsmRow, win }) {
   const db = mongoose.connection.db;
   const siteId = notif.siteId || null;
   const fire = fireEvent || notif;
@@ -1117,7 +1180,7 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
   // Equipos del sitio y fichas (nombres, mediciones, medición principal).
   const site = siteId ? await Site.findOne({ siteCode: siteId }, { siteCode: 1, nombre: 1, devices: 1, _id: 0 }).lean() : null;
   const siteDIds = (site && site.devices) || (notif.dId ? [notif.dId] : []);
-  const devs = await Device.find({ dId: { $in: siteDIds } }, { dId: 1, name: 1, deviceType: 1, profileId: 1, _id: 0 }).lean();
+  const devs = await Device.find({ dId: { $in: siteDIds } }, { dId: 1, name: 1, deviceType: 1, profileId: 1, limitOverrides: 1, batteryTech: 1, _id: 0 }).lean();
   const devBy = new Map(devs.map(d => [d.dId, d]));
   const types = [...new Set(devs.map(d => d.deviceType).filter(Boolean))];
   const sheets = types.length ? await db.collection('equipmentsheets').find({ deviceType: { $in: types } })
@@ -1208,8 +1271,33 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
   } catch (e) { faultCodes = []; }
 
   // Series del gráfico (hasta 4 mediciones), 1 punto por minuto.
-  const from = fireAt - V2_PRE_MS;
   const until = state === 'resolved' && resolvedAt != null ? Math.min(now, resolvedAt + V2_POST_MS) : now;
+  // Período: el episodio (1 h 30 antes del aviso) o 24 horas; nunca deja el aviso afuera ni pasa de 7 días.
+  let from = fireAt - V2_PRE_MS;
+  if (win === '24h') from = Math.min(from, until - DAY_MS);
+  from = Math.max(from, until - V2_MAX_SPAN_MS);
+  // Un punto por minuto mientras entren ~600; en períodos largos el paso crece (minutos enteros).
+  const bucketMs = Math.max(V2_BUCKET_MS, Math.ceil((until - from) / V2_MAX_POINTS / 60000) * 60000);
+  // Límites de la ficha de cada medición, con la cascada del motor: equipo > perfil > batería > ficha.
+  const profIds = [...new Set(devs.map(d => d.profileId).filter(Boolean))];
+  const limProfiles = profIds.length ? await db.collection('controllerprofiles').find({ profileId: { $in: profIds } }).project({ profileId: 1, limits: 1, unavailable: 1 }).toArray() : [];
+  const limProfBy = new Map(limProfiles.map(p => [p.profileId, p]));
+  const fichaLimits = (dev, variable) => {
+    if (!dev) return [];
+    const sh = sheetBy.get(dev.deviceType);
+    const x = sh && (sh.variables || []).find(z => z.name === variable);
+    if (!x) return [];
+    const st = {};
+    try { applyDeviceProfile(st, dev, dev.profileId ? (limProfBy.get(dev.profileId) || null) : null, sh); } catch (e) { /* sin cascada: queda la ficha */ }
+    const out = [];
+    for (const l of (x.limits || [])) {
+      if (!l || !['warning', 'trip'].includes(l.kind) || typeof l.value !== 'number') continue;
+      const dir = l.op === 'lt' || l.op === 'lte' ? 'lt' : 'gt';
+      const ov = st._limits && st._limits[`${variable}|${l.kind}|${dir}`];
+      out.push({ kind: l.kind, op: l.op, value: ov ? ov.value : l.value, from: ov ? ov.from : 'ficha', conditional: !!l.when });
+    }
+    return out;
+  };
   const series = [];
   for (const p of pairs.slice(0, V2_MAX_SERIES)) {
     const docs = await Data.find({ dId: p.dId, variable: p.variable, time: { $gte: from, $lte: until } }, { time: 1, value: 1, _id: 0 }).sort({ time: 1 }).lean();
@@ -1217,7 +1305,9 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
     const cond = conditions.find(c => c.variable === p.variable && c.dIds.includes(p.dId));
     const d = devBy.get(p.dId) || {};
     series.push({ dId: p.dId, deviceName: d.name || p.dId, variable: p.variable, ...varMeta(d.deviceType, p.variable),
-      threshold: cond && typeof cond.atFire.threshold === 'number' ? cond.atFire.threshold : null, points: bucketizar(pts, V2_BUCKET_MS) });
+      threshold: cond && typeof cond.atFire.threshold === 'number' ? cond.atFire.threshold : null,
+      atFire: cond && typeof cond.atFire.value === 'number' ? cond.atFire.value : null,
+      limits: fichaLimits(devBy.get(p.dId), p.variable), points: bucketizar(pts, bucketMs) });
   }
 
   // Contexto 1 — cómo empezó: avisos y cierres de TODO el sitio en la hora previa (+10 min después).
@@ -1286,7 +1376,7 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
   }
 
   return {
-    fireId: String(fire._id), packId: (ruleRaw && ruleRaw._packId) || null, closeMode, rule, conditions, live, series, from, until,
+    fireId: String(fire._id), packId: (ruleRaw && ruleRaw._packId) || null, closeMode, rule, conditions, live, series, from, until, win: win || 'episodio', bucketMs,
     stepsDone: Array.isArray(fire.stepsDone) ? fire.stepsDone : [], faultCodes,
     ackBy: fire.acknowledgedBy || null, ackAt: fire.ackAt || null,
     site: site ? { siteCode: site.siteCode, nombre: site.nombre } : (siteId ? { siteCode: siteId, nombre: siteId } : null),
