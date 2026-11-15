@@ -87,6 +87,12 @@ const get = (path) => new Promise((ok) => {
     console.log('  conditions:', J(dd.conditions || (dd.v2 && dd.v2.conditions)).slice(0, 1500));
     console.log('  alarm:', J(dd.alarm).slice(0, 800));
     console.log('  fsm:', J(dd.fsm).slice(0, 600));
+    // Lo que recibe el gráfico: por medición, qué mira la regla, el límite que se dibuja y el rango medido.
+    console.log('  gráfico:');
+    ((dd.v2 && dd.v2.series) || []).forEach((x) => {
+      const vs = (x.points || []).map((q) => q.value).filter((q) => typeof q === 'number');
+      console.log(`    ${x.dId} ${x.variable} (${x.unit || 'sin unidad'}, ${x.type || '?'}) · mira=${x.measure} · límite regla=${J(x.threshold)} · al avisar=${J(x.atFire)} · límites ficha=${J(x.limits)} · ${vs.length} puntos, de ${vs.length ? Math.min(...vs) : '—'} a ${vs.length ? Math.max(...vs) : '—'}`);
+    });
   }
   process.exit(0);
 })().catch((err) => { console.error('ERROR:', err.message); process.exit(1); });
