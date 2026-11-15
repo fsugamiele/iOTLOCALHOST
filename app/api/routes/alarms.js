@@ -7,7 +7,7 @@ const { buildReadFilter, buildWriteFilter } = require("../middlewares/scope.js")
 const colors = require("colors");
 const { hasAccumulatorLeaf, instanceKey } = require("../services/combinedRule.js");   // spec_reglas_compuestas
 const { mainLimitRef, inheritTexts } = require("../services/limitRef.js");   // spec_textos_alarma_ficha (Qt3)
-const { applyDeviceProfile } = require("../services/deviceLimits.js");
+const { applyDeviceProfile, applyRefParams } = require("../services/deviceLimits.js");
 
 import AlarmRule from "../models/emqx_alarm_rule.js";
 import Notification from "../models/notifications.js";
@@ -768,6 +768,8 @@ async function enrichItems(items) {
     const dt = (devBy.get(it.dId) || {}).deviceType || (r && r.deviceType) || null;
     it.deviceType = dt;
     it.perSite = !!(r && r.type === 'cross' && !(r.scope && r.scope.deviceType));
+    // El valor y el límite del aviso solo están en la escala de la medición si la regla compara su valor.
+    it.plainValue = !!(r && (r.type === 'D' || r.type === 'C'));
     it.varMeta = meta(dt, it.variable);
     const tx = r ? inheritTexts({ meaning: r.meaning, recommendation: r.recommendation, steps: r.steps, condition: r.condition,
       crossExpr: r.crossExpr, type: r.type, deviceType: r.deviceType, variable: r.variable }, sheetBy) : null;
@@ -783,7 +785,7 @@ async function enrichItems(items) {
       const l = it._leaves.find(x => x && x.variable === ref.variable && (!x.deviceType || x.deviceType === ref.deviceType) && typeof x.threshold === 'number');
       if (l) um = { value: l.threshold, ...meta(l.deviceType || ref.deviceType, l.variable) };
     }
-    if (!um && typeof it.thresholdUsed === 'number' && (!ref || ref.variable === it.variable)) um = { value: it.thresholdUsed, ...it.varMeta };
+    if (!um && it.plainValue && typeof it.thresholdUsed === 'number' && (!ref || ref.variable === it.variable)) um = { value: it.thresholdUsed, ...it.varMeta };
     it.umbral = um;
   }
 }
@@ -1125,6 +1127,7 @@ const V2_PRE_MS = 90 * 60000;          // gráfico: 1 h 30 antes del aviso…
 const V2_POST_MS = 30 * 60000;         // …y 30 min después del cierre (o hasta ahora)
 const V2_BUCKET_MS = 60000;            // 1 punto por minuto
 const V2_MAX_SERIES = 4;
+const V2_PLAIN = new Set(['value', 'setpoint']);   // medidas cuyo límite está en la misma escala que la medición
 const V2_MAX_POINTS = 600;             // puntos por medición antes de agrandar el paso
 const V2_MAX_SPAN_MS = 7 * DAY_MS;     // tope del período del gráfico
 const V2_CONTEXT_PRE_MS = HOUR_MS;     // "Cómo empezó": la hora previa al aviso
@@ -1180,7 +1183,7 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
   // Equipos del sitio y fichas (nombres, mediciones, medición principal).
   const site = siteId ? await Site.findOne({ siteCode: siteId }, { siteCode: 1, nombre: 1, devices: 1, _id: 0 }).lean() : null;
   const siteDIds = (site && site.devices) || (notif.dId ? [notif.dId] : []);
-  const devs = await Device.find({ dId: { $in: siteDIds } }, { dId: 1, name: 1, deviceType: 1, profileId: 1, limitOverrides: 1, batteryTech: 1, _id: 0 }).lean();
+  const devs = await Device.find({ dId: { $in: siteDIds } }, { dId: 1, name: 1, deviceType: 1, profileId: 1, limitOverrides: 1, batteryTech: 1, refParams: 1, _id: 0 }).lean();
   const devBy = new Map(devs.map(d => [d.dId, d]));
   const types = [...new Set(devs.map(d => d.deviceType).filter(Boolean))];
   const sheets = types.length ? await db.collection('equipmentsheets').find({ deviceType: { $in: types } })
@@ -1288,13 +1291,21 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
     const x = sh && (sh.variables || []).find(z => z.name === variable);
     if (!x) return [];
     const st = {};
-    try { applyDeviceProfile(st, dev, dev.profileId ? (limProfBy.get(dev.profileId) || null) : null, sh); } catch (e) { /* sin cascada: queda la ficha */ }
+    try { applyRefParams(st, dev); applyDeviceProfile(st, dev, dev.profileId ? (limProfBy.get(dev.profileId) || null) : null, sh); } catch (e) { /* sin cascada: queda la ficha */ }
     const out = [];
     for (const l of (x.limits || [])) {
       if (!l || !['warning', 'trip'].includes(l.kind) || typeof l.value !== 'number') continue;
+      if (l.when) continue;   // límite que solo vale en cierto estado del equipo: no es una línea fija
       const dir = l.op === 'lt' || l.op === 'lte' ? 'lt' : 'gt';
       const ov = st._limits && st._limits[`${variable}|${l.kind}|${dir}`];
-      out.push({ kind: l.kind, op: l.op, value: ov ? ov.value : l.value, from: ov ? ov.from : 'ficha', conditional: !!l.when });
+      let value = l.value;
+      if (ov && Number.isFinite(ov.value)) value = ov.value;
+      else if (l.relativeTo && l.relativeTo.param && Number(l.relativeTo.base) > 0) {
+        // Límite relativo a un parámetro de la instalación (misma cuenta que el motor, typeD.effectiveCondition).
+        const base = Number(l.relativeTo.base), par = Number(st[l.relativeTo.param]);
+        value = Math.round(l.value * ((par > 0 ? par : base) / base) * 1000) / 1000;
+      }
+      out.push({ kind: l.kind, op: l.op, value, from: ov ? ov.from : 'ficha' });
     }
     return out;
   };
@@ -1305,8 +1316,12 @@ async function buildDetailV2({ notifFilter, notif, fireEvent, events, kindOf, fi
     const cond = conditions.find(c => c.variable === p.variable && c.dIds.includes(p.dId));
     const d = devBy.get(p.dId) || {};
     series.push({ dId: p.dId, deviceName: d.name || p.dId, variable: p.variable, ...varMeta(d.deviceType, p.variable),
-      threshold: cond && typeof cond.atFire.threshold === 'number' ? cond.atFire.threshold : null,
-      atFire: cond && typeof cond.atFire.value === 'number' ? cond.atFire.value : null,
+      // El límite de la regla solo se dibuja si la condición compara el VALOR de la medición.
+      // Si mira otra cosa (ritmo, salto, relación con otra medición, tiempo…), su número no está
+      // en la escala del gráfico: no va como línea (Franco 2026-11-15).
+      measure: cond ? cond.measure : null,
+      threshold: cond && V2_PLAIN.has(cond.measure) && typeof cond.atFire.threshold === 'number' ? cond.atFire.threshold : null,
+      atFire: cond && V2_PLAIN.has(cond.measure) && typeof cond.atFire.value === 'number' ? cond.atFire.value : null,
       limits: fichaLimits(devBy.get(p.dId), p.variable), points: bucketizar(pts, bucketMs) });
   }
 

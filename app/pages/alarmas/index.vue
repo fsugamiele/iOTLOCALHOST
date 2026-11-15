@@ -236,7 +236,8 @@ export default {
       const seg = a.firedAt != null ? Math.max(0, (this.nowMs - a.firedAt) / 1000) : null;
       const donde = a.perSite ? 'Todo el sitio' : (usoEquipo(a.deviceType) || a.deviceName || a.dId || '');
       let dato = donde;
-      if (!a.perSite && a.variable && a.value != null) {
+      // El valor y el límite del aviso solo se muestran si la regla compara el valor de la medición.
+      if (!a.perSite && a.plainValue && a.variable && a.value != null) {
         const m = a.varMeta || {};
         const lim = typeof a.thresholdUsed === 'number' ? ` (límite ${valor(a.thresholdUsed, m)})` : '';
         dato += `${dato ? ' · ' : ''}${varNombre({ label: m.label, variable: a.variable }).toLowerCase()} ${valor(a.value, m)} al avisar${lim}`;

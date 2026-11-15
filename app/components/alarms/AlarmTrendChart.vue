@@ -81,6 +81,7 @@
     </div>
 
     <div class="atc-pie">
+      <span v-if="sinLineaRegla">El límite de esta regla no es un valor fijo de esta medición (mira cómo cambia o la compara con otra), por eso no va como línea.</span>
       <span v-if="g.inv">El eje va de más cargado (arriba) a menos cargado (abajo): descargar se ve como bajar.</span>
       <span class="atc-pie__acc">
         <button type="button" class="atc-link" :aria-expanded="verTabla ? 'true' : 'false'" @click="verTabla = !verTabla">{{ verTabla ? 'Ocultar las lecturas' : 'Ver todas las lecturas' }}</button>
@@ -146,6 +147,8 @@ export default {
     main() { return this.series[this.idx] || this.series[0] || { points: [] }; },
     nombre() { return varNombre(this.main) + (this.main.deviceName ? ' · ' + this.main.deviceName : ''); },
     cat() { return esCat(this.main); },
+    // La regla no compara el valor de la medición contra un número fijo: su límite no está en esta escala.
+    sinLineaRegla() { const m = this.main.measure; return !!m && m !== 'value' && m !== 'setpoint'; },
     g() {
       const s = this.main, pts = s.points || [];
       const R = W - RM;
