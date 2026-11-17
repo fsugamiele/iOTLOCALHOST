@@ -6,13 +6,12 @@
            en light theme (option nativo hereda mal el tema del padre en
            browsers). -->
       <div class="noc-trend-controls" :class="{ 'is-light': isLight }">
-        <select v-model="selectedVariable" class="form-control form-control-sm">
-          <option value="" disabled>Elegí una variable</option>
-          <!-- R5 · G8 · 5 — solo tv.label (sin aggregation cruda). -->
-          <option v-for="tv in trendVariables" :key="tv.variable" :value="tv.variable">
-            {{ tv.unit ? ((tv.label || tv.variable) + ' (' + tv.unit + ')') : (tv.label || tv.variable) }}
-          </option>
-        </select>
+        <!-- Franco 2026-11-17 — varias variables a la vez (hasta MAX_VARIABLES), cada unidad con su eje. -->
+        <el-select v-model="selectedVariables" multiple :multiple-limit="maxVars" collapse-tags
+                   placeholder="Elegí una o más variables" size="small" class="select-primary noc-trend-vars"
+                   aria-label="Variables del gráfico">
+          <el-option v-for="tv in trendVariables" :key="tv.variable" :label="varTxt(tv)" :value="tv.variable" />
+        </el-select>
         <select v-model="selectedWindow" class="form-control form-control-sm">
           <option value="24h">24 horas</option>
           <option value="7d">7 días</option>
@@ -27,8 +26,8 @@
     <div v-else-if="error" class="noc-state text-danger">
       <i class="tim-icons icon-alert-circle-exc"></i> {{ error }}
     </div>
-    <div v-else-if="!selectedVariable" class="noc-state">
-      Elegí una variable para ver la tendencia.
+    <div v-else-if="!selectedVariables.length" class="noc-state">
+      Elegí una o más variables para ver la tendencia.
     </div>
     <div v-else-if="hasNoData" class="noc-state">
       Sin datos en el rango.
@@ -39,21 +38,26 @@
           <highchart :options="chartOptions" style="height: 100%" />
         </client-only>
       </div>
-      <div class="noc-trend-card-stat" v-if="lastData">
-        <template v-if="lastData.aggregation === 'avg'">
-          Actual: <strong>{{ fmt(lastData.cardStat.current) }}</strong>
-          · Δ ventana: <strong :class="deltaClass">{{ fmtDelta(lastData.cardStat.delta) }}</strong>
-        </template>
-        <template v-else-if="lastData.aggregation === 'range'">
-          Min: <strong>{{ fmt(lastData.cardStat.min) }}</strong>
-          · Max: <strong>{{ fmt(lastData.cardStat.max) }}</strong>
-        </template>
+      <div class="noc-trend-card-stat">
+        <div v-for="st in stats" :key="st.variable">
+          <span v-if="stats.length > 1" class="noc-trend-stat-var">{{ st.label }}:</span>
+          <template v-if="st.aggregation === 'avg'">
+            Actual: <strong>{{ fmt(st.cardStat.current) }}</strong>
+            · Δ ventana: <strong :class="deltaClass(st.cardStat.delta)">{{ fmtDelta(st.cardStat.delta) }}</strong>
+          </template>
+          <template v-else-if="st.aggregation === 'range'">
+            Min: <strong>{{ fmt(st.cardStat.min) }}</strong>
+            · Max: <strong>{{ fmt(st.cardStat.max) }}</strong>
+          </template>
+        </div>
       </div>
     </div>
   </card>
 </template>
 
 <script>
+import { Select, Option } from 'element-ui';
+import { buildMultiChart, varTxt, MAX_VARIABLES } from '@/utils/multiSeriesChart';
 // Componente del chart de tendencia. Consume /dashboard/noc/trend con el
 // window elegido a nivel-componente (ajuste 5'): el selector de window vive
 // SOLO acá; /dashboard/noc no lo recibe.
@@ -71,14 +75,9 @@
 const DEFAULT_VARIABLE = 'fuel_level';
 const DEFAULT_WINDOW   = '24h';
 
-// R5 · G8 · 5 — paleta explícita de series, 6 colores altos en contraste
-// contra fondo oscuro Y claro. Asignados en orden estable por siteCode
-// alfabético (el backend ya ordena las series por siteCode). Si hay más
-// de 6 sites, se cicla — aceptable para la fase piloto (10 sites Claro).
-const SERIES_PALETTE = ['#4FC3F7', '#FFB74D', '#81C784', '#F06292', '#BA68C8', '#FFD54F'];
-
 export default {
   name: 'NocTrendChart',
+  components: { [Select.name]: Select, [Option.name]: Option },
   props: {
     trendVariables: { type: Array,  default: () => [] },
     isLight:        { type: Boolean, default: false },
@@ -88,10 +87,12 @@ export default {
   },
   data() {
     return {
-      selectedVariable: '',
+      selectedVariables: [],
+      maxVars:          MAX_VARIABLES,
       selectedWindow:   this.defaultWindow,
       loading:          false,
       error:            null,
+      // variable → respuesta de /dashboard/noc/trend (una por variable elegida)
       lastData:         null,
       // DEC-REF-100 D-5 (F5) · DEC-REF-101 D-11: refresh automático en
       // silencio (sin spinner ni parpadeo — lastData se pisa cuando llega
@@ -109,9 +110,9 @@ export default {
     // el gráfico en segundos, no en el próximo tick del timer. El timer de
     // refreshSec queda como red de seguridad (ventana que avanza, TZ, etc.).
     this._sdataHandler = ({ topic } = {}) => {
-      if (!topic || !this.selectedVariable) return;
+      if (!topic || !this.selectedVariables.length) return;
       const parts = topic.split('/');
-      if (parts.length < 4 || parts[2] !== this.selectedVariable) return;
+      if (parts.length < 4 || !this.selectedVariables.includes(parts[2])) return;
       if (this._sdataTimer) clearTimeout(this._sdataTimer);
       this._sdataTimer = setTimeout(() => {
         this._sdataTimer = null;
@@ -126,50 +127,35 @@ export default {
     if (this._sdataHandler){ this.$nuxt.$off('wanomi:sdata', this._sdataHandler); this._sdataHandler = null; }
   },
   computed: {
+    // Las variables elegidas, en el orden en que se eligieron, con su nombre y unidad.
+    elegidas() {
+      return this.selectedVariables.map(v => this.trendVariables.find(tv => tv.variable === v) || { variable: v, label: v, unit: '' });
+    },
+    resultados() {
+      if (!this.lastData) return [];
+      return this.elegidas.map(v => ({ v, d: this.lastData[v.variable] })).filter(x => x.d);
+    },
     hasNoData() {
       if (!this.lastData) return false;
-      const s = this.lastData.series;
-      return !Array.isArray(s) || s.length === 0 || s.every(x => !x.points || x.points.length === 0);
+      return this.resultados.every(({ d }) => !Array.isArray(d.series) || d.series.every(x => !x.points || !x.points.length));
     },
-    deltaClass() {
-      const d = this.lastData && this.lastData.cardStat && this.lastData.cardStat.delta;
-      if (d == null) return '';
-      return d < 0 ? 'text-danger' : (d > 0 ? 'text-success' : '');
+    stats() {
+      return this.resultados.filter(({ d }) => d.cardStat).map(({ v, d }) => ({ variable: v.variable, label: v.label || v.variable, aggregation: d.aggregation, cardStat: d.cardStat }));
     },
     chartOptions() {
       if (!this.lastData) return {};
-      const textColor = this.isLight ? '#525f7f' : '#d4d2d2';
-      const gridColor = this.isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
-      // Compensación TZ del browser — mismo patrón que HistoryChart.vue:38.
-      // Los buckets del contrato vienen en epoch ms UTC; Highcharts xAxis
-      // 'datetime' interpreta UTC → offset para mostrar en TZ local.
-      const offset = new Date().getTimezoneOffset() * 60 * 1000 * -1;
-      // R5 · G8 · 5 — color de serie asignado por índice de siteCode ordenado.
-      const series = (this.lastData.series || []).map((s, i) => ({
-        name: s.name,
-        color: SERIES_PALETTE[i % SERIES_PALETTE.length],
-        data: (s.points || []).map(p => [p[0] + offset, p[1]]),
-      }));
-      return {
-        credits: { enabled: false },
-        chart: { defaultSeriesType: 'line', backgroundColor: 'rgba(0,0,0,0)' },
-        title: { text: '' },
-        xAxis: { type: 'datetime', labels: { style: { color: textColor } }, gridLineColor: gridColor },
-        yAxis: { title: { text: '' }, labels: { style: { color: textColor } }, gridLineColor: gridColor },
-        legend: { itemStyle: { color: textColor } },
-        plotOptions: { series: { label: { connectorAllowed: false }, marker: { enabled: false } } },
-        series,
-        responsive: {
-          rules: [{
-            condition: { maxWidth: 500 },
-            chartOptions: { legend: { layout: 'horizontal', align: 'center', verticalAlign: 'bottom' } },
-          }],
-        },
-      };
+      const varios = this.elegidas.length > 1;
+      // Una serie por sitio y variable. Con una sola variable, el nombre es el sitio (como antes).
+      const series = [];
+      this.resultados.forEach(({ v, d }) => (d.series || []).forEach(s => series.push({
+        name: varios ? `${s.name} · ${v.label || v.variable}` : s.name,
+        variable: v.variable, unit: v.unit || '', data: s.points || [],
+      })));
+      return buildMultiChart(series, this.elegidas, { isLight: this.isLight, colorBy: 'series' });
     },
   },
   watch: {
-    selectedVariable() { this.fetchTrend(); },
+    selectedVariables() { this.fetchTrend(); },
     selectedWindow()   { this.fetchTrend(); },
     // D-9/D-11 (#76) — el menú de la tarjeta cambia el default persistido:
     // se aplica al selector y el watch de selectedWindow dispara el fetch.
@@ -180,9 +166,13 @@ export default {
     trendVariables: {
       immediate: true,
       handler(next) {
-        if (!Array.isArray(next) || !next.length || this.selectedVariable) return;
+        if (!Array.isArray(next) || !next.length) return;
+        // Variables que dejaron de estar en el alcance del usuario salen de la selección.
+        const validas = this.selectedVariables.filter(v => next.some(tv => tv.variable === v));
+        if (validas.length !== this.selectedVariables.length) this.selectedVariables = validas;
+        if (this.selectedVariables.length) return;
         const hasDefault = next.some(tv => tv.variable === DEFAULT_VARIABLE);
-        this.selectedVariable = hasDefault ? DEFAULT_VARIABLE : next[0].variable;
+        this.selectedVariables = [hasDefault ? DEFAULT_VARIABLE : next[0].variable];
       },
     },
   },
@@ -194,6 +184,11 @@ export default {
       if (!Number.isFinite(sec) || sec <= 0) return;
       this.refreshTimer = setInterval(() => this.fetchTrend({ silent: true }), sec * 1000);
     },
+    varTxt,
+    deltaClass(d) {
+      if (d == null) return '';
+      return d < 0 ? 'text-danger' : (d > 0 ? 'text-success' : '');
+    },
     fmt(v) {
       if (v == null || !Number.isFinite(v)) return '—';
       return v.toString();
@@ -203,8 +198,8 @@ export default {
       return (v > 0 ? '+' : '') + v.toString();
     },
     async fetchTrend({ silent = false } = {}) {
-      if (!this.selectedVariable) return;
-      if (this._inFlight) return; // refresh solapado — se espera al próximo tick
+      if (!this.selectedVariables.length) { this.lastData = null; return; }
+      if (this._inFlight) { if (!silent) this._pendiente = true; return; } // cambio del usuario durante una carga: se repite al terminar
       this._inFlight = true;
       if (!silent) {
         this.loading = true;
@@ -212,13 +207,18 @@ export default {
       }
       const headers = { headers: { token: this.$store.state.auth.token } };
       try {
-        const q = 'variable=' + encodeURIComponent(this.selectedVariable) +
-                  '&window='  + encodeURIComponent(this.selectedWindow);
-        const res = await this.$axios.get('/dashboard/noc/trend?' + q, headers);
-        if (res.data.status !== 'success') {
-          throw new Error(res.data.error || 'Error al cargar tendencia');
-        }
-        this.lastData = res.data.data;
+        // Un pedido por variable, en paralelo (cada uno usa el caché de 60 s del servidor).
+        const vars = this.selectedVariables.slice();
+        const resps = await Promise.all(vars.map(v => this.$axios.get('/dashboard/noc/trend?variable=' + encodeURIComponent(v) +
+          '&window=' + encodeURIComponent(this.selectedWindow), headers)));
+        const out = {};
+        resps.forEach((res, i) => {
+          if (res.data.status !== 'success') throw new Error(res.data.error || 'Error al cargar tendencia');
+          out[vars[i]] = res.data.data;
+        });
+        // Si el usuario cambió la selección mientras se cargaba, se descarta (llega el pedido nuevo).
+        if (vars.join('|') !== this.selectedVariables.join('|')) return;
+        this.lastData = out;
         this.error = null;
       } catch (err) {
         if (err.response && err.response.status === 401) {
@@ -232,6 +232,7 @@ export default {
       } finally {
         this._inFlight = false;
         this.loading = false;
+        if (this._pendiente) { this._pendiente = false; this.fetchTrend(); }
       }
     },
   },
@@ -242,6 +243,8 @@ export default {
 .noc-trend-header    { display: flex; justify-content: space-between; align-items: center; gap: 0.75em; flex-wrap: wrap; }
 .noc-trend-controls  { display: flex; gap: 0.5em; align-items: center; }
 .noc-trend-controls .form-control { min-width: 140px; }
+.noc-trend-vars      { min-width: 240px; max-width: 360px; }
+.noc-trend-stat-var  { opacity: .8; margin-right: .35em; }
 .chart-area          { position: relative; height: 380px; }
 .noc-state           { display: flex; align-items: center; justify-content: center; height: 380px; opacity: 0.7; gap: 0.5em; }
 .noc-trend-card-stat { padding: 0.6em 1em 0; font-size: 0.9em; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 0.5em; }

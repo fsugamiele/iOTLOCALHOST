@@ -1,7 +1,7 @@
 <template>
   <div class="content" style="padding: 1rem;">
     <h3>Históricos</h3>
-    <p class="text-muted">Selector encadenado: sitio → dispositivo → variable → rango.</p>
+    <p class="text-muted">Elegí sitio, dispositivo, una o más variables (hasta {{ maxVars }}) y el rango.</p>
 
     <div class="row" style="margin-bottom: 1rem;">
       <div class="col-md-3">
@@ -29,8 +29,10 @@
       </div>
 
       <div class="col-md-3">
-        <label>Variable</label>
-        <el-select v-model="selectedVariable" placeholder="Elegir variable"
+        <label>Variables</label>
+        <!-- Franco 2026-11-17 — varias variables juntas; cada unidad va con su propio eje. -->
+        <el-select v-model="selectedVariables" multiple :multiple-limit="maxVars" collapse-tags
+                   placeholder="Elegir una o más variables"
                    class="select-primary" style="width:100%"
                    :disabled="!selectedDId">
           <el-option v-for="w in variablesForDevice"
@@ -53,9 +55,8 @@
 
     <card>
       <HistoryChart
-        :samples="samples"
-        :variableFullName="selectedVariableObj ? selectedVariableObj.variableFullName : ''"
-        :unit="selectedVariableObj ? (selectedVariableObj.unit || '') : ''"
+        :series="chartSeries"
+        :vars="selectedVariableObjs"
         :loading="loadingHistory"
         :error="error"
       />
@@ -71,6 +72,7 @@
 import HistoryChart from '@/components/HistoryChart.vue';
 import { fetchHistory } from '@/services/historyClient.js';
 import { Select, Option } from 'element-ui';
+import { MAX_VARIABLES } from '@/utils/multiSeriesChart';
 
 export default {
   name: 'History',
@@ -85,9 +87,10 @@ export default {
       sites: [],
       selectedSiteCode: null,
       selectedDId:      null,
-      selectedVariable: null,        // slug
+      selectedVariables: [],         // slugs, en el orden elegido
+      maxVars:          MAX_VARIABLES,
       chartTimeAgo:     60,          // default: última hora
-      samples:          [],
+      samplesBy:        {},          // variable → muestras
       loadingSites:     false,
       loadingHistory:   false,
       error:            null,
@@ -117,27 +120,36 @@ export default {
         : [];
       return widgets.filter(w => w.variableType === 'int' || w.variableType === 'float');
     },
-    selectedVariableObj() {
-      return this.variablesForDevice.find(w => w.variable === this.selectedVariable) || null;
+    selectedVariableObjs() {
+      return this.selectedVariables
+        .map(v => this.variablesForDevice.find(w => w.variable === v))
+        .filter(Boolean)
+        .map(w => ({ variable: w.variable, label: w.variableFullName || w.variable, unit: w.unit || '' }));
+    },
+    chartSeries() {
+      return this.selectedVariableObjs
+        .filter(v => Array.isArray(this.samplesBy[v.variable]))
+        .map(v => ({ name: v.unit ? `${v.label} (${v.unit})` : v.label, variable: v.variable, unit: v.unit,
+          data: this.samplesBy[v.variable].filter(x => typeof x.value === 'number').map(x => [x.time, x.value]) }));
     },
   },
   watch: {
     selectedSiteCode() {
       this.selectedDId = null;
-      this.selectedVariable = null;
-      this.samples = [];
+      this.selectedVariables = [];
+      this.samplesBy = {};
       this.error = null;
     },
     selectedDId() {
-      this.selectedVariable = null;
-      this.samples = [];
+      this.selectedVariables = [];
+      this.samplesBy = {};
       this.error = null;
     },
-    selectedVariable() {
-      if (this.selectedVariable) this.fetchHistory();
+    selectedVariables() {
+      this.fetchHistory(false);   // solo trae las que faltan
     },
     chartTimeAgo() {
-      if (this.selectedVariable) this.fetchHistory();
+      this.fetchHistory(true);    // otro rango: se vuelven a traer todas
     },
   },
   async mounted() {
@@ -158,29 +170,31 @@ export default {
     }
   },
   methods: {
-    async fetchHistory() {
-      if (!this.selectedDevice || !this.selectedVariable) return;
-      // Coherencia anti-timing: la variable debe pertenecer al device actual.
-      const coherente = this.variablesForDevice.some(
-        w => w.variable === this.selectedVariable
-      );
-      if (!coherente) return;
-
+    // Trae las variables elegidas en paralelo. todo=false: solo las que todavía no están cargadas.
+    async fetchHistory(todo) {
+      if (!this.selectedDevice) return;
+      const dev = this.selectedDevice.dId, rango = this.chartTimeAgo;
+      // Coherencia anti-timing: las variables deben pertenecer al device actual.
+      const vars = this.selectedVariables.filter(v => this.variablesForDevice.some(w => w.variable === v));
+      const base = todo ? {} : { ...this.samplesBy };
+      Object.keys(base).forEach(k => { if (!vars.includes(k)) delete base[k]; });
+      const faltan = vars.filter(v => !base[v]);
+      if (!faltan.length) { this.samplesBy = base; return; }
+      const pedido = this._pedido = (this._pedido || 0) + 1;
       this.loadingHistory = true;
       this.error = null;
       try {
-        this.samples = await fetchHistory({
-          axios:        this.$axios,
-          token:        this.$store.state.auth.token,
-          dId:          this.selectedDevice.dId,
-          variable:     this.selectedVariable,
-          chartTimeAgo: this.chartTimeAgo,
-        });
+        const res = await Promise.all(faltan.map(variable => fetchHistory({
+          axios: this.$axios, token: this.$store.state.auth.token, dId: dev, variable, chartTimeAgo: rango,
+        })));
+        if (pedido !== this._pedido) return;   // llegó tarde: ya hay un pedido más nuevo
+        faltan.forEach((v, i) => { base[v] = res[i] || []; });
+        this.samplesBy = base;
       } catch (e) {
+        if (pedido !== this._pedido) return;
         this.error = e.message || 'Error cargando históricos';
-        this.samples = [];
       } finally {
-        this.loadingHistory = false;
+        if (pedido === this._pedido) this.loadingHistory = false;
       }
     },
   },

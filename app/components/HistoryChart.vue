@@ -1,12 +1,15 @@
 <template>
   <div class="history-chart-wrapper">
-    <div v-if="loading" class="history-chart-state">
+    <div v-if="loading && !hayDatos" class="history-chart-state">
       <i class="tim-icons icon-refresh-01 spin"></i> Cargando…
     </div>
     <div v-else-if="error" class="history-chart-state history-chart-error">
       <i class="tim-icons icon-alert-circle-exc"></i> {{ error }}
     </div>
-    <div v-else-if="!samples || samples.length === 0" class="history-chart-state">
+    <div v-else-if="!vars.length" class="history-chart-state">
+      Elegí una o más variables
+    </div>
+    <div v-else-if="!hayDatos" class="history-chart-state">
       Sin datos en este rango
     </div>
     <div v-else class="chart-area" style="height: 360px">
@@ -20,52 +23,23 @@
 <script>
 // 31.4b — Componente presentational de chart histórico (DEC-STACK-1).
 // Sin fetch, sin auth, sin store, sin saber del backend. Solo dibuja.
-// Mismo patrón visual que Rtnumberchart.vue (consistencia UI con dashboard).
-// La autorización vive en el backend (DEC-REF-33/34); este componente NO
-// reimplementa permisos.
+// Franco 2026-11-17 — varias variables juntas: una serie por variable, un eje Y por unidad
+// (utils/multiSeriesChart). La autorización vive en el backend (DEC-REF-33/34).
+import { buildMultiChart } from '@/utils/multiSeriesChart';
+
 export default {
   name: 'HistoryChart',
   props: {
-    samples:          { type: Array,   default: () => [] },
-    variableFullName: { type: String,  default: '' },
-    unit:             { type: String,  default: '' },
-    loading:          { type: Boolean, default: false },
-    error:            { type: String,  default: null },
+    series:  { type: Array,   default: () => [] },   // [{ name, variable, unit, data: [[time, value]] }]
+    vars:    { type: Array,   default: () => [] },   // [{ variable, label, unit }] en el orden elegido
+    loading: { type: Boolean, default: false },
+    error:   { type: String,  default: null },
   },
   computed: {
+    hayDatos() { return this.series.some(s => s.data && s.data.length); },
     chartOptions() {
-      // Compensación timezone: el backend devuelve epoch ms; Highcharts xAxis
-      // 'datetime' interpreta como UTC. Mismo ajuste que Rtnumberchart.vue.
-      const offset = new Date().getTimezoneOffset() * 60 * 1000 * -1;
-      const data = (this.samples || []).map(s => [s.time + offset, s.value]);
-      return {
-        credits: { enabled: false },
-        chart:   { defaultSeriesType: 'line', backgroundColor: 'rgba(0,0,0,0)' },
-        title:   { text: '' },
-        xAxis: {
-          type: 'datetime',
-          labels: { style: { color: '#d4d2d2' } },
-        },
-        yAxis: {
-          title:  { text: '' },
-          labels: { style: { color: '#d4d2d2', font: '11px Trebuchet MS, Verdana, sans-serif' } },
-        },
-        plotOptions: {
-          series: { label: { connectorAllowed: false } },
-        },
-        series: [{
-          name: this.unit ? this.variableFullName + ' (' + this.unit + ')' : this.variableFullName,
-          data,
-          color: '#00f2c3',
-        }],
-        legend: { itemStyle: { color: '#d4d2d2' } },
-        responsive: {
-          rules: [{
-            condition: { maxWidth: 500 },
-            chartOptions: { legend: { layout: 'horizontal', align: 'center', verticalAlign: 'bottom' } },
-          }],
-        },
-      };
+      const isLight = typeof document !== 'undefined' && document.body.classList.contains('white-content');
+      return buildMultiChart(this.series, this.vars, { isLight, colorBy: 'variable' });
     },
   },
 };
