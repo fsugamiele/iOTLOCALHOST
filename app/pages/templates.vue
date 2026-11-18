@@ -841,6 +841,7 @@ export default {
           });
           await this.getTemplates();
           this.resetTemplateForm();
+          this.$nuxt.$emit("wanomi:devices-changed");   // los widgets de los equipos con esta plantilla cambiaron
         }
       } catch (error) {
         // El 409 del PUT trae el detalle (variables en uso por devices o reglas).

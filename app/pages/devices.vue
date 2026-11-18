@@ -561,7 +561,7 @@ export default {
           }
           this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId}: parámetros de instalación — ${txt}${this.refForm.profileId ? " · controladora " + this.refForm.profileId : ""}` });
           this.refModal = false;
-          this.$store.dispatch("getDevices");
+          this.devicesChanged();
         }
       } catch (e) {
         const msg = (e.response && e.response.data && e.response.data.error) || "Error al guardar los parámetros";
@@ -587,7 +587,7 @@ export default {
               : `${dId}: autonomía actualizada (tanque ${autonomy.tankCapacity} L · ${autonomy.consumptionLph} L/h)`,
           });
           this.autonomyModal = false;
-          this.$store.dispatch("getDevices");
+          this.devicesChanged();
         }
       } catch (e) {
         const msg = (e.response && e.response.data && e.response.data.error) || "Error al guardar la autonomía";
@@ -629,7 +629,7 @@ export default {
         if (res.data.status == "success") {
           this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId} asociado a ${this.bindSiteCode}` });
           this.bindModal = false;
-          this.$store.dispatch("getDevices");
+          this.devicesChanged();
         }
       } catch (e) {
         const msg = (e.response && e.response.data && e.response.data.error) || "Error al asociar el dispositivo";
@@ -653,7 +653,7 @@ export default {
         if (res.data.status == "success") {
           this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: `${dId} desvinculado de ${siteCode}` });
           this.bindModal = false;
-          this.$store.dispatch("getDevices");
+          this.devicesChanged();
         }
       } catch (e) {
         const msg = (e.response && e.response.data && e.response.data.error) || "Error al desvincular el dispositivo";
@@ -661,6 +661,13 @@ export default {
       } finally {
         this.bindLoading = false;
       }
+    },
+
+    // Franco 2026-11-18 — tras crear, borrar, asociar o editar un equipo: recarga
+    // el store y avisa a las páginas abiertas (Sitio, Simulador) para que lo
+    // muestren sin refrescar.
+    devicesChanged() {
+      return this.$store.dispatch("getDevices").finally(() => this.$nuxt.$emit("wanomi:devices-changed"));
     },
 
     copyToClipboard(text) {
@@ -681,7 +688,7 @@ export default {
       this.$axios.put("/saver-rule", { rule: ruleCopy }, axiosHeaders)
         .then(res => {
           if (res.data.status == "success") {
-            this.$store.dispatch("getDevices");
+            this.devicesChanged();
             this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: "Guardado en BD actualizado" });
           }
         })
@@ -735,7 +742,7 @@ export default {
         this.createdCredentials = { dId, password: res.data.password };
         this.credentialsModal = true;
 
-        this.$store.dispatch("getDevices");
+        this.devicesChanged();
         this.newDevice.name = "";
         this.newDevice.simulated = false;
         this.selectedIndexTemplate = null;
@@ -769,7 +776,7 @@ export default {
         .then(res => {
           if (res.data.status == "success") {
             this.$notify({ type: "success", icon: "tim-icons icon-check-2", message: device.name + " eliminado" });
-            this.$store.dispatch("getDevices");
+            this.devicesChanged();
           }
         })
         .catch(e => {

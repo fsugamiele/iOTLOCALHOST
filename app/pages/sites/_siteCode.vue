@@ -499,6 +499,9 @@ export default {
     await this.setupDatosGrid();
     await this.loadAlarms();
     this.loadAllSites();  // DEC-REF-113 F7 (#84) — sitios cercanos (no bloquea)
+    // Alta/baja/cambio de equipos o plantillas en otra página (aviso por $nuxt).
+    this._devsHandler = () => this.refreshDevices();
+    this.$nuxt.$on('wanomi:devices-changed', this._devsHandler);
 
     // Real-time-lite (DEC-REF-44/54/55): re-fetch acotado del feed al recibir
     // una notif por MQTT. Usa la ACL browser existente (DEC-REF-38); NO abre
@@ -520,6 +523,7 @@ export default {
 
   beforeDestroy() {
     this.flushSave();   // salir de la página no pierde el último cambio
+    if (this._devsHandler) { this.$nuxt.$off('wanomi:devices-changed', this._devsHandler); this._devsHandler = null; }
     if (this._notifHandler) {
       this.$nuxt.$off('wanomi:notif', this._notifHandler);
       this._notifHandler = null;
@@ -534,11 +538,42 @@ export default {
   // keep-alive (tabs de ventanas): al volver a esta página dormida, Leaflet
   // necesita re-medir su contenedor (mientras estuvo fuera del DOM no recibe
   // resize). ensureMap es idempotente: si el mapa ya existe solo invalida.
+  // Franco 2026-11-18 — además se recargan los equipos: con la página dormida,
+  // un equipo agregado o cambiado en Dispositivos no aparecía hasta refrescar.
+  // El primer activated() viene pegado al mount → se saltea con _kaSeen.
   activated() {
     this.ensureMap();
+    if (!this._kaSeen) { this._kaSeen = true; return; }
+    this.refreshDevices();
   },
 
   methods: {
+    // Recarga silenciosa de equipos y widgets (sin «Cargando…»). Si cambió la
+    // composición del sitio (equipos, plantilla, dominio o widgets), rearma la
+    // grilla de la tab activa; si no, no toca nada.
+    async refreshDevices() {
+      if (this._refreshing || this.loadError) return;
+      this._refreshing = true;
+      const firma = (ds) => (ds || []).map(d => `${d.dId}|${d.domain}|${d.templateName}|${(d.templateWidgets || []).map(w => w.widget + (w.advanced ? '*' : '')).join(',')}`).sort().join(';');
+      try {
+        const headers = { headers: { token: this.$store.state.auth.token } };
+        const res = await this.$axios.get('/site/' + encodeURIComponent(this.siteCode) + '/full', headers);
+        if (!res.data || res.data.status !== 'success') return;
+        const nuevos = res.data.data.devices || [];
+        const cambio = firma(nuevos) !== firma(this.devices);
+        this.site = res.data.data.site;
+        if (!cambio) return;
+        await this.$store.dispatch('getDevices');   // ownerOf() necesita el equipo nuevo en el store
+        this.devices = nuevos;
+        if (!this.domains.some(d => d.key === this.activeTab) && this.activeTab !== 'datos') this.activeTab = 'datos';
+        if (this.activeTab !== 'datos') { this.gridReady = false; await this.setupGrid(); }
+      } catch (err) {
+        console.warn('[SiteDetail] refreshDevices error:', err.message || err);
+      } finally {
+        this._refreshing = false;
+      }
+    },
+
     async loadDetail() {
       this.loading = true;
       this.loadError = null;

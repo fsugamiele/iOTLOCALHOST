@@ -400,11 +400,22 @@ export default {
     }
     await this.loadScripts();
     await this.refreshActiveRun();
+    this._devsHandler = () => this.refreshDevices();
+    this.$nuxt.$on('wanomi:devices-changed', this._devsHandler);
     // Tick de 1s para el conteo regresivo del guion activo.
     this.runTickTimer = setInterval(() => { if (this.activeRun) this.$forceUpdate(); }, 1000);
   },
 
+  // keep-alive: al volver a la página se recarga la lista de equipos (un equipo
+  // nuevo no aparecía en los selectores hasta refrescar). Primer activated()
+  // pegado al mount → se saltea con _kaSeen. Franco 2026-11-18.
+  activated() {
+    if (!this._kaSeen) { this._kaSeen = true; return; }
+    this.refreshDevices();
+  },
+
   beforeDestroy() {
+    if (this._devsHandler) { this.$nuxt.$off('wanomi:devices-changed', this._devsHandler); this._devsHandler = null; }
     if (this.runPollTimer) { clearTimeout(this.runPollTimer); this.runPollTimer = null; }
     if (this.runTickTimer) { clearInterval(this.runTickTimer); this.runTickTimer = null; }
   },
@@ -416,6 +427,32 @@ export default {
         ? device.name.slice(prefix.length)
         : device.name || '';
       return role.startsWith('ELTEK') ? 'ELTEK' : role;
+    },
+
+    // Recarga silenciosa de la lista de equipos; a los nuevos se les pide un
+    // snapshot para que sus tarjetas arranquen con valores.
+    async refreshDevices() {
+      if (this.loading || this._refreshing) return;
+      this._refreshing = true;
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        const res = await this.$axios.get('/simulator/devices', headers);
+        if (!res.data || res.data.status !== 'success') return;
+        const lista = res.data.data || [];
+        const antes = new Set(this.devices.map(d => d.dId));
+        const firma = (ds) => ds.map(d => `${d.dId}|${d.name}|${d.siteId}|${d.deviceType}|${(d.templateWidgets || []).length}`).sort().join(';');
+        if (firma(lista) === firma(this.devices)) return;
+        this.devices = lista;
+        if (lista.length && this.loadError === 'No hay dispositivos simulados disponibles.') this.loadError = null;
+        lista.filter(d => !antes.has(d.dId)).forEach(d => {
+          this.$axios.post('/simulator/snapshot', { dId: d.dId }, headers)
+            .catch(err => console.warn('[Simulator] snapshot error:', err.message));
+        });
+      } catch (err) {
+        console.warn('[Simulator] refreshDevices error:', err.message || err);
+      } finally {
+        this._refreshing = false;
+      }
     },
 
     async loadInitialData() {
