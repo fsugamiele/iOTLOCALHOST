@@ -320,6 +320,41 @@ const STATUS_COLOR = {
 // personalización (settings.responsiveLayouts en /panellayout).
 const GRID_COLS = { lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 };
 
+// Franco 2026-11-18 — vue-grid-layout aplica el layout guardado de cada
+// breakpoint VERBATIM: un equipo agregado después de personalizar no está en
+// ese layout y sus widgets no se dibujaban (llegaban datos, no había celda).
+// Normaliza cada breakpoint guardado contra los ítems actuales: saca los que
+// ya no existen y agrega los nuevos al final, con el ancho que entra.
+function normalizeResponsive(saved, def) {
+  const ids = new Set(def.map(it => it.i));
+  const out = {};
+  Object.keys(saved || {}).forEach((bp) => {
+    const lay = saved[bp];
+    if (!Array.isArray(lay)) return;
+    const cols = GRID_COLS[bp] || 12;
+    const keep = lay.filter(it => it && ids.has(it.i)).map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
+    const have = new Set(keep.map(it => it.i));
+    let y = keep.reduce((m, it) => Math.max(m, (it.y || 0) + (it.h || 0)), 0);
+    let x = 0, rowH = 0;
+    def.forEach((it) => {
+      if (have.has(it.i)) return;
+      const w = Math.min(cols, it.w);
+      if (x + w > cols) { x = 0; y += rowH; rowH = 0; }
+      keep.push({ i: it.i, x, y, w, h: it.h });
+      x += w; rowH = Math.max(rowH, it.h);
+    });
+    out[bp] = keep;
+  });
+  return out;
+}
+// Lo que acepta el servidor (panellayouts.js validateLayout): x 0–11, w 1–12, h 1–60.
+function clampLayout(lay) {
+  return (lay || []).map(({ i, x, y, w, h }) => {
+    const W = Math.max(1, Math.min(12, Math.round(w) || 1));
+    return { i, x: Math.max(0, Math.min(12 - W, Math.round(x) || 0)), y: Math.max(0, Math.round(y) || 0), w: W, h: Math.max(1, Math.min(60, Math.round(h) || 1)) };
+  });
+}
+
 export default {
   name: 'SiteDetail',
   middleware: 'authenticated',
@@ -484,6 +519,7 @@ export default {
   },
 
   beforeDestroy() {
+    this.flushSave();   // salir de la página no pierde el último cambio
     if (this._notifHandler) {
       this.$nuxt.$off('wanomi:notif', this._notifHandler);
       this._notifHandler = null;
@@ -745,6 +781,7 @@ export default {
     // en "Datos de Sitio" solo hay que re-inicializar/re-medir el mapa.
     async onTabChange() {
       this.customizing = false;
+      this.flushSave();   // lo pendiente de la tab anterior se guarda con su propia clave
       if (this.activeTab === 'datos') {
         this.ensureMap();
         return;
@@ -824,12 +861,13 @@ export default {
       // Responsive + persistencia: prioridad al mapa por breakpoint guardado.
       // Migración: docs viejos solo tienen `layout` plano → se toma como lg.
       if (savedResponsive && Object.keys(savedResponsive).length) {
-        this.responsiveLayouts = savedResponsive;
+        this.responsiveLayouts = normalizeResponsive(savedResponsive, def);
       } else if (saved && saved.length) {
-        this.responsiveLayouts = { lg: saved };
+        this.responsiveLayouts = normalizeResponsive({ lg: saved }, def);
       } else {
         this.responsiveLayouts = {};
       }
+      this.lastLayout = null;   // no arrastrar el layout de otra tab al próximo guardado
       // Layout base (breakpoint lg): el guardado, o el default si no hay.
       const base = this.responsiveLayouts.lg;
       if (base && base.length) {
@@ -846,21 +884,35 @@ export default {
       }
       this.gridReady = true;
     },
+    // Franco 2026-11-18 — la personalización se perdía: el guardado esperaba
+    // 800 ms y recién ahí leía la tab activa, así que al tocar «Listo» y pasar
+    // a otra tab (o salir de la página) se guardaba con la clave equivocada o
+    // no se guardaba. Ahora la clave y el contenido se fijan al programarlo,
+    // y «Listo», el cambio de tab y la salida de la página lo fuerzan.
     saveLayout() {
+      const responsive = {};
+      Object.keys(this.responsiveLayouts || {}).forEach((bp) => { responsive[bp] = clampLayout(this.responsiveLayouts[bp]); });
+      this._pendingSave = {
+        dashboard: this.panelKey,
+        layout: clampLayout(this.lastLayout || this.layout),
+        settings: { ...this.panelSettings, responsiveLayouts: responsive },
+      };
       if (this._saveTimer) clearTimeout(this._saveTimer);
-      this._saveTimer = setTimeout(async () => {
-        this._saveTimer = null;
-        const headers = { headers: { token: this.$store.state.auth.token } };
-        try {
-          await this.$axios.put('/panellayout', {
-            dashboard: this.panelKey,
-            layout: this.lastLayout || this.layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
-            settings: { ...this.panelSettings, responsiveLayouts: this.responsiveLayouts },
-          }, headers);
-        } catch (err) {
-          console.warn('[SiteDetail] saveLayout error:', err.message || err);
-        }
-      }, 800);
+      this._saveTimer = setTimeout(() => this.flushSave(), 800);
+    },
+    async flushSave() {
+      if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+      const body = this._pendingSave;
+      if (!body) return;
+      this._pendingSave = null;
+      const headers = { headers: { token: this.$store.state.auth.token } };
+      try {
+        await this.$axios.put('/panellayout', body, headers);
+      } catch (err) {
+        const msg = (err.response && err.response.data && err.response.data.error) || err.message || err;
+        console.warn('[SiteDetail] saveLayout error:', msg);
+        this.$notify && this.$notify({ type: 'danger', message: 'No se pudo guardar la disposición de los widgets: ' + msg });
+      }
     },
     // ── Tab "Datos de Sitio": mapa + ficha como cards de grilla ─────────
     // Misma mecánica que los widgets (vue-grid-layout + /panellayout), con
@@ -888,9 +940,9 @@ export default {
         console.warn('[SiteDetail] loadLayout datos error:', err.message || err);
       }
       if (savedResponsive && Object.keys(savedResponsive).length) {
-        this.datosResponsiveLayouts = savedResponsive;
+        this.datosResponsiveLayouts = normalizeResponsive(savedResponsive, def);
       } else if (saved && saved.length) {
-        this.datosResponsiveLayouts = { lg: saved };
+        this.datosResponsiveLayouts = normalizeResponsive({ lg: saved }, def);
       } else {
         this.datosResponsiveLayouts = {};
       }
@@ -966,6 +1018,8 @@ export default {
         this.$nextTick(() => { this.datosGridReady = true; this.ensureMap(); });
         return;
       }
+      if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+      this._pendingSave = null;
       const headers = { headers: { token: this.$store.state.auth.token } };
       try {
         await this.$axios.delete('/panellayout?dashboard=' + encodeURIComponent(this.panelKey), headers);
@@ -981,6 +1035,7 @@ export default {
     },
     toggleCustomizing() {
       this.customizing = !this.customizing;
+      if (!this.customizing) this.flushSave();   // «Listo»: guardar ya, no esperar
     },
     onLayoutUpdated(newLayout) {
       // NO reasignar this.layout acá (loop infinito: la lib muta in place y su
