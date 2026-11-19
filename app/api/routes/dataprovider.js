@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { checkAuth } = require('../middlewares/authentication.js');
 
-import { query as historyQuery } from '../services/historyProvider.js';
+import { query as historyQuery, queryBucketed } from '../services/historyProvider.js';
 import { resolveScopedDIds } from '../middlewares/scope.js';
 
 
@@ -67,7 +67,12 @@ router.get('/get-small-charts-data', checkAuth, async (req, res) => {
       return res.json({ status: "success", data: [] });
     }
 
-    const data = await historyQuery({ dId, variable, sinceMs: timeAgoMs });
+    // maxPoints (opcional, Historial): agrupa en tramos en la base. Sin él, el
+    // contrato de siempre (lecturas crudas) para los widgets que ya lo usan.
+    const maxPoints = Number(req.query.maxPoints);
+    const data = Number.isFinite(maxPoints) && maxPoints > 0
+      ? await queryBucketed({ dId, variable, sinceMs: timeAgoMs, maxPoints: Math.min(5000, Math.max(50, Math.round(maxPoints))) })
+      : await historyQuery({ dId, variable, sinceMs: timeAgoMs });
 
 
     const response = {

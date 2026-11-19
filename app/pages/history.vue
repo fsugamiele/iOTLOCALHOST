@@ -73,6 +73,7 @@ import HistoryChart from '@/components/HistoryChart.vue';
 import { fetchHistory } from '@/services/historyClient.js';
 import { Select, Option } from 'element-ui';
 import { MAX_VARIABLES } from '@/utils/multiSeriesChart';
+const HIST_MAX_POINTS = 1500;   // puntos por variable: alcanza para el ancho de cualquier pantalla
 
 export default {
   name: 'History',
@@ -186,6 +187,7 @@ export default {
       try {
         const res = await Promise.all(faltan.map(variable => fetchHistory({
           axios: this.$axios, token: this.$store.state.auth.token, dId: dev, variable, chartTimeAgo: rango,
+          maxPoints: HIST_MAX_POINTS,   // 7 y 30 días: el servidor agrupa (antes mandaba todo crudo y se tildaba)
         })));
         if (pedido !== this._pedido) return;   // llegó tarde: ya hay un pedido más nuevo
         faltan.forEach((v, i) => { base[v] = res[i] || []; });

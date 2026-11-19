@@ -26,10 +26,9 @@
  *                              caller actual, Rtnumberchart.vue).
  * @returns {Promise<Array>}
  */
-export async function fetchHistory({ axios, token, dId, variable, chartTimeAgo }) {
-  const res = await axios.get('/get-small-charts-data', {
-    headers: { token },
-    params:  { dId, variable, chartTimeAgo },
-  });
+export async function fetchHistory({ axios, token, dId, variable, chartTimeAgo, maxPoints }) {
+  const params = { dId, variable, chartTimeAgo };
+  if (maxPoints) params.maxPoints = maxPoints;   // el servidor agrupa en tramos (rangos largos)
+  const res = await axios.get('/get-small-charts-data', { headers: { token }, params });
   return res.data.data;
 }
